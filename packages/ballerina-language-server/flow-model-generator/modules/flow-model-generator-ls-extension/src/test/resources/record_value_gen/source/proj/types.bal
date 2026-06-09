@@ -19,3 +19,11 @@ type Employee record {|
     decimal salary;
     EmployeeLog...;
 |};
+
+type DestinationConfig record {|
+    string ashost;
+    string sysnr;
+    string user;
+|};
+
+type AdvancedConfig map<string>;
