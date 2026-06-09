@@ -60,16 +60,20 @@ import io.ballerina.flowmodelgenerator.extension.response.TypeOfExpressionRespon
 import io.ballerina.flowmodelgenerator.extension.response.TypeResponse;
 import io.ballerina.flowmodelgenerator.extension.response.TypeUpdateResponse;
 import io.ballerina.flowmodelgenerator.extension.response.VerifyTypeDeleteResponse;
+import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.projects.Document;
 import io.ballerina.projects.Project;
+import io.ballerina.tools.diagnostics.DiagnosticSeverity;
 import io.ballerina.tools.diagnostics.Location;
 import io.ballerina.tools.text.TextDocument;
 import io.ballerina.tools.text.TextRange;
 import org.ballerinalang.annotation.JavaSPIService;
 import org.ballerinalang.diagramutil.connector.models.connector.Type;
+import org.ballerinalang.langserver.common.utils.NameUtil;
 import org.ballerinalang.langserver.common.utils.PathUtil;
+import org.ballerinalang.util.diagnostic.DiagnosticErrorCode;
 import org.ballerinalang.langserver.commons.LanguageServerContext;
 import org.ballerinalang.langserver.commons.eventsync.exceptions.EventSyncException;
 import org.ballerinalang.langserver.commons.service.spi.ExtendedLanguageServerService;
@@ -84,10 +88,12 @@ import java.io.IOException;
 import java.io.Writer;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -486,12 +492,146 @@ public class TypesManagerService implements ExtendedLanguageServerService {
         return CompletableFuture.supplyAsync(() -> {
             RecordValueGenerateResponse response = new RecordValueGenerateResponse();
             try {
-                response.setRecordValue(RecordValueGenerator.generate(request.type().getAsJsonObject()));
+                JsonObject typeJson = request.type().getAsJsonObject();
+                String value = RecordValueGenerator.generate(typeJson);
+
+                // When the value is assigned to a union (e.g. a record | map<string> connector config), a bare
+                // mapping literal can be ambiguous between the members. Compile-probe the value against the
+                // target type and, if the compiler reports an ambiguous-type error, add an explicit type cast.
+                String typeConstraint = request.typeConstraint();
+                if (typeConstraint != null && !typeConstraint.isBlank()) {
+                    Path filePath = PathUtil.convertUriStringToPath(request.filePath());
+                    WorkspaceManager workspaceManager = this.workspaceManagerProxy.get(request.filePath());
+                    Project project = workspaceManager.loadProject(filePath);
+                    Optional<Document> document = workspaceManager.document(filePath);
+                    Optional<SemanticModel> semanticModel = workspaceManager.semanticModel(filePath);
+                    if (document.isPresent() && semanticModel.isPresent()
+                            && isAmbiguousTypeValue(project, workspaceManager, filePath, document.get(),
+                            semanticModel.get(), typeConstraint, request.codedata(), value)) {
+                        typeJson.addProperty("explicitTypeCast",
+                                resolveCastType(typeConstraint, typeJson, request.codedata()));
+                        value = RecordValueGenerator.generate(typeJson);
+                    }
+                }
+
+                response.setRecordValue(value);
             } catch (Throwable e) {
                 response.setError(e);
             }
             return response;
         });
+    }
+
+    /**
+     * Compile-probes a generated value against the given target type and checks whether the compiler reports an
+     * ambiguous-type error. The probe statement {@code <typeConstraint> <name> = <value>;} is appended to the
+     * document in memory, the project is recompiled, and the document is reverted afterwards so the user's
+     * project is left untouched.
+     *
+     * @param project          the loaded project for the file
+     * @param workspaceManager the workspace manager owning the document (used to revert the probe edit)
+     * @param filePath         the path of the document being probed
+     * @param document         the document the value belongs to
+     * @param semanticModel    the current semantic model (used to derive a collision-free probe variable name)
+     * @param typeConstraint   the type the value is assigned to
+     * @param codedata         the node codedata supplying the target type's {@code org}/{@code module} import
+     * @param value            the generated value literal
+     * @return {@code true} if compiling the probe yields an ambiguous-type error
+     */
+    private boolean isAmbiguousTypeValue(Project project, WorkspaceManager workspaceManager, Path filePath,
+                                         Document document, SemanticModel semanticModel, String typeConstraint,
+                                         Codedata codedata, String value) {
+        TextDocument textDocument = document.textDocument();
+        String originalContent = String.join(System.lineSeparator(), textDocument.textLines());
+        String separator = System.lineSeparator();
+        try {
+            Set<String> visibleNames = new HashSet<>();
+            for (Symbol symbol : semanticModel.moduleSymbols()) {
+                symbol.getName().ifPresent(visibleNames::add);
+            }
+            String varName = NameUtil.generateVariableName(typeConstraint, visibleNames);
+
+            // The probe references the target type's module (e.g. jco:...). If that import is missing the
+            // compiler reports an "undefined module" error instead of the ambiguity, so prepend it when needed.
+            String importStmt = resolveImportStatement(document, codedata);
+            String probeStmt = typeConstraint + " " + varName + " = " + value + ";";
+            String prefix = importStmt + originalContent + separator;
+            String newContent = prefix + probeStmt + separator;
+            // 0-based line index where the probe statement begins.
+            int probeStartLine = (int) prefix.chars().filter(c -> c == '\n').count();
+
+            document.modify().withContent(newContent).apply();
+            SemanticModel compiled = project.currentPackage().getCompilation()
+                    .getSemanticModel(project.currentPackage().getDefaultModule().moduleId());
+
+            // Only diagnostics on the appended probe lines are relevant; ignore pre-existing file errors.
+            return compiled.diagnostics().stream()
+                    .filter(diagnostic -> diagnostic.diagnosticInfo().severity() == DiagnosticSeverity.ERROR)
+                    .filter(diagnostic -> DiagnosticErrorCode.AMBIGUOUS_TYPES.diagnosticId()
+                            .equals(diagnostic.diagnosticInfo().code()))
+                    .anyMatch(diagnostic ->
+                            diagnostic.location().lineRange().startLine().line() >= probeStartLine);
+        } finally {
+            // Revert the in-memory edit so the user's project is unchanged.
+            workspaceManager.document(filePath)
+                    .ifPresent(doc -> doc.modify().withContent(originalContent).apply());
+        }
+    }
+
+    /**
+     * Builds the {@code import org/module;} statement required for the probe to resolve the target type's
+     * module, using the node codedata as the {@code getSourceCode} flow does ({@code SourceBuilder.acceptImport}).
+     * Returns an empty string when the module info is unavailable or the import already exists.
+     *
+     * @param document the document being probed
+     * @param codedata the node codedata carrying {@code org}/{@code module}
+     * @return the import statement (terminated with a line separator) or an empty string
+     */
+    private String resolveImportStatement(Document document, Codedata codedata) {
+        if (codedata == null) {
+            return "";
+        }
+        String org = codedata.org();
+        String module = codedata.module();
+        if (org == null || org.isEmpty() || module == null || module.isEmpty()) {
+            return "";
+        }
+        ModulePartNode rootNode = document.syntaxTree().rootNode();
+        if (CommonUtils.importExists(rootNode, org, module)) {
+            return "";
+        }
+        return "import " + CommonUtils.getImportStatement(org, module, module) + ";" + System.lineSeparator();
+    }
+
+    /**
+     * Resolves the cast type for an ambiguous value by matching the selected record against a member of the
+     * target union, preserving the module prefix as written in {@code typeConstraint}. Falls back to the
+     * codedata module prefix + record name, and finally to the bare record name.
+     *
+     * @param typeConstraint the union type the value is assigned to
+     * @param typeJson       the selected record type
+     * @param codedata       the node codedata supplying the module prefix fallback
+     * @return the cast type (e.g. {@code jco:DestinationConfig})
+     */
+    private String resolveCastType(String typeConstraint, JsonObject typeJson, Codedata codedata) {
+        String recordName = typeJson.has("name") ? typeJson.get("name").getAsString() : null;
+        if (recordName == null || recordName.isEmpty()) {
+            return recordName == null ? "" : recordName;
+        }
+        for (String member : typeConstraint.split("\\|")) {
+            String trimmed = member.trim();
+            String simpleName = trimmed.contains(":")
+                    ? trimmed.substring(trimmed.lastIndexOf(':') + 1) : trimmed;
+            if (simpleName.equals(recordName)) {
+                return trimmed;
+            }
+        }
+        if (codedata != null && codedata.module() != null && !codedata.module().isEmpty()) {
+            String module = codedata.module();
+            String prefix = module.contains(".") ? module.substring(module.lastIndexOf('.') + 1) : module;
+            return prefix + ":" + recordName;
+        }
+        return recordName;
     }
 
     @JsonRequest
