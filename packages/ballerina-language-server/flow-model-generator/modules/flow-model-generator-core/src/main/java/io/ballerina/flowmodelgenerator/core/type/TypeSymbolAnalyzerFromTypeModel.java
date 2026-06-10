@@ -49,8 +49,7 @@ public class TypeSymbolAnalyzerFromTypeModel {
     public static Type analyze(Symbol typeSymbol, String expr, SemanticModel semanticModel) {
         // Rest of your existing type processing logic
         ExpressionNode expressionNode = NodeParser.parseExpression(expr);
-        // The value may be wrapped in an explicit type cast (e.g. `<jco:DestinationConfig>{...}`) to
-        // disambiguate a record-vs-map union. Unwrap it so the mapping constructor can be analysed.
+        // Unwrap to handle cast record types
         if (expressionNode instanceof TypeCastExpressionNode typeCast) {
             expressionNode = typeCast.expression();
         }

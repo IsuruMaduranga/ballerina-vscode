@@ -98,7 +98,7 @@ public final class AmbiguousTypeCastResolver {
             List<String> probeTypes = new ArrayList<>();
             probeTypes.add(typeConstraint);
             String concreteType = resolveCastType(typeConstraint, typeJson, codedata);
-            if (concreteType != null && !concreteType.isBlank() && !concreteType.equals(typeConstraint)) {
+            if (!concreteType.isBlank() && !concreteType.equals(typeConstraint)) {
                 probeTypes.add(concreteType);
             }
 
@@ -150,17 +150,15 @@ public final class AmbiguousTypeCastResolver {
      * Locates the ambiguous mapping for {@code diagnostic} and sets {@code explicitTypeCast} on the
      * corresponding JSON node: the top-level value when the mapping is the variable initializer, or the
      * selected member of the nested union the field path resolves to.
-     *
-     * @return {@code true} if a (new) cast was applied
      */
-    private static boolean applyCastForDiagnostic(SyntaxTree syntaxTree, Diagnostic diagnostic, JsonObject typeJson,
-                                                  String typeConstraint, Codedata codedata, Document document) {
+    private static void applyCastForDiagnostic(SyntaxTree syntaxTree, Diagnostic diagnostic, JsonObject typeJson,
+                                               String typeConstraint, Codedata codedata, Document document) {
         NonTerminalNode node = CommonUtils.getNode(syntaxTree, diagnostic.location().textRange());
         while (node != null && !(node instanceof MappingConstructorExpressionNode)) {
             node = node.parent();
         }
         if (node == null) {
-            return false;
+            return;
         }
 
         // Build the field path from the ambiguous mapping up to the variable initializer.
@@ -176,18 +174,19 @@ public final class AmbiguousTypeCastResolver {
         if (path.isEmpty()) {
             // The top-level value is ambiguous (typeConstraint is itself the union).
             String cast = resolveCastType(typeConstraint, typeJson, codedata);
-            return applyCast(typeJson, cast);
+            applyCast(typeJson, cast);
+            return;
         }
 
         JsonObject target = navigateToNode(typeJson, path);
         if (target == null || !target.has("typeName") || !"union".equals(target.get("typeName").getAsString())) {
-            return false;
+            return;
         }
         JsonObject member = selectedMember(target);
         if (member == null) {
-            return false;
+            return;
         }
-        return applyCast(member, castFromTypeInfo(member, document));
+        applyCast(member, castFromTypeInfo(member, document));
     }
 
     /**
@@ -242,15 +241,14 @@ public final class AmbiguousTypeCastResolver {
      * Sets {@code explicitTypeCast} on the node. Returns {@code false} if the cast is empty or already set to
      * the same value (so the caller can detect "nothing changed").
      */
-    private static boolean applyCast(JsonObject node, String cast) {
+    private static void applyCast(JsonObject node, String cast) {
         if (cast == null || cast.isEmpty()) {
-            return false;
+            return;
         }
         if (node.has("explicitTypeCast") && cast.equals(node.get("explicitTypeCast").getAsString())) {
-            return false;
+            return;
         }
         node.addProperty("explicitTypeCast", cast);
-        return true;
     }
 
     /**
