@@ -45,3 +45,8 @@ type MyType record {
     string name2;
     Person|Man person;
 };
+
+type ConnectionParameters record {|
+    string name1;
+    Person|Man person;
+|};
