@@ -28,8 +28,10 @@ import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
 import io.ballerina.compiler.api.symbols.TypeDescKind;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
+import io.ballerina.compiler.syntax.tree.MappingConstructorExpressionNode;
 import io.ballerina.compiler.syntax.tree.ModulePartNode;
 import io.ballerina.compiler.syntax.tree.NonTerminalNode;
+import io.ballerina.compiler.syntax.tree.SpecificFieldNode;
 import io.ballerina.flowmodelgenerator.core.DeleteNodeHandler;
 import io.ballerina.flowmodelgenerator.core.TypesManager;
 import io.ballerina.flowmodelgenerator.core.converters.JsonToTypeMapper;
@@ -64,6 +66,7 @@ import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.projects.Document;
+import io.ballerina.projects.ModuleDescriptor;
 import io.ballerina.projects.Project;
 import io.ballerina.tools.diagnostics.DiagnosticSeverity;
 import io.ballerina.tools.diagnostics.Location;
@@ -493,28 +496,28 @@ public class TypesManagerService implements ExtendedLanguageServerService {
             RecordValueGenerateResponse response = new RecordValueGenerateResponse();
             try {
                 JsonObject typeJson = request.type().getAsJsonObject();
-                String value = RecordValueGenerator.generate(typeJson);
 
-                // When the value is assigned to a union (e.g. a record | map<string> connector config), a bare
-                // mapping literal can be ambiguous between the members. Compile-probe the value against the
-                // target type and, if the compiler reports an ambiguous-type error, add an explicit type cast.
+                // Need type constraint and codeData to handle the ambiguous type errors
                 String typeConstraint = request.typeConstraint();
                 if (typeConstraint != null && !typeConstraint.isBlank()) {
-                    Path filePath = PathUtil.convertUriStringToPath(request.filePath());
-                    WorkspaceManager workspaceManager = this.workspaceManagerProxy.get(request.filePath());
-                    Project project = workspaceManager.loadProject(filePath);
-                    Optional<Document> document = workspaceManager.document(filePath);
-                    Optional<SemanticModel> semanticModel = workspaceManager.semanticModel(filePath);
-                    if (document.isPresent() && semanticModel.isPresent()
-                            && isAmbiguousTypeValue(project, workspaceManager, filePath, document.get(),
-                            semanticModel.get(), typeConstraint, request.codedata(), value)) {
-                        typeJson.addProperty("explicitTypeCast",
-                                resolveCastType(typeConstraint, typeJson, request.codedata()));
-                        value = RecordValueGenerator.generate(typeJson);
+                    // Probing is best-effort: an invalid typeConstraint/codedata/filePath must never fail the
+                    // request — fall back to the bare value the endpoint would have produced before.
+                    try {
+                        Path filePath = PathUtil.convertUriStringToPath(request.filePath());
+                        WorkspaceManager workspaceManager = this.workspaceManagerProxy.get(request.filePath());
+                        Project project = workspaceManager.loadProject(filePath);
+                        Optional<Document> document = workspaceManager.document(filePath);
+                        Optional<SemanticModel> semanticModel = workspaceManager.semanticModel(filePath);
+                        if (document.isPresent() && semanticModel.isPresent()) {
+                            applyAmbiguityCasts(project, workspaceManager, filePath, document.get(),
+                                    semanticModel.get(), typeConstraint, request.codedata(), typeJson);
+                        }
+                    } catch (Throwable ignored) {
+                        // Best-effort cast probing failed; return the bare value below.
                     }
                 }
 
-                response.setRecordValue(value);
+                response.setRecordValue(RecordValueGenerator.generate(typeJson));
             } catch (Throwable e) {
                 response.setError(e);
             }
@@ -523,10 +526,17 @@ public class TypesManagerService implements ExtendedLanguageServerService {
     }
 
     /**
-     * Compile-probes a generated value against the given target type and checks whether the compiler reports an
-     * ambiguous-type error. The probe statement {@code <typeConstraint> <name> = <value>;} is appended to the
-     * document in memory, the project is recompiled, and the document is reverted afterwards so the user's
-     * project is left untouched.
+     * Compile-probes the generated value against {@code typeConstraint} and, if the compiler reports an
+     * ambiguous-type error, sets {@code explicitTypeCast} on the exact JSON node the error points at — the
+     * top-level value (when {@code typeConstraint} is itself the union) or the selected member of a nested
+     * union field. {@code typeJson} is mutated in place (the caller regenerates the value afterwards).
+     *
+     * <p>This handles a single ambiguous site, which may be at the top level or nested. Multiple coexisting
+     * ambiguities are out of scope: when more than one is present the compiler does not surface a usable
+     * {@code AMBIGUOUS_TYPES} error, and that case is unlikely for a configuration value.
+     *
+     * <p>The probe statement {@code <typeConstraint> <name> = <value>;} is appended in memory and reverted
+     * afterwards, so the user's project is left untouched.
      *
      * @param project          the loaded project for the file
      * @param workspaceManager the workspace manager owning the document (used to revert the probe edit)
@@ -535,12 +545,11 @@ public class TypesManagerService implements ExtendedLanguageServerService {
      * @param semanticModel    the current semantic model (used to derive a collision-free probe variable name)
      * @param typeConstraint   the type the value is assigned to
      * @param codedata         the node codedata supplying the target type's {@code org}/{@code module} import
-     * @param value            the generated value literal
-     * @return {@code true} if compiling the probe yields an ambiguous-type error
+     * @param typeJson         the type model whose node receives the {@code explicitTypeCast} property
      */
-    private boolean isAmbiguousTypeValue(Project project, WorkspaceManager workspaceManager, Path filePath,
-                                         Document document, SemanticModel semanticModel, String typeConstraint,
-                                         Codedata codedata, String value) {
+    private void applyAmbiguityCasts(Project project, WorkspaceManager workspaceManager, Path filePath,
+                                     Document document, SemanticModel semanticModel, String typeConstraint,
+                                     Codedata codedata, JsonObject typeJson) {
         TextDocument textDocument = document.textDocument();
         String originalContent = String.join(System.lineSeparator(), textDocument.textLines());
         String separator = System.lineSeparator();
@@ -554,28 +563,165 @@ public class TypesManagerService implements ExtendedLanguageServerService {
             // The probe references the target type's module (e.g. jco:...). If that import is missing the
             // compiler reports an "undefined module" error instead of the ambiguity, so prepend it when needed.
             String importStmt = resolveImportStatement(document, codedata);
-            String probeStmt = typeConstraint + " " + varName + " = " + value + ";";
-            String prefix = importStmt + originalContent + separator;
-            String newContent = prefix + probeStmt + separator;
-            // 0-based line index where the probe statement begins.
-            int probeStartLine = (int) prefix.chars().filter(c -> c == '\n').count();
+            // Everything before the value; the value starts at this offset in the probed document.
+            String lhs = importStmt + originalContent + separator + typeConstraint + " " + varName + " = ";
+            int valueStartOffset = lhs.length();
 
-            document.modify().withContent(newContent).apply();
+            String value = RecordValueGenerator.generate(typeJson);
+            String newContent = lhs + value + ";" + separator;
+            Document updated = document.modify().withContent(newContent).apply();
             SemanticModel compiled = project.currentPackage().getCompilation()
                     .getSemanticModel(project.currentPackage().getDefaultModule().moduleId());
+            ModulePartNode rootNode = updated.syntaxTree().rootNode();
 
-            // Only diagnostics on the appended probe lines are relevant; ignore pre-existing file errors.
-            return compiled.diagnostics().stream()
-                    .filter(diagnostic -> diagnostic.diagnosticInfo().severity() == DiagnosticSeverity.ERROR)
-                    .filter(diagnostic -> DiagnosticErrorCode.AMBIGUOUS_TYPES.diagnosticId()
-                            .equals(diagnostic.diagnosticInfo().code()))
-                    .anyMatch(diagnostic ->
-                            diagnostic.location().lineRange().startLine().line() >= probeStartLine);
+            // Only an ambiguous-type error on the appended value matters; ignore pre-existing file errors.
+            // A single such error is expected (outer or nested); cast the node it points at.
+            compiled.diagnostics().stream()
+                    .filter(d -> d.diagnosticInfo().severity() == DiagnosticSeverity.ERROR)
+                    .filter(d -> DiagnosticErrorCode.AMBIGUOUS_TYPES.diagnosticId()
+                            .equals(d.diagnosticInfo().code()))
+                    .filter(d -> d.location().textRange().startOffset() >= valueStartOffset)
+                    .findFirst()
+                    .ifPresent(d -> applyCastForDiagnostic(rootNode, d, typeJson, typeConstraint, codedata));
         } finally {
             // Revert the in-memory edit so the user's project is unchanged.
             workspaceManager.document(filePath)
                     .ifPresent(doc -> doc.modify().withContent(originalContent).apply());
         }
+    }
+
+    /**
+     * Locates the ambiguous mapping for {@code diagnostic} and sets {@code explicitTypeCast} on the
+     * corresponding JSON node: the top-level value when the mapping is the variable initializer, or the
+     * selected member of the nested union the field path resolves to.
+     *
+     * @return {@code true} if a (new) cast was applied
+     */
+    private boolean applyCastForDiagnostic(ModulePartNode rootNode,
+                                           io.ballerina.tools.diagnostics.Diagnostic diagnostic,
+                                           JsonObject typeJson, String typeConstraint, Codedata codedata) {
+        NonTerminalNode node = rootNode.findNode(diagnostic.location().textRange(), true);
+        while (node != null && !(node instanceof MappingConstructorExpressionNode)) {
+            node = node.parent();
+        }
+        if (node == null) {
+            return false;
+        }
+
+        // Build the field path from the ambiguous mapping up to the variable initializer.
+        List<String> path = new ArrayList<>();
+        NonTerminalNode cur = node.parent();
+        while (cur != null) {
+            if (cur instanceof SpecificFieldNode specificField) {
+                path.add(0, specificField.fieldName().toSourceCode().trim());
+            }
+            cur = cur.parent();
+        }
+
+        if (path.isEmpty()) {
+            // The top-level value is ambiguous (typeConstraint is itself the union).
+            String cast = resolveCastType(typeConstraint, typeJson, codedata);
+            return applyCast(typeJson, cast);
+        }
+
+        JsonObject target = navigateToNode(typeJson, path);
+        if (target == null || !target.has("typeName") || !"union".equals(target.get("typeName").getAsString())) {
+            return false;
+        }
+        JsonObject member = selectedMember(target);
+        if (member == null) {
+            return false;
+        }
+        return applyCast(member, castFromTypeInfo(member, codedata));
+    }
+
+    /**
+     * Navigates the type model along a field path, stepping through the selected member of any union node
+     * encountered, and returns the node the last field name resolves to (or {@code null} if not found).
+     */
+    private JsonObject navigateToNode(JsonObject root, List<String> path) {
+        JsonObject node = root;
+        for (String fieldName : path) {
+            if (node.has("typeName") && "union".equals(node.get("typeName").getAsString())) {
+                node = selectedMember(node);
+                if (node == null) {
+                    return null;
+                }
+            }
+            JsonObject field = findField(node, fieldName);
+            if (field == null) {
+                return null;
+            }
+            node = field;
+        }
+        return node;
+    }
+
+    private JsonObject findField(JsonObject recordNode, String fieldName) {
+        if (!recordNode.has("fields") || !recordNode.get("fields").isJsonArray()) {
+            return null;
+        }
+        for (JsonElement field : recordNode.getAsJsonArray("fields")) {
+            JsonObject fieldObj = field.getAsJsonObject();
+            if (fieldObj.has("name") && fieldName.equals(fieldObj.get("name").getAsString())) {
+                return fieldObj;
+            }
+        }
+        return null;
+    }
+
+    private JsonObject selectedMember(JsonObject unionNode) {
+        if (!unionNode.has("members") || !unionNode.get("members").isJsonArray()) {
+            return null;
+        }
+        for (JsonElement member : unionNode.getAsJsonArray("members")) {
+            JsonObject memberObj = member.getAsJsonObject();
+            if (memberObj.has("selected") && memberObj.get("selected").getAsBoolean()) {
+                return memberObj;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sets {@code explicitTypeCast} on the node. Returns {@code false} if the cast is empty or already set to
+     * the same value (so the caller can detect "nothing changed" and stop looping).
+     */
+    private boolean applyCast(JsonObject node, String cast) {
+        if (cast == null || cast.isEmpty()) {
+            return false;
+        }
+        if (node.has("explicitTypeCast") && cast.equals(node.get("explicitTypeCast").getAsString())) {
+            return false;
+        }
+        node.addProperty("explicitTypeCast", cast);
+        return true;
+    }
+
+    /**
+     * Derives a cast type for a nested union member from its {@code typeInfo}: {@code <prefix>:<name>} where
+     * the prefix is the last segment of the module name, dropped when the member is in the file's own module
+     * (the {@code codedata} module).
+     */
+    private String castFromTypeInfo(JsonObject member, Codedata codedata) {
+        String name = member.has("name") ? member.get("name").getAsString() : null;
+        if (member.has("typeInfo") && member.get("typeInfo").isJsonObject()) {
+            JsonObject typeInfo = member.getAsJsonObject("typeInfo");
+            String typeName = typeInfo.has("name") && !typeInfo.get("name").isJsonNull()
+                    ? typeInfo.get("name").getAsString() : name;
+            String moduleName = typeInfo.has("moduleName") && !typeInfo.get("moduleName").isJsonNull()
+                    ? typeInfo.get("moduleName").getAsString() : null;
+            if (typeName != null && moduleName != null && !moduleName.isEmpty()) {
+                if (codedata != null && moduleName.equals(codedata.module())) {
+                    return typeName;
+                }
+                String prefix = moduleName.contains(".")
+                        ? moduleName.substring(moduleName.lastIndexOf('.') + 1) : moduleName;
+                return prefix + ":" + typeName;
+            }
+            return typeName == null ? "" : typeName;
+        }
+        return name == null ? "" : name;
     }
 
     /**
@@ -594,6 +740,14 @@ public class TypesManagerService implements ExtendedLanguageServerService {
         String org = codedata.org();
         String module = codedata.module();
         if (org == null || org.isEmpty() || module == null || module.isEmpty()) {
+            return "";
+        }
+        // Skip when the type lives in the file's own package — importing your own module is itself an error
+        // and would mask the ambiguity. (Local types like the user's own records hit this path.)
+        ModuleDescriptor ownDescriptor = document.module().descriptor();
+        String ownOrg = ownDescriptor.org().value();
+        String ownPackage = ownDescriptor.packageName().value();
+        if (org.equals(ownOrg) && (module.equals(ownPackage) || module.startsWith(ownPackage + "."))) {
             return "";
         }
         ModulePartNode rootNode = document.syntaxTree().rootNode();

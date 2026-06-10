@@ -27,3 +27,21 @@ type DestinationConfig record {|
 |};
 
 type AdvancedConfig map<string>;
+
+type Person record {
+    string name1;
+    string name2;
+    boolean isMale?;
+};
+
+type Man record {
+    string name1;
+    string name2;
+    boolean isMarried?;
+};
+
+type MyType record {
+    string name1;
+    string name2;
+    Person|Man person;
+};
