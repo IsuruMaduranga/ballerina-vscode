@@ -509,8 +509,8 @@ public class TypesManagerService implements ExtendedLanguageServerService {
                         Optional<Document> document = workspaceManager.document(filePath);
                         Optional<SemanticModel> semanticModel = workspaceManager.semanticModel(filePath);
                         if (document.isPresent() && semanticModel.isPresent()) {
-                            applyAmbiguityCasts(project, workspaceManager, filePath, document.get(),
-                                    semanticModel.get(), typeConstraint, request.codedata(), typeJson);
+                            applyAmbiguityCasts(project, document.get(), semanticModel.get(),
+                                    typeConstraint, request.codedata(), typeJson);
                         }
                     } catch (Throwable ignored) {
                         // Best-effort cast probing failed; return the bare value below.
@@ -538,18 +538,15 @@ public class TypesManagerService implements ExtendedLanguageServerService {
      * <p>The probe statement {@code <typeConstraint> <name> = <value>;} is appended in memory and reverted
      * afterwards, so the user's project is left untouched.
      *
-     * @param project          the loaded project for the file
-     * @param workspaceManager the workspace manager owning the document (used to revert the probe edit)
-     * @param filePath         the path of the document being probed
-     * @param document         the document the value belongs to
-     * @param semanticModel    the current semantic model (used to derive a collision-free probe variable name)
-     * @param typeConstraint   the type the value is assigned to
-     * @param codedata         the node codedata supplying the target type's {@code org}/{@code module} import
-     * @param typeJson         the type model whose node receives the {@code explicitTypeCast} property
+     * @param project        the loaded project for the file
+     * @param document       the document the value belongs to (also the instance reverted afterwards)
+     * @param semanticModel  the current semantic model (used to derive a collision-free probe variable name)
+     * @param typeConstraint the type the value is assigned to
+     * @param codedata       the node codedata supplying the target type's {@code org}/{@code module} import
+     * @param typeJson       the type model whose node receives the {@code explicitTypeCast} property
      */
-    private void applyAmbiguityCasts(Project project, WorkspaceManager workspaceManager, Path filePath,
-                                     Document document, SemanticModel semanticModel, String typeConstraint,
-                                     Codedata codedata, JsonObject typeJson) {
+    private void applyAmbiguityCasts(Project project, Document document, SemanticModel semanticModel,
+                                     String typeConstraint, Codedata codedata, JsonObject typeJson) {
         TextDocument textDocument = document.textDocument();
         String originalContent = String.join(System.lineSeparator(), textDocument.textLines());
         String separator = System.lineSeparator();
@@ -560,10 +557,8 @@ public class TypesManagerService implements ExtendedLanguageServerService {
             }
             String varName = NameUtil.generateVariableName(typeConstraint, visibleNames);
 
-            // The probe references the target type's module (e.g. jco:...). If that import is missing the
-            // compiler reports an "undefined module" error instead of the ambiguity, so prepend it when needed.
             String importStmt = resolveImportStatement(document, codedata);
-            // Everything before the value; the value starts at this offset in the probed document.
+            // Everything before the value
             String lhs = importStmt + originalContent + separator + typeConstraint + " " + varName + " = ";
             int valueStartOffset = lhs.length();
 
@@ -574,8 +569,7 @@ public class TypesManagerService implements ExtendedLanguageServerService {
                     .getSemanticModel(project.currentPackage().getDefaultModule().moduleId());
             ModulePartNode rootNode = updated.syntaxTree().rootNode();
 
-            // Only an ambiguous-type error on the appended value matters; ignore pre-existing file errors.
-            // A single such error is expected (outer or nested); cast the node it points at.
+            // Only an ambiguous-type error on the appended value matters
             compiled.diagnostics().stream()
                     .filter(d -> d.diagnosticInfo().severity() == DiagnosticSeverity.ERROR)
                     .filter(d -> DiagnosticErrorCode.AMBIGUOUS_TYPES.diagnosticId()
@@ -584,9 +578,11 @@ public class TypesManagerService implements ExtendedLanguageServerService {
                     .findFirst()
                     .ifPresent(d -> applyCastForDiagnostic(rootNode, d, typeJson, typeConstraint, codedata));
         } finally {
-            // Revert the in-memory edit so the user's project is unchanged.
-            workspaceManager.document(filePath)
-                    .ifPresent(doc -> doc.modify().withContent(originalContent).apply());
+            try {
+                document.modify().withContent(originalContent).apply();
+            } catch (Throwable ignored) {
+                // best-effort revert
+            }
         }
     }
 
