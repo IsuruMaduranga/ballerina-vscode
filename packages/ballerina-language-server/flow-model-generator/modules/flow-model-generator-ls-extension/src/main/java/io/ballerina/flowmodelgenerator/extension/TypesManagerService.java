@@ -742,8 +742,7 @@ public class TypesManagerService implements ExtendedLanguageServerService {
         if (org == null || org.isEmpty() || module == null || module.isEmpty()) {
             return "";
         }
-        // Skip when the type lives in the file's own package — importing your own module is itself an error
-        // and would mask the ambiguity. (Local types like the user's own records hit this path.)
+        // Skip when the type lives in the file's own package
         ModuleDescriptor ownDescriptor = document.module().descriptor();
         String ownOrg = ownDescriptor.org().value();
         String ownPackage = ownDescriptor.packageName().value();
