@@ -92,13 +92,20 @@ public final class AmbiguousTypeCastResolver {
             }
             String importStmt = resolveImportStatement(document, codedata);
 
-            // Probe 1 assigns the value to the declared type constraint
-            // Probe 2 assigns it to the concrete value
+            // Probe 1 (only when a type constraint is given) assigns the value to the declared type constraint —
+            // this surfaces a top-level union ambiguity. Probe 2 assigns it to the concrete type derived from the
+            // type model + codedata — this surfaces a nested ambiguity (and is the only probe when there is no
+            // type constraint, since without a union there is nothing to probe at the top level).
             List<String> probeTypes = new ArrayList<>();
-            probeTypes.add(typeConstraint);
-            String concreteType = resolveCastType(typeConstraint, typeJson, codedata);
+            if (typeConstraint != null && !typeConstraint.isBlank()) {
+                probeTypes.add(typeConstraint);
+            }
+            String concreteType = resolveCastType(typeConstraint, typeJson, codedata, document);
             if (!concreteType.isBlank() && !concreteType.equals(typeConstraint)) {
                 probeTypes.add(concreteType);
+            }
+            if (probeTypes.isEmpty()) {
+                return;
             }
 
             for (String probeType : probeTypes) {
@@ -169,7 +176,7 @@ public final class AmbiguousTypeCastResolver {
 
         if (path.isEmpty()) {
             // The top-level value is ambiguous (typeConstraint is itself the union).
-            String cast = resolveCastType(typeConstraint, typeJson, codedata);
+            String cast = resolveCastType(typeConstraint, typeJson, codedata, document);
             applyCast(typeJson, cast);
             return;
         }
@@ -304,30 +311,37 @@ public final class AmbiguousTypeCastResolver {
     }
 
     /**
-     * Resolves the cast type for a top-level ambiguous value by matching the selected record against a member of
-     * the target union, preserving the module prefix as written in {@code typeConstraint}. Falls back to the
-     * codedata module prefix + record name, and finally to the bare record name.
+     * Resolves the concrete type of the selected record — used both as a compile probe (the LHS the value is
+     * assigned to) and as the top-level cast. When a {@code typeConstraint} is given, it prefers the union member
+     * whose simple name matches, preserving the module prefix as written. Otherwise (or when no member matches) it
+     * derives the prefix from {@code codedata}: bare when the record is in the file's own module, else
+     * {@code <prefix>:<name>}. Falls back to the bare record name when no module info is available.
      *
-     * @param typeConstraint the union type the value is assigned to
+     * @param typeConstraint the union type the value is assigned to (may be {@code null}/blank)
      * @param typeJson       the selected record type
-     * @param codedata       the node codedata supplying the module prefix fallback
-     * @return the cast type (e.g. {@code jco:DestinationConfig})
+     * @param codedata       the node codedata supplying the module prefix
+     * @param document       the document being probed (to decide the file's own module)
+     * @return the qualified type (e.g. {@code jco:DestinationConfig}) or bare record name
      */
-    private static String resolveCastType(String typeConstraint, JsonObject typeJson, Codedata codedata) {
+    private static String resolveCastType(String typeConstraint, JsonObject typeJson, Codedata codedata,
+                                          Document document) {
         String recordName = typeJson.has("name") ? typeJson.get("name").getAsString() : null;
         if (recordName == null || recordName.isEmpty()) {
             return recordName == null ? "" : recordName;
         }
-        for (String member : typeConstraint.split("\\|")) {
-            String trimmed = member.trim();
-            String simpleName = trimmed.contains(":")
-                    ? trimmed.substring(trimmed.lastIndexOf(':') + 1) : trimmed;
-            if (simpleName.equals(recordName)) {
-                return trimmed;
+        if (typeConstraint != null && !typeConstraint.isBlank()) {
+            for (String member : typeConstraint.split("\\|")) {
+                String trimmed = member.trim();
+                String simpleName = trimmed.contains(":")
+                        ? trimmed.substring(trimmed.lastIndexOf(':') + 1) : trimmed;
+                if (simpleName.equals(recordName)) {
+                    return trimmed;
+                }
             }
         }
         if (codedata != null && codedata.module() != null && !codedata.module().isEmpty()) {
-            return CommonUtils.getDefaultModulePrefix(codedata.module()) + ":" + recordName;
+            return isInOwnModule(document, codedata.org(), codedata.module())
+                    ? recordName : CommonUtils.getClassType(codedata.module(), recordName);
         }
         return recordName;
     }

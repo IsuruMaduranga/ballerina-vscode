@@ -1,6 +1,6 @@
 {
   "filePath": "proj/types.bal",
-  "description": "codedata present but no typeConstraint - probe skipped, bare value returned",
+  "description": "codedata present but no typeConstraint - concrete-type probe runs, no ambiguity, bare value returned",
   "codedata": {
     "org": "org",
     "module": "source",

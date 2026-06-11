@@ -489,9 +489,10 @@ public class TypesManagerService implements ExtendedLanguageServerService {
             try {
                 JsonObject typeJson = request.type().getAsJsonObject();
 
-                // Need type constraint and codeData to handle the ambiguous type errors
+                // A type constraint surfaces a top-level union ambiguity; codedata alone is enough to probe the
+                // concrete type for a nested ambiguity. Either is sufficient to attempt cast resolution.
                 String typeConstraint = request.typeConstraint();
-                if (typeConstraint != null && !typeConstraint.isBlank()) {
+                if ((typeConstraint != null && !typeConstraint.isBlank()) || request.codedata() != null) {
                     // Probing is best-effort: an invalid typeConstraint/codedata/filePath must never fail the
                     // request — fall back to the bare value the endpoint would have produced before.
                     try {
