@@ -241,7 +241,7 @@ public final class AmbiguousTypeCastResolver {
     }
 
     /**
-     * Sets {@code explicitTypeCast} on the node. Returns {@code false} if the cast is empty or already set to
+     * Sets {@code explicitTypeCast} on the node. Returns void if the cast is empty or already set to
      * the same value (so the caller can detect "nothing changed").
      */
     private static void applyCast(JsonObject node, String cast) {
