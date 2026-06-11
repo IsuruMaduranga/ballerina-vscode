@@ -139,7 +139,7 @@ public final class AmbiguousTypeCastResolver {
         String newContent = lhs + value + ";" + separator;
         Document updated = document.modify().withContent(newContent).apply();
         SemanticModel compiled = project.currentPackage().getCompilation()
-                .getSemanticModel(project.currentPackage().getDefaultModule().moduleId());
+                .getSemanticModel(updated.module().moduleId());
         SyntaxTree syntaxTree = updated.syntaxTree();
 
         // Only an ambiguous-type error on the appended value matters
@@ -261,7 +261,8 @@ public final class AmbiguousTypeCastResolver {
      * prefix, since the file receiving the value is not in that module.
      */
     private static String castFromTypeInfo(JsonObject member, Document document) {
-        String name = member.has("name") ? member.get("name").getAsString() : null;
+        String name = member.has("name") && !member.get("name").isJsonNull()
+                ? member.get("name").getAsString() : null;
         if (member.has("typeInfo") && member.get("typeInfo").isJsonObject()) {
             JsonObject typeInfo = member.getAsJsonObject("typeInfo");
             String typeName = typeInfo.has("name") && !typeInfo.get("name").isJsonNull()
