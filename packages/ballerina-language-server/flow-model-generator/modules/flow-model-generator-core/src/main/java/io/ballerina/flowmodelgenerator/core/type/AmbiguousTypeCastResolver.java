@@ -22,7 +22,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.Symbol;
-import io.ballerina.compiler.syntax.tree.MappingConstructorExpressionNode;
 import io.ballerina.compiler.syntax.tree.NonTerminalNode;
 import io.ballerina.compiler.syntax.tree.SpecificFieldNode;
 import io.ballerina.compiler.syntax.tree.SyntaxTree;
@@ -154,19 +153,16 @@ public final class AmbiguousTypeCastResolver {
     private static void applyCastForDiagnostic(SyntaxTree syntaxTree, Diagnostic diagnostic, JsonObject typeJson,
                                                String typeConstraint, Codedata codedata, Document document) {
         NonTerminalNode node = CommonUtils.getNode(syntaxTree, diagnostic.location().textRange());
-        while (node != null && !(node instanceof MappingConstructorExpressionNode)) {
-            node = node.parent();
-        }
         if (node == null) {
             return;
         }
 
-        // Build the field path from the ambiguous mapping up to the variable initializer.
+        // Build the field path from the ambiguous expression up to the variable initializer.
         List<String> path = new ArrayList<>();
         NonTerminalNode cur = node.parent();
         while (cur != null) {
             if (cur instanceof SpecificFieldNode specificField) {
-                path.add(0, specificField.fieldName().toSourceCode().trim());
+                path.addFirst(specificField.fieldName().toSourceCode().trim());
             }
             cur = cur.parent();
         }
