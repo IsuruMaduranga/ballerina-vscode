@@ -349,7 +349,9 @@ public final class WorkspaceManagerFacadeImpl
     public CompletableFuture<Map<Path, Project>> workspaceProjects() {
         Collection<Project> projects = projectService.allProjects();
         Map<Path, Project> projectMap = projects.stream()
-                .collect(Collectors.toMap(Project::sourceRoot, p -> p));
+                .collect(Collectors.toMap(Project::sourceRoot, p -> p,
+                        (existingProject, duplicateProject) -> projectService.project(existingProject.sourceRoot())
+                                .orElse(existingProject)));
         return CompletableFuture.completedFuture(projectMap);
     }
 
