@@ -337,6 +337,8 @@ public class WorkspaceManagerFacadeImplTest {
         Mockito.when(mockProjectService.module(testPath, null)).thenReturn(mockModule);
         Mockito.when(mockModule.moduleId()).thenReturn(mockModuleId);
         Mockito.when(mockProject.currentPackage()).thenReturn(mockPackage);
+        Mockito.when(mockProject.sourceRoot()).thenReturn(testPath.getParent());
+        Mockito.when(mockPackage.project()).thenReturn(mockProject);
         Mockito.when(mockPackage.getCompilation()).thenReturn(mockCompilation);
         Mockito.when(mockCompilation.getSemanticModel(mockModuleId)).thenReturn(mockModel);
 
@@ -363,6 +365,8 @@ public class WorkspaceManagerFacadeImplTest {
         Mockito.when(mockProjectService.module(testPath, cancelChecker)).thenReturn(mockModule);
         Mockito.when(mockModule.moduleId()).thenReturn(mockModuleId);
         Mockito.when(mockProject.currentPackage()).thenReturn(mockPackage);
+        Mockito.when(mockProject.sourceRoot()).thenReturn(testPath.getParent());
+        Mockito.when(mockPackage.project()).thenReturn(mockProject);
         Mockito.when(mockPackage.getCompilation()).thenReturn(mockCompilation);
         Mockito.when(mockCompilation.getSemanticModel(mockModuleId)).thenReturn(mockModel);
 
@@ -545,6 +549,22 @@ public class WorkspaceManagerFacadeImplTest {
 
         Assert.assertNotNull(result);
         Mockito.verify(mockProjectService).allProjects();
+    }
+
+    @Test
+    public void testWorkspaceProjects_ReturnsBaseProject_WhenOverlaySharesSourceRoot() {
+        Path sourceRoot = testPath.getParent();
+        Project baseProject = Mockito.mock(Project.class);
+        Project overlayProject = Mockito.mock(Project.class);
+        Mockito.when(baseProject.sourceRoot()).thenReturn(sourceRoot);
+        Mockito.when(overlayProject.sourceRoot()).thenReturn(sourceRoot);
+        Mockito.when(mockProjectService.allProjects()).thenReturn(List.of(overlayProject, baseProject));
+        Mockito.when(mockProjectService.project(sourceRoot)).thenReturn(Optional.of(baseProject));
+
+        Map<Path, Project> projectMap = facade.workspaceProjects().join();
+
+        Assert.assertEquals(projectMap.size(), 1);
+        Assert.assertSame(projectMap.get(sourceRoot), baseProject);
     }
 
     private StableSnapshot createStableSnapshot(SyntaxTree syntaxTree, SemanticModel semanticModel,
