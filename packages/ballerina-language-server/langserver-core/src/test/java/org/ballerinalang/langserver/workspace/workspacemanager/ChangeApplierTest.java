@@ -31,13 +31,9 @@ import org.ballerinalang.langserver.workspace.workspacemanager.change.ChangeAppl
 import org.ballerinalang.langserver.workspace.workspacemanager.change.ChangeBuffer;
 import org.ballerinalang.langserver.workspace.workspacemanager.change.ChangeLayer;
 import org.ballerinalang.langserver.workspace.workspacemanager.change.ContentVersion;
-import org.ballerinalang.langserver.workspace.workspacemanager.change.strategy.ContentChangeStrategy;
-import org.ballerinalang.langserver.workspace.workspacemanager.change.strategy.IncrementalChangeStrategy;
 import org.ballerinalang.langserver.workspace.workspacemanager.uri.DocumentUri;
 import org.ballerinalang.langserver.workspace.workspacemanager.uri.ResolvedEntry;
 import org.ballerinalang.langserver.workspace.workspacemanager.uri.UriResolver;
-import org.eclipse.lsp4j.Position;
-import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -81,31 +77,15 @@ public class ChangeApplierTest {
         mockPackage = mock(Package.class);
     }
 
-    /** Creates a spy of ChangeApplier (FULL_TEXT strategy) with pending URIs injected. */
+    /** Creates a spy of ChangeApplier with pending URIs injected. */
     private ChangeApplier spyWithPendingUris(Set<DocumentUri> pendingUris) {
         ChangeApplier spied = spy(new ChangeApplier(changeBuffer, uriResolver));
         doReturn(pendingUris).when(spied).getPendingUrisForProject(mockProject);
         return spied;
     }
 
-    /** Creates a spy of ChangeApplier with a custom strategy and pending URIs injected. */
-    private ChangeApplier spyWithPendingUris(Set<DocumentUri> pendingUris, ContentChangeStrategy strategy) {
-        ChangeApplier spied = spy(new ChangeApplier(changeBuffer, uriResolver, strategy));
-        doReturn(pendingUris).when(spied).getPendingUrisForProject(mockProject);
-        return spied;
-    }
-
     private BufferedChange makeChange(String text, ChangeLayer layer, int version) {
         TextDocumentContentChangeEvent event = new TextDocumentContentChangeEvent(text);
-        return new BufferedChange(event, layer, new ContentVersion(version));
-    }
-
-    private BufferedChange makeRangeChange(int startLine, int startChar, int endLine, int endChar,
-                                           String replacement, ChangeLayer layer, int version) {
-        Range range = new Range(new Position(startLine, startChar), new Position(endLine, endChar));
-        TextDocumentContentChangeEvent event = new TextDocumentContentChangeEvent();
-        event.setRange(range);
-        event.setText(replacement);
         return new BufferedChange(event, layer, new ContentVersion(version));
     }
 
@@ -381,67 +361,6 @@ public class ChangeApplierTest {
         Set<DocumentUri> result = realApplier.getPendingUrisForProject(compilerProject);
 
         Assert.assertEquals(result, Set.of(mainUri));
-    }
-
-    // =========================================================================
-    // Range-based edits — applyRangeEdit
-    // =========================================================================
-
-    @Test
-    public void apply_rangeBasedEdit_replacesCorrectSubstring() {
-        // Given: document with content "hello world\nfoo bar\n"
-        // Change: replace "world" on line 0, chars 6-11 with "there"
-        DocumentUri uri = fileUri("/workspace/main.bal");
-        BufferedChange change = makeRangeChange(0, 6, 0, 11, "there", ChangeLayer.EDITOR, 1);
-        Document mockDoc = mock(Document.class);
-        Module mockModule = mock(Module.class);
-        Document.Modifier mockDocModifier = mock(Document.Modifier.class);
-        TextDocument mockTextDoc = mock(TextDocument.class);
-
-        when(changeBuffer.drain(uri, ChangeLayer.EDITOR)).thenReturn(List.of(change));
-        when(changeBuffer.drain(uri, ChangeLayer.AI)).thenReturn(List.of());
-        when(changeBuffer.drain(uri, ChangeLayer.EXPR)).thenReturn(List.of());
-        when(uriResolver.resolve(uri)).thenReturn(Optional.of(new ResolvedEntry.DocumentEntry(mockDoc)));
-        when(mockDoc.module()).thenReturn(mockModule);
-        when(mockDoc.textDocument()).thenReturn(mockTextDoc);
-        when(mockTextDoc.toString()).thenReturn("hello world\nfoo bar\n");
-        when(mockDoc.modify()).thenReturn(mockDocModifier);
-        when(mockDocModifier.withContent(any())).thenReturn(mockDocModifier);
-        when(mockDocModifier.apply()).thenReturn(mockDoc);
-        when(mockProject.currentPackage()).thenReturn(mockPackage);
-
-        spyWithPendingUris(Set.of(uri), IncrementalChangeStrategy.INSTANCE).apply(mockProject);
-
-        verify(mockDocModifier).withContent("hello there\nfoo bar\n");
-    }
-
-    @Test
-    public void apply_rangeBasedEdit_multilineRange_replacesCorrectly() {
-        // Given: document "line0\nline1\nline2\n"
-        // Change: replace from line 0 char 0 to line 1 char 5 with "X"
-        DocumentUri uri = fileUri("/workspace/main.bal");
-        BufferedChange change = makeRangeChange(0, 0, 1, 5, "X", ChangeLayer.EDITOR, 1);
-        Document mockDoc = mock(Document.class);
-        Module mockModule = mock(Module.class);
-        Document.Modifier mockDocModifier = mock(Document.Modifier.class);
-        TextDocument mockTextDoc = mock(TextDocument.class);
-
-        when(changeBuffer.drain(uri, ChangeLayer.EDITOR)).thenReturn(List.of(change));
-        when(changeBuffer.drain(uri, ChangeLayer.AI)).thenReturn(List.of());
-        when(changeBuffer.drain(uri, ChangeLayer.EXPR)).thenReturn(List.of());
-        when(uriResolver.resolve(uri)).thenReturn(Optional.of(new ResolvedEntry.DocumentEntry(mockDoc)));
-        when(mockDoc.module()).thenReturn(mockModule);
-        when(mockDoc.textDocument()).thenReturn(mockTextDoc);
-        when(mockTextDoc.toString()).thenReturn("line0\nline1\nline2\n");
-        when(mockDoc.modify()).thenReturn(mockDocModifier);
-        when(mockDocModifier.withContent(any())).thenReturn(mockDocModifier);
-        when(mockDocModifier.apply()).thenReturn(mockDoc);
-        when(mockProject.currentPackage()).thenReturn(mockPackage);
-
-        spyWithPendingUris(Set.of(uri), IncrementalChangeStrategy.INSTANCE).apply(mockProject);
-
-        // "line0\n" = 6 chars, "line1" = 5 chars => end offset = 6+5=11 → content[11..] = "\nline2\n"
-        verify(mockDocModifier).withContent("X\nline2\n");
     }
 
     @Test

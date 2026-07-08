@@ -25,8 +25,6 @@ import io.ballerina.projects.ModuleId;
 import io.ballerina.projects.Package;
 import io.ballerina.projects.Project;
 import io.ballerina.projects.util.ProjectConstants;
-import org.ballerinalang.langserver.workspace.workspacemanager.change.strategy.ContentChangeStrategy;
-import org.ballerinalang.langserver.workspace.workspacemanager.change.strategy.FullTextChangeStrategy;
 import org.ballerinalang.langserver.workspace.workspacemanager.uri.DocumentUri;
 import org.ballerinalang.langserver.workspace.workspacemanager.uri.ResolvedEntry;
 import org.ballerinalang.langserver.workspace.workspacemanager.uri.UriResolver;
@@ -51,6 +49,11 @@ import javax.annotation.Nonnull;
  * <p>TODO: Once the compiler exposes public batch-update APIs, replace the per-document fallback
  * with {@code module.modify().updateDocument(...)} and package-level batching.</p>
  *
+ * <p>This applier only supports full-text document sync ({@code TextDocumentSyncKind.Full}). The previous
+ * {@code ContentChangeStrategy} abstraction (with separate {@code FullTextChangeStrategy} and
+ * {@code IncrementalChangeStrategy} implementations) has been collapsed inline because incremental text
+ * document sync will not be supported with jBallerina/p>
+ *
  * @since 1.7.0
  */
 public class ChangeApplier {
@@ -60,30 +63,16 @@ public class ChangeApplier {
             FileChangeType.Deleted.name());
     private final ChangeBuffer changeBuffer;
     private final UriResolver uriResolver;
-    private final ContentChangeStrategy strategy;
 
     /**
-     * Creates a new ChangeApplier with the given content-change strategy.
-     *
-     * @param changeBuffer the per-URI, per-layer change buffer
-     * @param uriResolver the URI-to-Document resolver
-     * @param strategy the strategy used to compute new document content from buffered events
-     */
-    public ChangeApplier(@Nonnull ChangeBuffer changeBuffer, @Nonnull UriResolver uriResolver,
-                         @Nonnull ContentChangeStrategy strategy) {
-        this.changeBuffer = changeBuffer;
-        this.uriResolver = uriResolver;
-        this.strategy = strategy;
-    }
-
-    /**
-     * Creates a new ChangeApplier defaulting to {@link FullTextChangeStrategy}.
+     * Creates a new ChangeApplier.
      *
      * @param changeBuffer the per-URI, per-layer change buffer
      * @param uriResolver the URI-to-Document resolver
      */
     public ChangeApplier(@Nonnull ChangeBuffer changeBuffer, @Nonnull UriResolver uriResolver) {
-        this(changeBuffer, uriResolver, FullTextChangeStrategy.INSTANCE);
+        this.changeBuffer = changeBuffer;
+        this.uriResolver = uriResolver;
     }
 
     /**
@@ -253,8 +242,12 @@ public class ChangeApplier {
 
     private void applyViaDocumentModify(DocumentUri uri, Document document,
                                         List<TextDocumentContentChangeEvent> changes) {
+        // Full-text sync: the client always sends the complete document content with every
+        // notification, so only the last event carries the authoritative content. See the
+        // class Javadoc for why incremental sync is not supported with jBallerina.
+        String content = changes.get(changes.size() - 1).getText();
         Document updated = document.modify()
-                .withContent(strategy.computeContent(document, changes))
+                .withContent(content)
                 .apply();
         uriResolver.onDocumentUpdate(uri, uri.uri().getScheme(), updated);
     }
