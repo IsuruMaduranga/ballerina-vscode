@@ -80,6 +80,24 @@ public class WorkspaceIdentityTypesTest {
         };
     }
 
+    @Test
+    public void fileUri_equalsAndHashCodeIgnoreTrailingSlash() {
+        DocumentUri.FileUri pathUri = new DocumentUri.FileUri(URI.create("file:///tmp/project/"));
+        DocumentUri.FileUri compilerEventUri = new DocumentUri.FileUri(URI.create("file:///tmp/project"));
+
+        Assert.assertEquals(pathUri, compilerEventUri);
+        Assert.assertEquals(pathUri.hashCode(), compilerEventUri.hashCode());
+        Assert.assertEquals(pathUri.uri(), URI.create("file:///tmp/project/"));
+    }
+
+    @Test
+    public void nonFileUriEquality_preservesTrailingSlashSemantics() {
+        Assert.assertNotEquals(new DocumentUri.ExprUri(URI.create("expr:///tmp/project/")),
+                new DocumentUri.ExprUri(URI.create("expr:///tmp/project")));
+        Assert.assertNotEquals(new DocumentUri.AiUri(URI.create("ai:///tmp/project/")),
+                new DocumentUri.AiUri(URI.create("ai:///tmp/project")));
+    }
+
     /**
      * Verifies content-version comparison ordering semantics.
      */

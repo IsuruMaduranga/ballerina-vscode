@@ -47,6 +47,59 @@ public sealed interface DocumentUri permits DocumentUri.FileUri, DocumentUri.Exp
                 throw new IllegalArgumentException("Expected URI scheme 'file' but found '" + uri.getScheme() + "'");
             }
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof FileUri other)) {
+                return false;
+            }
+            return canonicalFileUri(uri).equals(canonicalFileUri(other.uri));
+        }
+
+        @Override
+        public int hashCode() {
+            return canonicalFileUri(uri).hashCode();
+        }
+
+        private static URI canonicalFileUri(URI fileUri) {
+            String rawPath = fileUri.getRawPath();
+            if (rawPath == null || rawPath.length() <= 1 || !rawPath.endsWith("/")
+                    || isWindowsDriveRoot(rawPath)) {
+                return fileUri;
+            }
+
+            int stripCount = 0;
+            while (rawPath.length() - stripCount > 1
+                    && rawPath.charAt(rawPath.length() - stripCount - 1) == '/') {
+                stripCount++;
+            }
+            if (stripCount == 0) {
+                return fileUri;
+            }
+
+            String rawUri = fileUri.toString();
+            int pathEnd = rawUri.length();
+            int queryStart = rawUri.indexOf('?');
+            if (queryStart >= 0) {
+                pathEnd = queryStart;
+            }
+            int fragmentStart = rawUri.indexOf('#');
+            if (fragmentStart >= 0 && fragmentStart < pathEnd) {
+                pathEnd = fragmentStart;
+            }
+            return URI.create(rawUri.substring(0, pathEnd - stripCount) + rawUri.substring(pathEnd));
+        }
+
+        private static boolean isWindowsDriveRoot(String rawPath) {
+            return rawPath.length() == 4
+                    && rawPath.charAt(0) == '/'
+                    && Character.isLetter(rawPath.charAt(1))
+                    && rawPath.charAt(2) == ':'
+                    && rawPath.charAt(3) == '/';
+        }
     }
 
     /**

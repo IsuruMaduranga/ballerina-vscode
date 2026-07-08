@@ -44,6 +44,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -198,19 +199,71 @@ public class ProjectServiceTest {
     }
 
     @Test
-    public void diagnosticsReady_restoresRecoveringProjectToHealthy() throws Exception {
+    public void compilationFailed_withCompilerSourceRootWithoutTrailingSlashTransitionsWorkspaceProjectState()
+            throws Exception {
         service.loadOrCreate(tempDir, cancelChecker);
         DocumentUri root = new DocumentUri.FileUri(tempDir.toUri());
+        URI compilerSourceRoot = sourceRootUriWithoutTrailingSlash(tempDir);
+        publishedEvents.clear();
+
+        eventBus.publish(new CompilerEvent(EventKind.COMPILER_COMPILATION_FAILED, compilerSourceRoot, "test-pkg"));
+
+        Assert.assertTrue(awaitCondition(() -> service.workspaceProject(root).orElseThrow().healthState()
+                == ProjectHealthState.COMPILATION_CRASHED));
+        Assert.assertTrue(awaitCondition(() -> publishedEvents.stream()
+                .anyMatch(event -> event.eventKind() == EventKind.WORKSPACE_PROJECT_HEALTH_STATE_CHANGED)));
+    }
+
+    @Test
+    public void diagnosticsReady_withCompilerSourceRootWithoutTrailingSlashRestoresHealthAndRecordsSignal()
+            throws Exception {
+        service.loadOrCreate(tempDir, cancelChecker);
+        DocumentUri root = new DocumentUri.FileUri(tempDir.toUri());
+        URI compilerSourceRoot = sourceRootUriWithoutTrailingSlash(tempDir);
         org.ballerinalang.langserver.workspace.workspacemanager.project.Project workspaceProject =
                 service.workspaceProject(root).orElseThrow();
         workspaceProject.notifySourceChanged();
         workspaceProject.transitionTo(ProjectHealthState.COMPILATION_CRASHED);
         workspaceProject.transitionTo(ProjectHealthState.RECOVERING);
+        publishedEvents.clear();
 
-        eventBus.publish(new CompilerEvent(EventKind.CE_E5B_COMPILATION_DIAGNOSTICS_READY, tempDir.toUri(),
+        eventBus.publish(new CompilerEvent(EventKind.CE_E5B_COMPILATION_DIAGNOSTICS_READY, compilerSourceRoot,
                 "test-pkg"));
 
         Assert.assertTrue(awaitCondition(() -> workspaceProject.healthState() == ProjectHealthState.HEALTHY));
+        Assert.assertTrue(service.hasObservedCompilerSignal(root, EventKind.CE_E5B_COMPILATION_DIAGNOSTICS_READY));
+        Assert.assertTrue(awaitCondition(() -> publishedEvents.stream()
+                .anyMatch(event -> event.eventKind() == EventKind.WORKSPACE_PROJECT_HEALTH_STATE_CHANGED)));
+    }
+
+    @Test
+    public void resolutionEvents_withCompilerSourceRootWithoutTrailingSlashTransitionHealthAndRecordSignals()
+            throws Exception {
+        service.loadOrCreate(tempDir, cancelChecker);
+        DocumentUri root = new DocumentUri.FileUri(tempDir.toUri());
+        URI compilerSourceRoot = sourceRootUriWithoutTrailingSlash(tempDir);
+        org.ballerinalang.langserver.workspace.workspacemanager.project.Project workspaceProject =
+                service.workspaceProject(root).orElseThrow();
+        workspaceProject.notifySourceChanged();
+        workspaceProject.transitionTo(ProjectHealthState.COMPILATION_CRASHED);
+        workspaceProject.transitionTo(ProjectHealthState.RECOVERING);
+        publishedEvents.clear();
+
+        eventBus.publish(new CompilerEvent(EventKind.CE_E5A_RESOLUTION_DIAGNOSTICS_READY, compilerSourceRoot,
+                "test-pkg"));
+        Assert.assertTrue(awaitCondition(() -> service.hasObservedCompilerSignal(root,
+                EventKind.CE_E5A_RESOLUTION_DIAGNOSTICS_READY)));
+
+        eventBus.publish(new CompilerEvent(EventKind.CE_RESOLUTION_EXHAUSTED, compilerSourceRoot, "test-pkg"));
+        Assert.assertTrue(awaitCondition(() -> workspaceProject.healthState() == ProjectHealthState.CIRCUIT_OPEN));
+        Assert.assertTrue(service.hasObservedCompilerSignal(root, EventKind.CE_RESOLUTION_EXHAUSTED));
+
+        eventBus.publish(new CompilerEvent(EventKind.CE_RESOLUTION_RECOVERED, compilerSourceRoot, "test-pkg"));
+        Assert.assertTrue(awaitCondition(() -> workspaceProject.healthState() == ProjectHealthState.RECOVERING));
+        Assert.assertTrue(service.hasObservedCompilerSignal(root, EventKind.CE_RESOLUTION_RECOVERED));
+        Assert.assertTrue(awaitCondition(() -> publishedEvents.stream()
+                .filter(event -> event.eventKind() == EventKind.WORKSPACE_PROJECT_HEALTH_STATE_CHANGED)
+                .count() >= 2));
     }
 
     @Test
@@ -258,6 +311,14 @@ public class ProjectServiceTest {
 
     private Project mockBallerinaProject(DocumentUri root, ProjectKind kind) {
         return Mockito.mock(Project.class);
+    }
+
+    private URI sourceRootUriWithoutTrailingSlash(Path sourceRoot) {
+        String uri = sourceRoot.toAbsolutePath().normalize().toUri().toString();
+        if (uri.endsWith("/")) {
+            uri = uri.substring(0, uri.length() - 1);
+        }
+        return URI.create(uri);
     }
 
     private boolean awaitCondition(Condition condition) throws InterruptedException {
