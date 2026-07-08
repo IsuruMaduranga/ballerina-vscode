@@ -33,6 +33,8 @@ import org.ballerinalang.langserver.workspace.workspacemanager.change.ChangeAppl
 import org.ballerinalang.langserver.workspace.workspacemanager.change.ChangeBuffer;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 
 import javax.annotation.Nonnull;
@@ -123,17 +125,63 @@ public final class WiringConfiguration implements AutoCloseable {
         return snapshotStore;
     }
 
+    /**
+     * Shuts down every owned resource regardless of earlier failures.
+     * <p>
+     * Each shutdown action is wrapped in its own try/catch so that a throw from one
+     * (e.g. {@code heapPressureMonitor.stop()} or {@code compilationService.close()}) never
+     * aborts the remaining shutdowns — orphaning executors, project state, or event-bus
+     * subscriptions. If more than one action fails, the first failure is rethrown with the
+     * rest attached as suppressed exceptions, rather than only the first one winning.
+     * <p>
+     * Shutdown order is preserved (heap monitor → trace logger → compilation → execution →
+     * project → event bus); only the short-circuit behaviour changes.
+     */
     @Override
     public void close() throws Exception {
+        List<Throwable> failures = new ArrayList<>();
+        runShutdown(heapPressureMonitor::stop, failures);
+        runShutdown(traceLogger::close, failures);
+        runShutdown(compilationService::close, failures);
+        runShutdown(executionService::shutdown, failures);
+        runShutdown(projectService::shutdown, failures);
+        runShutdown(eventBus::close, failures);
+        rethrowAggregated(failures);
+    }
+
+    /**
+     * Runs a single shutdown action, recording (not short-circuiting on) any thrown failure.
+     *
+     * @param action   shutdown action ({@code stop()}, {@code close()}, or {@code shutdown()})
+     * @param failures accumulator for thrown exceptions
+     */
+    private static void runShutdown(AutoCloseable action, List<Throwable> failures) {
         try {
-            heapPressureMonitor.stop();
-            traceLogger.close();
-            compilationService.close();
-            executionService.shutdown();
-            projectService.shutdown();
-        } finally {
-            eventBus.close();
+            action.close();
+        } catch (Throwable t) {
+            failures.add(t);
         }
+    }
+
+    /**
+     * Rethrows the first collected failure with any additional failures attached as
+     * suppressed exceptions; does nothing if every shutdown action succeeded.
+     */
+    private static void rethrowAggregated(List<Throwable> failures) throws Exception {
+        if (failures.isEmpty()) {
+            return;
+        }
+        Throwable primary = failures.get(0);
+        for (int i = 1; i < failures.size(); i++) {
+            primary.addSuppressed(failures.get(i));
+        }
+        if (primary instanceof Exception) {
+            throw (Exception) primary;
+        }
+        if (primary instanceof Error) {
+            throw (Error) primary;
+        }
+        throw new Exception(primary);
     }
 
     /**
