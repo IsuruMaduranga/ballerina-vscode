@@ -17,130 +17,113 @@
  */
 
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import {
-    CancelIntegrationWizardRequest,
     CreateIntegrationRequest,
-    isSamePath,
     ProjectRequest,
-    ScaffoldIntegrationProjectRequest,
     ScaffoldIntegrationProjectResponse,
     WizardCapabilitiesResponse,
 } from "@wso2/ballerina-core";
-import { createBIProjectPure, openInVSCode, sanitizeName } from "../../utils/bi";
+import { createBIProjectPure, openInVSCode } from "../../utils/bi";
 import { schedulePendingArtifact } from "./pending-artifact";
 
 /** Bumped whenever the wizard wire contract changes in a way remote hosts must detect. */
 const WIZARD_CAPABILITIES_VERSION = 1;
 
-/**
- * Scaffold roots created by THIS window's wizard sessions, keyed by normalized
- * root path, mapped to the parameter fingerprint they were scaffolded with.
- * Deletion is only ever allowed for roots tracked here (plus a Ballerina.toml
- * presence check) so a user-picked pre-existing directory can never be removed.
- */
-const sessionScaffolds = new Map<string, string>();
-
-function normalizeRoot(root: string): string {
-    return path.normalize(path.resolve(root));
-}
-
-function scaffoldParamsKey(params: ScaffoldIntegrationProjectRequest): string {
-    return JSON.stringify([params.integrationName, params.packageName, normalizeRoot(params.projectPath)]);
-}
-
-/** Computes the root `createBIProjectPure` will resolve for these params (without creating it). */
-function computeProjectRoot(params: ScaffoldIntegrationProjectRequest): string {
-    return path.join(params.projectPath, sanitizeName(params.packageName));
-}
+/** Fixed OS-temp home for the wizard's throwaway staging package. */
+const STAGING_PARENT = path.join(os.tmpdir(), "wso2-integration-wizard");
+/** Package name of the staging package (irrelevant to the artifact models it serves). */
+const STAGING_PACKAGE = "integration";
 
 /**
- * Deletes a scaffold root created earlier in this session. Guards: the root must
- * be session-tracked AND still look like a Ballerina package (Ballerina.toml).
- * Returns true when the directory was removed.
+ * The active staging package root for this window's wizard session, or undefined
+ * when none exists. The staging package is a throwaway Ballerina package created
+ * ONLY so the language server can compute the step-3 artifact model against a
+ * real package. It lives under the OS temp dir — never at the user's chosen
+ * path — so an abandoned wizard can never occupy (and later collide with) the
+ * final location. The real project is created fresh at finalize.
  */
-function deleteSessionScaffold(root: string): boolean {
-    const normalized = normalizeRoot(root);
-    if (!sessionScaffolds.has(normalized)) {
-        console.log(`>>> Skipping scaffold cleanup for untracked root: ${root}`);
-        return false;
+let activeStagingRoot: string | undefined;
+
+/** Removes the temp staging package (best-effort). Never touches user paths. */
+function cleanupStaging(): void {
+    activeStagingRoot = undefined;
+    try {
+        if (fs.existsSync(STAGING_PARENT)) {
+            fs.rmSync(STAGING_PARENT, { recursive: true, force: true });
+        }
+    } catch (error) {
+        console.warn("[IntegrationWizard] Failed to remove staging package:", error);
     }
-    sessionScaffolds.delete(normalized);
-    if (!fs.existsSync(path.join(normalized, "Ballerina.toml"))) {
-        console.log(`>>> Skipping scaffold cleanup — no Ballerina.toml at: ${root}`);
-        return false;
-    }
-    fs.rmSync(normalized, { recursive: true, force: true });
-    console.log(`>>> Removed abandoned wizard scaffold at: ${root}`);
-    return true;
 }
 
 /**
- * Silently scaffolds the integration package for the Create Integration wizard
- * (step 2 → 3) WITHOUT opening it. Idempotent per parameter set: re-invoking
- * with unchanged params returns the already-scaffolded root. When params changed
- * on back-navigation, the previous session scaffold is removed (guarded) and a
- * fresh one is created.
+ * Provides the throwaway staging package the step-3 artifact form resolves its
+ * language-server model against, creating it on first use and reusing it for the
+ * rest of the session. Located in the OS temp dir, so it is invisible to the
+ * user and can never collide with their chosen project path.
  */
-export async function scaffoldIntegrationProject(
-    params: ScaffoldIntegrationProjectRequest
-): Promise<ScaffoldIntegrationProjectResponse> {
-    const projectRoot = computeProjectRoot(params);
-    const normalizedRoot = normalizeRoot(projectRoot);
-    const paramsKey = scaffoldParamsKey(params);
-
-    // Already scaffolded this session with the same params — reuse it.
-    if (sessionScaffolds.get(normalizedRoot) === paramsKey) {
-        return { projectRoot };
+export async function scaffoldIntegrationProject(): Promise<ScaffoldIntegrationProjectResponse> {
+    if (activeStagingRoot && fs.existsSync(path.join(activeStagingRoot, "Ballerina.toml"))) {
+        return { projectRoot: activeStagingRoot };
     }
 
-    // Params changed (e.g. new integration name at the same location) — rebuild.
-    if (sessionScaffolds.has(normalizedRoot)) {
-        deleteSessionScaffold(normalizedRoot);
-    }
-
-    // Back-navigation moved the scaffold elsewhere — clean up the previous root.
-    if (params.previousScaffoldRoot && !isSamePath(params.previousScaffoldRoot, projectRoot)) {
-        deleteSessionScaffold(params.previousScaffoldRoot);
-    }
+    // Start from a clean slate — discard any stale staging left by a prior run.
+    cleanupStaging();
+    fs.mkdirSync(STAGING_PARENT, { recursive: true });
 
     // Org and version are intentionally omitted: `createBIProjectPure` falls back
-    // to the OS username and "0.1.0", matching the legacy createBIProject flow.
-    const projectRequest: ProjectRequest = {
-        projectName: params.integrationName,
-        packageName: params.packageName,
-        projectPath: params.projectPath,
+    // to the OS username and "0.1.0". The name is irrelevant — the staging
+    // package only hosts language-server model requests for the chosen artifact.
+    const stagingRequest: ProjectRequest = {
+        projectName: "Untitled",
+        packageName: STAGING_PACKAGE,
+        projectPath: STAGING_PARENT,
         createDirectory: true,
     };
-    const createdRoot = await createBIProjectPure(projectRequest);
-    sessionScaffolds.set(normalizeRoot(createdRoot), paramsKey);
-    return { projectRoot: createdRoot };
+    const projectRoot = await createBIProjectPure(stagingRequest);
+    activeStagingRoot = projectRoot;
+    return { projectRoot };
 }
 
 /**
- * Final submit of the Create Integration wizard: ensures the package is
- * scaffolded, persists the pending first artifact (generated post-reload by
- * `checkAndRunPendingArtifact`), and opens the project — the single terminal
- * window reload of the whole flow.
+ * Final submit of the Create Integration wizard: creates the real package FRESH
+ * at the user's chosen path (the only point at which that path is ever touched),
+ * persists the configured first artifact (generated post-reload by
+ * `checkAndRunPendingArtifact`), discards the temp staging package, and opens the
+ * project — the single terminal window reload of the whole flow.
  */
 export async function createIntegration(params: CreateIntegrationRequest): Promise<void> {
-    let projectRoot = params.scaffoldedProjectRoot;
-    if (!projectRoot) {
-        projectRoot = (await scaffoldIntegrationProject(params.project)).projectRoot;
-    }
+    const projectRequest: ProjectRequest = {
+        projectName: params.project.integrationName,
+        packageName: params.project.packageName,
+        projectPath: params.project.projectPath,
+        createDirectory: true,
+    };
+    const projectRoot = await createBIProjectPure(projectRequest);
+
     if (params.artifact) {
         await schedulePendingArtifact(projectRoot, params.artifact);
     }
-    // The project is being adopted — it must never be cleaned up as abandoned.
-    sessionScaffolds.delete(normalizeRoot(projectRoot));
+    cleanupStaging();
     openInVSCode(projectRoot);
 }
 
-/** Cancels a wizard session, removing its silent scaffold (guarded). */
-export async function cancelIntegrationWizard(params: CancelIntegrationWizardRequest): Promise<void> {
-    if (params?.scaffoldedRoot) {
-        deleteSessionScaffold(params.scaffoldedRoot);
-    }
+/**
+ * Discards the active wizard session's temp staging package. Called when the
+ * wizard is abandoned (best-effort on unmount) and, race-free, whenever the
+ * wizard (re)opens — so no staging package ever lingers. Because staging lives
+ * in the OS temp dir and the real project is only created at finalize, this can
+ * never affect a user's project.
+ */
+export async function cancelIntegrationWizard(): Promise<void> {
+    cleanupStaging();
+}
+
+/** Alias kept for the mount-time sweep; identical to {@link cancelIntegrationWizard}. */
+export async function cleanupAbandonedScaffolds(): Promise<void> {
+    cleanupStaging();
 }
 
 /** Version-skew handshake for embedded hosts (see `WizardCapabilitiesResponse`). */

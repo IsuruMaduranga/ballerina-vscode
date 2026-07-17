@@ -142,33 +142,37 @@ export interface PendingIntegrationArtifactPayload {
     aiAgent?: { name: string };
 }
 
-/** Step-1 project parameters used to silently scaffold the integration package. */
-export interface ScaffoldIntegrationProjectRequest {
+/** The final integration package parameters (step 1). */
+export interface IntegrationProjectParams {
     integrationName: string;
     packageName: string;
     projectPath: string;
-    /** Root of an earlier scaffold from this wizard session — removed and
-     *  re-scaffolded when the parameters changed on back-navigation. */
-    previousScaffoldRoot?: string;
 }
 
+/**
+ * Requests the throwaway staging package the step-3 artifact form resolves its
+ * language-server model against. The staging package lives in the OS temp dir —
+ * NOT at the user's chosen path — so an abandoned wizard can never occupy (and
+ * later collide with) the final location. The real project is created only at
+ * finalize (`createIntegration`). Reserved for future use; no fields today.
+ */
+export type ScaffoldIntegrationProjectRequest = Record<string, never>;
+
 export interface ScaffoldIntegrationProjectResponse {
+    /** Absolute path of the temp staging package (used only for model fetching). */
     projectRoot: string;
 }
 
 /** Final-submit request of the Create Integration wizard. */
 export interface CreateIntegrationRequest {
-    project: ScaffoldIntegrationProjectRequest;
-    /** Root already scaffolded on step 2 → 3; absent when the user skipped early. */
-    scaffoldedProjectRoot?: string;
+    /** Final name/path; the real project is created here, fresh, at finalize. */
+    project: IntegrationProjectParams;
     /** Configured first artifact; absent for an empty integration. */
     artifact?: PendingIntegrationArtifactPayload;
 }
 
-export interface CancelIntegrationWizardRequest {
-    /** Root scaffolded during the cancelled session, if any. */
-    scaffoldedRoot?: string;
-}
+/** Cancels the active wizard session, discarding its temp staging package. */
+export type CancelIntegrationWizardRequest = Record<string, never>;
 
 /** Version-skew handshake: embedded hosts call this first and fall back to the
  *  legacy single-step form when it fails or `threeStepWizard` is false. */

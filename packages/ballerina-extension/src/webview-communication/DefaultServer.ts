@@ -42,6 +42,7 @@ import { writeBallerinaFileDidOpenTemp } from "../utils/modification";
 import { onMigratedProjectEvent, onMigrationToolLogEvent, onMigrationToolStateEvent } from "../features/ai/migration/migrationEvents";
 import {
     cancelIntegrationWizard,
+    cleanupAbandonedScaffolds,
     createIntegration,
     getWizardCapabilities,
     scaffoldIntegrationProject,
@@ -280,15 +281,16 @@ export class DefaultServer {
             await waitForLangClientReady();
             return this.resolveWizardFormTarget(p);
         });
-        this.register("scaffoldIntegrationProject", async (p) => {
+        this.register("scaffoldIntegrationProject", async () => {
             await waitForLangClientReady();
-            return scaffoldIntegrationProject(p);
+            return scaffoldIntegrationProject();
         });
         this.register("createIntegration", async (p) => {
             await waitForLangClientReady();
             return createIntegration(p);
         });
-        this.register("cancelIntegrationWizard", (p) => cancelIntegrationWizard(p));
+        this.register("cancelIntegrationWizard", () => cancelIntegrationWizard());
+        this.register("cleanupAbandonedIntegrationScaffolds", () => cleanupAbandonedScaffolds());
 
         // ── Import / migration ────────────────────────────────
         this.register("getMigrationTools", () => migrate.getMigrationTools());

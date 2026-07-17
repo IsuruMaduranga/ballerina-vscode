@@ -180,6 +180,10 @@ export class BiWsClient {
         return this.request("cancelIntegrationWizard", params);
     }
 
+    public cleanupAbandonedIntegrationScaffolds(): Promise<void> {
+        return this.request("cleanupAbandonedIntegrationScaffolds");
+    }
+
     // ── Import / migration ────────────────────────────────────
     public getMigrationTools(): Promise<GetMigrationToolsResponse> {
         return this.request("getMigrationTools");

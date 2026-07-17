@@ -29,12 +29,14 @@ export interface BasicInfo {
     pathTouched: boolean;
 }
 
-/** Silent-scaffold lifecycle for step 3 (project created on disk, not opened). */
+/**
+ * Lifecycle of the throwaway staging package used to fetch the step-3 artifact
+ * model. It lives in the OS temp dir (not at the user's path) and is name/path
+ * agnostic, so it's created once on first entry to step 3 and reused.
+ */
 export interface ScaffoldState {
     status: "idle" | "creating" | "ready" | "error";
-    /** The scaffolded package root, present when status is "ready". */
+    /** The temp staging package root, present when status is "ready". */
     projectRoot?: string;
-    /** Fingerprint of the basic info the scaffold was created with. */
-    paramsKey?: string;
     error?: string;
 }

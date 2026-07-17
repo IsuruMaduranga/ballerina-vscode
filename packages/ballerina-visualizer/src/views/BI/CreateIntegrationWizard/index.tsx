@@ -183,9 +183,16 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
 
     const effectiveName = basicInfo.integrationName.trim() || DEFAULT_INTEGRATION_NAME;
     const packageName = sanitizePackageName(effectiveName) || "untitled";
-    const scaffoldParamsKey = JSON.stringify([effectiveName, packageName, basicInfo.path.trim()]);
 
     useEffect(() => {
+        // Discard any temp staging package left by a previously abandoned session
+        // (the unmount cancel can be lost when the embedded remote is torn down
+        // before it flushes). Staging lives in the OS temp dir and never touches
+        // the user's path, so this is purely housekeeping.
+        wsClient
+            .cleanupAbandonedIntegrationScaffolds()
+            .catch((error: unknown) => console.error(">>> Error cleaning up staging package", error));
+
         // Seed the default creation path and warm the trigger-model cache for step 2.
         wsClient
             .getDefaultCreationPath()
@@ -201,11 +208,11 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
     }, [wsClient]);
 
     useEffect(() => {
-        // Leaving the wizard entirely abandons any silent scaffold — remove it.
+        // Leaving the wizard discards the temp staging package (best-effort;
+        // the mount-time sweep is the race-free backstop).
         return () => {
-            const current = scaffoldRef.current;
-            if (current.status === "ready" && current.projectRoot) {
-                wsClient.cancelIntegrationWizard({ scaffoldedRoot: current.projectRoot }).catch(() => { });
+            if (scaffoldRef.current.status === "ready") {
+                wsClient.cancelIntegrationWizard({}).catch(() => { });
             }
         };
     }, [wsClient]);
@@ -292,27 +299,22 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
         setStep(1);
     };
 
-    /** Silently scaffolds the package for step 3, re-scaffolding when step-1 values changed. */
+    /**
+     * Ensures the throwaway staging package (for step-3 model fetching) exists.
+     * It is name/path agnostic, so it is created once and reused for the rest of
+     * the session — back-navigation and name changes need no re-scaffold.
+     */
     const ensureScaffold = async () => {
-        if (scaffold.status === "ready" && scaffold.paramsKey === scaffoldParamsKey) {
+        if (scaffold.status === "ready" || scaffold.status === "creating") {
             return;
         }
-        const previousScaffoldRoot =
-            scaffold.status === "ready" && scaffold.paramsKey !== scaffoldParamsKey
-                ? scaffold.projectRoot
-                : undefined;
         setScaffold({ status: "creating" });
         try {
-            const res = await wsClient.scaffoldIntegrationProject({
-                integrationName: effectiveName,
-                packageName,
-                projectPath: basicInfo.path.trim(),
-                previousScaffoldRoot,
-            });
-            setScaffold({ status: "ready", projectRoot: res.projectRoot, paramsKey: scaffoldParamsKey });
+            const res = await wsClient.scaffoldIntegrationProject({});
+            setScaffold({ status: "ready", projectRoot: res.projectRoot });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            console.error(">>> Error scaffolding integration project", error);
+            console.error(">>> Error preparing the integration form", error);
             setScaffold({ status: "error", error: `Failed to set up the integration: ${message}` });
         }
     };
@@ -325,15 +327,12 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
         void ensureScaffold();
     };
 
-    /** Final submit — with an artifact after step 3, without one on any skip. */
+    /** Final submit — with an artifact after step 3, without one on any skip. The
+     *  real project is created fresh at the final path here (and only here), so
+     *  the path must always be validated first. */
     const handleCreateIntegration = async (artifact?: PendingIntegrationArtifactPayload) => {
         setSubmitError(null);
-        // Paths already validated (and the directory created) when a scaffold exists.
-        const scaffoldedProjectRoot =
-            scaffold.status === "ready" && scaffold.paramsKey === scaffoldParamsKey
-                ? scaffold.projectRoot
-                : undefined;
-        if (!scaffoldedProjectRoot && !(await validatePathForSubmit())) {
+        if (!(await validatePathForSubmit())) {
             return;
         }
         setIsSubmitting(true);
@@ -344,7 +343,6 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                     packageName,
                     projectPath: basicInfo.path.trim(),
                 },
-                scaffoldedProjectRoot,
                 artifact,
             });
             // The extension opens the project (window reload) — keep the wizard
