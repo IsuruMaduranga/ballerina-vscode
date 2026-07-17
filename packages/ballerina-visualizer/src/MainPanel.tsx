@@ -552,10 +552,21 @@ const MainPanel = () => {
                             break;
                         }
                         case MACHINE_VIEW.BIProjectForm: {
-                            const { ProjectForm } = await import("./views/BI/ProjectForm");
+                            const { CreateIntegrationWizard } = await import("./views/BI/CreateIntegrationWizard");
                             if (isStaleNavigation()) return;
                             setShowHome(false);
-                            setViewComponent(<ProjectForm />);
+                            setViewComponent(
+                                <BiWsClientProvider
+                                    onBack={() =>
+                                        rpcClient.getVisualizerRpcClient().openView({
+                                            type: EVENT_TYPE.OPEN_VIEW,
+                                            location: { view: MACHINE_VIEW.BIWelcome },
+                                        })
+                                    }
+                                >
+                                    <CreateIntegrationWizard />
+                                </BiWsClientProvider>
+                            );
                             break;
                         }
                         case MACHINE_VIEW.BIImportIntegration: {
@@ -597,7 +608,7 @@ const MainPanel = () => {
                         case MACHINE_VIEW.AIChatAgentWizard: {
                             const { AIChatAgentWizard } = await import("./views/BI/AIChatAgent/AIChatAgentWizard");
                             if (isStaleNavigation()) return;
-                            setViewComponent(<AIChatAgentWizard />);
+                            setViewComponent(<AIChatAgentWizard initialName={value?.identifier} />);
                             break;
                         }
                         case MACHINE_VIEW.BIServiceWizard: {

@@ -120,7 +120,7 @@ export async function writeBallerinaFileDidOpen(filePath: string, content: strin
         }
     });
 
-    return new Promise((resolve, reject) => {
+    const artifactsUpdated = new Promise((resolve, reject) => {
         // Get the artifact notification handler instance
         const notificationHandler = ArtifactNotificationHandler.getInstance();
         // Subscribe to artifact updated notifications
@@ -144,4 +144,10 @@ export async function writeBallerinaFileDidOpen(filePath: string, content: strin
             originalUnsubscribe();
         };
     });
+    // Many callers fire-and-forget this function (e.g. project scaffolding before
+    // a folder is open, where no ArtifactsUpdated ever arrives). Mark the timeout
+    // rejection as handled so it doesn't surface as an unhandled rejection;
+    // awaiting callers still observe it.
+    artifactsUpdated.catch(() => { });
+    return artifactsUpdated;
 }

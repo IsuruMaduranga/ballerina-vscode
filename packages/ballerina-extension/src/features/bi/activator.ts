@@ -47,6 +47,7 @@ import {
     createEmptyBIWorkspace
 } from "../../utils/bi";
 import { checkAndRunPendingEnhancement } from "../ai/migration/orchestrator";
+import { checkAndRunPendingArtifact } from "./pending-artifact";
 import { createVersionNumber, findBallerinaPackageRoot, isSupportedSLVersion } from ".././../utils";
 import { extension } from "../../BalExtensionContext";
 import { VisualizerWebview } from "../../views/visualizer/webview";
@@ -245,14 +246,16 @@ export function activate(context: BallerinaExtension) {
     openBallerinaTomlFile(context);
 
     // After the language server and project are fully ready, check whether a
-    // migration AI enhancement was scheduled before the last folder reload.
+    // Create Integration wizard artifact and/or a migration AI enhancement was
+    // scheduled before the last folder reload. The wizard artifact must run
+    // first so it wins the webview navigation race.
     const service = StateMachine.service();
     const subscription = service.subscribe((state) => {
         if (state.value === "extensionReady" && state.changed) {
             subscription.unsubscribe();
-            checkAndRunPendingEnhancement().catch((err) =>
-                console.error("[MigrationEnhancement] Unexpected error:", err)
-            );
+            checkAndRunPendingArtifact()
+                .then(() => checkAndRunPendingEnhancement())
+                .catch((err) => console.error("[MigrationEnhancement] Unexpected error:", err));
         }
     });
 }

@@ -18,6 +18,8 @@
 
 import { ChatNotify, DownloadProgress } from "../../state-machine-types";
 import { ProjectMigrationResult } from "../../interfaces/extended-lang-client";
+import { ServiceInitModel } from "../../interfaces/service";
+import { FlowNode } from "../../interfaces/bi";
 
 /**
  * Shared wire contract for the BI "migrated forms" webview-communication layer
@@ -113,4 +115,73 @@ export interface WebviewWsBootstrap {
 export interface SignInResult {
     success: boolean;
     error?: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Create Integration wizard (3-step) wire contract — shared between the
+// `ballerina-visualizer` wizard (`BiWsClient`) and the extension server
+// (`DefaultServer` → `features/bi/integration-wizard.ts`).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Artifact kinds the Create Integration wizard can pre-configure at step 3. */
+export type PendingIntegrationArtifactKind = "SERVICE" | "AUTOMATION" | "WORKFLOW" | "AI_CHAT_AGENT";
+
+/**
+ * The filled artifact model persisted by the wizard right before the terminal
+ * `vscode.openFolder` reload (at `<projectRoot>/target/.wizard-pending-artifact.json`)
+ * and consumed post-reload by `checkAndRunPendingArtifact`.
+ */
+export interface PendingIntegrationArtifactPayload {
+    version: 1;
+    kind: PendingIntegrationArtifactKind;
+    /** Filled service-init model — required when `kind` is `SERVICE`. */
+    serviceInitModel?: ServiceInitModel;
+    /** Filled function node template — required when `kind` is `AUTOMATION` or `WORKFLOW`. */
+    flowNode?: FlowNode;
+    /** Agent details — required when `kind` is `AI_CHAT_AGENT`. */
+    aiAgent?: { name: string };
+}
+
+/** Step-1 project parameters used to silently scaffold the integration package. */
+export interface ScaffoldIntegrationProjectRequest {
+    integrationName: string;
+    packageName: string;
+    projectPath: string;
+    /** Root of an earlier scaffold from this wizard session — removed and
+     *  re-scaffolded when the parameters changed on back-navigation. */
+    previousScaffoldRoot?: string;
+}
+
+export interface ScaffoldIntegrationProjectResponse {
+    projectRoot: string;
+}
+
+/** Final-submit request of the Create Integration wizard. */
+export interface CreateIntegrationRequest {
+    project: ScaffoldIntegrationProjectRequest;
+    /** Root already scaffolded on step 2 → 3; absent when the user skipped early. */
+    scaffoldedProjectRoot?: string;
+    /** Configured first artifact; absent for an empty integration. */
+    artifact?: PendingIntegrationArtifactPayload;
+}
+
+export interface CancelIntegrationWizardRequest {
+    /** Root scaffolded during the cancelled session, if any. */
+    scaffoldedRoot?: string;
+}
+
+/** Version-skew handshake: embedded hosts call this first and fall back to the
+ *  legacy single-step form when it fails or `threeStepWizard` is false. */
+export interface WizardCapabilitiesResponse {
+    threeStepWizard: boolean;
+    version: number;
+}
+
+/** Resolves the file the wizard's step-3 artifact form should target. */
+export interface WizardFormTargetRequest {
+    projectRoot: string;
+}
+
+export interface WizardFormTargetResponse {
+    filePath: string;
 }

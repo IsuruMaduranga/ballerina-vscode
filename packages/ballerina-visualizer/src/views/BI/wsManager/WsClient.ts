@@ -19,7 +19,11 @@
  */
 
 import {
+    BINodeTemplateRequest,
+    BINodeTemplateResponse,
+    CancelIntegrationWizardRequest,
     ChatNotify,
+    CreateIntegrationRequest,
     DownloadProgress,
     GetMigrationToolsResponse,
     ImportIntegrationResponse,
@@ -30,9 +34,18 @@ import {
     OpenSubProjectReportRequest,
     ProjectMigrationResult,
     SaveMigrationReportRequest,
+    ScaffoldIntegrationProjectRequest,
+    ScaffoldIntegrationProjectResponse,
+    ServiceModelInitResponse,
+    ServiceModelRequest,
     StoreSubProjectReportsRequest,
+    TriggerModelsRequest,
+    TriggerModelsResponse,
     ValidateProjectFormRequest,
     ValidateProjectFormResponse,
+    WizardCapabilitiesResponse,
+    WizardFormTargetRequest,
+    WizardFormTargetResponse,
 } from "@wso2/ballerina-core";
 import { ConnectionStatus, createWebviewTransportAdapter } from "@wso2/webview-giga-bridge/webview";
 import { WEBVIEW_WS_EVENTS, WebviewWsRequest, WebviewWsResponse, WebviewTransportBootstrap, SignInResult } from "@wso2/ballerina-core";
@@ -132,6 +145,39 @@ export class BiWsClient {
 
     public isSupportedSLVersion(params: any): Promise<boolean> {
         return this.request("isSupportedSLVersion", params);
+    }
+
+    // ── Create Integration wizard (3-step) ────────────────────
+    public getWizardCapabilities(): Promise<WizardCapabilitiesResponse> {
+        return this.request("getWizardCapabilities");
+    }
+
+    public getTriggerModels(params: TriggerModelsRequest): Promise<TriggerModelsResponse> {
+        return this.request("getTriggerModels", params);
+    }
+
+    public getServiceInitModel(params: ServiceModelRequest): Promise<ServiceModelInitResponse> {
+        return this.request("getServiceInitModel", params);
+    }
+
+    public getNodeTemplate(params: BINodeTemplateRequest): Promise<BINodeTemplateResponse> {
+        return this.request("getNodeTemplate", params);
+    }
+
+    public getWizardFormTarget(params: WizardFormTargetRequest): Promise<WizardFormTargetResponse> {
+        return this.request("getWizardFormTarget", params);
+    }
+
+    public scaffoldIntegrationProject(params: ScaffoldIntegrationProjectRequest): Promise<ScaffoldIntegrationProjectResponse> {
+        return this.request("scaffoldIntegrationProject", params);
+    }
+
+    public createIntegration(params: CreateIntegrationRequest): Promise<void> {
+        return this.request("createIntegration", params);
+    }
+
+    public cancelIntegrationWizard(params: CancelIntegrationWizardRequest): Promise<void> {
+        return this.request("cancelIntegrationWizard", params);
     }
 
     // ── Import / migration ────────────────────────────────────

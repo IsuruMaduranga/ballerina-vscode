@@ -27,6 +27,9 @@ import { BIProjectForm } from "./integrator-form";
 import { ProjectCreationView } from "./integrator-form/ProjectCreationView";
 import { LibraryCreationView } from "./integrator-form/LibraryCreationView";
 import { EmbeddedWsRpc, createCompositeClient, WsCoords } from "./wsRpc";
+import { BiWsClient } from "../../wsManager/WsClient";
+import { BiWsClientProvider } from "../../wsManager/WsClientContext";
+import { CreateIntegrationWizard } from "../../CreateIntegrationWizard";
 
 /**
  * Which BI creation form to render. `integration` is the primary
@@ -57,24 +60,71 @@ const stateContainerStyle: React.CSSProperties = {
     padding: "24px",
 };
 
+/** How long the capability probe waits before falling back to the legacy form. */
+const WIZARD_PROBE_TIMEOUT_MS = 5000;
+
+/** Version-skew handshake state for the integration mode. */
+type WizardSupport = "probing" | "supported" | "unsupported";
+
 /**
  * Federation entry point. Connects to the Ballerina extension's WS server for
  * project-creation RPCs, composes it with the host client (which keeps serving
- * cloud reads), and renders the unchanged integrator form against that
- * composite. The form is owned by the Ballerina repo; project creation runs on
- * the Ballerina side without round-tripping through the host.
+ * cloud reads), and renders the appropriate creation form against that
+ * composite. For `mode="integration"` it probes the extension's wizard
+ * capabilities and renders the 3-step Create Integration wizard, falling back
+ * to the legacy single-step form against an older extension.
  */
 export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, mode = "integration", onBack }: EmbeddedBIProjectFormProps) {
     const queryClient = useMemo(() => new QueryClient(), []);
     const [rpcClient, setRpcClient] = useState<WiBridgeClient | null>(null);
+    const [biWsClient, setBiWsClient] = useState<BiWsClient | null>(null);
+    const [wizardSupport, setWizardSupport] = useState<WizardSupport>("probing");
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
         let wsRpc: EmbeddedWsRpc | undefined;
+        let wizardClient: BiWsClient | undefined;
         (async () => {
             try {
                 const coords: WsCoords = await (wsClient as any).getBiFormWsBootstrap();
+                if (cancelled) {
+                    return;
+                }
+
+                if (mode === "integration") {
+                    // Probe the 3-step wizard handshake first; an older extension
+                    // without the handler rejects (or times out) → legacy form.
+                    wizardClient = new BiWsClient({
+                        mode: "websocket",
+                        wsServer: coords.host,
+                        wsPort: coords.port,
+                        token: coords.token,
+                    });
+                    try {
+                        const capabilities = await Promise.race([
+                            wizardClient.getWizardCapabilities(),
+                            new Promise<never>((_, reject) =>
+                                setTimeout(() => reject(new Error("capability probe timed out")), WIZARD_PROBE_TIMEOUT_MS)
+                            ),
+                        ]);
+                        if (!cancelled && capabilities?.threeStepWizard) {
+                            setBiWsClient(wizardClient);
+                            setWizardSupport("supported");
+                            return;
+                        }
+                    } catch (probeError) {
+                        console.warn(">>> Create Integration wizard unavailable, using the legacy form.", probeError);
+                    }
+                    wizardClient.dispose();
+                    wizardClient = undefined;
+                    if (cancelled) {
+                        return;
+                    }
+                    setWizardSupport("unsupported");
+                }
+
+                // Legacy stack (project/library modes and the integration fallback).
                 wsRpc = new EmbeddedWsRpc(coords);
                 if (cancelled) {
                     // Unmounted while the bootstrap was in flight — dispose the socket we
@@ -96,8 +146,9 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
         return () => {
             cancelled = true;
             wsRpc?.dispose();
+            wizardClient?.dispose();
         };
-    }, [wsClient]);
+    }, [wsClient, mode]);
 
     if (error) {
         return (
@@ -105,6 +156,14 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
                 <Typography variant="h4">Unable to start the integration service</Typography>
                 <Typography variant="body2">{error}</Typography>
             </div>
+        );
+    }
+
+    if (mode === "integration" && wizardSupport === "supported" && biWsClient) {
+        return (
+            <BiWsClientProvider wsClient={biWsClient} onBack={onBack}>
+                <CreateIntegrationWizard showHeader={false} />
+            </BiWsClientProvider>
         );
     }
 
