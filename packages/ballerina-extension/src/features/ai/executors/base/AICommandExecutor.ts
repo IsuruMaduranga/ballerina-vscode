@@ -22,6 +22,7 @@ import { chatStateStorage, ChatStateStorage } from '../../../../views/ai-panel/c
 import { getTempProject, cleanupTempProject } from '../../utils/project/temp-project';
 import { buildChatError } from '../../utils/ai-utils';
 import { runEventStore } from '../../utils/run-event-store';
+import { agentStatusManager } from '../../state/AgentStatusManager';
 import { MigrationDebugLogger } from '../../migration/debug-logger';
 import { clearAiTouchedFiles } from '../../../../rpc-managers/diagram-validity';
 
@@ -195,6 +196,7 @@ export abstract class AICommandExecutor<TParams = any> {
             // mid-run can reconnect and replay what it missed (agent chat only).
             if (this.config.trackForReconnection) {
                 runEventStore.beginRun(projectRootPath, threadId, this.config.generationId);
+                agentStatusManager.runStarted(this.config.generationId);
             }
 
             // Stage 3: Temp project initialization
@@ -219,6 +221,7 @@ export abstract class AICommandExecutor<TParams = any> {
             // up a terminal event).
             if (this.config.trackForReconnection) {
                 runEventStore.endRun(projectRootPath, threadId, this.config.generationId);
+                agentStatusManager.runEnded();
             }
         }
     }

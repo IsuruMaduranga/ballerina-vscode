@@ -1,0 +1,294 @@
+/**
+ * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import * as path from 'path';
+import * as vscode from 'vscode';
+import { AgentRunStatus, AgentRunState, ChatNotify, agentRunStatusChanged, SHARED_COMMANDS } from '@wso2/ballerina-core';
+import { RPCLayer } from '../../../RPCLayer';
+import { VisualizerWebview } from '../../../views/visualizer/webview';
+
+/** How long a terminal (completed/error) status stays visible before resetting to idle. */
+const TERMINAL_STATE_RESET_MS = 8000;
+/** Max length of the label rendered in the status bar (tooltip shows the full label). */
+const STATUS_BAR_LABEL_MAX = 40;
+
+/**
+ * Derives a compact, ambient-UI-friendly status for the Copilot agent's
+ * background run and fans it out to:
+ *  - a right-aligned status bar item (always visible, click opens the AI panel),
+ *  - the visualizer webview (drives the floating orb overlay),
+ *  - a completion/error toast when the AI panel is closed.
+ *
+ * Fed from two places:
+ *  - `AICommandExecutor.run()` lifecycle (`runStarted`/`runEnded`) — only for
+ *    runs with `trackForReconnection` (the agent chat path), so data mapper /
+ *    migration executions never drive the ambient indicators.
+ *  - `sendAIPanelNotification()` — every `ChatNotify` event, used to derive the
+ *    live label ("Editing service.bal…") and approval-pending states. Events are
+ *    ignored unless a tracked run is active.
+ */
+class AgentStatusManager {
+    private statusBarItem: vscode.StatusBarItem | undefined;
+    private status: AgentRunStatus = { state: 'idle', aiPanelOpen: false, timestamp: Date.now() };
+    private runActive = false;
+    private resetTimer: NodeJS.Timeout | undefined;
+
+    init(context: vscode.ExtensionContext): void {
+        if (this.statusBarItem) {
+            return;
+        }
+        this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 98);
+        this.statusBarItem.name = 'BI Copilot';
+        this.statusBarItem.command = SHARED_COMMANDS.OPEN_AI_PANEL;
+        context.subscriptions.push(this.statusBarItem, new vscode.Disposable(() => this.clearResetTimer()));
+        this.render();
+        this.statusBarItem.show();
+    }
+
+    runStarted(generationId: string): void {
+        this.runActive = true;
+        this.clearResetTimer();
+        this.update({ state: 'running', label: 'Thinking', generationId });
+    }
+
+    runEnded(): void {
+        this.runActive = false;
+        // Terminal ChatNotify events (stop/error/abort) normally set the final state
+        // before the executor's finally block runs; this is the fallback for runs
+        // that end without one.
+        if (this.status.state === 'running' || this.status.state === 'awaiting-input') {
+            this.update({ state: 'completed', label: 'Finished' });
+        }
+    }
+
+    onChatNotify(msg: ChatNotify): void {
+        if (!this.runActive) {
+            return;
+        }
+        switch (msg.type) {
+            case 'start':
+                this.update({ state: 'running', label: 'Thinking' });
+                break;
+            case 'content_block':
+            case 'content_replace':
+                this.update({ state: 'running', label: 'Writing a response' });
+                break;
+            case 'tool_call':
+                this.update({ state: 'running', label: describeToolCall(msg.toolName, msg.toolInput) });
+                break;
+            case 'compaction_start':
+                this.update({ state: 'running', label: 'Compacting conversation' });
+                break;
+            case 'compaction_end':
+                this.update({ state: 'running', label: 'Thinking' });
+                break;
+            case 'task_approval_request':
+                if (!msg.autoApproved) {
+                    this.update({ state: 'awaiting-input', label: 'Waiting for your approval' });
+                }
+                break;
+            case 'clarify_event':
+            case 'web_tool_approval_request':
+            case 'configuration_collection_event':
+            case 'skill_enable_event':
+                this.update({ state: 'awaiting-input', label: 'Waiting for your input' });
+                break;
+            case 'error':
+                this.update({ state: 'error', label: 'Something went wrong' });
+                break;
+            case 'abort':
+                this.update({ state: 'idle', label: undefined });
+                break;
+            case 'stop':
+                this.update({ state: 'completed', label: 'Finished' });
+                break;
+            default:
+                break;
+        }
+    }
+
+    setAiPanelOpen(open: boolean): void {
+        if (this.status.aiPanelOpen === open) {
+            return;
+        }
+        this.status = { ...this.status, aiPanelOpen: open, timestamp: Date.now() };
+        this.render();
+        this.broadcast();
+    }
+
+    getStatus(): AgentRunStatus {
+        return { ...this.status };
+    }
+
+    private update(partial: { state: AgentRunState; label?: string; generationId?: string }): void {
+        if (this.status.state === partial.state && this.status.label === partial.label) {
+            return;
+        }
+        const wasTerminalAlready = this.status.state === 'completed' || this.status.state === 'error';
+        this.status = {
+            ...this.status,
+            state: partial.state,
+            label: partial.label,
+            generationId: partial.generationId ?? this.status.generationId,
+            timestamp: Date.now(),
+        };
+        this.render();
+        this.broadcast();
+
+        if (partial.state === 'completed' || partial.state === 'error') {
+            this.scheduleIdleReset();
+            if (!this.status.aiPanelOpen && !wasTerminalAlready) {
+                this.showCompletionToast(partial.state);
+            }
+        }
+    }
+
+    private render(): void {
+        if (!this.statusBarItem) {
+            return;
+        }
+        const label = truncate(this.status.label, STATUS_BAR_LABEL_MAX);
+        switch (this.status.state) {
+            case 'running':
+                this.statusBarItem.text = `$(loading~spin) ${label ?? 'BI Copilot'}`;
+                this.statusBarItem.backgroundColor = undefined;
+                break;
+            case 'awaiting-input':
+                this.statusBarItem.text = `$(bi-ai-agent) Copilot needs your input`;
+                this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+                break;
+            case 'completed':
+                this.statusBarItem.text = `$(check) Copilot finished`;
+                this.statusBarItem.backgroundColor = undefined;
+                break;
+            case 'error':
+                this.statusBarItem.text = `$(error) Copilot error`;
+                this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+                break;
+            case 'idle':
+            default:
+                this.statusBarItem.text = `$(bi-ai-agent) BI Copilot`;
+                this.statusBarItem.backgroundColor = undefined;
+                break;
+        }
+        const tooltip = new vscode.MarkdownString();
+        tooltip.appendMarkdown(`**BI Copilot**${this.status.label ? ` — ${this.status.label}` : ''}\n\n`);
+        tooltip.appendMarkdown('Click to open the Copilot chat.');
+        this.statusBarItem.tooltip = tooltip;
+    }
+
+    private broadcast(): void {
+        try {
+            RPCLayer._messenger.sendNotification(
+                agentRunStatusChanged,
+                { type: 'webview', webviewType: VisualizerWebview.viewType },
+                this.getStatus()
+            );
+        } catch (e) {
+            // Visualizer webview not open — nothing to update; it pulls the
+            // current status via getAgentRunStatus on mount.
+        }
+    }
+
+    private showCompletionToast(state: 'completed' | 'error'): void {
+        const openAction = 'Open Copilot';
+        const message = state === 'completed'
+            ? 'BI Copilot finished working in the background.'
+            : 'BI Copilot hit an error while working in the background.';
+        const show = state === 'completed' ? vscode.window.showInformationMessage : vscode.window.showWarningMessage;
+        show(message, openAction).then((selection) => {
+            if (selection === openAction) {
+                vscode.commands.executeCommand(SHARED_COMMANDS.OPEN_AI_PANEL);
+            }
+        });
+    }
+
+    private scheduleIdleReset(): void {
+        this.clearResetTimer();
+        this.resetTimer = setTimeout(() => {
+            this.resetTimer = undefined;
+            // A new run may have started while the terminal state was showing.
+            if (!this.runActive) {
+                this.update({ state: 'idle', label: undefined });
+            }
+        }, TERMINAL_STATE_RESET_MS);
+    }
+
+    private clearResetTimer(): void {
+        if (this.resetTimer) {
+            clearTimeout(this.resetTimer);
+            this.resetTimer = undefined;
+        }
+    }
+}
+
+function describeToolCall(toolName: string, toolInput?: any): string {
+    const file = typeof toolInput?.file_path === 'string' ? path.basename(toolInput.file_path) : undefined;
+    switch (toolName) {
+        case 'file_write':
+        case 'file_edit':
+        case 'file_batch_edit':
+            return file ? `Editing ${file}` : 'Editing files';
+        case 'file_read':
+            return file ? `Reading ${file}` : 'Reading files';
+        case 'getCompilationErrors':
+            return 'Checking for errors';
+        case 'runTests':
+            return 'Running tests';
+        case 'runBallerinaPackage':
+            return 'Running the integration';
+        case 'getServiceLogs':
+            return 'Reading service logs';
+        case 'stopBallerinaService':
+            return 'Stopping a service';
+        case 'hurlRunnerTool':
+            return 'Testing HTTP endpoints';
+        case 'LibrarySearchTool':
+        case 'LibraryGetTool':
+            return 'Looking up libraries';
+        case 'ConnectorGeneratorTool':
+            return 'Generating a connector';
+        case 'ConfigCollector':
+            return 'Managing configuration';
+        case 'Clarify':
+            return 'Preparing a question';
+        case 'TaskWrite':
+            return 'Planning tasks';
+        case 'web_search':
+            return 'Searching the web';
+        case 'web_fetch':
+            return 'Reading a web page';
+        case 'invoke_skill':
+            return 'Loading a skill';
+        default:
+            if (toolName.startsWith('mcp__')) {
+                const parts = toolName.split('__');
+                return `Using ${parts[2] ?? toolName}`;
+            }
+            return `Running ${toolName}`;
+    }
+}
+
+function truncate(text: string | undefined, max: number): string | undefined {
+    if (!text) {
+        return text;
+    }
+    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+export const agentStatusManager = new AgentStatusManager();

@@ -51,6 +51,8 @@ import {
     currentThemeChanged,
     ChatNotify,
     onChatNotify,
+    AgentRunStatus,
+    agentRunStatusChanged,
     checkpointCaptured,
     CheckpointCapturedPayload,
     promptUpdated,
@@ -319,6 +321,10 @@ export class BallerinaRpcClient {
 
     onChatNotify(callback: (state: ChatNotify) => void) {
         this.messenger.onNotification(onChatNotify, callback);
+    }
+
+    onAgentRunStatusChanged(callback: (status: AgentRunStatus) => void) {
+        this.messenger.onNotification(agentRunStatusChanged, callback);
     }
 
     onMigrationToolLogs(callback: (message: string) => void) {

@@ -624,6 +624,29 @@ export interface ConfigChangeEvent {
     value: boolean;
 }
 
+/**
+ * Compact, ambient-UI-friendly summary of the Copilot agent's background run.
+ * Derived host-side from the {@link ChatNotify} stream and the run lifecycle
+ * (see AgentStatusManager) and consumed by lightweight indicators — the
+ * status bar item and the visualizer orb overlay — that stay informative
+ * while the AI panel is closed.
+ */
+export type AgentRunState = "idle" | "running" | "awaiting-input" | "completed" | "error";
+
+export interface AgentRunStatus {
+    state: AgentRunState;
+    /** Short human-readable description of what the agent is doing (e.g. "Editing service.bal"). */
+    label?: string;
+    /** True while the Copilot chat panel is open — ambient indicators hide themselves then. */
+    aiPanelOpen: boolean;
+    /** Generation (run) the status belongs to, when a run is/was active. */
+    generationId?: string;
+    /** Epoch millis of the last status change. */
+    timestamp: number;
+}
+
+export const agentRunStatusChanged: NotificationType<AgentRunStatus> = { method: 'agentRunStatusChanged' };
+
 export const stateChanged: NotificationType<MachineStateValue> = { method: 'stateChanged' };
 export const onDownloadProgress: NotificationType<DownloadProgress> = { method: 'onDownloadProgress' };
 export const onChatNotify: NotificationType<ChatNotify> = { method: 'onChatNotify' };

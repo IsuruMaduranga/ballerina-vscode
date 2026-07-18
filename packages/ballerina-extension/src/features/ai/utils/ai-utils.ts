@@ -46,6 +46,7 @@ import { MigrationPanelWebview } from "../../../views/migration-panel/webview";
 import { VisualizerWebview } from "../../../views/visualizer/webview";
 import { GenerationType } from "./libs/libraries";
 import { runEventStore } from "./run-event-store";
+import { agentStatusManager } from "../state/AgentStatusManager";
 // import { REQUIREMENTS_DOCUMENT_KEY } from "./code/np_prompts";
 
 export function populateHistory(chatHistory: ChatEntry[]): ModelMessage[] {
@@ -343,6 +344,12 @@ export function sendAIPanelNotification(msg: ChatNotify, runContext?: AIPanelRun
             msg
         )
         : msg;
+
+    // Feed the ambient indicators (status bar + visualizer orb); ignores events
+    // outside the explicitly scoped agent run.
+    if (runContext) {
+        agentStatusManager.onChatNotify(stamped);
+    }
     // The agent keeps running after the panel is closed (by design). The event is
     // already buffered above, so skipping the post loses nothing — reconnect replays
     // it on reopen. Guard on the live panel and swallow any late-dispose race.
