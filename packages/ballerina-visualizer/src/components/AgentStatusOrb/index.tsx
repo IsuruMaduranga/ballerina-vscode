@@ -80,7 +80,7 @@ function nearestAnchor(x: number, y: number): Anchor {
 
 /** Flow speed / contrast of the shader per state (0 = still, 1 = lively). */
 const ORB_ENERGY: Record<AgentRunState, number> = {
-    "idle": 0.22,
+    "idle": 0.35,
     "running": 1.0,
     "awaiting-input": 0.55,
     "completed": 0.45,
@@ -88,7 +88,7 @@ const ORB_ENERGY: Record<AgentRunState, number> = {
 };
 
 const ORB_COLORS: Record<AgentRunState, [string, string, string]> = {
-    "idle": ["#7c8ce0", "#8a7bd9", "#6aa4d9"],
+    "idle": ["#4f5fe8", "#a55cff", "#38d4ff"],
     "running": ["#4facfe", "#a78bfa", "#f472b6"],
     "awaiting-input": ["#fbbf24", "#f59e0b", "#fb923c"],
     "completed": ["#34d399", "#10b981", "#6ee7b7"],
@@ -216,7 +216,7 @@ const OrbButton = styled.button<{ state: AgentRunState }>`
     cursor: grab;
     outline-offset: 4px;
     touch-action: none;
-    opacity: ${(props: Pick<OrbStyleProps, "state">) => (props.state === "idle" ? 0.65 : 1)};
+    opacity: ${(props: Pick<OrbStyleProps, "state">) => (props.state === "idle" ? 0.85 : 1)};
     transition: opacity 0.3s ease, transform 0.2s ease;
     &:hover {
         opacity: 1;
@@ -293,7 +293,7 @@ const Gloss = styled.div`
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    background: radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.05) 34%, transparent 55%);
+    background: radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.04) 30%, transparent 50%);
     pointer-events: none;
 `;
 

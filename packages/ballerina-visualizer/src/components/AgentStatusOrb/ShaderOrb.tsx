@@ -92,7 +92,7 @@ float fbm(vec2 p) {
 void main() {
     vec2 uv = v_uv;
     float r = length(uv);
-    float t = u_time * (0.12 + 0.5 * u_energy);
+    float t = u_time * (0.18 + 0.55 * u_energy);
 
     // Domain warp: two fbm fields displace a third for the liquid look.
     vec2 q = vec2(
@@ -102,14 +102,20 @@ void main() {
     float warpStrength = 1.4 + 1.2 * u_energy;
     float f = fbm(uv * 2.2 + warpStrength * q + vec2(t * 0.3, -t * 0.2));
 
-    vec3 col = mix(u_c0, u_c1, smoothstep(0.15, 0.85, f));
+    // Narrow mix bands + a luminance term keep the flow visible even when
+    // the palette hues are close (the structure reads as light/dark, not
+    // just hue shifts).
+    float band = smoothstep(0.3, 0.72, f);
+    vec3 col = mix(u_c0, u_c1, band);
     float f2 = fbm(uv * 3.0 - q + vec2(-t * 0.25, t * 0.35));
-    col = mix(col, u_c2, smoothstep(0.55, 0.95, f2) * (0.5 + 0.5 * u_energy));
+    col = mix(col, u_c2, smoothstep(0.42, 0.8, f2) * (0.6 + 0.4 * u_energy));
+    col *= 0.62 + 0.85 * f;
 
-    // Glass highlight (upper left) and spherical shading toward the rim.
+    // Slight glass highlight (the Gloss overlay adds the main reflection)
+    // and gentle spherical shading toward the rim.
     float highlight = pow(max(0.0, 1.0 - length(uv - vec2(-0.38, 0.42))), 2.0);
-    col += vec3(1.0) * highlight * 0.35;
-    col *= 0.72 + 0.38 * (1.0 - r);
+    col += vec3(1.0) * highlight * 0.18;
+    col *= 0.85 + 0.2 * (1.0 - r);
 
     // Soft rim light so the sphere pops on dark and light themes.
     float rim = smoothstep(0.55, 0.98, r) * smoothstep(1.02, 0.98, r);
