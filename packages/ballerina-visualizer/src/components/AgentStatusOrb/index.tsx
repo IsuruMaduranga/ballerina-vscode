@@ -35,7 +35,7 @@ import { ShaderOrb } from "./ShaderOrb";
  * and the corner is remembered across reloads.
  */
 
-const ORB_SIZE = 48;
+const ORB_SIZE = 56;
 const EDGE_MARGIN = 20;
 const DRAG_THRESHOLD = 5;
 const SNAP_ANIMATION_MS = 250;
@@ -499,8 +499,8 @@ export function AgentStatusOrb() {
                 <IconOverlay>
                     <Icon
                         name="bi-ai-chat"
-                        sx={{ width: 22, height: 22 }}
-                        iconSx={{ fontSize: "22px", color: "#ffffff", cursor: "inherit" }}
+                        sx={{ width: 26, height: 26 }}
+                        iconSx={{ fontSize: "26px", color: "#ffffff", cursor: "inherit" }}
                     />
                 </IconOverlay>
             </OrbButton>
