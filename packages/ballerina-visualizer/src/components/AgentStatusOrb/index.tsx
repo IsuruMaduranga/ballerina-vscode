@@ -87,8 +87,11 @@ const ORB_ENERGY: Record<AgentRunState, number> = {
     "error": 0.5,
 };
 
+/** WSO2 brand orange — the pulse-icon color from wso2.com/about/brand. */
+const BRAND_ORANGE = "#F14E23";
+
 const ORB_COLORS: Record<AgentRunState, [string, string, string]> = {
-    "idle": ["#4f5fe8", "#a55cff", "#38d4ff"],
+    "idle": ["#6b5ce8", BRAND_ORANGE, "#ffb199"],
     "running": ["#4facfe", "#a78bfa", "#f472b6"],
     "awaiting-input": ["#fbbf24", "#f59e0b", "#fb923c"],
     "completed": ["#34d399", "#10b981", "#6ee7b7"],
@@ -306,6 +309,30 @@ const IconOverlay = styled.div`
     pointer-events: none;
 `;
 
+/** Thin brand ring at the sphere's edge — the logo's circle as an accent. */
+const BrandRing = styled.div`
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1.5px solid rgba(241, 78, 35, 0.55);
+    pointer-events: none;
+`;
+
+/** Brighter arc traveling the ring while the agent runs. */
+const SpinArc = styled.div`
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    border-top-color: ${BRAND_ORANGE};
+    animation: ${rotate} 1.1s linear infinite;
+    pointer-events: none;
+    @media (prefers-reduced-motion: reduce) {
+        display: none;
+    }
+`;
+
+
 export function AgentStatusOrb() {
     const { rpcClient } = useRpcContext();
     const [status, setStatus] = useState<AgentRunStatus | null>(null);
@@ -496,6 +523,8 @@ export function AgentStatusOrb() {
                     />
                 )}
                 <Gloss />
+                <BrandRing />
+                {state === "running" && <SpinArc />}
                 <IconOverlay>
                     <Icon
                         name="bi-ai-chat"
