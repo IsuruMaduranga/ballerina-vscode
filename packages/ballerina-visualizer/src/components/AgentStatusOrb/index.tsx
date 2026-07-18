@@ -16,12 +16,13 @@
  * under the License.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
 import { css, keyframes } from "@emotion/react";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { AgentRunStatus, AgentRunState, SHARED_COMMANDS } from "@wso2/ballerina-core";
 import { Icon } from "@wso2/ui-toolkit";
+import { ShaderOrb } from "./ShaderOrb";
 
 /**
  * Floating ambient indicator for the Copilot agent's background run.
@@ -76,6 +77,15 @@ function nearestAnchor(x: number, y: number): Anchor {
         x < window.innerWidth / 3 ? "left" : x > (window.innerWidth * 2) / 3 ? "right" : "center";
     return `${vertical}-${horizontal}` as Anchor;
 }
+
+/** Flow speed / contrast of the shader per state (0 = still, 1 = lively). */
+const ORB_ENERGY: Record<AgentRunState, number> = {
+    "idle": 0.22,
+    "running": 1.0,
+    "awaiting-input": 0.55,
+    "completed": 0.45,
+    "error": 0.5,
+};
 
 const ORB_COLORS: Record<AgentRunState, [string, string, string]> = {
     "idle": ["#7c8ce0", "#8a7bd9", "#6aa4d9"],
@@ -219,6 +229,9 @@ const OrbButton = styled.button<{ state: AgentRunState }>`
         props.state === "awaiting-input" ? breathe : props.state === "completed" ? bloom : "none"}
         ${(props: Pick<OrbStyleProps, "state">) =>
         props.state === "awaiting-input" ? "1.6s ease-in-out infinite" : props.state === "completed" ? "0.6s ease-out" : ""};
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
 `;
 
 const Halo = styled.div<{ colors: [string, string, string] }>`
@@ -232,6 +245,10 @@ const Halo = styled.div<{ colors: [string, string, string] }>`
     );
     animation: ${haloPulse} 1.8s ease-in-out infinite;
     pointer-events: none;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+        opacity: 0.4;
+    }
 `;
 
 const Aura = styled.div<{ colors: [string, string, string]; state: AgentRunState }>`
@@ -250,6 +267,9 @@ const Aura = styled.div<{ colors: [string, string, string]; state: AgentRunState
             : props.state === "idle"
                 ? css`animation: ${rotate} 14s linear infinite;`
                 : css`animation: ${rotate} 9s linear infinite;`}
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
 `;
 
 const Sphere = styled.div<{ colors: [string, string, string] }>`
@@ -268,6 +288,24 @@ const Sphere = styled.div<{ colors: [string, string, string] }>`
     box-shadow: inset 0 -5px 10px rgba(0, 0, 0, 0.18);
 `;
 
+/** Glass reflection overlay — sits on top of both the shader and CSS spheres. */
+const Gloss = styled.div`
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.05) 34%, transparent 55%);
+    pointer-events: none;
+`;
+
+const IconOverlay = styled.div`
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+`;
+
 export function AgentStatusOrb() {
     const { rpcClient } = useRpcContext();
     const [status, setStatus] = useState<AgentRunStatus | null>(null);
@@ -280,6 +318,9 @@ export function AgentStatusOrb() {
     const snapTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const [inviteText, setInviteText] = useState("");
     const [inviteDismissed, setInviteDismissed] = useState(false);
+    /** WebGL unavailable — render the CSS gradient sphere instead. */
+    const [webglFailed, setWebglFailed] = useState(false);
+    const handleWebglFailed = useCallback(() => setWebglFailed(true), []);
 
     useEffect(() => {
         if (!rpcClient) {
@@ -444,13 +485,24 @@ export function AgentStatusOrb() {
             >
                 {(state === "running" || state === "awaiting-input") && <Halo colors={colors} />}
                 <Aura colors={colors} state={state} />
-                <Sphere colors={colors}>
+                {webglFailed ? (
+                    <Sphere colors={colors} />
+                ) : (
+                    <ShaderOrb
+                        colors={colors}
+                        energy={ORB_ENERGY[state]}
+                        size={ORB_SIZE}
+                        onContextFailed={handleWebglFailed}
+                    />
+                )}
+                <Gloss />
+                <IconOverlay>
                     <Icon
                         name="bi-ai-chat"
                         sx={{ width: 22, height: 22 }}
                         iconSx={{ fontSize: "22px", color: "#ffffff", cursor: "inherit" }}
                     />
-                </Sphere>
+                </IconOverlay>
             </OrbButton>
         </Wrapper>
     );
