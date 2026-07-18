@@ -53,7 +53,9 @@ const ANCHOR_CSS: Record<Anchor, React.CSSProperties> = {
 
 function loadAnchor(): Anchor {
     const stored = localStorage.getItem(ANCHOR_STORAGE_KEY);
-    return stored && stored in ANCHOR_CSS ? (stored as Anchor) : "bottom-right";
+    // Default to bottom-center so the copilot invitation is front and center
+    // when BI opens; users can drag it to any of the six anchors.
+    return stored && stored in ANCHOR_CSS ? (stored as Anchor) : "bottom-center";
 }
 
 /** Top-left px position of the orb when docked at an anchor. */
@@ -140,6 +142,52 @@ const LabelPill = styled.div`
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     animation: ${fadeIn} 0.2s ease-out;
     cursor: pointer;
+`;
+
+const InviteBox = styled.div`
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-editorWidget-border, transparent);
+    border-radius: 14px;
+    padding: 5px 6px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    animation: ${fadeIn} 0.25s ease-out;
+`;
+
+const InviteInput = styled.input`
+    width: 230px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 9px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: var(--vscode-font-family);
+    outline: none;
+    &:focus {
+        border-color: var(--vscode-focusBorder);
+    }
+    &::placeholder {
+        color: var(--vscode-input-placeholderForeground);
+    }
+`;
+
+const InviteDismiss = styled.button`
+    background: transparent;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 4px 5px;
+    border-radius: 4px;
+    &:hover {
+        color: var(--vscode-foreground);
+        background: var(--vscode-toolbar-hoverBackground);
+    }
 `;
 
 interface OrbStyleProps {
@@ -230,10 +278,8 @@ export function AgentStatusOrb() {
     const [snapping, setSnapping] = useState(false);
     const dragStateRef = useRef<{ startX: number; startY: number; wasDrag: boolean } | null>(null);
     const snapTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-    /** Transient label auto-shown when the agent moves to a new activity. */
-    const [announcement, setAnnouncement] = useState<string | null>(null);
-    const announceTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-    const prevLabelRef = useRef<string | undefined>(undefined);
+    const [inviteText, setInviteText] = useState("");
+    const [inviteDismissed, setInviteDismissed] = useState(false);
 
     useEffect(() => {
         if (!rpcClient) {
@@ -249,24 +295,7 @@ export function AgentStatusOrb() {
         rpcClient.onAgentRunStatusChanged(setStatus);
     }, [rpcClient]);
 
-    // Announce each new activity ("Editing service.bal", "Running tests"…) by
-    // popping the label pill for a few seconds, Codex-pet style.
-    useEffect(() => {
-        if (status?.state === "running" && status.label && status.label !== prevLabelRef.current) {
-            setAnnouncement(status.label);
-            clearTimeout(announceTimerRef.current);
-            announceTimerRef.current = setTimeout(() => setAnnouncement(null), 3000);
-        }
-        if (status?.state !== "running") {
-            setAnnouncement(null);
-        }
-        prevLabelRef.current = status?.label;
-    }, [status]);
-
-    useEffect(() => () => {
-        clearTimeout(snapTimerRef.current);
-        clearTimeout(announceTimerRef.current);
-    }, []);
+    useEffect(() => () => clearTimeout(snapTimerRef.current), []);
 
     if (!status || status.aiPanelOpen) {
         return null;
@@ -278,23 +307,32 @@ export function AgentStatusOrb() {
         state === "completed"
             ? "Done — click to open Copilot"
             : state === "running"
-                ? announcement ?? status.label ?? "Copilot is working"
+                ? status.label ?? "Working on it…"
                 : state === "awaiting-input"
                     ? status.label ?? "Copilot needs your input"
                     : state === "error"
                         ? status.label ?? "Copilot hit an error"
                         : "Ask WSO2 Copilot";
     const dragging = dragPos !== null && !snapping;
-    const showLabel =
-        !dragging &&
-        (hovered ||
-            state === "awaiting-input" ||
-            state === "error" ||
-            state === "completed" ||
-            (state === "running" && announcement !== null));
+    // Active states keep the pill visible the whole time; idle shows the
+    // invitation input instead (or, when dismissed, a pill on hover).
+    const showInvite = state === "idle" && !inviteDismissed && !dragging;
+    const showLabel = !dragging && !showInvite && (state !== "idle" || hovered);
 
     const openCopilot = () => {
         rpcClient?.getCommonRpcClient().executeCommand({ commands: [SHARED_COMMANDS.OPEN_AI_PANEL] });
+    };
+
+    const submitInvite = () => {
+        const text = inviteText.trim();
+        if (!text) {
+            openCopilot();
+            return;
+        }
+        rpcClient?.getCommonRpcClient().executeCommand({
+            commands: [SHARED_COMMANDS.OPEN_AI_PANEL, { type: "text", text, planMode: false, autoSubmit: true }],
+        });
+        setInviteText("");
     };
 
     const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -375,6 +413,24 @@ export function AgentStatusOrb() {
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
         >
+            {showInvite && (
+                <InviteBox>
+                    <InviteInput
+                        value={inviteText}
+                        onChange={(event) => setInviteText(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                                submitInvite();
+                            }
+                        }}
+                        placeholder="What do you want to build?"
+                        aria-label="Ask WSO2 Copilot: what do you want to build?"
+                    />
+                    <InviteDismiss title="Hide" aria-label="Hide the copilot prompt" onClick={() => setInviteDismissed(true)}>
+                        ✕
+                    </InviteDismiss>
+                </InviteBox>
+            )}
             {showLabel && label && <LabelPill onClick={openCopilot}>{label}</LabelPill>}
             <OrbButton
                 state={state}
