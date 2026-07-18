@@ -79,6 +79,9 @@ import {
     getActiveTempDir,
     getChatMessages,
     hasPendingReview,
+    getRunStatus,
+    GetRunStatusRequest,
+    GetRunStatusResponse,
     getCheckpoints,
     getDefaultPrompt,
     isScaffoldEnvActive,
@@ -353,6 +356,10 @@ export class AiPanelRpcClient implements AIPanelAPI {
 
     hasPendingReview(): Promise<boolean> {
         return this._messenger.sendRequest(hasPendingReview, HOST_EXTENSION);
+    }
+
+    getRunStatus(params: GetRunStatusRequest): Promise<GetRunStatusResponse> {
+        return this._messenger.sendRequest(getRunStatus, HOST_EXTENSION, params);
     }
 
     getUsage(): Promise<UsageResponse | undefined> {
