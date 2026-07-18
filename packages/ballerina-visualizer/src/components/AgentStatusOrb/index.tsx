@@ -21,17 +21,20 @@ import styled from "@emotion/styled";
 import { keyframes } from "@emotion/react";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { AgentRunStatus, AgentRunState, SHARED_COMMANDS } from "@wso2/ballerina-core";
+import { Icon } from "@wso2/ui-toolkit";
 
 /**
  * Floating ambient indicator for the Copilot agent's background run.
  *
- * Rendered as an overlay in the visualizer webview so users see what the agent
- * is doing while the AI panel is closed. Hidden when the agent is idle or the
- * AI panel is open (the panel itself shows richer progress). Clicking it opens
- * the Copilot chat.
+ * Rendered as an overlay in the visualizer webview and always visible while
+ * the AI panel is closed — a subdued idle presence, and animated color-coded
+ * states while the agent works in the background. Hidden while the AI panel
+ * is open (the panel itself shows richer progress). Clicking it opens the
+ * Copilot chat.
  */
 
-const ORB_COLORS: Record<Exclude<AgentRunState, "idle">, [string, string, string]> = {
+const ORB_COLORS: Record<AgentRunState, [string, string, string]> = {
+    "idle": ["#7c8ce0", "#8a7bd9", "#6aa4d9"],
     "running": ["#4facfe", "#a78bfa", "#f472b6"],
     "awaiting-input": ["#fbbf24", "#f59e0b", "#fb923c"],
     "completed": ["#34d399", "#10b981", "#6ee7b7"],
@@ -90,11 +93,11 @@ const LabelPill = styled.div`
 `;
 
 interface OrbStyleProps {
-    state: Exclude<AgentRunState, "idle">;
+    state: AgentRunState;
     colors: [string, string, string];
 }
 
-const OrbButton = styled.button<{ state: Exclude<AgentRunState, "idle"> }>`
+const OrbButton = styled.button<{ state: AgentRunState }>`
     pointer-events: auto;
     position: relative;
     width: 38px;
@@ -104,13 +107,19 @@ const OrbButton = styled.button<{ state: Exclude<AgentRunState, "idle"> }>`
     background: transparent;
     cursor: pointer;
     outline-offset: 4px;
+    opacity: ${(props: Pick<OrbStyleProps, "state">) => (props.state === "idle" ? 0.65 : 1)};
+    transition: opacity 0.3s ease, transform 0.2s ease;
+    &:hover {
+        opacity: 1;
+        transform: scale(1.06);
+    }
     animation: ${(props: Pick<OrbStyleProps, "state">) =>
         props.state === "awaiting-input" ? breathe : props.state === "completed" ? bloom : "none"}
         ${(props: Pick<OrbStyleProps, "state">) =>
         props.state === "awaiting-input" ? "1.6s ease-in-out infinite" : props.state === "completed" ? "0.6s ease-out" : ""};
 `;
 
-const Aura = styled.div<{ colors: [string, string, string]; spinning: boolean }>`
+const Aura = styled.div<{ colors: [string, string, string]; state: AgentRunState }>`
     position: absolute;
     inset: -5px;
     border-radius: 50%;
@@ -119,17 +128,22 @@ const Aura = styled.div<{ colors: [string, string, string]; spinning: boolean }>
         ${(props: Pick<OrbStyleProps, "colors">) => `${props.colors[0]}, ${props.colors[1]}, ${props.colors[2]}, ${props.colors[0]}`}
     );
     filter: blur(7px);
-    opacity: 0.85;
-    animation: ${rotate} ${(props: { spinning: boolean }) => (props.spinning ? "2.8s" : "9s")} linear infinite;
+    opacity: ${(props: Pick<OrbStyleProps, "state">) => (props.state === "idle" ? 0.45 : 0.85)};
+    animation: ${rotate}
+        ${(props: Pick<OrbStyleProps, "state">) => (props.state === "running" ? "2.8s" : props.state === "idle" ? "14s" : "9s")}
+        linear infinite;
 `;
 
 const Sphere = styled.div<{ colors: [string, string, string] }>`
     position: absolute;
     inset: 0;
     border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: radial-gradient(
         circle at 32% 28%,
-        rgba(255, 255, 255, 0.95),
+        rgba(255, 255, 255, 0.55),
         ${(props: Pick<OrbStyleProps, "colors">) => props.colors[0]} 45%,
         ${(props: Pick<OrbStyleProps, "colors">) => props.colors[1]} 100%
     );
@@ -155,15 +169,19 @@ export function AgentStatusOrb() {
         rpcClient.onAgentRunStatusChanged(setStatus);
     }, [rpcClient]);
 
-    if (!status || status.state === "idle" || status.aiPanelOpen) {
+    if (!status || status.aiPanelOpen) {
         return null;
     }
 
-    const state = status.state as Exclude<AgentRunState, "idle">;
+    const state = status.state;
     const colors = ORB_COLORS[state];
     const label =
         status.label ??
-        (state === "running" ? "Copilot is working" : state === "awaiting-input" ? "Copilot needs your input" : undefined);
+        (state === "running"
+            ? "Copilot is working"
+            : state === "awaiting-input"
+                ? "Copilot needs your input"
+                : "Ask BI Copilot");
     const showLabel = hovered || state === "awaiting-input" || state === "error";
 
     const openCopilot = () => {
@@ -179,8 +197,14 @@ export function AgentStatusOrb() {
                 title={label ? `BI Copilot — ${label}` : "BI Copilot"}
                 aria-label={label ? `BI Copilot: ${label}. Open the Copilot chat.` : "Open the BI Copilot chat"}
             >
-                <Aura colors={colors} spinning={state === "running"} />
-                <Sphere colors={colors} />
+                <Aura colors={colors} state={state} />
+                <Sphere colors={colors}>
+                    <Icon
+                        name="bi-ai-chat"
+                        sx={{ width: 18, height: 18 }}
+                        iconSx={{ fontSize: "18px", color: "#ffffff", cursor: "pointer" }}
+                    />
+                </Sphere>
             </OrbButton>
         </Wrapper>
     );
