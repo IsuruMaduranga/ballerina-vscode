@@ -23,7 +23,7 @@ import { RPCLayer } from '../../../RPCLayer';
 import { VisualizerWebview } from '../../../views/visualizer/webview';
 
 /** How long a terminal (completed/error) status stays visible before resetting to idle. */
-const TERMINAL_STATE_RESET_MS = 8000;
+const TERMINAL_STATE_RESET_MS = 20000;
 /** Max length of the label rendered in the status bar (tooltip shows the full label). */
 const STATUS_BAR_LABEL_MAX = 40;
 
@@ -53,7 +53,7 @@ class AgentStatusManager {
             return;
         }
         this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 98);
-        this.statusBarItem.name = 'BI Copilot';
+        this.statusBarItem.name = 'WSO2 Integrator Copilot';
         this.statusBarItem.command = SHARED_COMMANDS.OPEN_AI_PANEL;
         context.subscriptions.push(this.statusBarItem, new vscode.Disposable(() => this.clearResetTimer()));
         this.render();
@@ -165,7 +165,7 @@ class AgentStatusManager {
         const label = truncate(this.status.label, STATUS_BAR_LABEL_MAX);
         switch (this.status.state) {
             case 'running':
-                this.statusBarItem.text = `$(loading~spin) ${label ?? 'BI Copilot'}`;
+                this.statusBarItem.text = `$(loading~spin) ${label ?? 'WSO2 Copilot'}`;
                 this.statusBarItem.backgroundColor = undefined;
                 break;
             case 'awaiting-input':
@@ -182,12 +182,12 @@ class AgentStatusManager {
                 break;
             case 'idle':
             default:
-                this.statusBarItem.text = `$(bi-ai-agent) BI Copilot`;
+                this.statusBarItem.text = `$(bi-ai-agent) WSO2 Copilot`;
                 this.statusBarItem.backgroundColor = undefined;
                 break;
         }
         const tooltip = new vscode.MarkdownString();
-        tooltip.appendMarkdown(`**BI Copilot**${this.status.label ? ` — ${this.status.label}` : ''}\n\n`);
+        tooltip.appendMarkdown(`**WSO2 Integrator Copilot**${this.status.label ? ` — ${this.status.label}` : ''}\n\n`);
         tooltip.appendMarkdown('Click to open the Copilot chat.');
         this.statusBarItem.tooltip = tooltip;
     }
@@ -208,8 +208,8 @@ class AgentStatusManager {
     private showCompletionToast(state: 'completed' | 'error'): void {
         const openAction = 'Open Copilot';
         const message = state === 'completed'
-            ? 'BI Copilot finished working in the background.'
-            : 'BI Copilot hit an error while working in the background.';
+            ? 'WSO2 Copilot finished working in the background.'
+            : 'WSO2 Copilot hit an error while working in the background.';
         const show = state === 'completed' ? vscode.window.showInformationMessage : vscode.window.showWarningMessage;
         show(message, openAction).then((selection) => {
             if (selection === openAction) {

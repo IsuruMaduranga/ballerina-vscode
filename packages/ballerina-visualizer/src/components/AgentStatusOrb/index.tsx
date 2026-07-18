@@ -18,7 +18,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
-import { keyframes } from "@emotion/react";
+import { css, keyframes } from "@emotion/react";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { AgentRunStatus, AgentRunState, SHARED_COMMANDS } from "@wso2/ballerina-core";
 import { Icon } from "@wso2/ui-toolkit";
@@ -38,34 +38,41 @@ const ORB_SIZE = 48;
 const EDGE_MARGIN = 20;
 const DRAG_THRESHOLD = 5;
 const SNAP_ANIMATION_MS = 250;
-const CORNER_STORAGE_KEY = "ballerina.copilot.orbCorner";
+const ANCHOR_STORAGE_KEY = "ballerina.copilot.orbAnchor";
 
-type Corner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+type Anchor = "top-left" | "top-center" | "top-right" | "bottom-left" | "bottom-center" | "bottom-right";
 
-const CORNER_CSS: Record<Corner, React.CSSProperties> = {
+const ANCHOR_CSS: Record<Anchor, React.CSSProperties> = {
     "top-left": { top: EDGE_MARGIN, left: EDGE_MARGIN },
+    "top-center": { top: EDGE_MARGIN, left: "50%", transform: "translateX(-50%)" },
     "top-right": { top: EDGE_MARGIN, right: EDGE_MARGIN },
     "bottom-left": { bottom: EDGE_MARGIN, left: EDGE_MARGIN },
+    "bottom-center": { bottom: EDGE_MARGIN, left: "50%", transform: "translateX(-50%)" },
     "bottom-right": { bottom: EDGE_MARGIN, right: EDGE_MARGIN },
 };
 
-function loadCorner(): Corner {
-    const stored = localStorage.getItem(CORNER_STORAGE_KEY);
-    return stored && stored in CORNER_CSS ? (stored as Corner) : "bottom-right";
+function loadAnchor(): Anchor {
+    const stored = localStorage.getItem(ANCHOR_STORAGE_KEY);
+    return stored && stored in ANCHOR_CSS ? (stored as Anchor) : "bottom-right";
 }
 
-/** Top-left px position of the orb when anchored at a corner. */
-function cornerPosition(corner: Corner): { x: number; y: number } {
-    return {
-        x: corner.endsWith("left") ? EDGE_MARGIN : window.innerWidth - ORB_SIZE - EDGE_MARGIN,
-        y: corner.startsWith("top") ? EDGE_MARGIN : window.innerHeight - ORB_SIZE - EDGE_MARGIN,
-    };
+/** Top-left px position of the orb when docked at an anchor. */
+function anchorPosition(anchor: Anchor): { x: number; y: number } {
+    const x = anchor.endsWith("left")
+        ? EDGE_MARGIN
+        : anchor.endsWith("center")
+            ? (window.innerWidth - ORB_SIZE) / 2
+            : window.innerWidth - ORB_SIZE - EDGE_MARGIN;
+    const y = anchor.startsWith("top") ? EDGE_MARGIN : window.innerHeight - ORB_SIZE - EDGE_MARGIN;
+    return { x, y };
 }
 
-function nearestCorner(x: number, y: number): Corner {
+/** Nearest of the six anchors: horizontal thirds × vertical halves. */
+function nearestAnchor(x: number, y: number): Anchor {
     const vertical = y < window.innerHeight / 2 ? "top" : "bottom";
-    const horizontal = x < window.innerWidth / 2 ? "left" : "right";
-    return `${vertical}-${horizontal}` as Corner;
+    const horizontal =
+        x < window.innerWidth / 3 ? "left" : x > (window.innerWidth * 2) / 3 ? "right" : "center";
+    return `${vertical}-${horizontal}` as Anchor;
 }
 
 const ORB_COLORS: Record<AgentRunState, [string, string, string]> = {
@@ -95,6 +102,16 @@ const bloom = keyframes`
 const fadeIn = keyframes`
     from { opacity: 0; transform: translateX(6px); }
     to { opacity: 1; transform: translateX(0); }
+`;
+
+const hueCycle = keyframes`
+    from { filter: blur(8px) hue-rotate(0deg); }
+    to { filter: blur(8px) hue-rotate(360deg); }
+`;
+
+const haloPulse = keyframes`
+    0%, 100% { opacity: 0.25; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.18); }
 `;
 
 const Wrapper = styled.div`
@@ -156,6 +173,19 @@ const OrbButton = styled.button<{ state: AgentRunState }>`
         props.state === "awaiting-input" ? "1.6s ease-in-out infinite" : props.state === "completed" ? "0.6s ease-out" : ""};
 `;
 
+const Halo = styled.div<{ colors: [string, string, string] }>`
+    position: absolute;
+    inset: -16px;
+    border-radius: 50%;
+    background: radial-gradient(
+        circle,
+        ${(props: Pick<OrbStyleProps, "colors">) => props.colors[1]} 0%,
+        transparent 70%
+    );
+    animation: ${haloPulse} 1.8s ease-in-out infinite;
+    pointer-events: none;
+`;
+
 const Aura = styled.div<{ colors: [string, string, string]; state: AgentRunState }>`
     position: absolute;
     inset: -6px;
@@ -165,10 +195,13 @@ const Aura = styled.div<{ colors: [string, string, string]; state: AgentRunState
         ${(props: Pick<OrbStyleProps, "colors">) => `${props.colors[0]}, ${props.colors[1]}, ${props.colors[2]}, ${props.colors[0]}`}
     );
     filter: blur(8px);
-    opacity: ${(props: Pick<OrbStyleProps, "state">) => (props.state === "idle" ? 0.45 : 0.85)};
-    animation: ${rotate}
-        ${(props: Pick<OrbStyleProps, "state">) => (props.state === "running" ? "2.8s" : props.state === "idle" ? "14s" : "9s")}
-        linear infinite;
+    opacity: ${(props: Pick<OrbStyleProps, "state">) => (props.state === "idle" ? 0.45 : props.state === "running" ? 1 : 0.85)};
+    ${(props: Pick<OrbStyleProps, "state">) =>
+        props.state === "running"
+            ? css`animation: ${rotate} 2.8s linear infinite, ${hueCycle} 5s linear infinite;`
+            : props.state === "idle"
+                ? css`animation: ${rotate} 14s linear infinite;`
+                : css`animation: ${rotate} 9s linear infinite;`}
 `;
 
 const Sphere = styled.div<{ colors: [string, string, string] }>`
@@ -191,12 +224,16 @@ export function AgentStatusOrb() {
     const { rpcClient } = useRpcContext();
     const [status, setStatus] = useState<AgentRunStatus | null>(null);
     const [hovered, setHovered] = useState(false);
-    const [corner, setCorner] = useState<Corner>(loadCorner);
-    /** Orb top-left in px while dragging/snapping; null when anchored to a corner. */
+    const [anchor, setAnchor] = useState<Anchor>(loadAnchor);
+    /** Orb top-left in px while dragging/snapping; null when docked at an anchor. */
     const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
     const [snapping, setSnapping] = useState(false);
     const dragStateRef = useRef<{ startX: number; startY: number; wasDrag: boolean } | null>(null);
     const snapTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    /** Transient label auto-shown when the agent moves to a new activity. */
+    const [announcement, setAnnouncement] = useState<string | null>(null);
+    const announceTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const prevLabelRef = useRef<string | undefined>(undefined);
 
     useEffect(() => {
         if (!rpcClient) {
@@ -212,7 +249,24 @@ export function AgentStatusOrb() {
         rpcClient.onAgentRunStatusChanged(setStatus);
     }, [rpcClient]);
 
-    useEffect(() => () => clearTimeout(snapTimerRef.current), []);
+    // Announce each new activity ("Editing service.bal", "Running tests"…) by
+    // popping the label pill for a few seconds, Codex-pet style.
+    useEffect(() => {
+        if (status?.state === "running" && status.label && status.label !== prevLabelRef.current) {
+            setAnnouncement(status.label);
+            clearTimeout(announceTimerRef.current);
+            announceTimerRef.current = setTimeout(() => setAnnouncement(null), 3000);
+        }
+        if (status?.state !== "running") {
+            setAnnouncement(null);
+        }
+        prevLabelRef.current = status?.label;
+    }, [status]);
+
+    useEffect(() => () => {
+        clearTimeout(snapTimerRef.current);
+        clearTimeout(announceTimerRef.current);
+    }, []);
 
     if (!status || status.aiPanelOpen) {
         return null;
@@ -221,14 +275,23 @@ export function AgentStatusOrb() {
     const state = status.state;
     const colors = ORB_COLORS[state];
     const label =
-        status.label ??
-        (state === "running"
-            ? "Copilot is working"
-            : state === "awaiting-input"
-                ? "Copilot needs your input"
-                : "Ask BI Copilot");
+        state === "completed"
+            ? "Done — click to open Copilot"
+            : state === "running"
+                ? announcement ?? status.label ?? "Copilot is working"
+                : state === "awaiting-input"
+                    ? status.label ?? "Copilot needs your input"
+                    : state === "error"
+                        ? status.label ?? "Copilot hit an error"
+                        : "Ask WSO2 Copilot";
     const dragging = dragPos !== null && !snapping;
-    const showLabel = !dragging && (hovered || state === "awaiting-input" || state === "error");
+    const showLabel =
+        !dragging &&
+        (hovered ||
+            state === "awaiting-input" ||
+            state === "error" ||
+            state === "completed" ||
+            (state === "running" && announcement !== null));
 
     const openCopilot = () => {
         rpcClient?.getCommonRpcClient().executeCommand({ commands: [SHARED_COMMANDS.OPEN_AI_PANEL] });
@@ -265,14 +328,14 @@ export function AgentStatusOrb() {
         if (!drag?.wasDrag) {
             return;
         }
-        const target = nearestCorner(event.clientX, event.clientY);
-        // Animate to the corner's px position, then hand over to corner
-        // anchoring (right/bottom offsets) so window resizes keep it pinned.
+        const target = nearestAnchor(event.clientX, event.clientY);
+        // Animate to the anchor's px position, then hand over to anchor
+        // positioning (offsets/percentages) so window resizes keep it pinned.
         setSnapping(true);
-        setDragPos(cornerPosition(target));
+        setDragPos(anchorPosition(target));
         snapTimerRef.current = setTimeout(() => {
-            setCorner(target);
-            localStorage.setItem(CORNER_STORAGE_KEY, target);
+            setAnchor(target);
+            localStorage.setItem(ANCHOR_STORAGE_KEY, target);
             setDragPos(null);
             setSnapping(false);
         }, SNAP_ANIMATION_MS);
@@ -286,18 +349,29 @@ export function AgentStatusOrb() {
         }
     };
 
-    const onLeftEdge = dragPos === null && corner.endsWith("left");
+    // Keep the label pill on-screen and horizontally centered orbs balanced:
+    // left edge → pill to the right; centers → pill stacked toward the middle.
+    const flexDirection: React.CSSProperties["flexDirection"] =
+        dragPos !== null
+            ? "row"
+            : anchor.endsWith("left")
+                ? "row-reverse"
+                : anchor === "bottom-center"
+                    ? "column"
+                    : anchor === "top-center"
+                        ? "column-reverse"
+                        : "row";
     const wrapperStyle: React.CSSProperties = dragPos
         ? {
             left: dragPos.x,
             top: dragPos.y,
             transition: snapping ? `left ${SNAP_ANIMATION_MS}ms ease, top ${SNAP_ANIMATION_MS}ms ease` : "none",
         }
-        : CORNER_CSS[corner];
+        : ANCHOR_CSS[anchor];
 
     return (
         <Wrapper
-            style={{ ...wrapperStyle, flexDirection: onLeftEdge ? "row-reverse" : "row" }}
+            style={{ ...wrapperStyle, flexDirection }}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
         >
@@ -308,9 +382,10 @@ export function AgentStatusOrb() {
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
-                title={label ? `BI Copilot — ${label}` : "BI Copilot"}
-                aria-label={label ? `BI Copilot: ${label}. Open the Copilot chat.` : "Open the BI Copilot chat"}
+                title={label ? `WSO2 Integrator Copilot — ${label}` : "WSO2 Integrator Copilot"}
+                aria-label={label ? `WSO2 Copilot: ${label}. Open the Copilot chat.` : "Open the WSO2 Copilot chat"}
             >
+                {(state === "running" || state === "awaiting-input") && <Halo colors={colors} />}
                 <Aura colors={colors} state={state} />
                 <Sphere colors={colors}>
                     <Icon
