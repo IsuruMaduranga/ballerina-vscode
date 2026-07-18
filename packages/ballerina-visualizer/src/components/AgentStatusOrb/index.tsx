@@ -351,7 +351,7 @@ export function AgentStatusOrb() {
 
     // Keep the label pill on-screen and horizontally centered orbs balanced:
     // left edge → pill to the right; centers → pill stacked toward the middle.
-    const flexDirection: React.CSSProperties["flexDirection"] =
+    const flexDirection: "row" | "row-reverse" | "column" | "column-reverse" =
         dragPos !== null
             ? "row"
             : anchor.endsWith("left")
