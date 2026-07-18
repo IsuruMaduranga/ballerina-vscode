@@ -314,10 +314,11 @@ export function AgentStatusOrb() {
                         ? status.label ?? "Copilot hit an error"
                         : "Ask WSO2 Copilot";
     const dragging = dragPos !== null && !snapping;
-    // Active states keep the pill visible the whole time; idle shows the
-    // invitation input instead (or, when dismissed, a pill on hover).
-    const showInvite = state === "idle" && !inviteDismissed && !dragging;
-    const showLabel = !dragging && !showInvite && (state !== "idle" || hovered);
+    // Active states keep the pill visible the whole time. Idle shows the
+    // invitation input; dismissing only collapses it into the orb — hovering
+    // the orb expands it again, so it is never more than one hover away.
+    const showInvite = state === "idle" && !dragging && (!inviteDismissed || hovered);
+    const showLabel = !dragging && !showInvite && state !== "idle";
 
     const openCopilot = () => {
         rpcClient?.getCommonRpcClient().executeCommand({ commands: [SHARED_COMMANDS.OPEN_AI_PANEL] });
