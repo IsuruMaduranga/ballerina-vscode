@@ -260,7 +260,7 @@ const Aura = styled.div<{ colors: [string, string, string]; state: AgentRunState
         ${(props: Pick<OrbStyleProps, "colors">) => `${props.colors[0]}, ${props.colors[1]}, ${props.colors[2]}, ${props.colors[0]}`}
     );
     filter: blur(8px);
-    opacity: ${(props: Pick<OrbStyleProps, "state">) => (props.state === "idle" ? 0.3 : props.state === "running" ? 1 : 0.85)};
+    opacity: ${(props: Pick<OrbStyleProps, "state">) => (props.state === "idle" ? 0.45 : props.state === "running" ? 1 : 0.85)};
     ${(props: Pick<OrbStyleProps, "state">) =>
         props.state === "running"
             ? css`animation: ${rotate} 2.8s linear infinite, ${hueCycle} 5s linear infinite;`
@@ -495,7 +495,7 @@ export function AgentStatusOrb() {
                         onContextFailed={handleWebglFailed}
                     />
                 )}
-                {webglFailed && <Gloss />}
+                <Gloss />
                 <IconOverlay>
                     <Icon
                         name="bi-ai-chat"

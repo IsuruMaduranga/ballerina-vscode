@@ -92,45 +92,35 @@ float fbm(vec2 p) {
 void main() {
     vec2 uv = v_uv;
     float r = length(uv);
-    float t = u_time * (0.15 + 0.5 * u_energy);
+    float t = u_time * (0.18 + 0.55 * u_energy);
 
-    // Domain warp drives the wisps' motion.
+    // Domain warp: two fbm fields displace a third for the liquid look.
     vec2 q = vec2(
-        fbm(uv * 1.8 + vec2(t * 0.6, -t * 0.4)),
-        fbm(uv * 1.8 + vec2(-t * 0.5, t * 0.7))
+        fbm(uv * 1.6 + vec2(t * 0.7, -t * 0.5)),
+        fbm(uv * 1.6 + vec2(-t * 0.6, t * 0.8))
     );
+    float warpStrength = 1.4 + 1.2 * u_energy;
+    float f = fbm(uv * 2.2 + warpStrength * q + vec2(t * 0.3, -t * 0.2));
 
-    // Siri look: dark glass sphere with colors concentrated into thin
-    // ridged filaments (wisps) rather than filling the whole volume.
-    float n1 = fbm(uv * 2.6 + 2.2 * q + vec2(t * 0.35, -t * 0.25));
-    float wisp1 = pow(1.0 - abs(2.0 * n1 - 1.0), 4.0);
-    float n2 = fbm(uv * 3.4 - 1.8 * q + vec2(-t * 0.28, t * 0.4));
-    float wisp2 = pow(1.0 - abs(2.0 * n2 - 1.0), 5.0);
+    // Narrow mix bands + a luminance term keep the flow visible even when
+    // the palette hues are close (the structure reads as light/dark, not
+    // just hue shifts).
+    float band = smoothstep(0.3, 0.72, f);
+    vec3 col = mix(u_c0, u_c1, band);
+    float f2 = fbm(uv * 3.0 - q + vec2(-t * 0.25, t * 0.35));
+    col = mix(col, u_c2, smoothstep(0.42, 0.8, f2) * (0.6 + 0.4 * u_energy));
+    col *= 0.62 + 0.85 * f;
 
-    // Near-black glass base with a faint depth tint toward the center.
-    vec3 col = vec3(0.02, 0.02, 0.045) + 0.10 * mix(u_c0, u_c2, 0.5) * (1.0 - r);
+    // Slight glass highlight (the Gloss overlay adds the main reflection)
+    // and gentle spherical shading toward the rim.
+    float highlight = pow(max(0.0, 1.0 - length(uv - vec2(-0.38, 0.42))), 2.0);
+    col += vec3(1.0) * highlight * 0.18;
+    col *= 0.85 + 0.2 * (1.0 - r);
 
-    // Wisps biased toward the surface (rim) like refracted ribbons.
-    float rimBias = 0.35 + 0.65 * smoothstep(0.15, 0.95, r);
-    col += u_c0 * wisp1 * rimBias * (0.55 + 0.45 * u_energy);
-    col += u_c1 * wisp2 * rimBias * (0.5 + 0.5 * u_energy);
-    col += u_c2 * wisp1 * wisp2 * 1.2;
+    // Soft rim light so the sphere pops on dark and light themes.
+    float rim = smoothstep(0.55, 0.98, r) * smoothstep(1.02, 0.98, r);
+    col += mix(u_c1, u_c2, 0.5) * rim * 0.45;
 
-    // Iridescent rim: hue varies around the circumference and drifts.
-    float ang = atan(uv.y, uv.x);
-    vec3 iri = mix(u_c0, u_c1, 0.5 + 0.5 * sin(ang * 2.0 + t * 1.5));
-    iri = mix(iri, u_c2, 0.5 + 0.5 * sin(ang * 3.0 - t));
-    float rim = smoothstep(0.72, 0.98, r);
-    col += iri * rim * 0.5;
-
-    // Specular flare — the bright core hotspot — plus a sharp glint.
-    vec2 flarePos = vec2(-0.25, 0.18);
-    float flare = pow(max(0.0, 1.0 - length(uv - flarePos) * 1.6), 6.0);
-    col += vec3(0.85, 1.0, 0.92) * flare * (0.8 + 0.6 * u_energy);
-    float glint = pow(max(0.0, 1.0 - length(uv - flarePos) * 4.0), 3.0);
-    col += vec3(1.0) * glint;
-
-    col *= 0.9 + 0.15 * (1.0 - r);
     float mask = smoothstep(1.0, 0.94, r);
     gl_FragColor = vec4(col * mask, mask);
 }
