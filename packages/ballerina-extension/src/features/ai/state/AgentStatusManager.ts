@@ -127,6 +127,13 @@ class AgentStatusManager {
             return;
         }
         this.status = { ...this.status, aiPanelOpen: open, timestamp: Date.now() };
+        // Opening the panel acknowledges a finished/failed run — reset to idle
+        // so the 'Done — click to open' nudge doesn't reappear when the panel
+        // is closed again within the terminal-state window.
+        if (open && !this.runActive && (this.status.state === 'completed' || this.status.state === 'error')) {
+            this.clearResetTimer();
+            this.status = { ...this.status, state: 'idle', label: undefined };
+        }
         this.render();
         this.broadcast();
     }
