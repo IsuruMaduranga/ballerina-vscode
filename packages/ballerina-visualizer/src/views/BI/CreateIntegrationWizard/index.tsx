@@ -210,13 +210,16 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
             .cleanupAbandonedIntegrationScaffolds()
             .catch((error: unknown) => console.error(">>> Error cleaning up staging package", error));
 
-        // Seed the default creation path and warm the trigger-model cache for step 2.
+        // Seed the path field: prefer the currently open workspace folder (matching
+        // the native/embedded project & library forms), falling back to the default
+        // creation directory only when no folder is open.
         wsClient
-            .getDefaultCreationPath()
-            .then((res: { path: string }) => {
-                setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: res.path }));
+            .getWorkspaceRoot()
+            .then(async (res: { path: string }) => {
+                const seedPath = res.path || (await wsClient.getDefaultCreationPath()).path;
+                setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: seedPath }));
             })
-            .catch((error: unknown) => console.error(">>> Error fetching default creation path", error));
+            .catch((error: unknown) => console.error(">>> Error seeding the creation path", error));
 
         wsClient
             .getTriggerModels({ query: "" })
