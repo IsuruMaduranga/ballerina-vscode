@@ -51,6 +51,8 @@ const WIZARD_STEPS = ["Basic Info", "Integration Type", "Configure"];
 const DEFAULT_INTEGRATION_NAME = "Untitled";
 const REQUIRED_PATH_MESSAGE = "Path is required";
 const INVALID_PATH_MESSAGE = "Please select a valid directory";
+const MAX_DEFAULT_DIRECTORY_ATTEMPTS = 50;
+const DIRECTORY_EXISTS_MESSAGE = "A directory with this name already exists at the selected location";
 
 interface CreateIntegrationWizardProps {
     /** Hide the page header when the embedding host renders its own chrome. */
@@ -71,9 +73,9 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
 
     const [step, setStep] = useState<WizardStep>(0);
     const [basicInfo, setBasicInfo] = useState<BasicInfo>({
-        integrationName: "",
+        integrationName: DEFAULT_INTEGRATION_NAME,
         baseDir: "",
-        directoryName: "",
+        directoryName: sanitizePackageName(DEFAULT_INTEGRATION_NAME),
         dirTouched: false,
         pathTouched: false,
     });
@@ -212,12 +214,37 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
 
         // Seed the path field: prefer the currently open workspace folder (matching
         // the native/embedded project & library forms), falling back to the default
-        // creation directory only when no folder is open.
+        // creation directory only when no folder is open. The default directory
+        // segment is "untitled"; if one already exists at the seeded location, an
+        // indexed variant (untitled_2, untitled_3, ...) is used instead.
+        const resolveDefaultDirectoryName = async (baseDir: string): Promise<string> => {
+            const base = sanitizePackageName(DEFAULT_INTEGRATION_NAME);
+            for (let attempt = 0; attempt < MAX_DEFAULT_DIRECTORY_ATTEMPTS; attempt++) {
+                const candidate = attempt === 0 ? base : `${base}_${attempt + 1}`;
+                try {
+                    const result = await wsClient.validateProjectPath({
+                        projectPath: baseDir,
+                        projectName: base,
+                        createDirectory: true,
+                        directoryName: candidate,
+                    });
+                    if (result.isValid || result.errorMessage !== DIRECTORY_EXISTS_MESSAGE) {
+                        return candidate;
+                    }
+                } catch (error) {
+                    console.error(">>> Error checking default directory availability", error);
+                    return candidate;
+                }
+            }
+            return base;
+        };
+
         wsClient
             .getWorkspaceRoot()
             .then(async (res: { path: string }) => {
                 const seedPath = res.path || (await wsClient.getDefaultCreationPath()).path;
-                setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: seedPath }));
+                const directoryName = await resolveDefaultDirectoryName(seedPath);
+                setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: seedPath, directoryName }));
             })
             .catch((error: unknown) => console.error(">>> Error seeding the creation path", error));
 
@@ -242,10 +269,14 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
         projectPath: basicInfo.baseDir,
         projectName: packageName,
         createAsWorkspace: false,
-        // Validate as soon as there is a real target — i.e. once a name (and thus a
-        // directory segment) has been entered, even before the path is edited — so
-        // a "directory already exists" conflict surfaces live under the path field.
-        pathTouched: basicInfo.pathTouched || basicInfo.directoryName.trim().length > 0,
+        // Validate as soon as there is a real target — i.e. once the path has been
+        // seeded and a directory segment is present, even before the path is
+        // edited — so a "directory already exists" conflict surfaces live under
+        // the path field. Gated on baseDir too so the default "Untitled" name
+        // doesn't flash a "Path is required" error before seeding resolves.
+        pathTouched:
+            basicInfo.pathTouched ||
+            (basicInfo.baseDir.trim().length > 0 && basicInfo.directoryName.trim().length > 0),
         requiredPathMessage: REQUIRED_PATH_MESSAGE,
         invalidPathMessage: INVALID_PATH_MESSAGE,
         onPathErrorChange: useCallback((error: string | null) => setPathError(error), []),

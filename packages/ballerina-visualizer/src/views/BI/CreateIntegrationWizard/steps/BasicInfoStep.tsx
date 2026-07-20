@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { useEffect, useRef } from "react";
 import styled from "@emotion/styled";
 import { DirectorySelector, TextField } from "@wso2/ui-toolkit";
 
@@ -54,15 +55,49 @@ export function BasicInfoStep({
     onPathChange,
     onBrowse,
 }: BasicInfoStepProps) {
+    const nameFieldRef = useRef<HTMLInputElement>(null);
+
+    // Focus and select the default "Untitled" name on mount so the user can
+    // immediately overtype it. VSCodeTextField is a web component, so the real
+    // <input> is inside its shadow DOM and needs to be targeted directly. Its
+    // value sync from the `value` prop lags the initial render by a frame or
+    // two, so poll until the input actually holds the text before selecting
+    // it — selecting immediately can land while the input is still empty.
+    useEffect(() => {
+        // Normally resolves within the first frame or two, once the value has
+        // synced in. GIVE_UP_AFTER is just a backstop so a mount where the value
+        // never syncs still ends up focused, instead of polling forever.
+        const GIVE_UP_AFTER_FRAMES = 30;
+        let rafId: number;
+        let attempts = 0;
+        const trySelect = () => {
+            const inner = (nameFieldRef.current as any)?.shadowRoot?.querySelector("input") as HTMLInputElement | null;
+            if (!inner) {
+                return;
+            }
+            const valueSynced = inner.value.length > 0;
+            const gaveUp = attempts >= GIVE_UP_AFTER_FRAMES;
+            if (valueSynced || gaveUp) {
+                inner.focus();
+                inner.select();
+                return;
+            }
+            attempts++;
+            rafId = requestAnimationFrame(trySelect);
+        };
+        rafId = requestAnimationFrame(trySelect);
+        return () => cancelAnimationFrame(rafId);
+    }, []);
+
     return (
         <>
             <FieldGroup>
                 <TextField
+                    ref={nameFieldRef}
                     onTextChange={onNameChange}
                     value={integrationName}
                     label="Integration Name"
                     placeholder="Enter an integration name"
-                    autoFocus={true}
                     required={true}
                     errorMsg={nameError || ""}
                 />
