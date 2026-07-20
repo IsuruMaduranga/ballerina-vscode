@@ -31,7 +31,7 @@ export type ArtifactKind = "automation" | "workflow" | "ai-agent" | "service";
 export type DynamicTriggerType = "event" | "file" | "mcp";
 
 /**
- * A selectable artifact card in the wizard's Artifact Type step.
+ * A selectable artifact card in the wizard's Integration Type step.
  * Card ids, titles, icons, and artifactInfo literals mirror the in-project
  * ComponentListView panels so both surfaces stay consistent.
  */
@@ -53,7 +53,7 @@ export interface ArtifactCard {
 /** Marker expanded at render time into `triggersToCards(triggers, <type>)`. */
 export type DynamicCardSource = `dynamic:${DynamicTriggerType}`;
 
-/** An ordered category section of the Artifact Type step. */
+/** An ordered category section of the Integration Type step. */
 export interface ArtifactCategory {
     key: string;
     title: string;

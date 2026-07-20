@@ -16,7 +16,7 @@
  * under the License.
  */
 
-/** The wizard's three steps: Basic Info, Artifact Type, Configure. */
+/** The wizard's three steps: Basic Info, Integration Type, Configure. */
 export type WizardStep = 0 | 1 | 2;
 
 /** Step-1 form state. */

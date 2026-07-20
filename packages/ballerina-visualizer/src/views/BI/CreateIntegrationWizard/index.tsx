@@ -47,7 +47,7 @@ const ErrorBanner = styled.div`
     font-size: 13px;
 `;
 
-const WIZARD_STEPS = ["Basic Info", "Artifact Type", "Configure"];
+const WIZARD_STEPS = ["Basic Info", "Integration Type", "Configure"];
 const DEFAULT_INTEGRATION_NAME = "Untitled";
 const REQUIRED_PATH_MESSAGE = "Path is required";
 const INVALID_PATH_MESSAGE = "Please select a valid directory";
@@ -58,7 +58,7 @@ interface CreateIntegrationWizardProps {
 }
 
 /**
- * The 3-step Create Integration wizard (Basic Info → Artifact Type → Configure).
+ * The 3-step Create Integration wizard (Basic Info → Integration Type → Configure).
  *
  * The whole wizard runs pre-project: the package is scaffolded silently on disk
  * when step 3 is entered (so the LS can serve the artifact's config model), and
