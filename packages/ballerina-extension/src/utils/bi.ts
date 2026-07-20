@@ -536,9 +536,11 @@ export async function convertProjectToWorkspace(params: AddProjectToWorkspaceReq
 
     const existingProjectDirName = path.basename(currentProjectPath);
     createWorkspaceToml(newDirectory, params.workspaceName, existingProjectDirName);
-    addToWorkspaceToml(newDirectory, sanitizeName(params.packageName));
 
-    await createProjectInWorkspace(params, newDirectory);
+    if (params.addNewAfterConvert) {
+        addToWorkspaceToml(newDirectory, sanitizeName(params.packageName));
+        await createProjectInWorkspace(params, newDirectory);
+    }
 
     // create settings.json file
     createVSCodeSettings(newDirectory);

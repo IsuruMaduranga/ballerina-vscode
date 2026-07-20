@@ -745,6 +745,14 @@
                 "when": "ballerina.bi.workspaceSupported"
             },
             {
+                "command": "BI.project-explorer.convert",
+                "title": "Convert to Project",
+                "icon": "$(project)",
+                "group": "navigation",
+                "category": "WSO2 Integrator",
+                "when": "ballerina.bi.workspaceSupported"
+            },
+            {
                 "command": "BI.project-explorer.overview",
                 "title": "Show Overview",
                 "icon": "$(ballerina-design-view)",

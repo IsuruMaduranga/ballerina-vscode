@@ -125,11 +125,16 @@ export const validateComponentName = (name: string, isLibrary: boolean): string 
     return null;
 };
 
-export const isFormValidAddProject = (formData: AddProjectFormData, isInProject: boolean): boolean => {
+export const isFormValidAddProject = (
+    formData: AddProjectFormData,
+    isInProject: boolean,
+    addNewAfterConvert: boolean = true
+): boolean => {
+    const needsComponent = isInProject || addNewAfterConvert;
     return (
         (isInProject || (formData.workspaceName?.length ?? 0) >= 1) &&
-        validateComponentName(formData.integrationName, formData.isLibrary) === null &&
-        validatePackageName(formData.packageName, formData.integrationName) === null &&
+        (!needsComponent || validateComponentName(formData.integrationName, formData.isLibrary) === null) &&
+        (!needsComponent || validatePackageName(formData.packageName, formData.integrationName) === null) &&
         validateOrgName(formData.orgName) === null &&
         (formData.projectHandle === undefined || validateProjectHandle(formData.projectHandle) === null)
     );

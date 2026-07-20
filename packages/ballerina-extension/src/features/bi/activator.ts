@@ -177,6 +177,18 @@ export function activate(context: BallerinaExtension) {
         }
     });
 
+    commands.registerCommand(BI_COMMANDS.CONVERT_TO_PROJECT, async () => {
+        if (!isWorkspaceSupported) {
+            window.showErrorMessage('This command requires Ballerina version 2201.13.0 or higher. ');
+            return;
+        }
+
+        // Converting a standalone integration/library into a project. The form detects the
+        // standalone context and renders the "Convert to Project" flow (convert-only by
+        // default, with an opt-in to also add a new integration/library in the same pass).
+        openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.BIAddProjectForm });
+    });
+
     commands.registerCommand(BI_COMMANDS.ADD_DATA_MAPPER, async (item?: TreeItem) => {
         await handleCommandWithContext(item, MACHINE_VIEW.BIDataMapperForm);
     });

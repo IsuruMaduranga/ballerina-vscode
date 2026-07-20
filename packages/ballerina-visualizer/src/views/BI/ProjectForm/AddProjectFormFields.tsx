@@ -17,10 +17,12 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { TextField } from "@wso2/ui-toolkit";
+import { CheckBox, TextField } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { usePlatformExtContext } from "../../../providers/platform-ext-ctx-provider";
 import {
+    CheckboxContainer,
+    Description,
     FieldGroup,
     ProjectSection,
     SectionDivider,
@@ -43,6 +45,8 @@ export interface AddProjectFormFieldsProps {
     formData: AddProjectFormData;
     onFormDataChange: (data: Partial<AddProjectFormData>) => void;
     isInProject: boolean;
+    addNewAfterConvert: boolean;
+    onAddNewAfterConvertChange: (value: boolean) => void;
     packageNameValidationError?: string;
     projectNameValidationError?: string;
     projectHandlePathError?: string;
@@ -52,6 +56,8 @@ export function AddProjectFormFields({
     formData,
     onFormDataChange,
     isInProject,
+    addNewAfterConvert,
+    onAddNewAfterConvertChange,
     packageNameValidationError,
     projectNameValidationError,
     projectHandlePathError,
@@ -75,6 +81,7 @@ export function AddProjectFormFields({
     const [isOrgDataLoaded, setIsOrgDataLoaded] = useState(false);
     const resourceTypeLabel = formData.isLibrary ? "Library" : "Integration";
     const resourceTypeLabelLower = resourceTypeLabel.toLowerCase();
+    const showIntegrationFields = isInProject || addNewAfterConvert;
 
     const handleProjectName = (value: string) => {
         const updates: Partial<AddProjectFormData> = { workspaceName: value };
@@ -171,8 +178,8 @@ export function AddProjectFormFields({
     const hasAdvancedConfigError = !!(
         projectHandlePathError ||
         projectHandleError ||
-        packageNameError ||
-        packageNameValidationError ||
+        // Package errors are irrelevant when the package fields are hidden (convert-only).
+        (showIntegrationFields && (packageNameError || packageNameValidationError)) ||
         orgNameError
     );
 
@@ -186,36 +193,54 @@ export function AddProjectFormFields({
     return (
         <>
             {!isInProject && (
-                <ProjectSection>
-                    <TextField
-                        onTextChange={handleProjectName}
-                        value={formData.workspaceName}
-                        label="Project Name"
-                        placeholder="Enter project name"
-                        autoFocus={true}
-                        required={true}
-                        errorMsg={projectNameValidationError || ""}
-                    />
-                </ProjectSection>
+                <>
+                    <ProjectSection>
+                        <TextField
+                            onTextChange={handleProjectName}
+                            value={formData.workspaceName}
+                            label="Project Name"
+                            placeholder="Enter project name"
+                            autoFocus={true}
+                            required={true}
+                            errorMsg={projectNameValidationError || ""}
+                        />
+                    </ProjectSection>
+
+                    <CheckboxContainer>
+                        <CheckBox
+                            label="Also add a new integration or library now"
+                            checked={addNewAfterConvert}
+                            onChange={onAddNewAfterConvertChange}
+                        />
+                        <Description>
+                            Your current integration becomes the first member of the project. Optionally scaffold
+                            another one in the same step.
+                        </Description>
+                    </CheckboxContainer>
+                </>
             )}
 
-            <ProjectTypeSelector
-                value={formData.isLibrary}
-                onChange={(isLibrary) => onFormDataChange({ isLibrary })}
-            />
+            {showIntegrationFields && (
+                <>
+                    <ProjectTypeSelector
+                        value={formData.isLibrary}
+                        onChange={(isLibrary) => onFormDataChange({ isLibrary })}
+                    />
 
-            <FieldGroup>
-                <TextField
-                    onTextChange={handleIntegrationName}
-                    value={formData.integrationName}
-                    label={`${resourceTypeLabel} Name`}
-                    placeholder={`Enter a ${resourceTypeLabelLower} name`}
-                    autoFocus={isInProject}
-                    onFocus={(e) => (e.target as HTMLInputElement).select()}
-                    required={true}
-                    errorMsg={integrationNameError || ""}
-                />
-            </FieldGroup>
+                    <FieldGroup>
+                        <TextField
+                            onTextChange={handleIntegrationName}
+                            value={formData.integrationName}
+                            label={`${resourceTypeLabel} Name`}
+                            placeholder={`Enter a ${resourceTypeLabelLower} name`}
+                            autoFocus={isInProject}
+                            onFocus={(e) => (e.target as HTMLInputElement).select()}
+                            required={true}
+                            errorMsg={integrationNameError || ""}
+                        />
+                    </FieldGroup>
+                </>
+            )}
 
             <SectionDivider />
 
@@ -247,6 +272,7 @@ export function AddProjectFormFields({
                 organizations={organizations}
                 hasError={hasAdvancedConfigError}
                 isOrgLocked={isOrgLocked}
+                showPackageFields={showIntegrationFields}
             />
         </>
     );

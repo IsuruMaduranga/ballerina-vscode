@@ -42,6 +42,7 @@ export interface AddProjectToWorkspaceRequest {
     packageName: string;
     path: string;
     convertToWorkspace?: boolean;
+    addNewAfterConvert?: boolean;
     workspaceName?: string;
     orgName?: string;
     orgHandle?: string;

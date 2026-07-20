@@ -42,6 +42,7 @@ export function AddProjectForm() {
         isLibrary: false,
     });
     const [isInProject, setIsInProject] = useState<boolean>(false);
+    const [addNewAfterConvert, setAddNewAfterConvert] = useState<boolean>(false);
     const [targetPath, setTargetPath] = useState<string>("");
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [pathValidationError, setPathValidationError] = useState<string | null>(null);
@@ -49,6 +50,8 @@ export function AddProjectForm() {
     const [projectNameValidationError, setProjectNameValidationError] = useState<string | null>(null);
     const [projectHandlePathError, setProjectHandlePathError] = useState<string | null>(null);
     const resourceTypeLabel = formData.isLibrary ? "Library" : "Integration";
+    const isConvert = !isInProject;
+    const isConvertAndAdd = isConvert && addNewAfterConvert;
 
     const handleFormDataChange = useCallback((data: Partial<AddProjectFormData>) => {
         setFormData(prev => ({ ...prev, ...data }));
@@ -132,7 +135,8 @@ export function AddProjectForm() {
             rpcClient.getBIDiagramRpcClient().addProjectToWorkspace({
                 projectName: formData.integrationName,
                 packageName: formData.packageName,
-                convertToWorkspace: !isInProject,
+                convertToWorkspace: isConvert,
+                addNewAfterConvert: isConvertAndAdd,
                 path: targetPath,
                 workspaceName: formData.workspaceName,
                 orgName: formData.orgName || undefined,
@@ -159,9 +163,11 @@ export function AddProjectForm() {
                         <Icon name="bi-arrow-back" iconSx={{ color: "var(--vscode-foreground)" }} />
                     </IconButton>
                     <Typography variant="h2">
-                        {!isInProject
-                            ? `Convert to Project & Add New ${resourceTypeLabel}`
-                            : `Add New ${resourceTypeLabel}`}
+                        {isInProject
+                            ? `Add New ${resourceTypeLabel}`
+                            : isConvertAndAdd
+                                ? `Convert to Project & Add New ${resourceTypeLabel}`
+                                : "Convert to Project"}
                     </Typography>
                 </TitleContainer>
 
@@ -170,6 +176,8 @@ export function AddProjectForm() {
                         formData={formData}
                         onFormDataChange={handleFormDataChange}
                         isInProject={isInProject}
+                        addNewAfterConvert={addNewAfterConvert}
+                        onAddNewAfterConvertChange={setAddNewAfterConvert}
                         packageNameValidationError={packageNameValidationError || undefined}
                         projectNameValidationError={projectNameValidationError || undefined}
                         projectHandlePathError={projectHandlePathError || undefined}
@@ -190,20 +198,24 @@ export function AddProjectForm() {
                         </Typography>
                     )}
                     <Button
-                        disabled={!isFormValidAddProject(formData, isInProject) || isLoading}
+                        disabled={!isFormValidAddProject(formData, isInProject, addNewAfterConvert) || isLoading}
                         onClick={handleAddProject}
                         appearance="primary"
                     >
                         {isLoading ? (
                             <Typography variant="progress">
-                                {!isInProject
-                                    ? "Converting & Adding..."
-                                    : "Adding..."}
+                                {isInProject
+                                    ? "Adding..."
+                                    : isConvertAndAdd
+                                        ? "Converting & Adding..."
+                                        : "Converting..."}
                             </Typography>
                         ) : (
-                            !isInProject
-                                ? `Convert & Add ${resourceTypeLabel}`
-                                : `Add ${resourceTypeLabel}`
+                            isInProject
+                                ? `Add ${resourceTypeLabel}`
+                                : isConvertAndAdd
+                                    ? `Convert & Add ${resourceTypeLabel}`
+                                    : "Convert to Project"
                         )}
                     </Button>
                 </ButtonWrapper>
