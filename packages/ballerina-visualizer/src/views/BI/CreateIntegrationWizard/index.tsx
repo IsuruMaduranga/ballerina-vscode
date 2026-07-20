@@ -34,7 +34,7 @@ import { ArtifactCard } from "./artifactCatalog";
 import { BasicInfo, ScaffoldState, WizardStep } from "./types";
 import { useRealtimeProjectPathValidation } from "./hooks/useRealtimeProjectPathValidation";
 import { BasicInfoStep } from "./steps/BasicInfoStep";
-import { ArtifactTypeStep } from "./steps/ArtifactTypeStep";
+import { IntegrationTypeStep } from "./steps/IntegrationTypeStep";
 import { ConfigureStep } from "./steps/ConfigureStep";
 import { WizardFooter } from "./components/WizardFooter";
 
@@ -492,7 +492,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                         />
                     )}
                     {step === 1 && (
-                        <ArtifactTypeStep
+                        <IntegrationTypeStep
                             triggers={triggers}
                             selection={selection}
                             onSelect={(card) => {

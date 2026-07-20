@@ -58,6 +58,10 @@ export interface ArtifactCategory {
     key: string;
     title: string;
     description: string;
+    /** Short label shown in the category rail (falls back to `title`). */
+    shortTitle?: string;
+    /** Codicon name shown beside the rail label. */
+    icon?: string;
     /** Static cards and/or dynamic trigger markers, in display order. */
     cards: (ArtifactCard | DynamicCardSource)[];
 }
@@ -179,36 +183,48 @@ export const ARTIFACT_CATEGORIES: ArtifactCategory[] = [
     {
         key: "automation",
         title: "Automation",
+        shortTitle: "Automation",
+        icon: "sync",
         description: "Create an automation that can be invoked periodically or manually.",
         cards: [AUTOMATION_CARD],
     },
     {
         key: "workflow",
         title: "Workflow",
+        shortTitle: "Workflow",
+        icon: "type-hierarchy",
         description: "Create a workflow integration.",
         cards: [WORKFLOW_CARD],
     },
     {
         key: "ai-integration",
         title: "AI Integration",
+        shortTitle: "AI",
+        icon: "hubot",
         description: "Create an integration that connects your system with AI capabilities.",
         cards: [AI_CHAT_AGENT_CARD, "dynamic:mcp"],
     },
     {
         key: "integration-as-api",
         title: "Integration as API",
+        shortTitle: "API",
+        icon: "globe",
         description: "Create an integration that can be exposed as an API in the specified protocol.",
         cards: [...INTEGRATION_API_CARDS],
     },
     {
         key: "event-integration",
         title: "Event Integration",
+        shortTitle: "Event",
+        icon: "broadcast",
         description: "Create an integration that can be triggered by an event.",
         cards: ["dynamic:event"],
     },
     {
         key: "file-integration",
         title: "File Integration",
+        shortTitle: "File",
+        icon: "files",
         description: "Create an integration that can be triggered by the availability of files in a location.",
         cards: ["dynamic:file"],
     },
