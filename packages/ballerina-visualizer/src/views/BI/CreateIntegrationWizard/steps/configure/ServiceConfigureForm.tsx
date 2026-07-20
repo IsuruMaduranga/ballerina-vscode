@@ -36,6 +36,7 @@ import { PullingStatus, useServiceInitModel } from "../../hooks/useServiceInitMo
 import { ArtifactCard } from "../../artifactCatalog";
 
 const StatusContainer = styled.div`
+    flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -56,8 +57,23 @@ const StatusCard = styled.div`
     }
 `;
 
+/** Fills the step's full height so the nested ArtifactForm's `footerActionButton`
+ *  can pin the submit button to the bottom instead of trailing the fields. */
 const FormContainer = styled.div`
     max-width: 600px;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+`;
+
+const FormBody = styled.div`
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 `;
 
 /** Collect-only target range: the scaffolded main.bal is empty, and the range is
@@ -160,18 +176,20 @@ export function ServiceConfigureForm({ wsClient, projectRoot, selection, isSubmi
                 <FormContainer>
                     <FormHeader title={`Create ${model.displayName}`} />
                     {targetFilePath && (
-                        <ArtifactForm
-                            fileName={targetFilePath}
-                            targetLineRange={START_OF_FILE}
-                            fields={formFields}
-                            isSaving={isSubmitting}
-                            nestedForm={true}
-                            onSubmit={handleOnSubmit}
-                            onChange={handleOnChange}
-                            preserveFieldOrder={true}
-                            recordTypeFields={recordTypeFields}
-                            submitText="Create Integration"
-                        />
+                        <FormBody>
+                            <ArtifactForm
+                                fileName={targetFilePath}
+                                targetLineRange={START_OF_FILE}
+                                fields={formFields}
+                                isSaving={isSubmitting}
+                                footerActionButton={true}
+                                onSubmit={handleOnSubmit}
+                                onChange={handleOnChange}
+                                preserveFieldOrder={true}
+                                recordTypeFields={recordTypeFields}
+                                submitText="Create Integration"
+                            />
+                        </FormBody>
                     )}
                 </FormContainer>
             )}

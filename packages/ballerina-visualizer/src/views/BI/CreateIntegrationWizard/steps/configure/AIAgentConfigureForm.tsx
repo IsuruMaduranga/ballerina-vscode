@@ -21,11 +21,23 @@ import styled from "@emotion/styled";
 import { Button, TextField } from "@wso2/ui-toolkit";
 import { FormHeader } from "../../../../../components/FormHeader";
 
+/** Mirrors the height-filling + pinned-footer layout the other configure forms
+ *  get from ArtifactForm's `footerActionButton` mode, so all three "Create
+ *  Integration" buttons behave and align consistently. */
 const FormContainer = styled.div`
     max-width: 600px;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
 `;
 
 const FieldGroup = styled.div`
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -33,8 +45,11 @@ const FieldGroup = styled.div`
 `;
 
 const ActionRow = styled.div`
+    position: sticky;
+    bottom: 0;
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
+    width: 100%;
 `;
 
 interface AIAgentConfigureFormProps {
@@ -94,7 +109,12 @@ export function AIAgentConfigureForm({ isSubmitting, onSubmit }: AIAgentConfigur
                 />
             </FieldGroup>
             <ActionRow>
-                <Button appearance="primary" onClick={handleCreate} disabled={isSubmitting || !!nameError}>
+                <Button
+                    appearance="primary"
+                    onClick={handleCreate}
+                    disabled={isSubmitting || !!nameError}
+                    buttonSx={{ width: "100%", height: "35px" }}
+                >
                     Create Integration
                 </Button>
             </ActionRow>

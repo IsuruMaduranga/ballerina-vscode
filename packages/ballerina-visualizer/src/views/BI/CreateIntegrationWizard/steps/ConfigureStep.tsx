@@ -27,7 +27,17 @@ import { ServiceConfigureForm } from "./configure/ServiceConfigureForm";
 import { FunctionConfigureForm } from "./configure/FunctionConfigureForm";
 import { AIAgentConfigureForm } from "./configure/AIAgentConfigureForm";
 
+/** Fills the height handed down by the wizard's scroll area so the configure
+ *  forms below can pin their submit button to the bottom via `footerActionButton`. */
+const ConfigureStepContainer = styled.div`
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+`;
+
 const CenteredContainer = styled.div`
+    flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -51,64 +61,74 @@ interface ConfigureStepProps {
 export function ConfigureStep({ wsClient, selection, scaffold, isSubmitting, cachedServiceModel, onServiceModelLoaded, onSubmit }: ConfigureStepProps) {
     if (scaffold.status === "creating" || scaffold.status === "idle") {
         return (
-            <CenteredContainer>
-                <RelativeLoader message="Setting up your integration..." />
-            </CenteredContainer>
+            <ConfigureStepContainer>
+                <CenteredContainer>
+                    <RelativeLoader message="Setting up your integration..." />
+                </CenteredContainer>
+            </ConfigureStepContainer>
         );
     }
 
     if (scaffold.status === "error") {
         return (
-            <CenteredContainer>
-                {scaffold.error || "Failed to set up the integration. Please go back and try again."}
-            </CenteredContainer>
+            <ConfigureStepContainer>
+                <CenteredContainer>
+                    {scaffold.error || "Failed to set up the integration. Please go back and try again."}
+                </CenteredContainer>
+            </ConfigureStepContainer>
         );
     }
 
-    switch (selection.kind) {
-        case "service":
-            return (
-                <WizardRpcAdapterProvider wsClient={wsClient}>
-                    <ServiceConfigureForm
-                        wsClient={wsClient}
-                        projectRoot={scaffold.projectRoot}
-                        selection={selection}
-                        isSubmitting={isSubmitting}
-                        cachedModel={cachedServiceModel}
-                        onModelLoaded={onServiceModelLoaded}
-                        onSubmit={(serviceInitModel) =>
-                            onSubmit({ version: 1, kind: "SERVICE", serviceInitModel })
-                        }
-                    />
-                </WizardRpcAdapterProvider>
-            );
-        case "automation":
-        case "workflow":
-            return (
-                <WizardRpcAdapterProvider wsClient={wsClient}>
-                    <FunctionConfigureForm
-                        wsClient={wsClient}
-                        projectRoot={scaffold.projectRoot}
-                        kind={selection.kind}
-                        isSubmitting={isSubmitting}
-                        onSubmit={(flowNode) =>
-                            onSubmit({
-                                version: 1,
-                                kind: selection.kind === "automation" ? "AUTOMATION" : "WORKFLOW",
-                                flowNode,
-                            })
-                        }
-                    />
-                </WizardRpcAdapterProvider>
-            );
-        case "ai-agent":
-            return (
-                <AIAgentConfigureForm
-                    isSubmitting={isSubmitting}
-                    onSubmit={(name) => onSubmit({ version: 1, kind: "AI_CHAT_AGENT", aiAgent: { name } })}
-                />
-            );
-        default:
-            return null;
-    }
+    return (
+        <ConfigureStepContainer>
+            {(() => {
+                switch (selection.kind) {
+                    case "service":
+                        return (
+                            <WizardRpcAdapterProvider wsClient={wsClient}>
+                                <ServiceConfigureForm
+                                    wsClient={wsClient}
+                                    projectRoot={scaffold.projectRoot}
+                                    selection={selection}
+                                    isSubmitting={isSubmitting}
+                                    cachedModel={cachedServiceModel}
+                                    onModelLoaded={onServiceModelLoaded}
+                                    onSubmit={(serviceInitModel) =>
+                                        onSubmit({ version: 1, kind: "SERVICE", serviceInitModel })
+                                    }
+                                />
+                            </WizardRpcAdapterProvider>
+                        );
+                    case "automation":
+                    case "workflow":
+                        return (
+                            <WizardRpcAdapterProvider wsClient={wsClient}>
+                                <FunctionConfigureForm
+                                    wsClient={wsClient}
+                                    projectRoot={scaffold.projectRoot}
+                                    kind={selection.kind}
+                                    isSubmitting={isSubmitting}
+                                    onSubmit={(flowNode) =>
+                                        onSubmit({
+                                            version: 1,
+                                            kind: selection.kind === "automation" ? "AUTOMATION" : "WORKFLOW",
+                                            flowNode,
+                                        })
+                                    }
+                                />
+                            </WizardRpcAdapterProvider>
+                        );
+                    case "ai-agent":
+                        return (
+                            <AIAgentConfigureForm
+                                isSubmitting={isSubmitting}
+                                onSubmit={(name) => onSubmit({ version: 1, kind: "AI_CHAT_AGENT", aiAgent: { name } })}
+                            />
+                        );
+                    default:
+                        return null;
+                }
+            })()}
+        </ConfigureStepContainer>
+    );
 }

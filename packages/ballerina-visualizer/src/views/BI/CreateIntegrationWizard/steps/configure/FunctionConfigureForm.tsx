@@ -27,14 +27,30 @@ import { convertConfig } from "../../../../../utils/bi";
 import { BiWsClient } from "../../../wsManager/WsClient";
 
 const LoaderContainer = styled.div`
+    flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
     padding: 48px 0;
 `;
 
+/** Fills the step's full height so the nested ArtifactForm's `footerActionButton`
+ *  can pin the submit button to the bottom instead of trailing the fields. */
 const FormContainer = styled.div`
     max-width: 600px;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+`;
+
+const FormBody = styled.div`
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 `;
 
 /** The scaffold's functions file — the same default target the in-project
@@ -135,16 +151,18 @@ export function FunctionConfigureForm({ wsClient, projectRoot, kind, isSubmittin
     return (
         <FormContainer>
             <FormHeader title={`Create ${title}`} />
-            <ArtifactForm
-                fileName={targetFilePath}
-                targetLineRange={START_OF_FILE}
-                fields={formFields}
-                isSaving={isSubmitting}
-                nestedForm={true}
-                onSubmit={handleOnSubmit}
-                preserveFieldOrder={true}
-                submitText="Create Integration"
-            />
+            <FormBody>
+                <ArtifactForm
+                    fileName={targetFilePath}
+                    targetLineRange={START_OF_FILE}
+                    fields={formFields}
+                    isSaving={isSubmitting}
+                    footerActionButton={true}
+                    onSubmit={handleOnSubmit}
+                    preserveFieldOrder={true}
+                    submitText="Create Integration"
+                />
+            </FormBody>
         </FormContainer>
     );
 }
