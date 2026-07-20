@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { useMemo, type KeyboardEvent } from "react";
 import styled from "@emotion/styled";
 import { ThemeColors, Typography } from "@wso2/ui-toolkit";
 import { TriggerModelsResponse } from "@wso2/ballerina-core";
@@ -74,6 +75,13 @@ interface ArtifactTypeStepProps {
  * (ComponentListView) but SELECTS a card instead of navigating; the highlight
  * uses ButtonCard's built-in `active` state.
  */
+const ARROW_KEY_DELTAS: Record<string, number> = {
+    ArrowRight: 1,
+    ArrowDown: 1,
+    ArrowLeft: -1,
+    ArrowUp: -1,
+};
+
 export function ArtifactTypeStep({ triggers, selection, onSelect }: ArtifactTypeStepProps) {
     const resolveCards = (cards: (ArtifactCard | DynamicCardSource)[]): { cards: ArtifactCard[]; loading: boolean } => {
         const resolved: ArtifactCard[] = [];
@@ -93,38 +101,66 @@ export function ArtifactTypeStep({ triggers, selection, onSelect }: ArtifactType
         return { cards: resolved, loading };
     };
 
+    const categories = ARTIFACT_CATEGORIES.map((category) => ({
+        category,
+        ...resolveCards(category.cards),
+    }));
+
+    // Flat, category-ordered list of every card actually rendered, used to move
+    // focus between cards (including across category boundaries) with arrow keys.
+    const allCards = useMemo(
+        () => categories.flatMap(({ cards }) => cards),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [triggers]
+    );
+
+    /** Moves focus to the previous/next card in display order on arrow keys;
+     *  Tab/Shift+Tab and Enter/Space (card selection) are left to the browser
+     *  and ButtonCard respectively. */
+    const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+        const delta = ARROW_KEY_DELTAS[event.key];
+        if (delta === undefined || allCards.length === 0) {
+            return;
+        }
+        const currentId = (event.target as HTMLElement)?.id;
+        const currentIndex = allCards.findIndex((card) => card.id === currentId);
+        if (currentIndex === -1) {
+            return;
+        }
+        event.preventDefault();
+        const nextIndex = (currentIndex + delta + allCards.length) % allCards.length;
+        document.getElementById(allCards[nextIndex].id)?.focus();
+    };
+
     return (
-        <>
-            {ARTIFACT_CATEGORIES.map((category) => {
-                const { cards, loading } = resolveCards(category.cards);
-                return (
-                    <CategorySection key={category.key}>
-                        <CategoryTitle variant="h4">{category.title}</CategoryTitle>
-                        <CategoryDescription variant="body3">{category.description}</CategoryDescription>
-                        {cards.length > 0 && (
-                            <CardGrid>
-                                {cards.map((card) => (
-                                    <ButtonCard
-                                        key={card.id}
-                                        id={card.id}
-                                        title={card.displayName}
-                                        icon={card.icon}
-                                        isBeta={card.isBeta}
-                                        active={selection?.id === card.id}
-                                        truncate={true}
-                                        onClick={() => onSelect(card)}
-                                    />
-                                ))}
-                            </CardGrid>
-                        )}
-                        {loading && (
-                            <LoaderRow>
-                                <RelativeLoader />
-                            </LoaderRow>
-                        )}
-                    </CategorySection>
-                );
-            })}
-        </>
+        <div onKeyDown={handleKeyDown}>
+            {categories.map(({ category, cards, loading }) => (
+                <CategorySection key={category.key}>
+                    <CategoryTitle variant="h4">{category.title}</CategoryTitle>
+                    <CategoryDescription variant="body3">{category.description}</CategoryDescription>
+                    {cards.length > 0 && (
+                        <CardGrid>
+                            {cards.map((card) => (
+                                <ButtonCard
+                                    key={card.id}
+                                    id={card.id}
+                                    title={card.displayName}
+                                    icon={card.icon}
+                                    isBeta={card.isBeta}
+                                    active={selection?.id === card.id}
+                                    truncate={true}
+                                    onClick={() => onSelect(card)}
+                                />
+                            ))}
+                        </CardGrid>
+                    )}
+                    {loading && (
+                        <LoaderRow>
+                            <RelativeLoader />
+                        </LoaderRow>
+                    )}
+                </CategorySection>
+            ))}
+        </div>
     );
 }
