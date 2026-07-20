@@ -145,7 +145,14 @@ export function getUsername(): string {
  * @param createAsWorkspace - Whether this is a workspace project creation
  * @returns Validation result with error message and field information if invalid
  */
-export function validateProjectPath(projectPath: string, projectName: string, createDirectory: boolean, createAsWorkspace?: boolean, directoryName?: string): { isValid: boolean; errorMessage?: string; errorField?: ValidateProjectFormErrorField } {
+export function validateProjectPath(
+    projectPath: string,
+    projectName: string,
+    createDirectory: boolean,
+    createAsWorkspace?: boolean, 
+    directoryName?: string,
+    allowExistingDirectory?: boolean
+): { isValid: boolean; errorMessage?: string; errorField?: ValidateProjectFormErrorField } {
     try {
         // Check if projectPath is provided and not empty
         if (!projectPath || projectPath.trim() === '') {
@@ -179,11 +186,22 @@ export function validateProjectPath(projectPath: string, projectName: string, cr
             if (fs.existsSync(ballerinaTomlPath)) {
                 return { isValid: false, errorMessage: 'Existing Ballerina project detected in the selected directory', errorField: ValidateProjectFormErrorField.PATH };
             }
-        } else {
-            // If creating a new directory, check if it already exists. This is a
-            // path-level conflict (the target folder), so it is surfaced under the
-            // path field rather than the name field.
-            if (fs.existsSync(finalPath)) {
+        } else if (fs.existsSync(finalPath)) {
+            // The target directory already exists. When the caller allows creating
+            // into an existing directory (the integration wizard, where the path
+            // field is the exact project root), this is only a conflict if the
+            // directory already contains a Ballerina project; otherwise the
+            // project files are created in place. Either way this is a path-level
+            // concern, surfaced under the path field.
+            if (allowExistingDirectory) {
+                const ballerinaTomlPath = path.join(finalPath, 'Ballerina.toml');
+                if (fs.existsSync(ballerinaTomlPath)) {
+                    // TODO: Check if the existing project is a Ballerina workspace. 
+                    // If it is, create the new integration/library within the workspace 
+                    // and update the workspace toml file.
+                    return { isValid: false, errorMessage: 'An integration/library already exists in the selected directory', errorField: ValidateProjectFormErrorField.PATH };
+                }
+            } else {
                 return { isValid: false, errorMessage: `A directory with this name already exists at the selected location`, errorField: ValidateProjectFormErrorField.PATH};
             }
         }
@@ -665,7 +683,22 @@ async function createProjectInWorkspace(params: AddProjectToWorkspaceRequest, wo
 }
 
 export function openInVSCode(projectRoot: string) {
-    commands.executeCommand('vscode.openFolder', Uri.file(path.resolve(projectRoot)));
+    const resolvedRoot = path.resolve(projectRoot);
+
+    // `vscode.openFolder` is a no-op when the target is already the open workspace
+    // folder — the window would not reload and any caller awaiting the reload (e.g.
+    // the Create Integration wizard) would hang. This happens when the project is
+    // created in place inside a directory that is already open. In that case reload
+    // the window so the extension re-initialises the folder as a Ballerina project.
+    const alreadyOpen = (workspace.workspaceFolders ?? []).some(
+        (folder) => path.resolve(folder.uri.fsPath) === resolvedRoot
+    );
+    if (alreadyOpen) {
+        commands.executeCommand('workbench.action.reloadWindow');
+        return;
+    }
+
+    commands.executeCommand('vscode.openFolder', Uri.file(resolvedRoot));
 }
 
 export async function createBIProjectFromMigration(params: MigrateRequest) {

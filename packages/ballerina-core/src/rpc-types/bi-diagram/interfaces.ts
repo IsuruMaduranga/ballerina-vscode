@@ -236,6 +236,9 @@ export interface ValidateProjectFormRequest {
     createDirectory: boolean;
     createAsWorkspace?: boolean;
     directoryName?: string;
+    /** Allow the target directory to already exist (as long as it is not already a
+     *  Ballerina project), so the project can be created in place. */
+    allowExistingDirectory?: boolean;
 }
 
 export interface SuggestedProjectDefaultsResponse {

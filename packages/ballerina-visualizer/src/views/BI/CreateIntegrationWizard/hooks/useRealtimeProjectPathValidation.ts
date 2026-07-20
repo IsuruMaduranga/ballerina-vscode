@@ -31,6 +31,7 @@ export interface ProjectPathValidationClient {
         createDirectory: boolean;
         createAsWorkspace?: boolean;
         directoryName?: string;
+        allowExistingDirectory?: boolean;
     }): Promise<{
         isValid: boolean;
         errorField?: ValidateProjectFormErrorField;
@@ -48,6 +49,8 @@ interface RealtimeProjectPathValidationOptions {
     invalidPathMessage: string;
     onPathErrorChange: (error: string | null) => void;
     directoryName?: string;
+    /** Allow the target directory to already exist (unless it is a Ballerina project). */
+    allowExistingDirectory?: boolean;
 }
 
 export function useRealtimeProjectPathValidation({
@@ -60,6 +63,7 @@ export function useRealtimeProjectPathValidation({
     invalidPathMessage,
     onPathErrorChange,
     directoryName,
+    allowExistingDirectory,
 }: RealtimeProjectPathValidationOptions) {
     const validationRequestId = useRef(0);
     const debouncedValidatePath = useMemo(
@@ -69,6 +73,7 @@ export function useRealtimeProjectPathValidation({
             trimmedProjectName: string,
             validateAsWorkspace: boolean,
             folderName: string | undefined,
+            allowExisting: boolean | undefined,
         ) => {
             try {
                 const validationResult = await wsClient.validateProjectPath({
@@ -77,6 +82,7 @@ export function useRealtimeProjectPathValidation({
                     createDirectory: true,
                     createAsWorkspace: validateAsWorkspace,
                     directoryName: folderName,
+                    allowExistingDirectory: allowExisting,
                 });
 
                 if (validationRequestId.current !== requestId) {
@@ -126,12 +132,13 @@ export function useRealtimeProjectPathValidation({
 
         const requestId = validationRequestId.current + 1;
         validationRequestId.current = requestId;
-        debouncedValidatePath(requestId, trimmedPath, trimmedProjectName, createAsWorkspace, directoryName?.trim() || undefined);
+        debouncedValidatePath(requestId, trimmedPath, trimmedProjectName, createAsWorkspace, directoryName?.trim() || undefined, allowExistingDirectory);
 
         return () => {
             debouncedValidatePath.cancel();
         };
     }, [
+        allowExistingDirectory,
         createAsWorkspace,
         debouncedValidatePath,
         directoryName,

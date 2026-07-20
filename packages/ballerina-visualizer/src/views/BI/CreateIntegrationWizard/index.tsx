@@ -191,8 +191,13 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
     const packageName = sanitizePackageName(effectiveName) || "untitled";
     // The name-derived default for the directory segment (empty until a name is typed).
     const autoDirectoryName = basicInfo.integrationName.trim() ? sanitizePackageName(basicInfo.integrationName) : "";
-    // The folder actually created: the user's edited segment, or the derived default.
-    const effectiveDirectoryName = basicInfo.directoryName.trim() || packageName;
+    // The folder segment actually used. When the user has taken manual control of
+    // the path, it is honored exactly — including an empty segment, which means
+    // "create the integration directly in the parent directory" (no new folder).
+    // Otherwise it falls back to the name-derived package name.
+    const effectiveDirectoryName = basicInfo.dirTouched
+        ? basicInfo.directoryName.trim()
+        : basicInfo.directoryName.trim() || packageName;
     // Full creation path shown in the path field.
     const fullPath = joinPath(basicInfo.baseDir, basicInfo.directoryName);
 
@@ -242,6 +247,9 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
         invalidPathMessage: INVALID_PATH_MESSAGE,
         onPathErrorChange: useCallback((error: string | null) => setPathError(error), []),
         directoryName: effectiveDirectoryName,
+        // The path field is the exact project root — allow creating into an
+        // existing (non-Ballerina) directory instead of forcing a new folder.
+        allowExistingDirectory: true,
     });
 
     /** Integration name change — also re-derives the directory segment while the
@@ -297,6 +305,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                 projectName: packageName,
                 createDirectory: true,
                 directoryName: effectiveDirectoryName,
+                allowExistingDirectory: true,
             });
             if (!result.isValid) {
                 if (result.errorField === ValidateProjectFormErrorField.NAME) {

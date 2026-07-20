@@ -754,7 +754,14 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
         const basePath = params.createAsWorkspace
             ? path.dirname(StateMachine.context().projectPath)
             : params.projectPath;
-        return validateProjectPath(basePath, params.projectName, params.createDirectory, params.createAsWorkspace, params.directoryName);
+        return validateProjectPath(
+            basePath,
+            params.projectName,
+            params.createDirectory,
+            params.createAsWorkspace,
+            params.directoryName,
+            params.allowExistingDirectory
+        );
     }
 
     async deleteProject(params: DeleteProjectRequest): Promise<void> {

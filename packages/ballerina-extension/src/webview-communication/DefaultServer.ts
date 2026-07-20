@@ -251,7 +251,7 @@ export class DefaultServer {
         // ── Project creation ──────────────────────────────────
         this.register("createBIProject", (p) => createBIProject(p));
         this.register("validateProjectPath", (p) =>
-            validateProjectPath(p.projectPath, p.projectName, p.createDirectory, p.createAsWorkspace, p.directoryName),
+            validateProjectPath(p.projectPath, p.projectName, p.createDirectory, p.createAsWorkspace, p.directoryName, p.allowExistingDirectory),
         );
         this.register("selectFileOrDirPath", (p) => common.selectFileOrDirPath(p));
         this.register("selectFileOrFolderPath", () => common.selectFileOrFolderPath());
