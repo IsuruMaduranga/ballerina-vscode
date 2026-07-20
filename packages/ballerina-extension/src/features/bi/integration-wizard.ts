@@ -99,6 +99,7 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
         projectName: params.project.integrationName,
         packageName: params.project.packageName,
         projectPath: params.project.projectPath,
+        directoryName: params.project.directoryName,
         createDirectory: true,
     };
     const projectRoot = await createBIProjectPure(projectRequest);

@@ -145,7 +145,7 @@ export function getUsername(): string {
  * @param createAsWorkspace - Whether this is a workspace project creation
  * @returns Validation result with error message and field information if invalid
  */
-export function validateProjectPath(projectPath: string, projectName: string, createDirectory: boolean, createAsWorkspace?: boolean): { isValid: boolean; errorMessage?: string; errorField?: ValidateProjectFormErrorField } {
+export function validateProjectPath(projectPath: string, projectName: string, createDirectory: boolean, createAsWorkspace?: boolean, directoryName?: string): { isValid: boolean; errorMessage?: string; errorField?: ValidateProjectFormErrorField } {
     try {
         // Check if projectPath is provided and not empty
         if (!projectPath || projectPath.trim() === '') {
@@ -166,8 +166,12 @@ export function validateProjectPath(projectPath: string, projectName: string, cr
             }
         }
 
-        // Determine the final project path
-        const finalPath = createDirectory ? path.join(projectPath, sanitizeName(projectName)) : projectPath;
+        // Determine the final project path. When the caller supplies an explicit
+        // directory name (the editable last path segment, decoupled from the
+        // package name), it is used verbatim; otherwise fall back to deriving the
+        // folder from the sanitized project name for backwards compatibility.
+        const folderSegment = directoryName ?? sanitizeName(projectName);
+        const finalPath = createDirectory ? path.join(projectPath, folderSegment) : projectPath;
 
         // If not creating a new directory, check if the target directory already has a Ballerina project
         if (!createDirectory) {
@@ -176,9 +180,11 @@ export function validateProjectPath(projectPath: string, projectName: string, cr
                 return { isValid: false, errorMessage: 'Existing Ballerina project detected in the selected directory', errorField: ValidateProjectFormErrorField.PATH };
             }
         } else {
-            // If creating a new directory, check if it already exists
+            // If creating a new directory, check if it already exists. This is a
+            // path-level conflict (the target folder), so it is surfaced under the
+            // path field rather than the name field.
             if (fs.existsSync(finalPath)) {
-                return { isValid: false, errorMessage: `A directory with this name already exists at the selected location`, errorField: ValidateProjectFormErrorField.NAME};
+                return { isValid: false, errorMessage: `A directory with this name already exists at the selected location`, errorField: ValidateProjectFormErrorField.PATH};
             }
         }
 
@@ -295,9 +301,14 @@ function getBallerinaDistribution(): string | undefined {
  */
 function setupProjectInfo(projectRequest: ProjectRequest): ProcessedProjectInfo {
     const sanitizedPackageName = sanitizeName(projectRequest.packageName);
+    // The folder the project is created in. When the caller provides an explicit
+    // directory name (the editable last path segment), it is used verbatim so the
+    // directory can differ from the Ballerina package name; otherwise the folder
+    // is derived from the package name (legacy behaviour).
+    const folderName = projectRequest.directoryName ?? sanitizedPackageName;
     const projectRoot = resolveProjectPath(
         projectRequest.projectPath,
-        sanitizedPackageName,
+        folderName,
         projectRequest.createDirectory
     );
     const finalOrgName = projectRequest.orgName || getUsername();

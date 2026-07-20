@@ -18,7 +18,6 @@
 
 import styled from "@emotion/styled";
 import { DirectorySelector, TextField } from "@wso2/ui-toolkit";
-import { BasicInfo } from "../types";
 
 const FieldGroup = styled.div`
     display: flex;
@@ -28,21 +27,39 @@ const FieldGroup = styled.div`
 `;
 
 interface BasicInfoStepProps {
-    basicInfo: BasicInfo;
+    integrationName: string;
+    /** Full creation path shown in the field: `<baseDir>/<directoryName>`. */
+    fullPath: string;
     nameError: string | null;
     pathError: string | null;
-    onChange: (update: Partial<BasicInfo>) => void;
+    onNameChange: (value: string) => void;
+    /** Fired when the path field text changes; the parent re-splits it into
+     *  parent directory + directory name. */
+    onPathChange: (value: string) => void;
     onBrowse: () => Promise<void>;
 }
 
-/** Step 1 — integration name and the parent directory it is created under. */
-export function BasicInfoStep({ basicInfo, nameError, pathError, onChange, onBrowse }: BasicInfoStepProps) {
+/**
+ * Step 1 — integration name and the full path the integration is created at.
+ * The path field shows the complete target directory (`<parent>/<folder>`); its
+ * last segment defaults to the integration name and stays editable and
+ * independent of the Ballerina package name.
+ */
+export function BasicInfoStep({
+    integrationName,
+    fullPath,
+    nameError,
+    pathError,
+    onNameChange,
+    onPathChange,
+    onBrowse,
+}: BasicInfoStepProps) {
     return (
         <>
             <FieldGroup>
                 <TextField
-                    onTextChange={(value: string) => onChange({ integrationName: value })}
-                    value={basicInfo.integrationName}
+                    onTextChange={onNameChange}
+                    value={integrationName}
                     label="Integration Name"
                     placeholder="Enter an integration name"
                     autoFocus={true}
@@ -55,10 +72,10 @@ export function BasicInfoStep({ basicInfo, nameError, pathError, onChange, onBro
                     id="integration-folder-selector"
                     label="Select Path"
                     placeholder="Enter path or browse to select a folder..."
-                    selectedPath={basicInfo.path}
+                    selectedPath={fullPath}
                     required={true}
                     onSelect={onBrowse}
-                    onChange={(value: string) => onChange({ path: value, pathTouched: true })}
+                    onChange={onPathChange}
                     errorMsg={pathError || undefined}
                 />
             </FieldGroup>

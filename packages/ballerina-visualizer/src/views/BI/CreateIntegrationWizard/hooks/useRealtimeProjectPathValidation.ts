@@ -30,6 +30,7 @@ export interface ProjectPathValidationClient {
         projectName: string;
         createDirectory: boolean;
         createAsWorkspace?: boolean;
+        directoryName?: string;
     }): Promise<{
         isValid: boolean;
         errorField?: ValidateProjectFormErrorField;
@@ -46,6 +47,7 @@ interface RealtimeProjectPathValidationOptions {
     requiredPathMessage: string;
     invalidPathMessage: string;
     onPathErrorChange: (error: string | null) => void;
+    directoryName?: string;
 }
 
 export function useRealtimeProjectPathValidation({
@@ -57,6 +59,7 @@ export function useRealtimeProjectPathValidation({
     requiredPathMessage,
     invalidPathMessage,
     onPathErrorChange,
+    directoryName,
 }: RealtimeProjectPathValidationOptions) {
     const validationRequestId = useRef(0);
     const debouncedValidatePath = useMemo(
@@ -65,6 +68,7 @@ export function useRealtimeProjectPathValidation({
             trimmedPath: string,
             trimmedProjectName: string,
             validateAsWorkspace: boolean,
+            folderName: string | undefined,
         ) => {
             try {
                 const validationResult = await wsClient.validateProjectPath({
@@ -72,6 +76,7 @@ export function useRealtimeProjectPathValidation({
                     projectName: trimmedProjectName,
                     createDirectory: true,
                     createAsWorkspace: validateAsWorkspace,
+                    directoryName: folderName,
                 });
 
                 if (validationRequestId.current !== requestId) {
@@ -121,7 +126,7 @@ export function useRealtimeProjectPathValidation({
 
         const requestId = validationRequestId.current + 1;
         validationRequestId.current = requestId;
-        debouncedValidatePath(requestId, trimmedPath, trimmedProjectName, createAsWorkspace);
+        debouncedValidatePath(requestId, trimmedPath, trimmedProjectName, createAsWorkspace, directoryName?.trim() || undefined);
 
         return () => {
             debouncedValidatePath.cancel();
@@ -129,6 +134,7 @@ export function useRealtimeProjectPathValidation({
     }, [
         createAsWorkspace,
         debouncedValidatePath,
+        directoryName,
         invalidPathMessage,
         onPathErrorChange,
         pathTouched,

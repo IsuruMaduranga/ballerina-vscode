@@ -26,6 +26,7 @@ export interface ProjectRequest {
     projectName?: string;
     packageName?: string;
     projectPath: string;
+    directoryName?: string;
     createDirectory: boolean;
     createAsWorkspace?: boolean;
     workspaceName?: string;
@@ -234,6 +235,7 @@ export interface ValidateProjectFormRequest {
     projectName: string;
     createDirectory: boolean;
     createAsWorkspace?: boolean;
+    directoryName?: string;
 }
 
 export interface SuggestedProjectDefaultsResponse {

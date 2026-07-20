@@ -144,6 +144,31 @@ export const sanitizePackageName = (name: string): string => {
         .replace(/_{2,}/g, "_"); // Convert multiple consecutive underscores to single underscore
 };
 
+/**
+ * Cross-platform path join for webview display. Detects the separator from the
+ * base string (defaults to "/"). Returns the base unchanged when `name` is empty.
+ */
+export const joinPath = (base: string, name: string): string => {
+    if (!base) return name;
+    if (!name) return base;
+    const sep = base.includes("\\") ? "\\" : "/";
+    const trimmed = base.endsWith("/") || base.endsWith("\\") ? base.slice(0, -1) : base;
+    return `${trimmed}${sep}${name}`;
+};
+
+/**
+ * Splits a full path into its parent directory and last segment (the directory
+ * name), handling both POSIX and Windows separators. A trailing separator yields
+ * an empty `name`.
+ */
+export const splitPath = (fullPath: string): { base: string; name: string } => {
+    const lastSep = Math.max(fullPath.lastIndexOf("/"), fullPath.lastIndexOf("\\"));
+    if (lastSep < 0) return { base: "", name: fullPath };
+    // Preserve the root separator (e.g. "/" or "C:\") as the base.
+    const base = lastSep === 0 ? fullPath.slice(0, 1) : fullPath.slice(0, lastSep);
+    return { base, name: fullPath.slice(lastSep + 1) };
+};
+
 // Reserved organization names
 const RESERVED_ORG_NAMES = ["ballerina", "ballerinax", "wso2"];
 

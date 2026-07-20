@@ -28,6 +28,8 @@ import {
     validatePackageName,
     validateOrgName,
     joinPath,
+    splitPath,
+    extractBase,
     sanitizeProjectHandle,
     sanitizeOrgHandle,
     validateProjectHandle,
@@ -37,7 +39,7 @@ import {
 import { WICommandIds } from "./shims/platform-core";
 import { DirectorySelector } from "./components/DirectorySelector/DirectorySelector";
 import { AdvancedConfigurationSection } from "./components";
-import { SectionDivider, Description, ResolvedPathText, ProjectSectionContainer, ProjectSectionLabel, ProjectFieldCollapse, SkipOptionRow, CloudErrorActionRow, ActionLink } from "./styles";
+import { SectionDivider, Description, ProjectSectionContainer, ProjectSectionLabel, ProjectFieldCollapse, SkipOptionRow, CloudErrorActionRow, ActionLink } from "./styles";
 import { ValidateProjectFormErrorField } from "./shims/wi-core";
 import {
     PageBackdrop,
@@ -557,12 +559,25 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
                                     id="library-folder-selector"
                                     label="Select Path"
                                     placeholder="Browse to select a folder..."
-                                    selectedPath={editablePath}
+                                    selectedPath={resolvedPath}
                                     required={true}
                                     onSelect={handlePathSelection}
                                     onChange={(value) => {
+                                        // The field shows the full target path; its last
+                                        // segment is the package folder (editable and kept
+                                        // in sync with the package name). The parent is
+                                        // recovered by stripping the composed suffix
+                                        // (package, plus the project ID in project mode).
+                                        const { name } = splitPath(value);
+                                        let base = extractBase(value, name);
+                                        if (createWithinProject && withinProjectHandle) {
+                                            base = extractBase(base, withinProjectHandle);
+                                        }
                                         setPathTouched(true);
-                                        setEditablePath(value);
+                                        setEditablePath(base);
+                                        setPackageNameTouched(true);
+                                        setFormData(prev => ({ ...prev, packageName: name }));
+                                        if (packageNameError) setPackageNameError(null);
                                     }}
                                     onBlur={() => {
                                         if (pathTouched && editablePath !== formData.path) {
@@ -571,9 +586,6 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
                                     }}
                                     errorMsg={pathError || undefined}
                                 />
-                                {resolvedPath && resolvedPath !== editablePath && (
-                                    <ResolvedPathText>Will be created at: {resolvedPath}</ResolvedPathText>
-                                )}
                             </FieldGroup>
 
                             <SectionDivider />

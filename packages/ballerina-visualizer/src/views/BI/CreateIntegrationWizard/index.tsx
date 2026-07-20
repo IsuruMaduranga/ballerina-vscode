@@ -29,7 +29,7 @@ import {
 import { useBiWsContext } from "../wsManager/WsClientContext";
 import { HeaderRow, HeaderSubtitle, HeaderText, IconButton } from "../ImportIntegration/styles";
 import { BackButtonSlot, StepBody, StepScrollArea, WizardPage, WizardTopBar } from "./styles";
-import { sanitizePackageName, validateComponentName } from "../ProjectForm/utils";
+import { joinPath, sanitizePackageName, splitPath, validateComponentName } from "../ProjectForm/utils";
 import { ArtifactCard } from "./artifactCatalog";
 import { BasicInfo, ScaffoldState, WizardStep } from "./types";
 import { useRealtimeProjectPathValidation } from "./hooks/useRealtimeProjectPathValidation";
@@ -70,7 +70,13 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
     const { wsClient, onBack } = useBiWsContext();
 
     const [step, setStep] = useState<WizardStep>(0);
-    const [basicInfo, setBasicInfo] = useState<BasicInfo>({ integrationName: "", path: "", pathTouched: false });
+    const [basicInfo, setBasicInfo] = useState<BasicInfo>({
+        integrationName: "",
+        baseDir: "",
+        directoryName: "",
+        dirTouched: false,
+        pathTouched: false,
+    });
     const [nameError, setNameError] = useState<string | null>(null);
     const [pathError, setPathError] = useState<string | null>(null);
     const [triggers, setTriggers] = useState<TriggerModelsResponse | null>(null);
@@ -183,6 +189,12 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
 
     const effectiveName = basicInfo.integrationName.trim() || DEFAULT_INTEGRATION_NAME;
     const packageName = sanitizePackageName(effectiveName) || "untitled";
+    // The name-derived default for the directory segment (empty until a name is typed).
+    const autoDirectoryName = basicInfo.integrationName.trim() ? sanitizePackageName(basicInfo.integrationName) : "";
+    // The folder actually created: the user's edited segment, or the derived default.
+    const effectiveDirectoryName = basicInfo.directoryName.trim() || packageName;
+    // Full creation path shown in the path field.
+    const fullPath = joinPath(basicInfo.baseDir, basicInfo.directoryName);
 
     useEffect(() => {
         // Discard any temp staging package left by a previously abandoned session
@@ -197,7 +209,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
         wsClient
             .getDefaultCreationPath()
             .then((res: { path: string }) => {
-                setBasicInfo((prev) => (prev.path ? prev : { ...prev, path: res.path }));
+                setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: res.path }));
             })
             .catch((error: unknown) => console.error(">>> Error fetching default creation path", error));
 
@@ -219,27 +231,53 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
 
     useRealtimeProjectPathValidation({
         wsClient,
-        projectPath: basicInfo.path,
+        projectPath: basicInfo.baseDir,
         projectName: packageName,
         createAsWorkspace: false,
-        pathTouched: basicInfo.pathTouched,
+        // Validate as soon as there is a real target — i.e. once a name (and thus a
+        // directory segment) has been entered, even before the path is edited — so
+        // a "directory already exists" conflict surfaces live under the path field.
+        pathTouched: basicInfo.pathTouched || basicInfo.directoryName.trim().length > 0,
         requiredPathMessage: REQUIRED_PATH_MESSAGE,
         invalidPathMessage: INVALID_PATH_MESSAGE,
         onPathErrorChange: useCallback((error: string | null) => setPathError(error), []),
+        directoryName: effectiveDirectoryName,
     });
 
-    const handleBasicInfoChange = (update: Partial<BasicInfo>) => {
-        setBasicInfo((prev) => ({ ...prev, ...update }));
-        if (update.integrationName !== undefined) {
-            setNameError(validateComponentName(update.integrationName, false));
-        }
+    /** Integration name change — also re-derives the directory segment while the
+     *  user has not taken manual control of it. */
+    const handleNameChange = (value: string) => {
+        setBasicInfo((prev) => ({
+            ...prev,
+            integrationName: value,
+            directoryName: prev.dirTouched
+                ? prev.directoryName
+                : value.trim()
+                    ? sanitizePackageName(value)
+                    : "",
+        }));
+        setNameError(validateComponentName(value, false));
+    };
+
+    /** Path field edit — re-split into parent directory + directory name. Editing
+     *  the last segment away from the name-derived default takes manual control of
+     *  it (so subsequent name edits no longer overwrite it). */
+    const handlePathChange = (value: string) => {
+        const { base, name } = splitPath(value);
+        setBasicInfo((prev) => ({
+            ...prev,
+            baseDir: base,
+            directoryName: name,
+            dirTouched: name !== autoDirectoryName,
+            pathTouched: true,
+        }));
     };
 
     const handleBrowse = async () => {
         try {
             const res = await wsClient.selectFileOrDirPath({});
             if (res?.path) {
-                setBasicInfo((prev) => ({ ...prev, path: res.path, pathTouched: true }));
+                setBasicInfo((prev) => ({ ...prev, baseDir: res.path, pathTouched: true }));
             }
         } catch (error) {
             console.error(">>> Error selecting directory", error);
@@ -248,7 +286,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
 
     /** Submit-time path check shared by Continue and every skip path. */
     const validatePathForSubmit = async (): Promise<boolean> => {
-        const trimmedPath = basicInfo.path.trim();
+        const trimmedPath = basicInfo.baseDir.trim();
         if (!trimmedPath) {
             setPathError(REQUIRED_PATH_MESSAGE);
             return false;
@@ -258,6 +296,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                 projectPath: trimmedPath,
                 projectName: packageName,
                 createDirectory: true,
+                directoryName: effectiveDirectoryName,
             });
             if (!result.isValid) {
                 if (result.errorField === ValidateProjectFormErrorField.NAME) {
@@ -341,7 +380,8 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                 project: {
                     integrationName: effectiveName,
                     packageName,
-                    projectPath: basicInfo.path.trim(),
+                    projectPath: basicInfo.baseDir.trim(),
+                    directoryName: effectiveDirectoryName,
                 },
                 artifact,
             });
@@ -399,10 +439,12 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                 <StepScrollArea>
                     {step === 0 && (
                         <BasicInfoStep
-                            basicInfo={basicInfo}
+                            integrationName={basicInfo.integrationName}
+                            fullPath={fullPath}
                             nameError={nameError}
                             pathError={pathError}
-                            onChange={handleBasicInfoChange}
+                            onNameChange={handleNameChange}
+                            onPathChange={handlePathChange}
                             onBrowse={handleBrowse}
                         />
                     )}

@@ -146,7 +146,10 @@ export interface PendingIntegrationArtifactPayload {
 export interface IntegrationProjectParams {
     integrationName: string;
     packageName: string;
+    /** Parent directory the integration folder is created under. */
     projectPath: string;
+    /** Editable folder name (last path segment), decoupled from the package name. */
+    directoryName: string;
 }
 
 /**

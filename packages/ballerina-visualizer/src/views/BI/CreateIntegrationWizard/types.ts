@@ -23,9 +23,17 @@ export type WizardStep = 0 | 1 | 2;
 export interface BasicInfo {
     /** The integration display name; "Untitled" is applied only on skip. */
     integrationName: string;
-    /** Parent directory the package is created under. Seeded from the default creation path. */
-    path: string;
-    /** True once the user edited the path — gates realtime path validation. */
+    /** Parent directory the integration folder is created under. Seeded from the default creation path. */
+    baseDir: string;
+    /**
+     * Folder name (the editable last segment of the path). Defaults to the
+     * name-derived value and tracks the integration name until the user edits it;
+     * independent of the Ballerina package name.
+     */
+    directoryName: string;
+    /** True once the user manually edited the directory segment away from the name-derived default. */
+    dirTouched: boolean;
+    /** True once the user edited/browsed the path — gates realtime path validation. */
     pathTouched: boolean;
 }
 

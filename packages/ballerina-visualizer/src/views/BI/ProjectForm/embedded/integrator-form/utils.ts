@@ -157,6 +157,17 @@ export const extractBase = (value: string, name: string): string => {
 };
 
 
+/**
+ * Splits a full path into its parent directory and last segment, handling both
+ * POSIX and Windows separators. A trailing separator yields an empty `name`.
+ */
+export const splitPath = (fullPath: string): { base: string; name: string } => {
+    const lastSep = Math.max(fullPath.lastIndexOf('/'), fullPath.lastIndexOf('\\'));
+    if (lastSep < 0) return { base: '', name: fullPath };
+    const base = lastSep === 0 ? fullPath.slice(0, 1) : fullPath.slice(0, lastSep);
+    return { base, name: fullPath.slice(lastSep + 1) };
+};
+
 export const sanitizePackageName = (name: string): string => {
     // Allow dots/underscores but sanitize other characters, then convert consecutive dots/underscores to single ones
     return name

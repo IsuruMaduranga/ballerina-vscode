@@ -25,6 +25,7 @@ import { useSignIn } from "./hooks/useSignIn";
 import { DirectorySelector } from "./components/DirectorySelector/DirectorySelector";
 import {
     joinPath,
+    splitPath,
     sanitizeProjectHandle,
     sanitizeOrgHandle,
     validateProjectHandle,
@@ -51,7 +52,6 @@ import {
     FormFooter,
 } from "./shared/FormPageLayout";
 import {
-    ResolvedPathText,
     CloudErrorActionRow,
     ActionLink,
     Description,
@@ -253,6 +253,9 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
         requiredPathMessage: "Please select a path for your project",
         invalidPathMessage: "Invalid project path",
         onPathErrorChange: setPathError,
+        // The workspace folder is the project ID verbatim, so validate the exact
+        // target directory rather than a name-sanitized derivative.
+        directoryName: projectHandle,
     });
 
     const resolvedPath = editablePath ? joinPath(editablePath, projectHandle) : "";
@@ -325,6 +328,7 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
                 projectName: projectHandle,
                 createDirectory: true,
                 createAsWorkspace: true,
+                directoryName: projectHandle,
             });
 
             if (!validationResult.isValid) {
@@ -421,12 +425,19 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
                                     id="project-folder-selector"
                                     label="Select Path"
                                     placeholder="Browse to select a folder..."
-                                    selectedPath={editablePath}
+                                    selectedPath={resolvedPath}
                                     required={true}
                                     onSelect={handlePathSelection}
                                     onChange={(value) => {
+                                        // The field shows the full target path; its last
+                                        // segment is the project ID (editable and kept in
+                                        // sync with the Project ID field both ways).
+                                        const { base, name } = splitPath(value);
                                         setPathTouched(true);
-                                        setEditablePath(value);
+                                        setEditablePath(base);
+                                        handleTouched.current = true;
+                                        setProjectHandle(name);
+                                        if (projectHandleError) setProjectHandleError(null);
                                     }}
                                     onBlur={() => {
                                         if (pathTouched && editablePath !== formData.path) {
@@ -435,9 +446,6 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
                                     }}
                                     errorMsg={pathError || undefined}
                                 />
-                                {resolvedPath && resolvedPath !== editablePath && (
-                                    <ResolvedPathText>Will be created at: {resolvedPath}</ResolvedPathText>
-                                )}
                             </FieldGroup>
 
                             <CollapsibleSection
