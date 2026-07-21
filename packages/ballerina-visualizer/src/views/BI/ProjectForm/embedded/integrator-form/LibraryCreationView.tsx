@@ -217,6 +217,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
         projectName: formData.packageName,
         directoryName,
         createAsWorkspace: false,
+        allowExistingDirectory: true,
         pathTouched,
         requiredPathMessage: "Please select a path for your library",
         invalidPathMessage: "Invalid library path",
@@ -299,6 +300,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
                 directoryName,
                 createDirectory: true,
                 createAsWorkspace: false,
+                allowExistingDirectory: true,
             });
 
             if (!validationResult.isValid) {
