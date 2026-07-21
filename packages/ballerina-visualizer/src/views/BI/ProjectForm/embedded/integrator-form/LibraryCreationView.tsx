@@ -18,7 +18,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import debounce from "lodash/debounce";
-import { Button, Icon, TextField } from "@wso2/ui-toolkit";
+import { Button, DirectorySelector, Icon, TextField } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
 import { useVisualizerContext } from "./context/WsClientContext";
 import { useCloudContext, useWorkspaceRoot } from "./providers";
@@ -32,7 +32,6 @@ import {
     extractBase,
     sanitizeOrgHandle,
 } from "./utils";
-import { DirectorySelector } from "./components/DirectorySelector/DirectorySelector";
 import { AdvancedConfigurationSection } from "./components";
 import { SectionDivider } from "./styles";
 import { ValidateProjectFormErrorField } from "./shims/wi-core";

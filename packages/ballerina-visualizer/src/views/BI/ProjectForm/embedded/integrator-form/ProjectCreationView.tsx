@@ -18,11 +18,10 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import debounce from "lodash/debounce";
-import { Button, Icon, TextField } from "@wso2/ui-toolkit";
+import { Button, DirectorySelector, Icon, TextField } from "@wso2/ui-toolkit";
 import { useVisualizerContext } from "./context/WsClientContext";
 import { useCloudContext, useCloudProjects } from "./providers";
 import { useSignIn } from "./hooks/useSignIn";
-import { DirectorySelector } from "./components/DirectorySelector/DirectorySelector";
 import {
     joinPath,
     splitPath,
