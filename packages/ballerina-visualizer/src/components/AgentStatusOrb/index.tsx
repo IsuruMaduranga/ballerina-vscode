@@ -23,6 +23,16 @@ import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { AgentRunStatus, AgentRunState, SHARED_COMMANDS } from "@wso2/ballerina-core";
 import { Icon } from "@wso2/ui-toolkit";
 import { ShaderOrb } from "./ShaderOrb";
+import {
+    BRAND_ORANGE,
+    ORB_COLORS,
+    ORB_ENERGY,
+    Sphere,
+    Gloss,
+    activeStateLabel,
+    subscribeAgentRunStatus,
+    subscribeHeroPresence,
+} from "./shared";
 
 /**
  * Floating ambient indicator for the Copilot agent's background run.
@@ -77,26 +87,6 @@ function nearestAnchor(x: number, y: number): Anchor {
         x < window.innerWidth / 3 ? "left" : x > (window.innerWidth * 2) / 3 ? "right" : "center";
     return `${vertical}-${horizontal}` as Anchor;
 }
-
-/** Flow speed / contrast of the shader per state (0 = still, 1 = lively). */
-const ORB_ENERGY: Record<AgentRunState, number> = {
-    "idle": 0.35,
-    "running": 1.0,
-    "awaiting-input": 0.55,
-    "completed": 0.45,
-    "error": 0.5,
-};
-
-/** WSO2 brand orange — the pulse-icon color from wso2.com/about/brand. */
-const BRAND_ORANGE = "#F14E23";
-
-const ORB_COLORS: Record<AgentRunState, [string, string, string]> = {
-    "idle": ["#6b5ce8", BRAND_ORANGE, "#ffb199"],
-    "running": ["#4facfe", "#a78bfa", "#f472b6"],
-    "awaiting-input": ["#fbbf24", "#f59e0b", "#fb923c"],
-    "completed": ["#34d399", "#10b981", "#6ee7b7"],
-    "error": ["#f87171", "#ef4444", "#fb7185"],
-};
 
 const rotate = keyframes`
     from { transform: rotate(0deg); }
@@ -275,31 +265,6 @@ const Aura = styled.div<{ colors: [string, string, string]; state: AgentRunState
     }
 `;
 
-const Sphere = styled.div<{ colors: [string, string, string] }>`
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: radial-gradient(
-        circle at 32% 28%,
-        rgba(255, 255, 255, 0.55),
-        ${(props: Pick<OrbStyleProps, "colors">) => props.colors[0]} 45%,
-        ${(props: Pick<OrbStyleProps, "colors">) => props.colors[1]} 100%
-    );
-    box-shadow: inset 0 -5px 10px rgba(0, 0, 0, 0.18);
-`;
-
-/** Glass reflection overlay — sits on top of both the shader and CSS spheres. */
-const Gloss = styled.div`
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.04) 30%, transparent 50%);
-    pointer-events: none;
-`;
-
 const IconOverlay = styled.div`
     position: absolute;
     inset: 0;
@@ -345,6 +310,8 @@ export function AgentStatusOrb() {
     const snapTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const [inviteText, setInviteText] = useState("");
     const [inviteDismissed, setInviteDismissed] = useState(false);
+    /** A landing-page hero box is on screen — it is the copilot surface there. */
+    const [heroPresent, setHeroPresent] = useState(false);
     /** WebGL unavailable — render the CSS gradient sphere instead. */
     const [webglFailed, setWebglFailed] = useState(false);
     const handleWebglFailed = useCallback(() => setWebglFailed(true), []);
@@ -353,34 +320,20 @@ export function AgentStatusOrb() {
         if (!rpcClient) {
             return;
         }
-        rpcClient
-            .getCommonRpcClient()
-            .getAgentRunStatus()
-            .then(setStatus)
-            .catch(() => {
-                // Older extension host without the RPC — stay hidden.
-            });
-        rpcClient.onAgentRunStatusChanged(setStatus);
+        return subscribeAgentRunStatus(rpcClient, setStatus);
     }, [rpcClient]);
+
+    useEffect(() => subscribeHeroPresence(setHeroPresent), []);
 
     useEffect(() => () => clearTimeout(snapTimerRef.current), []);
 
-    if (!status || status.aiPanelOpen) {
+    if (!status || status.aiPanelOpen || heroPresent) {
         return null;
     }
 
     const state = status.state;
     const colors = ORB_COLORS[state];
-    const label =
-        state === "completed"
-            ? "Done — click to open Copilot"
-            : state === "running"
-                ? status.label ?? "Working on it…"
-                : state === "awaiting-input"
-                    ? status.label ?? "Copilot needs your input"
-                    : state === "error"
-                        ? status.label ?? "Copilot hit an error"
-                        : "Ask WSO2 Copilot";
+    const label = state === "idle" ? "Ask WSO2 Copilot" : activeStateLabel(status);
     const dragging = dragPos !== null && !snapping;
     // Active states keep the pill visible the whole time. Idle shows the
     // invitation input; dismissing only collapses it into the orb — hovering

@@ -44,6 +44,7 @@ import { TopNavigationBar } from "../../../components/TopNavigationBar";
 import { TitleBar } from "../../../components/TitleBar";
 import { PublishToCentralButton } from "./PublishToCentralButton";
 import { LibraryOverview } from "./LibraryOverview";
+import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
 
 const SpinnerContainer = styled.div`
     display: flex;
@@ -105,13 +106,18 @@ const HeaderControls = styled.div`
     align-items: center;
 `;
 
-const MainContent = styled.div<{ fullWidth?: boolean }>`
+const MainContent = styled.div<{ fullWidth?: boolean; withHero?: boolean }>`
     padding: 16px;
     display: grid;
     grid-template-columns: ${(props: { fullWidth?: boolean }) => props.fullWidth ? '1fr' : '3fr 1fr'};
     min-height: 0; // Prevents grid blowout
     overflow: auto;
-    max-height: calc(100vh - 90px); // Adjust based on header and any margins
+    // Adjust based on header and any margins; the hero prompt row adds ~87px.
+    max-height: ${(props: { withHero?: boolean }) => props.withHero ? 'calc(100vh - 177px)' : 'calc(100vh - 90px)'};
+`;
+
+const HeroRow = styled.div`
+    margin: 16px 16px 0 16px;
 `;
 
 const DiagramPanel = styled.div<{ noPadding?: boolean, noBorder?: boolean }>`
@@ -1128,7 +1134,12 @@ export function PackageOverview(props: PackageOverviewProps) {
                         </HeaderControls>
                     </HeaderRow>
                 )}
-                <MainContent fullWidth={isLibrary}>
+                {!isLibrary && (
+                    <HeroRow>
+                        <CopilotHeroBox />
+                    </HeroRow>
+                )}
+                <MainContent fullWidth={isLibrary} withHero={!isLibrary}>
                     <LeftContent>
                         <DiagramPanel noPadding={true} noBorder={isLibrary}>
                             {showAlert && (

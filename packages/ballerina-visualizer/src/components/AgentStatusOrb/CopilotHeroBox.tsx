@@ -1,0 +1,266 @@
+/**
+ * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import styled from "@emotion/styled";
+import { keyframes } from "@emotion/react";
+import { useRpcContext } from "@wso2/ballerina-rpc-client";
+import { SHARED_COMMANDS, AgentRunStatus } from "@wso2/ballerina-core";
+import { Codicon, Icon } from "@wso2/ui-toolkit";
+import { ShaderOrb } from "./ShaderOrb";
+import {
+    BRAND_ORANGE,
+    ORB_COLORS,
+    ORB_ENERGY,
+    Sphere,
+    Gloss,
+    activeStateLabel,
+    registerHeroPresence,
+    subscribeAgentRunStatus,
+} from "./shared";
+
+/**
+ * Inline "ask the Copilot" hero for the package overview landing page: a
+ * prompt box that is the primary way into the Copilot. Submitting opens the
+ * AI panel with the prompt auto-submitted into the agent. While a run is
+ * active the box morphs into the orb + live status label (the same status
+ * feed as the floating AgentStatusOrb), and clicking it opens the panel.
+ *
+ * While mounted it registers hero presence so the floating orb hides —
+ * one copilot surface per view.
+ */
+
+const HERO_ORB_SIZE = 44;
+
+const gradientShift = keyframes`
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+`;
+
+/**
+ * Animated gradient border + ambient glow around the prompt box — the
+ * "this is the AI" signifier, drawn from the orb's idle palette.
+ */
+const GradientFrame = styled.div`
+    border-radius: 14px;
+    padding: 1.5px;
+    background: linear-gradient(120deg, #6b5ce8, ${BRAND_ORANGE}, #ffb199, #a78bfa, #6b5ce8);
+    background-size: 300% 300%;
+    animation: ${gradientShift} 9s ease infinite;
+    box-shadow: 0 0 18px rgba(107, 92, 232, 0.25), 0 0 10px rgba(241, 78, 35, 0.12);
+    transition: box-shadow 0.25s ease;
+    &:focus-within {
+        box-shadow: 0 0 26px rgba(107, 92, 232, 0.45), 0 0 14px rgba(241, 78, 35, 0.22);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+`;
+
+const Box = styled.div<{ active: boolean }>`
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    border-radius: 12.5px;
+    background: var(--vscode-editorWidget-background);
+    cursor: ${(props: { active: boolean }) => (props.active ? "pointer" : "text")};
+`;
+
+const OrbHolder = styled.div`
+    position: relative;
+    width: ${HERO_ORB_SIZE}px;
+    height: ${HERO_ORB_SIZE}px;
+    flex: none;
+`;
+
+const IconOverlay = styled.div`
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+`;
+
+const PromptInput = styled.input`
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--vscode-input-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: 14px;
+    &::placeholder {
+        color: var(--vscode-input-placeholderForeground);
+    }
+`;
+
+const StatusText = styled.div`
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--vscode-foreground);
+    font-size: 14px;
+`;
+
+const OpenHint = styled.div`
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--vscode-textLink-foreground);
+    font-size: 12px;
+    white-space: nowrap;
+`;
+
+const GenerateButton = styled.button`
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    border-radius: 9px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-family: var(--vscode-font-family);
+    color: #ffffff;
+    background: linear-gradient(135deg, #6b5ce8, ${BRAND_ORANGE});
+    cursor: pointer;
+    white-space: nowrap;
+    transition: filter 0.15s ease, transform 0.15s ease;
+    &:hover {
+        filter: brightness(1.12);
+        transform: translateY(-1px);
+    }
+    &:active {
+        transform: translateY(0);
+    }
+`;
+
+export function CopilotHeroBox() {
+    const { rpcClient } = useRpcContext();
+    const [status, setStatus] = useState<AgentRunStatus | null>(null);
+    const [text, setText] = useState("");
+    /** WebGL unavailable — render the CSS gradient sphere instead. */
+    const [webglFailed, setWebglFailed] = useState(false);
+    const handleWebglFailed = useCallback(() => setWebglFailed(true), []);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+
+    useEffect(() => registerHeroPresence(), []);
+
+    useEffect(() => {
+        if (!rpcClient) {
+            return;
+        }
+        return subscribeAgentRunStatus(rpcClient, setStatus);
+    }, [rpcClient]);
+
+    // Unlike the floating orb, the hero box always renders: with no status yet
+    // (or an older host without the RPC) it is still the AI entry point, just
+    // in its idle prompt form.
+    const state = status?.state ?? "idle";
+    const active = state !== "idle";
+    const colors = ORB_COLORS[state];
+    const label = active && status ? activeStateLabel(status) : null;
+
+    const openCopilot = () => {
+        rpcClient?.getCommonRpcClient().executeCommand({ commands: [SHARED_COMMANDS.OPEN_AI_PANEL] });
+    };
+
+    const submit = () => {
+        const prompt = text.trim();
+        if (!prompt) {
+            openCopilot();
+            return;
+        }
+        rpcClient?.getCommonRpcClient().executeCommand({
+            commands: [SHARED_COMMANDS.OPEN_AI_PANEL, { type: "text", text: prompt, planMode: false, autoSubmit: true }],
+        });
+        setText("");
+    };
+
+    return (
+        <GradientFrame>
+        <Box
+            active={active}
+            onClick={() => (active ? openCopilot() : inputRef.current?.focus())}
+            role={active ? "button" : undefined}
+            aria-label={label ? `WSO2 Copilot: ${label}. Open the Copilot chat.` : undefined}
+        >
+            <OrbHolder>
+                {webglFailed ? (
+                    <Sphere colors={colors} />
+                ) : (
+                    <ShaderOrb
+                        colors={colors}
+                        energy={ORB_ENERGY[state]}
+                        size={HERO_ORB_SIZE}
+                        onContextFailed={handleWebglFailed}
+                    />
+                )}
+                <Gloss />
+                <IconOverlay>
+                    <Icon
+                        name="bi-ai-chat"
+                        sx={{ width: 20, height: 20 }}
+                        iconSx={{ fontSize: "20px", color: "#ffffff", cursor: "inherit" }}
+                    />
+                </IconOverlay>
+            </OrbHolder>
+            {active ? (
+                <>
+                    <StatusText>{label}</StatusText>
+                    <OpenHint>
+                        Open Copilot <Codicon name="arrow-right" />
+                    </OpenHint>
+                </>
+            ) : (
+                <>
+                    <PromptInput
+                        ref={inputRef}
+                        value={text}
+                        onChange={(event) => setText(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                                submit();
+                            }
+                        }}
+                        placeholder="What do you want to build? Describe it — WSO2 Copilot will generate it"
+                        aria-label="Ask WSO2 Copilot: what do you want to build?"
+                    />
+                    <GenerateButton
+                        title="Generate with WSO2 Copilot"
+                        aria-label="Generate with WSO2 Copilot"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            submit();
+                        }}
+                    >
+                        <Codicon name="sparkle" /> Generate
+                    </GenerateButton>
+                </>
+            )}
+        </Box>
+        </GradientFrame>
+    );
+}
