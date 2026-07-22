@@ -194,12 +194,16 @@ export function validateProjectPath(
             // project files are created in place. Either way this is a path-level
             // concern, surfaced under the path field.
             if (allowExistingDirectory) {
+                // A Ballerina.toml marks the directory as an existing Ballerina
+                // workspace or package — either way we cannot create a new project
+                // there. An empty or non-Ballerina directory is allowed (the project
+                // files are created in place).
                 const ballerinaTomlPath = path.join(finalPath, 'Ballerina.toml');
                 if (fs.existsSync(ballerinaTomlPath)) {
                     // TODO: Check if the existing project is a Ballerina workspace. 
                     // If it is, create the new integration/library within the workspace 
                     // and update the workspace toml file.
-                    return { isValid: false, errorMessage: 'An integration/library already exists in the selected directory', errorField: ValidateProjectFormErrorField.PATH };
+                    return { isValid: false, errorMessage: 'A Ballerina project already exists in the selected directory', errorField: ValidateProjectFormErrorField.PATH };
                 }
             } else {
                 return { isValid: false, errorMessage: `A directory with this name already exists at the selected location`, errorField: ValidateProjectFormErrorField.PATH};
@@ -374,10 +378,12 @@ packages = []
 
 `;
 
-    // Use the workspace-specific directory resolver
+    // Use the workspace-specific directory resolver. The editable directory name
+    // (last path segment) is honored when provided so the on-disk folder can differ
+    // from the project/workspace name; otherwise fall back to the legacy handle/name.
     const workspaceRoot = resolveWorkspacePath(
-        projectRequest.projectPath, 
-        projectRequest?.projectHandle ?? projectRequest.workspaceName
+        projectRequest.projectPath,
+        projectRequest.directoryName ?? projectRequest?.projectHandle ?? projectRequest.workspaceName
     );
 
     // Create Ballerina.toml file
@@ -399,18 +405,22 @@ packages = ["${sanitizeName(projectRequest.packageName)}"]
 
 `;
 
-    // Use the workspace-specific directory resolver
+    // Use the workspace-specific directory resolver. The editable directory name
+    // (last path segment) is honored when provided so the on-disk folder can differ
+    // from the project/workspace name; otherwise fall back to the legacy handle/name.
     const workspaceRoot = resolveWorkspacePath(
-        projectRequest.projectPath, 
-        projectRequest?.projectHandle ?? projectRequest.workspaceName
+        projectRequest.projectPath,
+        projectRequest.directoryName ?? projectRequest?.projectHandle ?? projectRequest.workspaceName
     );
 
     // Create Ballerina.toml file
     const ballerinaTomlPath = path.join(workspaceRoot, 'Ballerina.toml');
     writeBallerinaFileDidOpen(ballerinaTomlPath, ballerinaTomlContent);
 
-    // Create Ballerina Package
-    await createBIProjectPure({ ...projectRequest, projectPath: workspaceRoot, createDirectory: true });
+    // Create Ballerina Package. The workspace folder is already the target root, so
+    // the inner package derives its own folder from the package name (drop the
+    // workspace-level directory name to avoid reusing it for the package folder).
+    await createBIProjectPure({ ...projectRequest, projectPath: workspaceRoot, directoryName: undefined, createDirectory: true });
 
     // create settings.json file
     createVSCodeSettings(workspaceRoot);
@@ -518,8 +528,20 @@ export async function convertProjectToWorkspace(params: AddProjectToWorkspaceReq
         throw new Error('No package name found in Ballerina.toml');
     }
 
-    const projectDirectoryName = params.projectHandle ?? params.workspaceName;
-    const newDirectory = path.join(path.dirname(currentProjectPath), projectDirectoryName);
+    // The destination is user-selectable: `params.path` is the parent location
+    // (defaulting to the current integration's parent) and the folder name comes
+    // from the editable directory name (falling back to the handle/project name).
+    const baseDir = params.path?.trim() ? params.path : path.dirname(currentProjectPath);
+    const projectDirectoryName = params.directoryName?.trim() ? params.directoryName : (params.projectHandle ?? params.workspaceName);
+    const newDirectory = path.join(baseDir, projectDirectoryName);
+
+    // The current integration is moved into the new project directory, so the
+    // destination cannot be the integration itself or a directory inside it.
+    const normalizedNew = path.resolve(newDirectory);
+    const normalizedCurrent = path.resolve(currentProjectPath);
+    if (normalizedNew === normalizedCurrent || normalizedNew.startsWith(normalizedCurrent + path.sep)) {
+        throw new Error('The project location cannot be inside the integration being converted. Please choose a different location.');
+    }
 
     try {
         fs.mkdirSync(newDirectory);
@@ -987,8 +1009,8 @@ export function getDefaultCreationPath(): string {
 }
 
 /**
- * Full project-creation flow: scaffold the project/workspace, write the cloud
- * context mapping when present, then open it. Wraps the create primitives above.
+ * Full project-creation flow: scaffold the project/workspace, then open it.
+ * Wraps the create primitives above.
  */
 export async function createBIProject(params: any): Promise<void> {
     let projectRoot: string;
@@ -998,9 +1020,6 @@ export async function createBIProject(params: any): Promise<void> {
             : await createEmptyBIWorkspace(params);
     } else {
         projectRoot = await createBIProjectPure(params);
-    }
-    if (params.createAsWorkspace && params.projectHandle) {
-        await writeLocalContextYaml(projectRoot, params.orgHandle, params.projectHandle);
     }
     openInVSCode(projectRoot);
 }

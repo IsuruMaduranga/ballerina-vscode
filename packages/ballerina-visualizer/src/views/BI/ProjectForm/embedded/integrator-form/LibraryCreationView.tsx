@@ -76,6 +76,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
     const firstFieldRef = useRef<HTMLInputElement>(null);
     const orgNameInitialized = useRef(false);
     const defaultPathInitialized = useRef(false);
+    const libraryNameTouchedRef = useRef(false);
     const [packageNameTouched, setPackageNameTouched] = useState(false);
     const [directoryName, setDirectoryName] = useState(() => sanitizePackageName(DEFAULT_LIBRARY_NAME));
     const [dirTouched, setDirTouched] = useState(false);
@@ -104,6 +105,29 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
     useEffect(() => {
         if (!workspaceReady) return;
         let mounted = true;
+
+        const resolveDefaultDirectoryName = async (baseDir: string): Promise<string> => {
+            const base = sanitizePackageName(DEFAULT_LIBRARY_NAME);
+            for (let attempt = 0; attempt < MAX_DIRECTORY_ATTEMPTS; attempt++) {
+                const candidate = attempt === 0 ? base : `${base}_${attempt + 1}`;
+                try {
+                    const result = await wsClient.validateProjectPath({
+                        projectPath: baseDir,
+                        projectName: candidate,
+                        createDirectory: true,
+                    });
+                    // First candidate that is either valid or fails for a reason other
+                    // than an existing directory is the one we keep.
+                    if (result.isValid || result.errorMessage !== DIRECTORY_EXISTS_MESSAGE) {
+                        return candidate;
+                    }
+                } catch {
+                    return candidate;
+                }
+            }
+            return base;
+        };
+
         (async () => {
             // Seed the default path only once — this effect re-runs on workspacePath
             // changes, and without the guard it would clobber a path the user has since
@@ -111,7 +135,16 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
             if (!defaultPathInitialized.current) {
                 const dp = workspacePath || (await wsClient.getDefaultCreationPath()).path;
                 if (!mounted) return;
+                // Resolve the indexed default directory name BEFORE committing the path so
+                // the path field shows the final value immediately (like the wizard), rather
+                // than the un-indexed default catching up after an async re-index.
+                const dirName = await resolveDefaultDirectoryName(dp);
+                if (!mounted) return;
                 defaultPathInitialized.current = true;
+                // Don't clobber a name the user typed while the seed was resolving.
+                if (!libraryNameTouchedRef.current) {
+                    setDirectoryName(dirName);
+                }
                 setDefaultPath(dp);
                 setFormData(prev => ({ ...prev, path: dp }));
             }
@@ -173,44 +206,6 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
         }
     }, [formData.path, defaultPath, pathTouched]);
 
-    useEffect(() => {
-        if (dirTouched) return;
-        const base = sanitizePackageName(formData.libraryName);
-        const baseDir = editablePath || defaultPath;
-        if (!base || !baseDir) return;
-
-        let cancelled = false;
-        const run = debounce(async () => {
-            let available = base;
-            for (let attempt = 0; attempt < MAX_DIRECTORY_ATTEMPTS; attempt++) {
-                const candidate = attempt === 0 ? base : `${base}_${attempt + 1}`;
-                available = candidate;
-                try {
-                    const result = await wsClient.validateProjectPath({
-                        projectPath: baseDir,
-                        projectName: candidate,
-                        createDirectory: true,
-                    });
-                    // First candidate that is either valid or fails for some reason other
-                    // than an existing directory is the one we keep.
-                    if (result.isValid || result.errorMessage !== DIRECTORY_EXISTS_MESSAGE) {
-                        break;
-                    }
-                } catch {
-                    break;
-                }
-            }
-            if (cancelled) return;
-            setDirectoryName(prev => (prev === available ? prev : available));
-        }, 300);
-
-        run();
-        return () => {
-            cancelled = true;
-            run.cancel();
-        };
-    }, [formData.libraryName, editablePath, defaultPath, dirTouched, wsClient]);
-
     useRealtimeProjectPathValidation({
         wsClient,
         projectPath: editablePath,
@@ -227,14 +222,16 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
     const resolvedPath = joinPath(editablePath, directoryName);
 
     const handleLibraryName = (value: string) => {
+        libraryNameTouchedRef.current = true;
         const sanitized = sanitizePackageName(value);
         setFormData(prev => ({
             ...prev,
             libraryName: value,
             packageName: packageNameTouched ? prev.packageName : sanitized,
         }));
-        // Reflect the derived folder immediately for a responsive path field; the effect
-        // above then appends an index if that folder already exists.
+        // Reflect the derived folder immediately for a responsive path field. Only the
+        // default name is auto-indexed (at seed time); a name the user types is used
+        // verbatim, matching the integration wizard.
         if (!dirTouched) {
             setDirectoryName(sanitized);
         }

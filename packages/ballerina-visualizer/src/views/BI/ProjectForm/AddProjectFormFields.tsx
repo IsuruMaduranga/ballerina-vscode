@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckBox, TextField } from "@wso2/ui-toolkit";
+import { CheckBox, DirectorySelector, TextField } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { usePlatformExtContext } from "../../../providers/platform-ext-ctx-provider";
 import {
@@ -35,7 +35,6 @@ import {
     validateComponentName,
     validatePackageName,
     validateOrgName,
-    validateProjectHandle
 } from "./utils";
 
 // Re-export for backwards compatibility
@@ -49,7 +48,11 @@ export interface AddProjectFormFieldsProps {
     onAddNewAfterConvertChange: (value: boolean) => void;
     packageNameValidationError?: string;
     projectNameValidationError?: string;
-    projectHandlePathError?: string;
+    /** Full destination path (location + folder name) for the convert flow. */
+    convertPath?: string;
+    onConvertPathChange?: (value: string) => void;
+    onConvertPathSelect?: () => void;
+    convertPathError?: string;
 }
 
 export function AddProjectFormFields({
@@ -60,7 +63,10 @@ export function AddProjectFormFields({
     onAddNewAfterConvertChange,
     packageNameValidationError,
     projectNameValidationError,
-    projectHandlePathError,
+    convertPath,
+    onConvertPathChange,
+    onConvertPathSelect,
+    convertPathError,
 }: AddProjectFormFieldsProps) {
     const { rpcClient } = useRpcContext();
     const { platformExtState } = usePlatformExtContext();
@@ -71,12 +77,10 @@ export function AddProjectFormFields({
         [isLoggedIn, orgsSource]
     );
     const [packageNameTouched, setPackageNameTouched] = useState(false);
-    const [projectHandleTouched, setProjectHandleTouched] = useState(false);
     const isOrgTouched = useRef(false);
     const [isPackageInfoExpanded, setIsPackageInfoExpanded] = useState(false);
     const [integrationNameError, setIntegrationNameError] = useState<string | null>(null);
     const [packageNameError, setPackageNameError] = useState<string | null>(null);
-    const [projectHandleError, setProjectHandleError] = useState<string | null>(null);
     const [isOrgLocked, setIsOrgLocked] = useState(false);
     const [isOrgDataLoaded, setIsOrgDataLoaded] = useState(false);
     const resourceTypeLabel = formData.isLibrary ? "Library" : "Integration";
@@ -84,11 +88,13 @@ export function AddProjectFormFields({
     const showIntegrationFields = isInProject || addNewAfterConvert;
 
     const handleProjectName = (value: string) => {
-        const updates: Partial<AddProjectFormData> = { workspaceName: value };
-        if (!projectHandleTouched) {
-            updates.projectHandle = sanitizeProjectHandle(value, { trimTrailing: false });
-        }
-        onFormDataChange(updates);
+        // The project name also seeds the default destination folder name (via the
+        // derived handle); the folder itself is editable through the Project Location
+        // field, so there is no separate Project ID field to keep in sync here.
+        onFormDataChange({
+            workspaceName: value,
+            projectHandle: sanitizeProjectHandle(value, { trimTrailing: false }),
+        });
     };
 
     const handleIntegrationName = (value: string) => {
@@ -164,21 +170,12 @@ export function AddProjectFormFields({
         setPackageNameError(error);
     }, [formData.packageName]);
 
-    // Real-time validation for project handle
-    useEffect(() => {
-        if (formData.projectHandle !== undefined) {
-            setProjectHandleError(validateProjectHandle(formData.projectHandle));
-        }
-    }, [formData.projectHandle]);
-
     // Computed inline — avoids a one-render lag from a useState/useEffect pair which would
     // cause hasAdvancedConfigError to briefly read a stale error while orgName is updating.
     const orgNameError = (!isOrgLocked && isOrgDataLoaded) ? validateOrgName(formData.orgName) : null;
 
     const hasAdvancedConfigError = !!(
-        projectHandlePathError ||
-        projectHandleError ||
-        // Package errors are irrelevant when the package fields are hidden (convert-only).
+        // Advanced configs only render (and matter) when a new package is scaffolded.
         (showIntegrationFields && (packageNameError || packageNameValidationError)) ||
         orgNameError
     );
@@ -205,6 +202,22 @@ export function AddProjectFormFields({
                             errorMsg={projectNameValidationError || ""}
                         />
                     </ProjectSection>
+
+                    <FieldGroup>
+                        <DirectorySelector
+                            id="convert-project-folder-selector"
+                            label="Project Location"
+                            placeholder="Enter path or browse to select a folder..."
+                            selectedPath={convertPath || ""}
+                            required={true}
+                            onSelect={() => onConvertPathSelect?.()}
+                            onChange={(value) => onConvertPathChange?.(value)}
+                            errorMsg={convertPathError || undefined}
+                        />
+                        <Description>
+                            The project folder is created here and your current integration is moved into it.
+                        </Description>
+                    </FieldGroup>
 
                     <CheckboxContainer>
                         <CheckBox
@@ -242,38 +255,42 @@ export function AddProjectFormFields({
                 </>
             )}
 
-            <SectionDivider />
+            {/* Advanced Configurations apply only to the new package being scaffolded, so
+                they are shown only when a new integration/library is part of this flow
+                (in-project add, or convert + add new). Project-level configs (org / Project
+                ID) are intentionally omitted here — the project's location and folder name
+                are set via the Project Location field above. */}
+            {showIntegrationFields && (
+                <>
+                    <SectionDivider />
 
-            <AdvancedConfigurationSection
-                isExpanded={isPackageInfoExpanded}
-                onToggle={() => setIsPackageInfoExpanded(!isPackageInfoExpanded)}
-                data={{
-                    packageName: formData.packageName,
-                    orgName: formData.orgName,
-                    version: formData.version,
-                    projectHandle: !isInProject ? formData.projectHandle : undefined
-                }}
-                onChange={(data) => {
-                    onFormDataChange(data);
-                    if (data.packageName !== undefined) {
-                        setPackageNameTouched(true);
-                    }
-                    if (data.projectHandle !== undefined) {
-                        setProjectHandleTouched(true);
-                    }
-                    if (data.orgName !== undefined) {
-                        isOrgTouched.current = true;
-                    }
-                }}
-                isLibrary={formData.isLibrary}
-                packageNameError={packageNameValidationError || packageNameError}
-                orgNameError={orgNameError || undefined}
-                projectHandleError={projectHandlePathError || projectHandleError}
-                organizations={organizations}
-                hasError={hasAdvancedConfigError}
-                isOrgLocked={isOrgLocked}
-                showPackageFields={showIntegrationFields}
-            />
+                    <AdvancedConfigurationSection
+                        isExpanded={isPackageInfoExpanded}
+                        onToggle={() => setIsPackageInfoExpanded(!isPackageInfoExpanded)}
+                        data={{
+                            packageName: formData.packageName,
+                            orgName: formData.orgName,
+                            version: formData.version,
+                        }}
+                        onChange={(data) => {
+                            onFormDataChange(data);
+                            if (data.packageName !== undefined) {
+                                setPackageNameTouched(true);
+                            }
+                            if (data.orgName !== undefined) {
+                                isOrgTouched.current = true;
+                            }
+                        }}
+                        isLibrary={formData.isLibrary}
+                        packageNameError={packageNameValidationError || packageNameError}
+                        orgNameError={orgNameError || undefined}
+                        organizations={organizations}
+                        hasError={hasAdvancedConfigError}
+                        isOrgLocked={isOrgLocked}
+                        showPackageFields={showIntegrationFields}
+                    />
+                </>
+            )}
         </>
     );
 }
