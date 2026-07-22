@@ -21,11 +21,13 @@ import { CheckBox, DirectorySelector, TextField } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { usePlatformExtContext } from "../../../providers/platform-ext-ctx-provider";
 import {
-    CheckboxContainer,
     Description,
     FieldGroup,
-    ProjectSection,
-    SectionDivider,
+    FormSection,
+    FormSectionHeader,
+    FormSectionTitle,
+    FormSectionCaption,
+    InlineToggle,
 } from "./styles";
 import { ProjectTypeSelector, AdvancedConfigurationSection } from "./components";
 import { AddProjectFormData } from "./types";
@@ -86,6 +88,10 @@ export function AddProjectFormFields({
     const resourceTypeLabel = formData.isLibrary ? "Library" : "Integration";
     const resourceTypeLabelLower = resourceTypeLabel.toLowerCase();
     const showIntegrationFields = isInProject || addNewAfterConvert;
+    // Package-level configuration (name / org / version) is meaningful for a library —
+    // a reusable, publishable package — but not for an integration, whose package
+    // details are derived automatically. So the Advanced section is library-only.
+    const showAdvancedConfig = showIntegrationFields && formData.isLibrary;
 
     const handleProjectName = (value: string) => {
         // The project name also seeds the default destination folder name (via the
@@ -175,9 +181,8 @@ export function AddProjectFormFields({
     const orgNameError = (!isOrgLocked && isOrgDataLoaded) ? validateOrgName(formData.orgName) : null;
 
     const hasAdvancedConfigError = !!(
-        // Advanced configs only render (and matter) when a new package is scaffolded.
-        (showIntegrationFields && (packageNameError || packageNameValidationError)) ||
-        orgNameError
+        // Advanced configs only render (and matter) for a library package.
+        showAdvancedConfig && (packageNameError || packageNameValidationError || orgNameError)
     );
 
     // Auto-expand Advanced Configurations when any field inside it has an error
@@ -190,8 +195,15 @@ export function AddProjectFormFields({
     return (
         <>
             {!isInProject && (
-                <>
-                    <ProjectSection>
+                <FormSection>
+                    <FormSectionHeader>
+                        <FormSectionTitle>Project</FormSectionTitle>
+                        <FormSectionCaption>
+                            Your current integration becomes the first member of this project.
+                        </FormSectionCaption>
+                    </FormSectionHeader>
+
+                    <FieldGroup>
                         <TextField
                             onTextChange={handleProjectName}
                             value={formData.workspaceName}
@@ -201,7 +213,7 @@ export function AddProjectFormFields({
                             required={true}
                             errorMsg={projectNameValidationError || ""}
                         />
-                    </ProjectSection>
+                    </FieldGroup>
 
                     <FieldGroup>
                         <DirectorySelector
@@ -219,22 +231,27 @@ export function AddProjectFormFields({
                         </Description>
                     </FieldGroup>
 
-                    <CheckboxContainer>
+                    <InlineToggle>
                         <CheckBox
-                            label="Also add a new integration or library now"
+                            label="Also add a new integration or library"
                             checked={addNewAfterConvert}
                             onChange={onAddNewAfterConvertChange}
                         />
-                        <Description>
-                            Your current integration becomes the first member of the project. Optionally scaffold
-                            another one in the same step.
-                        </Description>
-                    </CheckboxContainer>
-                </>
+                    </InlineToggle>
+                </FormSection>
             )}
 
             {showIntegrationFields && (
-                <>
+                <FormSection>
+                    {!isInProject && (
+                        <FormSectionHeader>
+                            <FormSectionTitle>New {resourceTypeLabel}</FormSectionTitle>
+                            <FormSectionCaption>
+                                Scaffold a new {resourceTypeLabelLower} as part of this project.
+                            </FormSectionCaption>
+                        </FormSectionHeader>
+                    )}
+
                     <ProjectTypeSelector
                         value={formData.isLibrary}
                         onChange={(isLibrary) => onFormDataChange({ isLibrary })}
@@ -252,44 +269,37 @@ export function AddProjectFormFields({
                             errorMsg={integrationNameError || ""}
                         />
                     </FieldGroup>
-                </>
-            )}
 
-            {/* Advanced Configurations apply only to the new package being scaffolded, so
-                they are shown only when a new integration/library is part of this flow
-                (in-project add, or convert + add new). Project-level configs (org / Project
-                ID) are intentionally omitted here — the project's location and folder name
-                are set via the Project Location field above. */}
-            {showIntegrationFields && (
-                <>
-                    <SectionDivider />
-
-                    <AdvancedConfigurationSection
-                        isExpanded={isPackageInfoExpanded}
-                        onToggle={() => setIsPackageInfoExpanded(!isPackageInfoExpanded)}
-                        data={{
-                            packageName: formData.packageName,
-                            orgName: formData.orgName,
-                            version: formData.version,
-                        }}
-                        onChange={(data) => {
-                            onFormDataChange(data);
-                            if (data.packageName !== undefined) {
-                                setPackageNameTouched(true);
-                            }
-                            if (data.orgName !== undefined) {
-                                isOrgTouched.current = true;
-                            }
-                        }}
-                        isLibrary={formData.isLibrary}
-                        packageNameError={packageNameValidationError || packageNameError}
-                        orgNameError={orgNameError || undefined}
-                        organizations={organizations}
-                        hasError={hasAdvancedConfigError}
-                        isOrgLocked={isOrgLocked}
-                        showPackageFields={showIntegrationFields}
-                    />
-                </>
+                    {/* Package configuration is only relevant for a library (a publishable
+                        package); an integration derives these automatically. */}
+                    {showAdvancedConfig && (
+                        <AdvancedConfigurationSection
+                            isExpanded={isPackageInfoExpanded}
+                            onToggle={() => setIsPackageInfoExpanded(!isPackageInfoExpanded)}
+                            data={{
+                                packageName: formData.packageName,
+                                orgName: formData.orgName,
+                                version: formData.version,
+                            }}
+                            onChange={(data) => {
+                                onFormDataChange(data);
+                                if (data.packageName !== undefined) {
+                                    setPackageNameTouched(true);
+                                }
+                                if (data.orgName !== undefined) {
+                                    isOrgTouched.current = true;
+                                }
+                            }}
+                            isLibrary={formData.isLibrary}
+                            packageNameError={packageNameValidationError || packageNameError}
+                            orgNameError={orgNameError || undefined}
+                            organizations={organizations}
+                            hasError={hasAdvancedConfigError}
+                            isOrgLocked={isOrgLocked}
+                            showPackageFields={true}
+                        />
+                    )}
+                </FormSection>
             )}
         </>
     );

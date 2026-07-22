@@ -54,6 +54,42 @@ export const ProjectSection = styled.div`
     border-bottom: 1px solid var(--vscode-panel-border);
 `;
 
+// ---- Grouped form sections (titled blocks) ----
+
+export const FormSection = styled.div`
+    margin-bottom: 28px;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+`;
+
+export const FormSectionHeader = styled.div`
+    margin-bottom: 16px;
+`;
+
+export const FormSectionTitle = styled.div`
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+`;
+
+export const FormSectionCaption = styled.div`
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--vscode-descriptionForeground);
+    margin-top: 4px;
+`;
+
+// A subtle toggle row that visually reads as a transition between sections.
+export const InlineToggle = styled.div`
+    margin-top: 8px;
+    padding: 14px 16px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    background-color: var(--vscode-sideBar-background);
+`;
+
 // ========== Page Layout Styles ==========
 
 export const PageWrapper = styled.div`
