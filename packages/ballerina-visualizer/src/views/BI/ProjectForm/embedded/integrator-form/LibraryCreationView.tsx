@@ -56,6 +56,16 @@ const FieldGroup = styled.div`
     margin-bottom: 20px;
 `;
 
+const InfoNote = styled.div`
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--vscode-descriptionForeground);
+`;
+
 
 const MAX_DIRECTORY_ATTEMPTS = 50;
 const DIRECTORY_EXISTS_MESSAGE = "A directory with this name already exists at the selected location";
@@ -84,6 +94,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
     const [isValidating, setIsValidating] = useState(false);
     const [libraryNameError, setLibraryNameError] = useState<string | null>(null);
     const [pathError, setPathError] = useState<string | null>(null);
+    const [existingWorkspace, setExistingWorkspace] = useState(false);
     const [packageNameError, setPackageNameError] = useState<string | null>(null);
     const [orgNameError, setOrgNameError] = useState<string | null>(null);
     const [defaultPath, setDefaultPath] = useState("");
@@ -217,6 +228,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
         requiredPathMessage: "Please select a path for your library",
         invalidPathMessage: "Invalid library path",
         onPathErrorChange: setPathError,
+        onExistingWorkspaceChange: setExistingWorkspace,
     });
 
     const resolvedPath = joinPath(editablePath, directoryName);
@@ -397,6 +409,12 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
                                     }}
                                     errorMsg={pathError || undefined}
                                 />
+                                {existingWorkspace && !pathError && (
+                                    <InfoNote>
+                                        <Icon name="info" isCodicon sx={{ marginTop: "1px" }} />
+                                        <span>This is an integrator project. Your new library will be added to it.</span>
+                                    </InfoNote>
+                                )}
                             </FieldGroup>
 
                             <SectionDivider />

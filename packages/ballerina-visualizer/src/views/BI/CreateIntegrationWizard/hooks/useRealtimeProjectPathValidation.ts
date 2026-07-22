@@ -36,6 +36,7 @@ export interface ProjectPathValidationClient {
         isValid: boolean;
         errorField?: ValidateProjectFormErrorField;
         errorMessage?: string;
+        existingWorkspace?: boolean;
     }>;
 }
 
@@ -51,6 +52,12 @@ interface RealtimeProjectPathValidationOptions {
     directoryName?: string;
     /** Allow the target directory to already exist (unless it is a Ballerina project). */
     allowExistingDirectory?: boolean;
+    /**
+     * Reports whether the current path resolves inside an existing Ballerina
+     * workspace (a "project") — the new integration/library will be added into it.
+     * Called with `false` whenever there is a path error or the path is cleared.
+     */
+    onExistingWorkspaceChange?: (isWorkspace: boolean) => void;
 }
 
 export function useRealtimeProjectPathValidation({
@@ -64,6 +71,7 @@ export function useRealtimeProjectPathValidation({
     onPathErrorChange,
     directoryName,
     allowExistingDirectory,
+    onExistingWorkspaceChange,
 }: RealtimeProjectPathValidationOptions) {
     const validationRequestId = useRef(0);
     const debouncedValidatePath = useMemo(
@@ -91,19 +99,22 @@ export function useRealtimeProjectPathValidation({
 
                 if (!validationResult.isValid && validationResult.errorField === ValidateProjectFormErrorField.PATH) {
                     onPathErrorChange(validationResult.errorMessage || invalidPathMessage);
+                    onExistingWorkspaceChange?.(false);
                     return;
                 }
 
                 onPathErrorChange(null);
+                onExistingWorkspaceChange?.(validationResult.existingWorkspace === true);
             } catch {
                 if (validationRequestId.current !== requestId) {
                     return;
                 }
 
                 onPathErrorChange(null);
+                onExistingWorkspaceChange?.(false);
             }
         }, 300),
-        [invalidPathMessage, onPathErrorChange, wsClient]
+        [invalidPathMessage, onExistingWorkspaceChange, onPathErrorChange, wsClient]
     );
 
     useEffect(() => {
@@ -111,6 +122,7 @@ export function useRealtimeProjectPathValidation({
             validationRequestId.current += 1;
             debouncedValidatePath.cancel();
             onPathErrorChange(null);
+            onExistingWorkspaceChange?.(false);
             return;
         }
 
@@ -119,6 +131,7 @@ export function useRealtimeProjectPathValidation({
             validationRequestId.current += 1;
             debouncedValidatePath.cancel();
             onPathErrorChange(requiredPathMessage);
+            onExistingWorkspaceChange?.(false);
             return;
         }
 
@@ -127,6 +140,7 @@ export function useRealtimeProjectPathValidation({
             validationRequestId.current += 1;
             debouncedValidatePath.cancel();
             onPathErrorChange(null);
+            onExistingWorkspaceChange?.(false);
             return;
         }
 
@@ -143,6 +157,7 @@ export function useRealtimeProjectPathValidation({
         debouncedValidatePath,
         directoryName,
         invalidPathMessage,
+        onExistingWorkspaceChange,
         onPathErrorChange,
         pathTouched,
         projectName,

@@ -207,7 +207,16 @@ export async function updateProjectArtifacts(publishedArtifacts: ArtifactsNotifi
             return;
         }
 
-        const entryLocations = await traverseUpdatedComponents(publishedArtifacts.artifacts, currentProjectStructure);
+        // Resolve which package the change belongs to from the notification's URI.
+        // In a workspace the context has no single `projectPath` (only a
+        // `workspacePath`), so relying on it would resolve artifact file paths
+        // against `undefined` and crash. Deriving the owning package from the
+        // changed file keeps the incremental update correct for workspace members
+        // as well as standalone projects.
+        const owningProjectPath =
+            resolveOwningProjectPath(publishedArtifacts.uri, currentProjectStructure)
+            ?? StateMachine.context().projectPath;
+        const entryLocations = await traverseUpdatedComponents(publishedArtifacts.artifacts, currentProjectStructure, owningProjectPath);
         const notificationHandler = ArtifactNotificationHandler.getInstance();
         // Publish a notification to the artifact handler
         notificationHandler.publish(ArtifactsUpdated.method, {
@@ -425,11 +434,11 @@ function getDirectoryMapKeyAndIcon(artifact: BaseArtifact, artifactCategoryKey: 
  * @param artifactCategoryKey The category key (from ARTIFACT_TYPE).
  * @param projectStructure The project structure to modify.
  */
-function processDeletion(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse): void {
+function processDeletion(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse, activeProjectPath: string): void {
     const mapping = getDirectoryMapKeyAndIcon(artifact, artifactCategoryKey);
     if (mapping) {
         try {
-            const projectPath = StateMachine.context().projectPath;
+            const projectPath = activeProjectPath;
             const project = projectStructure.projects.find(project => isSamePath(project.projectPath, projectPath));
             project.directoryMap[mapping.mapKey] =
                 project.directoryMap[mapping.mapKey]?.filter(value => value.id !== artifact.id) ?? [];
@@ -449,11 +458,11 @@ function processDeletion(artifact: BaseArtifact, artifactCategoryKey: string, pr
  * @param projectStructure The project structure to modify.
  * @returns A promise resolving to the potentially relevant visualization entry, or undefined.
  */
-async function processAddition(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse): Promise<ProjectStructureArtifactResponse | undefined> {
+async function processAddition(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse, activeProjectPath: string): Promise<ProjectStructureArtifactResponse | undefined> {
     const mapping = getDirectoryMapKeyAndIcon(artifact, artifactCategoryKey);
     if (mapping) {
         try {
-            const projectPath = StateMachine.context().projectPath;
+            const projectPath = activeProjectPath;
             const entryValue = await getEntryValue(artifact, projectPath, mapping.icon);
 
             const project = projectStructure.projects.find(project => isSamePath(project.projectPath, projectPath));
@@ -481,11 +490,11 @@ async function processAddition(artifact: BaseArtifact, artifactCategoryKey: stri
  * @param projectStructure The project structure to modify.
  * @returns A promise resolving to the potentially relevant visualization entry, or undefined.
  */
-async function processUpdate(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse): Promise<ProjectStructureArtifactResponse | undefined> {
+async function processUpdate(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse, activeProjectPath: string): Promise<ProjectStructureArtifactResponse | undefined> {
     const mapping = getDirectoryMapKeyAndIcon(artifact, artifactCategoryKey);
     if (mapping) {
         try {
-            const projectPath = StateMachine.context().projectPath;
+            const projectPath = activeProjectPath;
             const entryValue = await getEntryValue(artifact, projectPath, mapping.icon);
             const project = projectStructure.projects.find(project => isSamePath(project.projectPath, projectPath));
             // Ensure the array exists
@@ -511,7 +520,36 @@ async function processUpdate(artifact: BaseArtifact, artifactCategoryKey: string
     }
 }
 
-async function traverseUpdatedComponents(publishedArtifacts: Artifacts, currentProjectStructure: ProjectStructureResponse): Promise<ProjectStructureArtifactResponse[]> {
+/**
+ * Resolves which package in the current structure owns the changed file reported
+ * by a publishArtifacts notification. Picks the deepest matching project path so
+ * a workspace member (nested under the workspace root) wins over the root. Returns
+ * undefined when nothing matches (caller falls back to the context project path).
+ */
+function resolveOwningProjectPath(changedUri: string, projectStructure: ProjectStructureResponse): string | undefined {
+    let changedFsPath: string;
+    try {
+        changedFsPath = URI.parse(changedUri).fsPath.toLowerCase();
+    } catch {
+        return undefined;
+    }
+    let best: string | undefined;
+    for (const project of projectStructure.projects ?? []) {
+        if (!project.projectPath) {
+            continue;
+        }
+        const projNorm = project.projectPath.toLowerCase();
+        const isWithin = changedFsPath === projNorm
+            || changedFsPath.startsWith(projNorm + "/")
+            || changedFsPath.startsWith(projNorm + "\\");
+        if (isWithin && (best === undefined || projNorm.length > best.toLowerCase().length)) {
+            best = project.projectPath;
+        }
+    }
+    return best;
+}
+
+async function traverseUpdatedComponents(publishedArtifacts: Artifacts, currentProjectStructure: ProjectStructureResponse, activeProjectPath: string): Promise<ProjectStructureArtifactResponse[]> {
     const entryLocations: ProjectStructureArtifactResponse[] = [];
     const promises: Promise<ProjectStructureArtifactResponse | undefined>[] = [];
 
@@ -520,21 +558,21 @@ async function traverseUpdatedComponents(publishedArtifacts: Artifacts, currentP
         // Process Deletions first (synchronous)
         if (actionMap.deletions) {
             for (const artifact of Object.values(actionMap.deletions) as BaseArtifact[]) {
-                processDeletion(artifact, artifactCategoryKey, currentProjectStructure);
+                processDeletion(artifact, artifactCategoryKey, currentProjectStructure, activeProjectPath);
             }
         }
 
         // Process Additions (asynchronous)
         if (actionMap.additions) {
             for (const artifact of Object.values(actionMap.additions) as BaseArtifact[]) {
-                promises.push(processAddition(artifact, artifactCategoryKey, currentProjectStructure));
+                promises.push(processAddition(artifact, artifactCategoryKey, currentProjectStructure, activeProjectPath));
             }
         }
 
         // Process Updates (asynchronous)
         if (actionMap.updates) {
             for (const artifact of Object.values(actionMap.updates) as BaseArtifact[]) {
-                promises.push(processUpdate(artifact, artifactCategoryKey, currentProjectStructure));
+                promises.push(processUpdate(artifact, artifactCategoryKey, currentProjectStructure, activeProjectPath));
             }
         }
     }
@@ -542,7 +580,7 @@ async function traverseUpdatedComponents(publishedArtifacts: Artifacts, currentP
     // Wait for all additions and updates to complete
     const results = await Promise.all(promises);
 
-    const projectPath = StateMachine.context().projectPath;
+    const projectPath = activeProjectPath;
     const project = currentProjectStructure.projects.find(project => isSamePath(project.projectPath, projectPath));
     try {
         if (project) {

@@ -254,6 +254,14 @@ export interface ValidateProjectFormResponse {
     isValid: boolean;
     errorMessage?: string;
     errorField?: ValidateProjectFormErrorField;
+    /**
+     * Set when the validated path resolves inside an existing Ballerina workspace
+     * (a "project"): either the path itself is the workspace root or its parent is.
+     * The new integration/library will be added into that project rather than
+     * created as a standalone package. Only reported for component creation
+     * (`createAsWorkspace: false`); it is never set for project creation.
+     */
+    existingWorkspace?: boolean;
 }
 
 export enum ValidateProjectFormErrorField {

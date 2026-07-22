@@ -18,7 +18,7 @@
 
 import { useEffect, useRef } from "react";
 import styled from "@emotion/styled";
-import { DirectorySelector, TextField } from "@wso2/ui-toolkit";
+import { Codicon, DirectorySelector, TextField } from "@wso2/ui-toolkit";
 
 const FieldGroup = styled.div`
     display: flex;
@@ -27,12 +27,25 @@ const FieldGroup = styled.div`
     margin-bottom: 20px;
 `;
 
+const InfoNote = styled.div`
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--vscode-descriptionForeground);
+`;
+
 interface BasicInfoStepProps {
     integrationName: string;
     /** Full creation path shown in the field: `<baseDir>/<directoryName>`. */
     fullPath: string;
     nameError: string | null;
     pathError: string | null;
+    /** The chosen path is inside an existing Ballerina project — the new
+     *  integration will be added into it rather than created standalone. */
+    existingWorkspace: boolean;
     onNameChange: (value: string) => void;
     /** Fired when the path field text changes; the parent re-splits it into
      *  parent directory + directory name. */
@@ -51,6 +64,7 @@ export function BasicInfoStep({
     fullPath,
     nameError,
     pathError,
+    existingWorkspace,
     onNameChange,
     onPathChange,
     onBrowse,
@@ -113,6 +127,12 @@ export function BasicInfoStep({
                     onChange={onPathChange}
                     errorMsg={pathError || undefined}
                 />
+                {existingWorkspace && !pathError && (
+                    <InfoNote>
+                        <Codicon name="info" sx={{ marginTop: "1px" }} />
+                        <span>This is an integrator project. Your new integration will be added to it.</span>
+                    </InfoNote>
+                )}
             </FieldGroup>
         </>
     );

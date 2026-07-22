@@ -64,6 +64,13 @@ function pendingArtifactFilePath(projectRoot: string): string {
     return path.join(projectRoot, PENDING_ARTIFACT_RELATIVE_PATH);
 }
 
+/** True when `child` is `parent` itself or a directory nested inside it. */
+function isPathInside(child: string, parent: string): boolean {
+    const resolvedChild = path.resolve(child);
+    const resolvedParent = path.resolve(parent);
+    return resolvedChild === resolvedParent || resolvedChild.startsWith(resolvedParent + path.sep);
+}
+
 /**
  * Persists the wizard's configured first artifact so it can be generated after
  * the window reload. Call this right before `openInVSCode(projectRoot)`.
@@ -115,11 +122,17 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
         }
 
         // The pending artifact only applies to the project it was scheduled for.
-        const currentProjectPath = StateMachine.context().projectPath;
-        if (!isSamePath(stored.projectRoot, currentProjectPath)) {
+        // It was created either as a standalone package (opened directly, so it is
+        // the context's projectPath) or inside an existing Ballerina workspace (the
+        // workspace root is opened and projectPath is undefined, so match by the
+        // package living under the opened workspace).
+        const ctx = StateMachine.context();
+        const opensStoredPackage = isSamePath(stored.projectRoot, ctx.projectPath);
+        const insideOpenWorkspace = !!ctx.workspacePath && isPathInside(stored.projectRoot, ctx.workspacePath);
+        if (!opensStoredPackage && !insideOpenWorkspace) {
             console.log(
                 `[IntegrationWizard] Pending artifact project (${stored.projectRoot}) does not match ` +
-                `the opened project (${currentProjectPath}) — skipping.`
+                `the opened project (projectPath=${ctx.projectPath}, workspacePath=${ctx.workspacePath}) — skipping.`
             );
             return;
         }
@@ -130,11 +143,16 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
             return;
         }
 
-        console.log(`[IntegrationWizard] Generating pending ${payload.kind} artifact for: ${stored.projectRoot}`);
+        const addedIntoWorkspace = insideOpenWorkspace && !opensStoredPackage;
+        console.log(
+            `[IntegrationWizard] Pending artifact: kind=${payload.kind}, projectRoot=${stored.projectRoot}, ` +
+            `opensStoredPackage=${opensStoredPackage}, insideOpenWorkspace=${insideOpenWorkspace}, ` +
+            `addedIntoWorkspace=${addedIntoWorkspace}`
+        );
         try {
             await window.withProgress(
                 { location: ProgressLocation.Notification, title: `Setting up your ${label}...` },
-                () => generatePendingArtifact(payload)
+                () => generatePendingArtifact(payload, stored.projectRoot)
             );
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -175,20 +193,26 @@ function consumePendingArtifactPayload(projectRoot: string): PendingIntegrationA
     }
 }
 
-/** Runs the kind-specific generation and navigates to the produced artifact. */
-async function generatePendingArtifact(payload: PendingIntegrationArtifactPayload): Promise<void> {
+/**
+ * Runs the kind-specific generation and navigates to the produced artifact. All
+ * files are targeted inside `projectRoot` — the newly created package — which is
+ * the context's projectPath for a standalone package and a child package path
+ * when added into an existing workspace (where the context has no projectPath).
+ */
+async function generatePendingArtifact(payload: PendingIntegrationArtifactPayload, projectRoot: string): Promise<void> {
     switch (payload.kind) {
         case "SERVICE": {
             if (!payload.serviceInitModel) {
                 throw new Error("The service configuration is missing");
             }
-            // filePath is resolved by the manager (post-reload the project IS open,
-            // so the default `<projectPath>/main.bal` resolution applies).
+            // Target the new package explicitly (`<projectRoot>/main.bal`) so it works
+            // both standalone and when the package lives inside an opened workspace.
             const response = await new ServiceDesignerRpcManager().createServiceAndListener({
                 filePath: "",
+                projectPath: projectRoot,
                 serviceInitModel: payload.serviceInitModel,
             });
-            openNewArtifact(response.artifacts);
+            openNewArtifact(response.artifacts, projectRoot);
             return;
         }
         case "AUTOMATION":
@@ -197,13 +221,13 @@ async function generatePendingArtifact(payload: PendingIntegrationArtifactPayloa
                 throw new Error("The function configuration is missing");
             }
             // Same default file the FunctionForm targets (MainPanel's getDefaultFunctionsFile).
-            const filePath = path.join(StateMachine.context().projectPath, "functions.bal");
+            const filePath = path.join(projectRoot, "functions.bal");
             const response = await new BiDiagramRpcManager().getSourceCode({
                 filePath,
                 flowNode: payload.flowNode,
                 isFunctionNodeUpdate: true,
             });
-            openNewArtifact(response.artifacts);
+            openNewArtifact(response.artifacts, projectRoot);
             return;
         }
         case "AI_CHAT_AGENT": {
@@ -221,12 +245,17 @@ async function generatePendingArtifact(payload: PendingIntegrationArtifactPayloa
     }
 }
 
-/** Navigates to the freshly created artifact (mirrors ServiceCreationView's post-submit). */
-function openNewArtifact(artifacts: ProjectStructureArtifactResponse[] | undefined): void {
+/**
+ * Navigates to the freshly created artifact (mirrors ServiceCreationView's
+ * post-submit). The owning package (`projectRoot`) is passed explicitly: in a
+ * workspace the context has no `projectPath`, so without it the visualizer can't
+ * resolve which package the artifact belongs to and renders a blank view.
+ */
+function openNewArtifact(artifacts: ProjectStructureArtifactResponse[] | undefined, projectRoot: string): void {
     const newArtifact = artifacts?.find((artifact) => artifact.isNew);
     if (!newArtifact) {
         console.warn("[IntegrationWizard] No new artifact reported — landing on the default view.");
         return;
     }
-    openView(EVENT_TYPE.OPEN_VIEW, { documentUri: newArtifact.path, position: newArtifact.position });
+    openView(EVENT_TYPE.OPEN_VIEW, { documentUri: newArtifact.path, position: newArtifact.position, projectPath: projectRoot });
 }

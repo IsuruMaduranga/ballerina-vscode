@@ -25,7 +25,7 @@ import {
     ScaffoldIntegrationProjectResponse,
     WizardCapabilitiesResponse,
 } from "@wso2/ballerina-core";
-import { createBIProjectPure, openInVSCode } from "../../utils/bi";
+import { createBIComponent, createBIProjectPure, openInVSCode } from "../../utils/bi";
 import { schedulePendingArtifact } from "./pending-artifact";
 
 /** Bumped whenever the wizard wire contract changes in a way remote hosts must detect. */
@@ -93,6 +93,11 @@ export async function scaffoldIntegrationProject(): Promise<ScaffoldIntegrationP
  * persists the configured first artifact (generated post-reload by
  * `checkAndRunPendingArtifact`), discards the temp staging package, and opens the
  * project — the single terminal window reload of the whole flow.
+ *
+ * When the chosen path resolves inside an existing Ballerina workspace, the
+ * integration is added into that project (registered in the workspace toml) and
+ * the workspace — not the new package — is opened. The pending artifact is still
+ * scheduled against the new package root so it is generated there post-reload.
  */
 export async function createIntegration(params: CreateIntegrationRequest): Promise<void> {
     const projectRequest: ProjectRequest = {
@@ -102,13 +107,13 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
         directoryName: params.project.directoryName,
         createDirectory: true,
     };
-    const projectRoot = await createBIProjectPure(projectRequest);
+    const { packageRoot, openRoot } = await createBIComponent(projectRequest);
 
     if (params.artifact) {
-        await schedulePendingArtifact(projectRoot, params.artifact);
+        await schedulePendingArtifact(packageRoot, params.artifact);
     }
     cleanupStaging();
-    openInVSCode(projectRoot);
+    openInVSCode(openRoot);
 }
 
 /**

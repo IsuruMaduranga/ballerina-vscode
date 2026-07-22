@@ -81,6 +81,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
     });
     const [nameError, setNameError] = useState<string | null>(null);
     const [pathError, setPathError] = useState<string | null>(null);
+    const [existingWorkspace, setExistingWorkspace] = useState(false);
     const [triggers, setTriggers] = useState<TriggerModelsResponse | null>(null);
     const [selection, setSelection] = useState<ArtifactCard | null>(null);
     // Service model cached across step navigation (keyed by the selected card),
@@ -280,6 +281,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
         requiredPathMessage: REQUIRED_PATH_MESSAGE,
         invalidPathMessage: INVALID_PATH_MESSAGE,
         onPathErrorChange: useCallback((error: string | null) => setPathError(error), []),
+        onExistingWorkspaceChange: useCallback((isWorkspace: boolean) => setExistingWorkspace(isWorkspace), []),
         directoryName: effectiveDirectoryName,
         // The path field is the exact project root — allow creating into an
         // existing (non-Ballerina) directory instead of forcing a new folder.
@@ -486,6 +488,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                             fullPath={fullPath}
                             nameError={nameError}
                             pathError={pathError}
+                            existingWorkspace={existingWorkspace}
                             onNameChange={handleNameChange}
                             onPathChange={handlePathChange}
                             onBrowse={handleBrowse}
