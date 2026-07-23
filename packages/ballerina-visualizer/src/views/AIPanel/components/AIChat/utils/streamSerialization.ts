@@ -30,7 +30,11 @@ import { StreamEntry, StreamItem } from "../../AgentStreamView/types";
  */
 
 export function serializeStream(entries: StreamEntry[], existingContent: string): string {
-    const blob = `<agentstream>${JSON.stringify({ entries })}</agentstream>`;
+    // Escape `</` as `<\/` (a valid JSON string escape for `/`) so a `</agentstream>`
+    // substring inside the payload — e.g. assistant text or tool output that quotes
+    // the tag literally — can't terminate the blob early and make parseStream truncate.
+    const json = JSON.stringify({ entries }).replace(/<\//g, "<\\/");
+    const blob = `<agentstream>${json}</agentstream>`;
     if (existingContent.includes("<agentstream>")) {
         return existingContent.replace(/<agentstream>[\s\S]*?<\/agentstream>/, blob);
     }
@@ -40,7 +44,14 @@ export function serializeStream(entries: StreamEntry[], existingContent: string)
 export function parseStream(content: string): StreamEntry[] {
     const match = content.match(/<agentstream>([\s\S]*?)<\/agentstream>/);
     if (!match) return [];
-    try { return JSON.parse(match[1]).entries ?? []; } catch { return []; }
+    try {
+        // Guard the shape: only an actual array is safe to hand to the entry
+        // reducers (a malformed `{ "entries": {} }` would crash `appendToLastEntry`).
+        const parsed = JSON.parse(match[1]);
+        return Array.isArray(parsed?.entries) ? parsed.entries : [];
+    } catch {
+        return [];
+    }
 }
 
 export function appendToLastEntry(entries: StreamEntry[], item: StreamItem): StreamEntry[] {

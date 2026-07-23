@@ -193,6 +193,9 @@ export function ShaderOrb({ colors, energy, size, onContextFailed }: ShaderOrbPr
                 failedRef.current = true;
                 onContextFailed();
             }
+            // Program compile failed but the context was created — release it so
+            // the fallback path doesn't leak a live WebGL context.
+            gl?.getExtension("WEBGL_lose_context")?.loseContext();
             return;
         }
 

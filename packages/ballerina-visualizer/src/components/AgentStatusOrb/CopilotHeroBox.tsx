@@ -29,6 +29,7 @@ import {
     ORB_ENERGY,
     Sphere,
     Gloss,
+    IconOverlay,
     activeStateLabel,
     registerHeroPresence,
     subscribeAgentRunStatus,
@@ -90,14 +91,6 @@ const OrbHolder = styled.div`
     flex: none;
 `;
 
-const IconOverlay = styled.div`
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-`;
 
 const PromptInput = styled.input`
     flex: 1;
@@ -205,6 +198,13 @@ export function CopilotHeroBox() {
             active={active}
             onClick={() => (active ? openCopilot() : inputRef.current?.focus())}
             role={active ? "button" : undefined}
+            tabIndex={active ? 0 : undefined}
+            onKeyDown={(event) => {
+                if (active && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    openCopilot();
+                }
+            }}
             aria-label={label ? `WSO2 Copilot: ${label}. Open the Copilot chat.` : undefined}
         >
             <OrbHolder>

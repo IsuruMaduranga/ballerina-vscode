@@ -35,6 +35,7 @@ import {
     ORB_SIZE,
     Sphere,
     Gloss,
+    IconOverlay,
     activeStateLabel,
     subscribeAgentRunStatus,
     subscribeHeroPresence,
@@ -63,6 +64,18 @@ const ANCHOR_CSS: Record<Anchor, React.CSSProperties> = {
     "bottom-left": { bottom: EDGE_MARGIN, left: EDGE_MARGIN },
     "bottom-center": { bottom: EDGE_MARGIN, left: "50%", transform: "translateX(-50%)" },
     "bottom-right": { bottom: EDGE_MARGIN, right: EDGE_MARGIN },
+};
+
+// Where the label pill sits relative to the orb, per anchor: left edges push the
+// pill inward (row-reverse), the horizontal centers stack it vertically, the rest
+// trail it to the right. (Overridden to plain "row" mid-drag.)
+const FLEX_DIRECTION_BY_ANCHOR: Record<Anchor, "row" | "row-reverse" | "column" | "column-reverse"> = {
+    "top-left": "row-reverse",
+    "bottom-left": "row-reverse",
+    "top-center": "column-reverse",
+    "bottom-center": "column",
+    "top-right": "row",
+    "bottom-right": "row",
 };
 
 /** Top-left px position of the orb when docked at an anchor. */
@@ -261,15 +274,6 @@ const Aura = styled.div<{ colors: [string, string, string]; state: AgentRunState
     }
 `;
 
-const IconOverlay = styled.div`
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-`;
-
 /** Thin brand ring at the sphere's edge — the logo's circle as an accent. */
 const BrandRing = styled.div`
     position: absolute;
@@ -339,8 +343,12 @@ export function AgentStatusOrb() {
     // invitation input; dismissing only collapses it into the orb — hovering
     // the orb expands it again, so it is never more than one hover away.
     // While the mini chat is open it replaces both.
-    const showInvite = state === "idle" && !dragging && !miniOpen && (!inviteDismissed || hovered);
-    const showLabel = !dragging && !showInvite && state !== "idle" && !miniOpen;
+    // Also gate on `snapping`: during the snap-to-anchor animation `dragging` is
+    // intentionally false (so the CSS transition runs), but `anchor` isn't committed
+    // until the snap timer fires — showing the invite/label meanwhile would open the
+    // mini chat at the stale anchor. Keep them hidden until the orb settles.
+    const showInvite = state === "idle" && !dragging && !snapping && !miniOpen && (!inviteDismissed || hovered);
+    const showLabel = !dragging && !snapping && !showInvite && state !== "idle" && !miniOpen;
 
     // Typing into the invite starts the conversation in the mini chat — every
     // orb interaction stays in the ambient surface; the full panel is reached
@@ -395,7 +403,12 @@ export function AgentStatusOrb() {
         setDragPos(anchorPosition(target));
         snapTimerRef.current = setTimeout(() => {
             setAnchor(target);
-            localStorage.setItem(ANCHOR_STORAGE_KEY, target);
+            try {
+                localStorage.setItem(ANCHOR_STORAGE_KEY, target);
+            } catch {
+                // Storage may be unavailable/quota-restricted in the webview — the
+                // anchor still updates; only cross-reload persistence is lost.
+            }
             setDragPos(null);
             setSnapping(false);
         }, SNAP_ANIMATION_MS);

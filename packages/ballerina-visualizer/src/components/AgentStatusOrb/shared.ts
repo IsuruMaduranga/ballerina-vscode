@@ -34,7 +34,14 @@ export const ANCHOR_STORAGE_KEY = "ballerina.copilot.orbAnchor";
 const ANCHORS: readonly Anchor[] = ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"];
 
 export function loadAnchor(): Anchor {
-    const stored = localStorage.getItem(ANCHOR_STORAGE_KEY);
+    // Storage may be unavailable/quota-restricted in the webview — fall back to
+    // the default anchor rather than throwing during render.
+    let stored: string | null = null;
+    try {
+        stored = localStorage.getItem(ANCHOR_STORAGE_KEY);
+    } catch {
+        stored = null;
+    }
     // Default to bottom-center so the copilot invitation is front and center
     // when BI opens; users can drag the orb to any of the six anchors.
     return stored && (ANCHORS as readonly string[]).includes(stored) ? (stored as Anchor) : "bottom-center";
@@ -99,6 +106,16 @@ export const Gloss = styled.div`
     pointer-events: none;
 `;
 
+/** Centers the copilot glyph over the sphere — shared by the orb and hero box. */
+export const IconOverlay = styled.div`
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+`;
+
 // ---------------------------------------------------------------------------
 // Agent-run-status fan-out.
 //
@@ -111,6 +128,9 @@ export const Gloss = styled.div`
 
 let currentStatus: AgentRunStatus | null = null;
 let statusWired = false;
+// A live status notification can arrive before the initial getAgentRunStatus()
+// pull resolves; once one has, the (older) pull result must not clobber it.
+let receivedStatusNotification = false;
 const statusListeners = new Set<(status: AgentRunStatus | null) => void>();
 
 function publishStatus(status: AgentRunStatus | null) {
@@ -130,11 +150,19 @@ export function subscribeAgentRunStatus(
         rpcClient
             .getCommonRpcClient()
             .getAgentRunStatus()
-            .then(publishStatus)
+            .then((status) => {
+                // Skip if a live notification already delivered a fresher status.
+                if (!receivedStatusNotification) {
+                    publishStatus(status);
+                }
+            })
             .catch(() => {
                 // Older extension host without the RPC — status stays null.
             });
-        rpcClient.onAgentRunStatusChanged(publishStatus);
+        rpcClient.onAgentRunStatusChanged((status) => {
+            receivedStatusNotification = true;
+            publishStatus(status);
+        });
     }
     return () => {
         statusListeners.delete(listener);

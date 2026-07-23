@@ -357,10 +357,12 @@ export function sendAIPanelNotification(msg: ChatNotify, runContext?: AIPanelRun
     if (AiPanelWebview.currentPanel) {
         try {
             RPCLayer._messenger.sendNotification(onChatNotify, { type: "webview", webviewType: AiPanelWebview.viewType }, stamped);
+            return;
         } catch (e) {
-            // Panel was disposed between the guard and the send — safe to ignore (buffer has the event).
+            // Panel was disposed between the guard and the send — fall through and
+            // mirror to the visualizer instead (the panel is effectively gone; the
+            // buffer also has the event for replay).
         }
-        return;
     }
     // Panel closed: mirror the stream to the visualizer webview so its mini-chat
     // overlay can render live. Best-effort — the buffer above remains the source
