@@ -87,6 +87,7 @@ import { McpManagerPanel } from "../../McpManagerPanel";
 export type PanelRoute = "settings" | "mcp" | "skills";
 import WelcomeMessage from "./Welcome";
 import { getOnboardingOpens, incrementOnboardingOpens, convertToUIMessages, isContainsSyntaxError } from "./utils/utils";
+import { serializeStream, parseStream, appendToLastEntry } from "./utils/streamSerialization";
 
 import FeedbackBar from "./../FeedbackBar";
 import QuotaRequestDialog from "./../QuotaRequestDialog";
@@ -173,26 +174,8 @@ const UsageLimitNoticeContainer = styled.div`
 `;
 
 // ── Agent stream serialization ────────────────────────────────────────────────
-
-function serializeStream(entries: StreamEntry[], existingContent: string): string {
-    const blob = `<agentstream>${JSON.stringify({ entries })}</agentstream>`;
-    if (existingContent.includes("<agentstream>")) {
-        return existingContent.replace(/<agentstream>[\s\S]*?<\/agentstream>/, blob);
-    }
-    return existingContent + blob;
-}
-
-function parseStream(content: string): StreamEntry[] {
-    const match = content.match(/<agentstream>([\s\S]*?)<\/agentstream>/);
-    if (!match) return [];
-    try { return JSON.parse(match[1]).entries ?? []; } catch { return []; }
-}
-
-function appendToLastEntry(entries: StreamEntry[], item: StreamItem): StreamEntry[] {
-    if (entries.length === 0) return [{ description: "", items: [item] }];
-    const last = entries[entries.length - 1];
-    return [...entries.slice(0, -1), { ...last, items: [...last.items, item] }];
-}
+// Shared with the floating-orb mini chat so both surfaces read/write the same
+// persisted `<agentstream>` transcript format. See ./utils/streamSerialization.
 
 // Interactive-prompt events need care while replaying buffered events on reopen: their
 // transcript cards must be rebuilt (they are part of the turn), but a "waiting for user"

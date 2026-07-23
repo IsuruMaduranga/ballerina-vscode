@@ -650,6 +650,13 @@ export const agentRunStatusChanged: NotificationType<AgentRunStatus> = { method:
 export const stateChanged: NotificationType<MachineStateValue> = { method: 'stateChanged' };
 export const onDownloadProgress: NotificationType<DownloadProgress> = { method: 'onDownloadProgress' };
 export const onChatNotify: NotificationType<ChatNotify> = { method: 'onChatNotify' };
+/**
+ * Copilot chat stream mirrored to the visualizer webview (mini-chat overlay)
+ * while the AI panel is closed. A separate method from onChatNotify because
+ * vscode-messenger keeps one handler per method per webview, and the
+ * visualizer's onChatNotify is already used by the migration wizard.
+ */
+export const onCopilotChatNotify: NotificationType<ChatNotify> = { method: 'onCopilotChatNotify' };
 export const onMigrationToolLogs: NotificationType<string> = { method: 'onMigrationToolLogs' };
 export const onMigrationToolStateChanged: NotificationType<string> = { method: 'onMigrationToolStateChanged' };
 export const onMigratedProject: NotificationType<ProjectMigrationResult> = { method: 'onMigratedProject' };

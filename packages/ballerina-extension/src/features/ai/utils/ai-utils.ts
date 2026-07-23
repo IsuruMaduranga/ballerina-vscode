@@ -35,7 +35,8 @@ import {
     FileAttatchment,
     OperationType,
     Protocol,
-    webToolToggle
+    webToolToggle,
+    onCopilotChatNotify
 } from "@wso2/ballerina-core";
 import { ModelMessage } from "ai";
 import { MessageRole } from "./ai-types";
@@ -353,13 +354,24 @@ export function sendAIPanelNotification(msg: ChatNotify, runContext?: AIPanelRun
     // The agent keeps running after the panel is closed (by design). The event is
     // already buffered above, so skipping the post loses nothing — reconnect replays
     // it on reopen. Guard on the live panel and swallow any late-dispose race.
-    if (!AiPanelWebview.currentPanel) {
+    if (AiPanelWebview.currentPanel) {
+        try {
+            RPCLayer._messenger.sendNotification(onChatNotify, { type: "webview", webviewType: AiPanelWebview.viewType }, stamped);
+        } catch (e) {
+            // Panel was disposed between the guard and the send — safe to ignore (buffer has the event).
+        }
         return;
     }
-    try {
-        RPCLayer._messenger.sendNotification(onChatNotify, { type: "webview", webviewType: AiPanelWebview.viewType }, stamped);
-    } catch (e) {
-        // Panel was disposed between the guard and the send — safe to ignore (buffer has the event).
+    // Panel closed: mirror the stream to the visualizer webview so its mini-chat
+    // overlay can render live. Best-effort — the buffer above remains the source
+    // of truth for replay. Sent on a dedicated method (onCopilotChatNotify)
+    // because the visualizer's onChatNotify belongs to the migration wizard.
+    if (VisualizerWebview.currentPanel) {
+        try {
+            RPCLayer._messenger.sendNotification(onCopilotChatNotify, { type: "webview", webviewType: VisualizerWebview.viewType }, stamped);
+        } catch (e) {
+            // Visualizer disposed between the guard and the send — safe to ignore.
+        }
     }
 }
 

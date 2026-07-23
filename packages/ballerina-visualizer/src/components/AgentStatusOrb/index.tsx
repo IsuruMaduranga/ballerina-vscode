@@ -20,13 +20,19 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
 import { css, keyframes } from "@emotion/react";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
-import { AgentRunStatus, AgentRunState, SHARED_COMMANDS } from "@wso2/ballerina-core";
+import { AgentRunStatus, AgentRunState } from "@wso2/ballerina-core";
 import { Icon } from "@wso2/ui-toolkit";
 import { ShaderOrb } from "./ShaderOrb";
+import { MiniChat } from "./MiniChat";
 import {
+    Anchor,
+    ANCHOR_STORAGE_KEY,
     BRAND_ORANGE,
+    EDGE_MARGIN,
+    loadAnchor,
     ORB_COLORS,
     ORB_ENERGY,
+    ORB_SIZE,
     Sphere,
     Gloss,
     activeStateLabel,
@@ -40,18 +46,15 @@ import {
  * Rendered as an overlay in the visualizer webview and always visible while
  * the AI panel is closed — a subdued idle presence, and animated color-coded
  * states while the agent works in the background. Hidden while the AI panel
- * is open (the panel itself shows richer progress). Clicking it opens the
- * Copilot chat. Draggable: released anywhere, it snaps to the nearest corner
- * and the corner is remembered across reloads.
+ * is open (the panel itself shows richer progress). Clicking it toggles the
+ * mini chat overlay (the full panel is one more click away via its maximize
+ * button); typing into the idle invite starts the conversation in the mini.
+ * Draggable: released anywhere, it snaps to the nearest corner and the
+ * corner is remembered across reloads.
  */
 
-const ORB_SIZE = 56;
-const EDGE_MARGIN = 20;
 const DRAG_THRESHOLD = 5;
 const SNAP_ANIMATION_MS = 250;
-const ANCHOR_STORAGE_KEY = "ballerina.copilot.orbAnchor";
-
-type Anchor = "top-left" | "top-center" | "top-right" | "bottom-left" | "bottom-center" | "bottom-right";
 
 const ANCHOR_CSS: Record<Anchor, React.CSSProperties> = {
     "top-left": { top: EDGE_MARGIN, left: EDGE_MARGIN },
@@ -61,13 +64,6 @@ const ANCHOR_CSS: Record<Anchor, React.CSSProperties> = {
     "bottom-center": { bottom: EDGE_MARGIN, left: "50%", transform: "translateX(-50%)" },
     "bottom-right": { bottom: EDGE_MARGIN, right: EDGE_MARGIN },
 };
-
-function loadAnchor(): Anchor {
-    const stored = localStorage.getItem(ANCHOR_STORAGE_KEY);
-    // Default to bottom-center so the copilot invitation is front and center
-    // when BI opens; users can drag it to any of the six anchors.
-    return stored && stored in ANCHOR_CSS ? (stored as Anchor) : "bottom-center";
-}
 
 /** Top-left px position of the orb when docked at an anchor. */
 function anchorPosition(anchor: Anchor): { x: number; y: number } {
@@ -312,6 +308,10 @@ export function AgentStatusOrb() {
     const [inviteDismissed, setInviteDismissed] = useState(false);
     /** A landing-page hero box is on screen — it is the copilot surface there. */
     const [heroPresent, setHeroPresent] = useState(false);
+    /** Mini chat overlay toggled by clicking the orb. */
+    const [miniOpen, setMiniOpen] = useState(false);
+    /** Prompt typed into the invite input, handed to the mini chat once on open. */
+    const miniPromptRef = useRef<string | undefined>(undefined);
     /** WebGL unavailable — render the CSS gradient sphere instead. */
     const [webglFailed, setWebglFailed] = useState(false);
     const handleWebglFailed = useCallback(() => setWebglFailed(true), []);
@@ -338,23 +338,20 @@ export function AgentStatusOrb() {
     // Active states keep the pill visible the whole time. Idle shows the
     // invitation input; dismissing only collapses it into the orb — hovering
     // the orb expands it again, so it is never more than one hover away.
-    const showInvite = state === "idle" && !dragging && (!inviteDismissed || hovered);
-    const showLabel = !dragging && !showInvite && state !== "idle";
+    // While the mini chat is open it replaces both.
+    const showInvite = state === "idle" && !dragging && !miniOpen && (!inviteDismissed || hovered);
+    const showLabel = !dragging && !showInvite && state !== "idle" && !miniOpen;
 
-    const openCopilot = () => {
-        rpcClient?.getCommonRpcClient().executeCommand({ commands: [SHARED_COMMANDS.OPEN_AI_PANEL] });
-    };
-
+    // Typing into the invite starts the conversation in the mini chat — every
+    // orb interaction stays in the ambient surface; the full panel is reached
+    // via the mini's maximize button.
     const submitInvite = () => {
         const text = inviteText.trim();
-        if (!text) {
-            openCopilot();
-            return;
+        if (text) {
+            miniPromptRef.current = text;
         }
-        rpcClient?.getCommonRpcClient().executeCommand({
-            commands: [SHARED_COMMANDS.OPEN_AI_PANEL, { type: "text", text, planMode: false, autoSubmit: true }],
-        });
         setInviteText("");
+        setMiniOpen(true);
     };
 
     const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -378,6 +375,9 @@ export function AgentStatusOrb() {
             drag.wasDrag = true;
             clearTimeout(snapTimerRef.current);
             setSnapping(false);
+            // The mini chat is anchored to the orb's docked position — close it
+            // while the orb is in motion.
+            setMiniOpen(false);
         }
         setDragPos({ x: event.clientX - ORB_SIZE / 2, y: event.clientY - ORB_SIZE / 2 });
     };
@@ -404,8 +404,10 @@ export function AgentStatusOrb() {
     const handleClick = () => {
         // Suppress the click that follows a drag; dragStateRef is already
         // cleared on pointerup, so only a stale wasDrag matters here.
+        // Clicking toggles the mini chat overlay; the full panel is one more
+        // click away (the mini's maximize button).
         if (dragPos === null) {
-            openCopilot();
+            setMiniOpen((open) => !open);
         }
     };
 
@@ -430,6 +432,18 @@ export function AgentStatusOrb() {
         : ANCHOR_CSS[anchor];
 
     return (
+        <>
+        {miniOpen && (
+            <MiniChat
+                anchor={anchor}
+                onClose={() => setMiniOpen(false)}
+                takeInitialPrompt={() => {
+                    const prompt = miniPromptRef.current;
+                    miniPromptRef.current = undefined;
+                    return prompt;
+                }}
+            />
+        )}
         <Wrapper
             style={{ ...wrapperStyle, flexDirection }}
             onMouseEnter={() => setHovered(true)}
@@ -453,7 +467,7 @@ export function AgentStatusOrb() {
                     </InviteDismiss>
                 </InviteBox>
             )}
-            {showLabel && label && <LabelPill onClick={openCopilot}>{label}</LabelPill>}
+            {showLabel && label && <LabelPill onClick={() => setMiniOpen(true)}>{label}</LabelPill>}
             <OrbButton
                 state={state}
                 onClick={handleClick}
@@ -461,7 +475,7 @@ export function AgentStatusOrb() {
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 title={label ? `WSO2 Integrator Copilot — ${label}` : "WSO2 Integrator Copilot"}
-                aria-label={label ? `WSO2 Copilot: ${label}. Open the Copilot chat.` : "Open the WSO2 Copilot chat"}
+                aria-label={label ? `WSO2 Copilot: ${label}. Open the Copilot mini chat.` : "Open the WSO2 Copilot mini chat"}
             >
                 {(state === "running" || state === "awaiting-input") && <Halo colors={colors} />}
                 <Aura colors={colors} state={state} />
@@ -487,5 +501,6 @@ export function AgentStatusOrb() {
                 </IconOverlay>
             </OrbButton>
         </Wrapper>
+        </>
     );
 }

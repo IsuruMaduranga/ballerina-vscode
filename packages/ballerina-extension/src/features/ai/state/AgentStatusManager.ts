@@ -31,8 +31,7 @@ const STATUS_BAR_LABEL_MAX = 40;
  * Derives a compact, ambient-UI-friendly status for the Copilot agent's
  * background run and fans it out to:
  *  - a right-aligned status bar item (always visible, click opens the AI panel),
- *  - the visualizer webview (drives the floating orb overlay),
- *  - a completion/error toast when the AI panel is closed.
+ *  - the visualizer webview (drives the floating orb overlay).
  *
  * Fed from two places:
  *  - `AICommandExecutor.run()` lifecycle (`runStarted`/`runEnded`) — only for
@@ -146,7 +145,6 @@ class AgentStatusManager {
         if (this.status.state === partial.state && this.status.label === partial.label) {
             return;
         }
-        const wasTerminalAlready = this.status.state === 'completed' || this.status.state === 'error';
         this.status = {
             ...this.status,
             state: partial.state,
@@ -159,9 +157,6 @@ class AgentStatusManager {
 
         if (partial.state === 'completed' || partial.state === 'error') {
             this.scheduleIdleReset();
-            if (!this.status.aiPanelOpen && !wasTerminalAlready) {
-                this.showCompletionToast(partial.state);
-            }
         }
     }
 
@@ -210,19 +205,6 @@ class AgentStatusManager {
             // Visualizer webview not open — nothing to update; it pulls the
             // current status via getAgentRunStatus on mount.
         }
-    }
-
-    private showCompletionToast(state: 'completed' | 'error'): void {
-        const openAction = 'Open Copilot';
-        const message = state === 'completed'
-            ? 'WSO2 Copilot finished working in the background.'
-            : 'WSO2 Copilot hit an error while working in the background.';
-        const show = state === 'completed' ? vscode.window.showInformationMessage : vscode.window.showWarningMessage;
-        show(message, openAction).then((selection) => {
-            if (selection === openAction) {
-                vscode.commands.executeCommand(SHARED_COMMANDS.OPEN_AI_PANEL);
-            }
-        });
     }
 
     private scheduleIdleReset(): void {

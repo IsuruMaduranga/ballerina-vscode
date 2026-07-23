@@ -17,11 +17,28 @@
  */
 
 import styled from "@emotion/styled";
-import { AgentRunState, AgentRunStatus } from "@wso2/ballerina-core";
+import { AgentRunState, AgentRunStatus, ChatNotify } from "@wso2/ballerina-core";
 import { BallerinaRpcClient } from "@wso2/ballerina-rpc-client";
 
 /** WSO2 brand orange — the pulse-icon color from wso2.com/about/brand. */
 export const BRAND_ORANGE = "#F14E23";
+
+/** Floating orb geometry, shared with the mini chat for anchor-relative placement. */
+export const ORB_SIZE = 56;
+export const EDGE_MARGIN = 20;
+
+export type Anchor = "top-left" | "top-center" | "top-right" | "bottom-left" | "bottom-center" | "bottom-right";
+
+export const ANCHOR_STORAGE_KEY = "ballerina.copilot.orbAnchor";
+
+const ANCHORS: readonly Anchor[] = ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"];
+
+export function loadAnchor(): Anchor {
+    const stored = localStorage.getItem(ANCHOR_STORAGE_KEY);
+    // Default to bottom-center so the copilot invitation is front and center
+    // when BI opens; users can drag the orb to any of the six anchors.
+    return stored && (ANCHORS as readonly string[]).includes(stored) ? (stored as Anchor) : "bottom-center";
+}
 
 export const ORB_COLORS: Record<AgentRunState, [string, string, string]> = {
     "idle": ["#6b5ce8", BRAND_ORANGE, "#ffb199"],
@@ -121,6 +138,32 @@ export function subscribeAgentRunStatus(
     }
     return () => {
         statusListeners.delete(listener);
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Copilot chat stream (mini chat).
+//
+// The extension mirrors onChatNotify events to the visualizer webview on the
+// dedicated onCopilotChatNotify method while the AI panel is closed. Same
+// one-handler-per-method constraint as above, so the single messenger
+// registration lives here and fans out.
+// ---------------------------------------------------------------------------
+
+let chatWired = false;
+const chatListeners = new Set<(msg: ChatNotify) => void>();
+
+export function subscribeCopilotChatNotify(
+    rpcClient: BallerinaRpcClient,
+    listener: (msg: ChatNotify) => void
+): () => void {
+    chatListeners.add(listener);
+    if (!chatWired) {
+        chatWired = true;
+        rpcClient.onCopilotChatNotify((msg) => chatListeners.forEach((l) => l(msg)));
+    }
+    return () => {
+        chatListeners.delete(listener);
     };
 }
 
