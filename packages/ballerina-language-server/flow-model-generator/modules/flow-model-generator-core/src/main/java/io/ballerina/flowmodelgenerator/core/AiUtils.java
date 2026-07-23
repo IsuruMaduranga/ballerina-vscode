@@ -38,8 +38,10 @@ import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.UnionTypeSymbol;
 import io.ballerina.compiler.api.values.ConstantValue;
 import io.ballerina.flowmodelgenerator.core.model.AvailableNode;
+import io.ballerina.flowmodelgenerator.core.model.Category;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
 import io.ballerina.flowmodelgenerator.core.model.FlowNode;
+import io.ballerina.flowmodelgenerator.core.model.Item;
 import io.ballerina.flowmodelgenerator.core.model.Metadata;
 import io.ballerina.flowmodelgenerator.core.model.NodeBuilder;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
@@ -704,11 +706,99 @@ public class AiUtils {
      * label (case-insensitive).
      */
     public static boolean matchesQuery(AvailableNode node, String query) {
+        if (query == null || query.isBlank()) {
+            return true;
+        }
         String lowerQuery = query.toLowerCase(Locale.ROOT);
-        String module = node.codedata().module();
+        Codedata codedata = node.codedata();
+        String module = codedata.module();
+        String packageName = codedata.packageName();
+        String org = codedata.org();
+        String object = codedata.object();
         String label = node.metadata() != null ? node.metadata().label() : null;
+        String description = node.metadata() != null ? node.metadata().description() : null;
         return (module != null && module.toLowerCase(Locale.ROOT).contains(lowerQuery))
-                || (label != null && label.toLowerCase(Locale.ROOT).contains(lowerQuery));
+                || (packageName != null && packageName.toLowerCase(Locale.ROOT).contains(lowerQuery))
+                || (org != null && org.toLowerCase(Locale.ROOT).contains(lowerQuery))
+                || (object != null && object.toLowerCase(Locale.ROOT).contains(lowerQuery))
+                || (label != null && label.toLowerCase(Locale.ROOT).contains(lowerQuery))
+                || (description != null && description.toLowerCase(Locale.ROOT).contains(lowerQuery));
+    }
+
+    /**
+     * Builds an AI component category that keeps single-component packages as direct leaves and groups packages
+     * exposing multiple implementations of the requested component type. Grouping happens after component discovery,
+     * so every leaf retains the original codedata needed for template generation.
+     *
+     * @param categoryLabel the label of the outer AI component category
+     * @param components the discovered component implementations
+     * @param query the optional search query
+     * @return the category containing direct leaves and package groups
+     */
+    public static Category buildAdaptiveAiComponentCategory(String categoryLabel, List<AvailableNode> components,
+                                                            String query) {
+        Map<String, List<AvailableNode>> componentsByPackage = components.stream()
+                .collect(Collectors.groupingBy(node -> node.codedata().org() + ":" + node.codedata().packageName()));
+
+        List<Item> items = componentsByPackage.entrySet().stream()
+                .map(entry -> buildAdaptiveAiComponentItem(categoryLabel, entry.getValue(), query))
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(AiUtils::getItemLabel, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+
+        return new Category.Builder(null).metadata().label(categoryLabel).stepOut().items(items).build();
+    }
+
+    private static Item buildAdaptiveAiComponentItem(String categoryLabel, List<AvailableNode> components,
+                                                     String query) {
+        List<AvailableNode> sortedComponents = components.stream()
+                .sorted(Comparator.comparing(node -> node.metadata().label(), String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        AvailableNode firstComponent = sortedComponents.getFirst();
+
+        if (sortedComponents.size() == 1) {
+            return matchesQuery(firstComponent, query) ? firstComponent : null;
+        }
+
+        String packageName = firstComponent.codedata().packageName();
+        String groupLabel = getPackageDisplayLabel(packageName) + " " + categoryLabel;
+        boolean packageMatches = matchesQuery(groupLabel, packageName, firstComponent.codedata().org(), query);
+        List<AvailableNode> matchingComponents = packageMatches ? sortedComponents : sortedComponents.stream()
+                .filter(node -> matchesQuery(node, query))
+                .toList();
+        if (matchingComponents.isEmpty()) {
+            return null;
+        }
+
+        Metadata metadata = new Metadata.Builder<Category.Builder>(null)
+                .label(groupLabel)
+                .description(categoryLabel + " available in " + firstComponent.codedata().org() + "/" + packageName)
+                .icon(firstComponent.metadata().icon())
+                .build();
+        return new Category(metadata, new ArrayList<>(matchingComponents));
+    }
+
+    private static boolean matchesQuery(String groupLabel, String packageName, String org, String query) {
+        if (query == null || query.isBlank()) {
+            return true;
+        }
+        String lowerQuery = query.toLowerCase(Locale.ROOT);
+        return groupLabel.toLowerCase(Locale.ROOT).contains(lowerQuery)
+                || packageName.toLowerCase(Locale.ROOT).contains(lowerQuery)
+                || org.toLowerCase(Locale.ROOT).contains(lowerQuery);
+    }
+
+    private static String getItemLabel(Item item) {
+        if (item instanceof AvailableNode node) {
+            return node.metadata().label();
+        }
+        return ((Category) item).metadata().label();
+    }
+
+    private static String getPackageDisplayLabel(String packageName) {
+        int lastDot = packageName.lastIndexOf('.');
+        String rawPackageName = lastDot >= 0 ? packageName.substring(lastDot + 1) : packageName;
+        return formatProviderName(rawPackageName);
     }
 
     private static List<Module> pinUserDeclaredVersions(Project project, List<Module> modules) {
@@ -1018,16 +1108,24 @@ public class AiUtils {
 
         int lastDot = moduleName.lastIndexOf('.');
         String rawProviderName = lastDot >= 0 ? moduleName.substring(lastDot + 1) : moduleName.replaceAll("^ai", "");
-        String providerName = splitPascalCase(capitalizeFirstChar(rawProviderName));
+        String providerName = formatProviderName(rawProviderName);
         String splitClassName = splitPascalCase(className);
-        String label = (providerName + " " + splitClassName)
+        String label = normalizeProviderCasing(providerName + " " + splitClassName)
+                .trim().replaceAll("\\s+", " ");
+        return label;
+    }
+
+    private static String formatProviderName(String providerName) {
+        return normalizeProviderCasing(splitPascalCase(capitalizeFirstChar(providerName)));
+    }
+
+    private static String normalizeProviderCasing(String providerName) {
+        return providerName
                 .replaceAll("(?i)openai", "OpenAI")
                 .replaceAll("(?i)mssql", "MSSQL")
                 .replaceAll("(?i)\\bai\\b", "AI")
                 .replace("Open AI", "OpenAI")
-                .replace("Openrouter", "OpenRouter")
-                .trim().replaceAll("\\s+", " ");
-        return label;
+                .replace("Openrouter", "OpenRouter");
     }
 
     private static String splitPascalCase(String input) {

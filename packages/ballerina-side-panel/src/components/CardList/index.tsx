@@ -152,6 +152,13 @@ namespace S {
         overflow: hidden;
     `;
 
+    export const GroupIndicator = styled.div`
+        color: ${ThemeColors.ON_SURFACE_VARIANT};
+        font-size: 24px;
+        line-height: 1;
+        flex-shrink: 0;
+    `;
+
     export const Row = styled.div<{}>`
         display: flex;
         flex-direction: row;
@@ -218,6 +225,7 @@ function CardList(props: CardListProps) {
 
     const [searchText, setSearchText] = useState<string>("");
     const [isSearching, setIsSearching] = useState(false);
+    const [categoryPath, setCategoryPath] = useState<Category[]>([]);
 
     useEffect(() => {
         if (onSearch) {
@@ -237,14 +245,31 @@ function CardList(props: CardListProps) {
 
     const handleOnSearch = (text: string) => {
         setSearchText(text);
+        setCategoryPath([]);
     };
 
     useEffect(() => {
         setIsSearching(false);
     }, [categories]);
 
+    useEffect(() => {
+        setCategoryPath([]);
+    }, [categories]);
+
     const handleCardClick = (node: Node) => {
         onSelect(node.id, { node: node.metadata });
+    };
+
+    const handleGroupClick = (category: Category) => {
+        setCategoryPath((path) => [...path, category]);
+    };
+
+    const handleBack = () => {
+        if (categoryPath.length > 0) {
+            setCategoryPath((path) => path.slice(0, -1));
+            return;
+        }
+        onBack?.();
     };
 
     // Filter items based on search text (only if no onSearch prop - local filtering)
@@ -264,7 +289,7 @@ function CardList(props: CardListProps) {
                     if (categoryMatches || filteredItems.length > 0) {
                         return {
                             ...item,
-                            items: filteredItems,
+                            items: categoryMatches ? item.items : filteredItems,
                         };
                     }
                     return null;
@@ -288,9 +313,11 @@ function CardList(props: CardListProps) {
     };
 
     const renderCards = (items: Item[]) => {
-        const nodes = items.filter((item): item is Node => item != null && "id" in item && "label" in item);
+        const cards = items.filter((item): item is Node | Category => item != null && (
+            ("id" in item && "label" in item) || ("items" in item && "title" in item)
+        ));
 
-        if (nodes.length === 0) {
+        if (cards.length === 0) {
             return (
                 <S.EmptyState>
                     <S.EmptyStateText>No items found</S.EmptyStateText>
@@ -301,15 +328,37 @@ function CardList(props: CardListProps) {
 
         return (
             <S.CardsContainer>
-                {nodes.map((node, index) => (
-                    <S.Card key={node.id + index} enabled={node.enabled} onClick={() => handleCardClick(node)} title={node.description}>
-                        <S.CardIcon>{node.icon ? node.icon : <LogIcon />}</S.CardIcon>
-                        <S.CardContent>
-                            <S.CardTitle>{node.label}</S.CardTitle>
-                            {node.description && <S.CardDescription>{node.description}</S.CardDescription>}
-                        </S.CardContent>
-                    </S.Card>
-                ))}
+                {cards.map((item, index) => {
+                    if ("id" in item && "label" in item) {
+                        const node = item as Node;
+                        return (
+                            <S.Card key={node.id + index} enabled={node.enabled} onClick={() => handleCardClick(node)} title={node.description}>
+                                <S.CardIcon>{node.icon ? node.icon : <LogIcon />}</S.CardIcon>
+                                <S.CardContent>
+                                    <S.CardTitle>{node.label}</S.CardTitle>
+                                    {node.description && <S.CardDescription>{node.description}</S.CardDescription>}
+                                </S.CardContent>
+                            </S.Card>
+                        );
+                    }
+
+                    const category = item as Category;
+                    const itemCount = category.items.length;
+                    const countLabel = `${itemCount} ${itemCount === 1 ? "option" : "options"}`;
+                    const description = category.description
+                        ? `${countLabel} · ${category.description}`
+                        : countLabel;
+                    return (
+                        <S.Card key={category.title + index} enabled={true} onClick={() => handleGroupClick(category)} title={category.description}>
+                            <S.CardIcon>{category.icon ? category.icon : <LogIcon />}</S.CardIcon>
+                            <S.CardContent>
+                                <S.CardTitle>{category.title}</S.CardTitle>
+                                <S.CardDescription>{description}</S.CardDescription>
+                            </S.CardContent>
+                            <S.GroupIndicator aria-hidden="true">›</S.GroupIndicator>
+                        </S.Card>
+                    );
+                })}
             </S.CardsContainer>
         );
     };
@@ -324,19 +373,23 @@ function CardList(props: CardListProps) {
               return category;
           });
 
-    const hasContent = filteredCategories.some((category) => category?.items && category.items.length > 0);
-    const shouldShowHeaderActions = (onBack && title) || onClose;
+    const activeCategory = categoryPath.at(-1);
+    const visibleCategories = activeCategory ? [activeCategory] : filteredCategories;
+    const hasContent = visibleCategories.some((category) => category?.items && category.items.length > 0);
+    const headerTitle = activeCategory?.title || title;
+    const canGoBack = categoryPath.length > 0 || Boolean(onBack);
+    const shouldShowHeaderActions = (canGoBack && headerTitle) || onClose;
     return (
         <S.Container>
             <S.HeaderContainer>
                 {shouldShowHeaderActions && (
                     <S.Row>
-                        {onBack && title && (
+                        {canGoBack && headerTitle && (
                             <S.LeftAlignRow>
-                                <S.BackButton appearance="icon" onClick={onBack}>
+                                <S.BackButton appearance="icon" onClick={handleBack}>
                                     <BackIcon />
                                 </S.BackButton>
-                                {title}
+                                {headerTitle}
                             </S.LeftAlignRow>
                         )}
                         {onClose && (
@@ -373,7 +426,7 @@ function CardList(props: CardListProps) {
                             <S.EmptyStateSubText>Try adjusting your search terms</S.EmptyStateSubText>
                         </S.EmptyState>
                     ) : (
-                        filteredCategories.map((category, index) => {
+                        visibleCategories.map((category, index) => {
                             if (!category?.items || category.items.length === 0) {
                                 return null;
                             }
