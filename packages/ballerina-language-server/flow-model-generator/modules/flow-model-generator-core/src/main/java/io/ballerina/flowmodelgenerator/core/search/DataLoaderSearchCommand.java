@@ -44,13 +44,15 @@ public class DataLoaderSearchCommand extends SearchCommand {
     @Override
     protected List<Item> defaultView() {
         List<AvailableNode> modelProviders = AiUtils.getDataLoaders(project);
-        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.DATA_LOADER.label(), modelProviders, null));
+        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.DATA_LOADER.label(), modelProviders,
+                null));
     }
 
     @Override
     protected List<Item> search() {
         List<AvailableNode> modelProviders = AiUtils.getDataLoaders(project);
-        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.DATA_LOADER.label(), modelProviders, query));
+        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.DATA_LOADER.label(), modelProviders,
+                query));
     }
 
     @Override

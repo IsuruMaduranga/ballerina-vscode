@@ -44,13 +44,15 @@ public class EmbeddingProviderSearchCommand extends SearchCommand {
     @Override
     protected List<Item> defaultView() {
         List<AvailableNode> modelProviders = AiUtils.getEmbeddingProviders(project);
-        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.EMBEDDING_PROVIDER.label(), modelProviders, null));
+        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.EMBEDDING_PROVIDER.label(),
+                modelProviders, null));
     }
 
     @Override
     protected List<Item> search() {
         List<AvailableNode> modelProviders = AiUtils.getEmbeddingProviders(project);
-        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.EMBEDDING_PROVIDER.label(), modelProviders, query));
+        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.EMBEDDING_PROVIDER.label(),
+                modelProviders, query));
     }
 
     @Override

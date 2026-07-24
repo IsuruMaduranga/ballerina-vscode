@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Button, ProgressRing, SearchBox, SidePanelBody, ThemeColors } from "@wso2/ui-toolkit";
+import { Button, Codicon, ProgressRing, SearchBox, SidePanelBody, ThemeColors } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
 import { BackIcon, CloseIcon, LogIcon } from "../../resources";
 import { Category, Item, Node } from "../NodeList/types";
@@ -92,8 +92,8 @@ namespace S {
 
         &:hover {
             ${({ enabled }) =>
-                enabled &&
-                `
+            enabled &&
+            `
                 background-color: ${ThemeColors.PRIMARY_CONTAINER};
                 border: 1px solid ${ThemeColors.PRIMARY};
                 transform: translateY(-1px);
@@ -152,11 +152,128 @@ namespace S {
         overflow: hidden;
     `;
 
-    export const GroupIndicator = styled.div`
-        color: ${ThemeColors.ON_SURFACE_VARIANT};
-        font-size: 24px;
-        line-height: 1;
+    export const GroupContainer = styled.div<{ expanded?: boolean }>`
+        display: flex;
+        flex-direction: column;
+        border: 1px solid ${({ expanded }) => (expanded ? ThemeColors.PRIMARY : ThemeColors.OUTLINE_VARIANT)};
+        border-radius: 8px;
+        background-color: ${ThemeColors.SURFACE};
+        overflow: hidden;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+
+        ${({ expanded }) => expanded && `box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);`}
+
+        ${({ expanded }) =>
+            !expanded &&
+            `
+            &:hover {
+                background-color: ${ThemeColors.PRIMARY_CONTAINER};
+                border-color: ${ThemeColors.PRIMARY};
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }
+        `}
+    `;
+
+    export const GroupHeader = styled.div`
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        min-height: 60px;
+        cursor: pointer;
+        background-color: transparent;
+    `;
+
+    export const CountPill = styled.span`
         flex-shrink: 0;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 1;
+        padding: 3px 8px;
+        border-radius: 999px;
+        color: ${ThemeColors.ON_SURFACE_VARIANT};
+        background-color: ${ThemeColors.SURFACE_CONTAINER};
+        border: 1px solid ${ThemeColors.OUTLINE_VARIANT};
+        white-space: nowrap;
+    `;
+
+    export const ChevronWrapper = styled.div<{ expanded?: boolean }>`
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        color: ${ThemeColors.ON_SURFACE_VARIANT};
+        transition: transform 0.2s ease;
+        transform: rotate(${({ expanded }) => (expanded ? "180deg" : "0deg")});
+    `;
+
+    export const GroupBody = styled.div`
+        display: flex;
+        flex-direction: column;
+        border-top: 1px solid ${ThemeColors.OUTLINE_VARIANT};
+        background-color: ${ThemeColors.SURFACE_DIM};
+        animation: groupBodyIn 0.18s ease;
+
+        @keyframes groupBodyIn {
+            from {
+                opacity: 0;
+                transform: translateY(-4px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    `;
+
+    export const ChildCard = styled.div<{ enabled?: boolean }>`
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 20px;
+        cursor: ${({ enabled }) => (enabled ? "pointer" : "not-allowed")};
+        transition: background-color 0.15s ease;
+
+        &:not(:last-child) {
+            border-bottom: 1px solid ${ThemeColors.OUTLINE_VARIANT};
+        }
+
+        ${({ enabled }) => enabled === false && "opacity: 0.5;"}
+
+        &:hover {
+            ${({ enabled }) =>
+            enabled !== false &&
+            `background-color: var(--vscode-list-hoverBackground, ${ThemeColors.SURFACE_CONTAINER});`}
+        }
+    `;
+
+    export const ChildContent = styled.div`
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        min-width: 0;
+    `;
+
+    export const ChildTitle = styled.div`
+        font-size: 13px;
+        font-weight: 600;
+        color: ${ThemeColors.ON_SURFACE};
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    `;
+
+    export const ChildDescription = styled.div`
+        font-size: 12px;
+        color: ${ThemeColors.ON_SURFACE_VARIANT};
+        opacity: 0.8;
+        margin-top: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     `;
 
     export const Row = styled.div<{}>`
@@ -225,7 +342,7 @@ function CardList(props: CardListProps) {
 
     const [searchText, setSearchText] = useState<string>("");
     const [isSearching, setIsSearching] = useState(false);
-    const [categoryPath, setCategoryPath] = useState<Category[]>([]);
+    const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
 
     useEffect(() => {
         if (onSearch) {
@@ -245,7 +362,6 @@ function CardList(props: CardListProps) {
 
     const handleOnSearch = (text: string) => {
         setSearchText(text);
-        setCategoryPath([]);
     };
 
     useEffect(() => {
@@ -253,23 +369,18 @@ function CardList(props: CardListProps) {
     }, [categories]);
 
     useEffect(() => {
-        setCategoryPath([]);
+        setExpandedGroupId(null);
     }, [categories]);
 
     const handleCardClick = (node: Node) => {
         onSelect(node.id, { node: node.metadata });
     };
 
-    const handleGroupClick = (category: Category) => {
-        setCategoryPath((path) => [...path, category]);
-    };
+    const getGroupId = (category: Category) => `${category.title}:${category.description}`;
 
-    const handleBack = () => {
-        if (categoryPath.length > 0) {
-            setCategoryPath((path) => path.slice(0, -1));
-            return;
-        }
-        onBack?.();
+    const handleGroupClick = (category: Category) => {
+        const groupId = getGroupId(category);
+        setExpandedGroupId((expandedId) => (expandedId === groupId ? null : groupId));
     };
 
     // Filter items based on search text (only if no onSearch prop - local filtering)
@@ -312,6 +423,32 @@ function CardList(props: CardListProps) {
             .filter(Boolean) as Item[];
     };
 
+    const renderGroupChildren = (items: Item[]) => {
+        return items
+            .filter((item): item is Node | Category => item != null)
+            .map((item, index) => {
+                // Nested categories are not expected inside a group, but fall back gracefully.
+                if ("items" in item && "title" in item) {
+                    return <React.Fragment key={item.title + index}>{renderCards([item])}</React.Fragment>;
+                }
+
+                const node = item as Node;
+                return (
+                    <S.ChildCard
+                        key={node.id + index}
+                        enabled={node.enabled}
+                        onClick={() => node.enabled !== false && handleCardClick(node)}
+                        title={node.description}
+                    >
+                        <S.ChildContent>
+                            <S.ChildTitle>{node.label}</S.ChildTitle>
+                            {node.description && <S.ChildDescription>{node.description}</S.ChildDescription>}
+                        </S.ChildContent>
+                    </S.ChildCard>
+                );
+            });
+    };
+
     const renderCards = (items: Item[]) => {
         const cards = items.filter((item): item is Node | Category => item != null && (
             ("id" in item && "label" in item) || ("items" in item && "title" in item)
@@ -345,18 +482,43 @@ function CardList(props: CardListProps) {
                     const category = item as Category;
                     const itemCount = category.items.length;
                     const countLabel = `${itemCount} ${itemCount === 1 ? "option" : "options"}`;
-                    const description = category.description
-                        ? `${countLabel} · ${category.description}`
-                        : countLabel;
+                    const groupId = getGroupId(category);
+                    const isExpanded = Boolean(searchText) || expandedGroupId === groupId;
+                    const groupChildrenId = `group-${category.title.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}-${index}`;
                     return (
-                        <S.Card key={category.title + index} enabled={true} onClick={() => handleGroupClick(category)} title={category.description}>
-                            <S.CardIcon>{category.icon ? category.icon : <LogIcon />}</S.CardIcon>
-                            <S.CardContent>
-                                <S.CardTitle>{category.title}</S.CardTitle>
-                                <S.CardDescription>{description}</S.CardDescription>
-                            </S.CardContent>
-                            <S.GroupIndicator aria-hidden="true">›</S.GroupIndicator>
-                        </S.Card>
+                        <S.GroupContainer key={category.title + index} expanded={isExpanded}>
+                            <S.GroupHeader
+                                onClick={() => handleGroupClick(category)}
+                                onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        handleGroupClick(category);
+                                    }
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                aria-expanded={isExpanded}
+                                aria-controls={groupChildrenId}
+                                title={category.description}
+                            >
+                                <S.CardIcon>{category.icon ? category.icon : <LogIcon />}</S.CardIcon>
+                                <S.CardContent>
+                                    <S.CardTitle>{category.title}</S.CardTitle>
+                                    {category.description && (
+                                        <S.CardDescription>{category.description}</S.CardDescription>
+                                    )}
+                                </S.CardContent>
+                                <S.CountPill>{countLabel}</S.CountPill>
+                                <S.ChevronWrapper expanded={isExpanded} aria-hidden="true">
+                                    <Codicon name="chevron-down" sx={{ fontSize: 16 }} />
+                                </S.ChevronWrapper>
+                            </S.GroupHeader>
+                            {isExpanded && (
+                                <S.GroupBody id={groupChildrenId}>
+                                    {renderGroupChildren(category.items)}
+                                </S.GroupBody>
+                            )}
+                        </S.GroupContainer>
                     );
                 })}
             </S.CardsContainer>
@@ -366,18 +528,16 @@ function CardList(props: CardListProps) {
     const filteredCategories = onSearch
         ? categories
         : cloneDeep(categories).map((category) => {
-              if (!category || !category.items) {
-                  return category;
-              }
-              category.items = filterItems(category.items) || [];
-              return category;
-          });
+            if (!category || !category.items) {
+                return category;
+            }
+            category.items = filterItems(category.items) || [];
+            return category;
+        });
 
-    const activeCategory = categoryPath.at(-1);
-    const visibleCategories = activeCategory ? [activeCategory] : filteredCategories;
-    const hasContent = visibleCategories.some((category) => category?.items && category.items.length > 0);
-    const headerTitle = activeCategory?.title || title;
-    const canGoBack = categoryPath.length > 0 || Boolean(onBack);
+    const hasContent = filteredCategories.some((category) => category?.items && category.items.length > 0);
+    const headerTitle = title;
+    const canGoBack = Boolean(onBack);
     const shouldShowHeaderActions = (canGoBack && headerTitle) || onClose;
     return (
         <S.Container>
@@ -386,7 +546,7 @@ function CardList(props: CardListProps) {
                     <S.Row>
                         {canGoBack && headerTitle && (
                             <S.LeftAlignRow>
-                                <S.BackButton appearance="icon" onClick={handleBack}>
+                                <S.BackButton appearance="icon" onClick={() => onBack?.()}>
                                     <BackIcon />
                                 </S.BackButton>
                                 {headerTitle}
@@ -426,7 +586,7 @@ function CardList(props: CardListProps) {
                             <S.EmptyStateSubText>Try adjusting your search terms</S.EmptyStateSubText>
                         </S.EmptyState>
                     ) : (
-                        visibleCategories.map((category, index) => {
+                        filteredCategories.map((category, index) => {
                             if (!category?.items || category.items.length === 0) {
                                 return null;
                             }

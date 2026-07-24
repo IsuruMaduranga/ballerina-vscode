@@ -44,13 +44,15 @@ public class VectorStoreSearchCommand extends SearchCommand {
     @Override
     protected List<Item> defaultView() {
         List<AvailableNode> modelProviders = AiUtils.getVectorStores(project);
-        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.VECTOR_STORE.label(), modelProviders, null));
+        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.VECTOR_STORE.label(), modelProviders,
+                null));
     }
 
     @Override
     protected List<Item> search() {
         List<AvailableNode> modelProviders = AiUtils.getVectorStores(project);
-        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.VECTOR_STORE.label(), modelProviders, query));
+        return List.of(AiUtils.buildAdaptiveAiComponentCategory(Category.Name.VECTOR_STORE.label(), modelProviders,
+                query));
     }
 
     @Override
