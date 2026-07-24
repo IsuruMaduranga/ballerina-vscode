@@ -25,7 +25,6 @@ import {
     MACHINE_VIEW,
     PendingIntegrationArtifactKind,
     PendingIntegrationArtifactPayload,
-    ProjectStructureArtifactResponse,
 } from "@wso2/ballerina-core";
 import { extension } from "../../BalExtensionContext";
 import { openView, StateMachine } from "../../stateMachine";
@@ -207,12 +206,12 @@ async function generatePendingArtifact(payload: PendingIntegrationArtifactPayloa
             }
             // Target the new package explicitly (`<projectRoot>/main.bal`) so it works
             // both standalone and when the package lives inside an opened workspace.
-            const response = await new ServiceDesignerRpcManager().createServiceAndListener({
+            await new ServiceDesignerRpcManager().createServiceAndListener({
                 filePath: "",
                 projectPath: projectRoot,
                 serviceInitModel: payload.serviceInitModel,
             });
-            openNewArtifact(response.artifacts, projectRoot);
+            openPackageOverview(projectRoot);
             return;
         }
         case "AUTOMATION":
@@ -222,12 +221,12 @@ async function generatePendingArtifact(payload: PendingIntegrationArtifactPayloa
             }
             // Same default file the FunctionForm targets (MainPanel's getDefaultFunctionsFile).
             const filePath = path.join(projectRoot, "functions.bal");
-            const response = await new BiDiagramRpcManager().getSourceCode({
+            await new BiDiagramRpcManager().getSourceCode({
                 filePath,
                 flowNode: payload.flowNode,
                 isFunctionNodeUpdate: true,
             });
-            openNewArtifact(response.artifacts, projectRoot);
+            openPackageOverview(projectRoot);
             return;
         }
         case "AI_CHAT_AGENT": {
@@ -246,16 +245,12 @@ async function generatePendingArtifact(payload: PendingIntegrationArtifactPayloa
 }
 
 /**
- * Navigates to the freshly created artifact (mirrors ServiceCreationView's
- * post-submit). The owning package (`projectRoot`) is passed explicitly: in a
- * workspace the context has no `projectPath`, so without it the visualizer can't
- * resolve which package the artifact belongs to and renders a blank view.
+ * Lands on the new package's overview after the first artifact is created, rather
+ * than drilling into the artifact's own designer. The overview lists the new
+ * artifact and is the expected place to land after creating an integration. The
+ * package root is passed as `projectPath` so it resolves correctly in a workspace
+ * (where the context has no active `projectPath`).
  */
-function openNewArtifact(artifacts: ProjectStructureArtifactResponse[] | undefined, projectRoot: string): void {
-    const newArtifact = artifacts?.find((artifact) => artifact.isNew);
-    if (!newArtifact) {
-        console.warn("[IntegrationWizard] No new artifact reported — landing on the default view.");
-        return;
-    }
-    openView(EVENT_TYPE.OPEN_VIEW, { documentUri: newArtifact.path, position: newArtifact.position, projectPath: projectRoot });
+function openPackageOverview(projectRoot: string): void {
+    openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.PackageOverview, projectPath: projectRoot });
 }

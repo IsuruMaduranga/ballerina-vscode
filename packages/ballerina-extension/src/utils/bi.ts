@@ -222,7 +222,7 @@ export function validateProjectPath(
                     // Project creation: a new project can never be created on top of
                     // an existing Ballerina project, integration, or library.
                     if (finalPathKind === 'workspace') {
-                        return { isValid: false, errorMessage: 'A Ballerina project already exists in the selected directory', errorField: ValidateProjectFormErrorField.PATH };
+                        return { isValid: false, errorMessage: 'An Integrator project already exists in the selected directory', errorField: ValidateProjectFormErrorField.PATH };
                     }
                     if (finalPathKind === 'package') {
                         return { isValid: false, errorMessage: 'An integration or library already exists in the selected directory', errorField: ValidateProjectFormErrorField.PATH };
