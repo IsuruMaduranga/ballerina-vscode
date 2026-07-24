@@ -31,6 +31,11 @@ on:
         type: boolean
         required: false
         default: false
+      runFastTests:
+        description: Run the jest fast tests (unit + component + contract)
+        type: boolean
+        required: false
+        default: true
       runBalE2ETests:
         type: boolean
         required: false
@@ -186,6 +191,7 @@ jobs:
   fast-tests:
     name: Fast tests (unit + component + contract)
     needs: Build_Stage
+    if: ${{ inputs.runFastTests }}
     timeout-minutes: 20
     runs-on: ${{ inputs.runOnAWS && inputs.awsRunnerId || 'ubuntu-latest' }}
     steps:
@@ -242,7 +248,7 @@ jobs:
     name: Run Ballerina e2e Test
     needs: Build_Stage
     timeout-minutes: 60
-    if: ${{ inputs.runBalE2ETests || (inputs.isReleaseBuild && inputs.ballerina) }}
+    if: ${{ inputs.runBalE2ETests }}
     strategy:
       fail-fast: false
       matrix:

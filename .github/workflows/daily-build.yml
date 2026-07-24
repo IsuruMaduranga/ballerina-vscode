@@ -264,7 +264,7 @@ jobs:
     secrets: inherit
     with:
       ballerina: true
-      runTests: true
+      runFastTests: true
       runBalE2ETests: true
 
   # ─────────────────────────────────────────────────────────────────────────
