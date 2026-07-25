@@ -1243,7 +1243,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         await handleSearch(searchText, functionType, "FUNCTION");
     };
 
-     const handleSearchWorkflow = async (searchText: string, functionType: FUNCTION_TYPE) => {
+    const handleSearchWorkflow = async (searchText: string, functionType: FUNCTION_TYPE) => {
         // NOTE: Backend payloads may still contain legacy "WORKFLOW_START" in some environments.
         // FE is intentionally standardized on "WORKFLOW_RUN"; align API/LS payloads to avoid mismatches.
         await handleSearch(searchText, functionType, "WORKFLOW_RUN");
@@ -1789,6 +1789,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         // Push current state to navigation stack before navigating
         pushToNavigationStack(sidePanelView, categories, selectedNodeRef.current, selectedClientName.current);
         setShowProgressIndicator(true);
+        setShowProgressSpinner(true);
+        setProgressTitle("");
+        setProgressMessage(FORM_LOADING_MESSAGE);
 
         try {
             const { flowNode, connectionKind } = await getNodeTemplateForConnection(
@@ -1805,6 +1808,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             setShowSidePanel(true);
         } finally {
             setShowProgressIndicator(false);
+            setShowProgressSpinner(false);
+            setProgressMessage(LOADING_MESSAGE);
         }
     };
 
@@ -2490,7 +2495,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             });
     };
 
-   
+
 
     const handleOnAddNPFunction = () => {
         rpcClient.getVisualizerRpcClient().openView({

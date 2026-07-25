@@ -703,7 +703,14 @@ export function PanelManager(props: PanelManagerProps) {
                 );
 
             case SidePanelView.CONNECTION_SELECT:
-                return <ConnectionSelectionList connectionKind={selectedConnectionKind} onSelect={onSelectNewConnection} />;
+                return (
+                    <ConnectionSelectionList
+                        connectionKind={selectedConnectionKind}
+                        onSelect={onSelectNewConnection}
+                        expandedGroupId={expandedGroupId}
+                        onExpandedGroupChange={onExpandedGroupChange}
+                    />
+                );
 
             case SidePanelView.CONNECTION_CREATE:
                 return (
