@@ -196,6 +196,44 @@ const REPLAY_PENDING_STAGES: Record<string, string> = {
     connector_generation_notification: "requesting_input" satisfies ConnectorGenerationNotification["stage"],
 };
 
+/**
+ * `ChatNotify` types `handleChatNotify` deliberately ignores: they carry nothing that
+ * belongs in the persisted assistant transcript, and nothing this panel renders.
+ *
+ * Enumerated rather than swallowed by a bare `default` so that adding a variant to
+ * `ChatNotify` breaks the build here, forcing a decision. That guard matters because
+ * this panel AUTHORS the persisted transcript (its `save_chat` branch writes the
+ * rendered scrollback back via `updateChatMessage`, which drops the run-event buffer
+ * that could otherwise rebuild the turn — once the run is no longer active; mid-run
+ * per-step saves keep it, see `clearBuffer`'s guard in `rpc-manager.ts`) — an event
+ * that should be folded into
+ * `content` but is silently ignored is data the store loses for good. Mirrors
+ * `MiniChat.tsx`'s `UnmodelledNotifyType`; deliberately named differently because the
+ * two lists are NOT meant to match — the panel models strictly more events, so its
+ * residual is smaller. Keep both greppable rather than trying to share one type.
+ *
+ * ⚠️ Coverage boundary: this fires only when a variant is ADDED to `ChatNotify`. It
+ * does NOT fire when a type already listed below starts carrying transcript content,
+ * or starts being emitted on a path it previously wasn't — that stays a human
+ * judgement call, so re-read the justifications below when touching an emitter.
+ *
+ * Why each of these is safe to ignore *here*:
+ *  - `start` — the panel already enters its loading state when it sends the request.
+ *  - `evals_tool_result` never reaches any webview: `features/ai/utils/events.ts`
+ *    drops it before dispatch.
+ *  - `plan_updated` is declared but never emitted anywhere.
+ *  - `migration_progress` is pure progress telemetry with no transcript content. Note
+ *    it genuinely DOES reach this panel — `createAIPanelMigrationEventHandler`
+ *    forwards every event when migration enhancement runs from AI Chat — so it is
+ *    exactly the case the coverage boundary above applies to: if migration is ever
+ *    folded into the main chat transcript, the tripwire will NOT catch it.
+ */
+type PanelUnmodelledNotifyType =
+    | "start"
+    | "evals_tool_result"
+    | "plan_updated"
+    | "migration_progress";
+
 const SCAFFOLD_DONE_PREFIX = "ballerina.scaffold.done:";
 
 // Stable, non-crypto hash for keying scaffold runs by (prompt + steps).
@@ -1106,9 +1144,11 @@ const AIChat: React.FC = () => {
             return;
         }
 
-        if (type === "content_block") {
+        if (type === "content_block" || type === "content_replace") {
             const content = response.content;
-            if (content === "") return;
+            // An empty append is a no-op; an empty *replace* is meaningful (it clears
+            // the trailing text), so only the append path short-circuits.
+            if (type === "content_block" && content === "") return;
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
@@ -1119,7 +1159,8 @@ const AIChat: React.FC = () => {
                     const lastEntry = entries[entries.length - 1];
                     const lastItem = lastEntry.items[lastEntry.items.length - 1];
                     if (lastItem?.kind === "text") {
-                        const updatedItems = [...lastEntry.items.slice(0, -1), { ...lastItem, text: lastItem.text + content }];
+                        const mergedText = type === "content_block" ? lastItem.text + content : content;
+                        const updatedItems = [...lastEntry.items.slice(0, -1), { ...lastItem, text: mergedText }];
                         const updated = [...entries.slice(0, -1), { ...lastEntry, items: updatedItems }];
                         msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                         return msgs;
@@ -1163,7 +1204,7 @@ const AIChat: React.FC = () => {
                     const targetIndex = ensureAssistantMessage(msgs);
                     const last = msgs[targetIndex];
                     const entries = parseStream(last.content);
-                    const resultItem: StreamItem = { kind: "tool_result", toolCallId: response.toolCallId, toolName: response.toolName, toolOutput: response.toolOutput, failed: (response as any).failed };
+                    const resultItem: StreamItem = { kind: "tool_result", toolCallId: response.toolCallId, toolName: response.toolName, toolOutput: response.toolOutput, failed: response.failed };
                     let matched = false;
                     const updated = entries.map(entry => {
                         if (matched) return entry;
@@ -1276,7 +1317,7 @@ const AIChat: React.FC = () => {
             setCurrentFileArray(response.fileArray);
 
         } else if (type === "connector_generation_notification") {
-            const connectorData = buildRequestCardData("connector", response as any);
+            const connectorData = buildRequestCardData("connector", response);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
@@ -1288,7 +1329,7 @@ const AIChat: React.FC = () => {
             });
 
         } else if (type === "configuration_collection_event") {
-            const configurationData = buildRequestCardData("config", response as any);
+            const configurationData = buildRequestCardData("config", response);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
@@ -1300,7 +1341,7 @@ const AIChat: React.FC = () => {
             });
 
         } else if (type === "clarify_event") {
-            const clarifyData = buildRequestCardData("ask", response as any);
+            const clarifyData = buildRequestCardData("ask", response);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
@@ -1312,7 +1353,7 @@ const AIChat: React.FC = () => {
             });
 
         } else if (type === "skill_enable_event") {
-            const enableData = buildRequestCardData("skill_enable", response as any);
+            const enableData = buildRequestCardData("skill_enable", response);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
@@ -1326,8 +1367,8 @@ const AIChat: React.FC = () => {
         } else if (type === "diagnostics") {
             currentDiagnosticsRef.current = response.diagnostics;
 
-        } else if ((response as any).type === "chat_component") {
-            const { componentType, id, data } = response as any;
+        } else if (type === "chat_component") {
+            const { componentType, id, data } = response;
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
@@ -1361,16 +1402,16 @@ const AIChat: React.FC = () => {
             });
 
         } else if (type === "usage_metrics") {
-            const inputTokens = (response as any).usage?.inputTokens ?? 0;
+            const inputTokens = response.usage?.inputTokens ?? 0;
             const percentage = Math.min(100, Math.round((inputTokens / MAX_CONTEXT_WINDOW) * 100));
-            const breakdown = (response as any).breakdown;
+            const breakdown = response.breakdown;
             setContextUsage({ inputTokens, percentage, breakdown });
 
         } else if (type === "config_change") {
-            if ((response as any).key === 'showContextUsage') {
-                setShowContextUsage((response as any).value);
-            } else if ((response as any).key === 'mcpToolsEnabled') {
-                setMcpToolsEnabled((response as any).value);
+            if (response.key === 'showContextUsage') {
+                setShowContextUsage(response.value);
+            } else if (response.key === 'mcpToolsEnabled') {
+                setMcpToolsEnabled(response.value);
             }
 
         } else if (type === "stop") {
@@ -1501,6 +1542,32 @@ const AIChat: React.FC = () => {
             setIsLoading(false);
             setBackendRequestTriggered(false);
             isErrorChunkReceivedRef.current = true;
+
+        } else {
+            // Tripwire: this assignment fails to compile when a new `ChatNotify` variant
+            // is added, forcing an explicit decision instead of a silent drop. If the new
+            // variant contributes to the persisted transcript, give it a branch above; if
+            // it is genuinely presentational, add it to `PanelUnmodelledNotifyType` (and
+            // check whether the mini chat needs the same branch — it authors the same
+            // record). See that type for what this guard does NOT cover.
+            //
+            // Relies on aliased-discriminant narrowing (TS 4.4+) of `type`, so every
+            // branch above must test `type`, not `response.type` — a branch that tests
+            // `response.type` (or casts through `as any`) silently opts out of narrowing
+            // and drops its own literal from this residual without failing the build.
+            type ResidualAtTail = typeof type;
+            // Forward direction: residual ⊆ declared. Catches an unhandled variant.
+            const _unmodelled: PanelUnmodelledNotifyType = type;
+            // Reverse direction: declared ⊆ residual. Catches a STALE entry — one that
+            // has since gained a branch above, so the list would otherwise keep claiming
+            // an event is unmodelled when it is actually folded. Assigning the narrowed
+            // residual into the hand-written union only ever checks the forward direction,
+            // so without this the list can silently rot into inaccurate documentation.
+            // (`typeof type` captures the flow-narrowed residual at this point, not the
+            // declared union — verified; that is what makes this check non-vacuous.)
+            const _noStaleEntries: ResidualAtTail = {} as PanelUnmodelledNotifyType;
+            void _unmodelled;
+            void _noStaleEntries;
         }
     };
 

@@ -87,6 +87,11 @@ type MiniTail = { kind: "notice" | "error"; text: string };
  * folds into `content` but the mini ignores is data the store silently loses —
  * which is exactly how the review chip went missing.
  *
+ * The panel has the mirror-image guard (`PanelUnmodelledNotifyType` in
+ * `AIPanel/components/AIChat/index.tsx`). The two lists are NOT meant to match — the
+ * panel models strictly more events, so its residual is smaller — hence the distinct
+ * names. Same coverage boundary applies to both: see the ⚠️ on `migration_progress`.
+ *
  * Most of these have an explicit branch in the panel's `handleChatNotify` that only
  * touches local UI state (`usage_metrics`, `diagnostics`, `messages`,
  * `intermediary_state`, `generated_sources`, `compaction_start`/`compaction_end`,
