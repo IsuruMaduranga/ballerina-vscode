@@ -50,7 +50,7 @@ import TodoSection from "../TodoSection";
 import AgentStreamView from "../AgentStreamView";
 import { StreamEntry, StreamItem } from "../AgentStreamView/types";
 import { ConnectorGeneratorSegment } from "../ConnectorGeneratorSegment";
-import { ConfigurationCollectorSegment, ConfigurationCollectionData } from "../ConfigurationCollectorSegment";
+import { ConfigurationCollectorSegment } from "../ConfigurationCollectorSegment";
 import CheckpointSeparator from "../CheckpointSeparator";
 import { Attachment, AttachmentStatus, SkillEnableStage, SkillEntry, TaskApprovalRequest } from "@wso2/ballerina-core";
 import type { ClarifyEvent, ConfigurationCollectionEvent, ConnectorGenerationNotification } from "@wso2/ballerina-core";
@@ -87,7 +87,11 @@ import { McpManagerPanel } from "../../McpManagerPanel";
 export type PanelRoute = "settings" | "mcp" | "skills";
 import WelcomeMessage from "./Welcome";
 import { getOnboardingOpens, incrementOnboardingOpens, convertToUIMessages, isContainsSyntaxError } from "./utils/utils";
-import { serializeStream, parseStream, appendToLastEntry } from "./utils/streamSerialization";
+import {
+    serializeStream, parseStream, appendToLastEntry, upsertComponent, upsertRequestCard,
+    buildRequestCardData, buildPlanItem, appendAbortMarker, applyTaskWriteResult,
+    COMPACTION_DISABLED_NOTICE,
+} from "./utils/streamSerialization";
 
 import FeedbackBar from "./../FeedbackBar";
 import QuotaRequestDialog from "./../QuotaRequestDialog";
@@ -1140,34 +1144,16 @@ const AIChat: React.FC = () => {
 
         } else if (type === "tool_result") {
             if (response.toolName === "TaskWrite") {
-                const tasks: Array<{ status: string; description: string }> = response.toolOutput?.tasks ?? [];
-                const inProgressTask = tasks.find(t => t.status === "in_progress");
-                const lastCompletedTask = [...tasks].reverse().find(t => t.status === "completed");
+                const tasks = response.toolOutput?.tasks ?? [];
                 setMessages(prevMessages => {
                     const msgs = [...prevMessages];
                     const targetIndex = ensureAssistantMessage(msgs);
                     const last = msgs[targetIndex];
-                    let entries = parseStream(last.content);
-                    if (inProgressTask) {
-                        // Push a named entry for this task (skip if already present)
-                        if (entries.some(e => e.description === inProgressTask.description)) return prevMessages;
-                        entries = [...entries, { description: inProgressTask.description, items: [], status: "in_progress" as const }];
-                    } else {
-                        // Mark the just-completed named entry as done
-                        if (lastCompletedTask) {
-                            entries = entries.map(e =>
-                                e.description === lastCompletedTask.description
-                                    ? { ...e, status: "completed" as const }
-                                    : e
-                            );
-                        }
-                        // Push a floating entry for subsequent content (if not already present)
-                        const lastEntry = entries[entries.length - 1];
-                        if (!lastEntry || lastEntry.description !== "") {
-                            entries = [...entries, { description: "", items: [] }];
-                        }
-                    }
-                    msgs[targetIndex] = { ...last, content: serializeStream(entries, last.content) };
+                    const entries = parseStream(last.content);
+                    const updated = applyTaskWriteResult(entries, tasks);
+                    // Unchanged (task entry already open) — skip the redundant write.
+                    if (updated === entries) return prevMessages;
+                    msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                     return msgs;
                 });
             } else {
@@ -1204,11 +1190,10 @@ const AIChat: React.FC = () => {
                     const targetIndex = ensureAssistantMessage(msgs);
                     const last = msgs[targetIndex];
                     const entries = parseStream(last.content);
-                    const planItem: StreamItem = {
-                        kind: "plan", requestId: response.requestId, tasks: response.tasks, message: response.message,
-                        ...(response.autoApproved ? { approvalStatus: "approved" as const } : {})
-                    };
-                    const updated = appendToLastEntry(entries, planItem);
+                    const updated = appendToLastEntry(
+                        entries,
+                        buildPlanItem(response.requestId, response.tasks, response.message, response.autoApproved)
+                    );
                     msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                     return msgs;
                 });
@@ -1291,110 +1276,49 @@ const AIChat: React.FC = () => {
             setCurrentFileArray(response.fileArray);
 
         } else if (type === "connector_generation_notification") {
-            const connectorNotification = response as any;
-            const connectorData = {
-                requestId: connectorNotification.requestId,
-                stage: connectorNotification.stage,
-                serviceName: connectorNotification.serviceName,
-                serviceDescription: connectorNotification.serviceDescription,
-                spec: connectorNotification.spec,
-                connector: connectorNotification.connector,
-                error: connectorNotification.error,
-                message: connectorNotification.message,
-                inputMethod: connectorNotification.inputMethod,
-                sourceIdentifier: connectorNotification.sourceIdentifier
-            };
+            const connectorData = buildRequestCardData("connector", response as any);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
                 const entries = parseStream(last.content);
-                let found = false;
-                let updated = entries.map(entry => {
-                    const idx = entry.items.findIndex(item => item.kind === "connector" && (item.data as any)?.requestId === connectorData.requestId);
-                    if (idx === -1) return entry;
-                    found = true;
-                    return { ...entry, items: entry.items.map((item, i) => i === idx ? { kind: "connector" as const, data: connectorData } : item) };
-                });
-                if (!found) updated = appendToLastEntry(entries, { kind: "connector", data: connectorData });
+                const updated = upsertRequestCard(entries, "connector", connectorData);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
 
         } else if (type === "configuration_collection_event") {
-            const configurationNotification = response as any;
-            const configurationData: ConfigurationCollectionData = {
-                requestId: configurationNotification.requestId,
-                stage: configurationNotification.stage,
-                variables: configurationNotification.variables,
-                existingValues: configurationNotification.existingValues,
-                message: configurationNotification.message,
-                isTestConfig: configurationNotification.isTestConfig,
-                error: configurationNotification.error
-            };
+            const configurationData = buildRequestCardData("config", response as any);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
                 const entries = parseStream(last.content);
-                let found = false;
-                let updated = entries.map(entry => {
-                    const idx = entry.items.findIndex(item => item.kind === "config" && (item.data as any)?.requestId === configurationData.requestId);
-                    if (idx === -1) return entry;
-                    found = true;
-                    return { ...entry, items: entry.items.map((item, i) => i === idx ? { kind: "config" as const, data: configurationData } : item) };
-                });
-                if (!found) updated = appendToLastEntry(entries, { kind: "config", data: configurationData });
+                const updated = upsertRequestCard(entries, "config", configurationData);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
 
         } else if (type === "clarify_event") {
-            const clarifyNotification = response as any;
-            const clarifyData = {
-                requestId: clarifyNotification.requestId,
-                stage: clarifyNotification.stage,
-                questions: clarifyNotification.questions,
-                answers: clarifyNotification.answers,
-            };
+            const clarifyData = buildRequestCardData("ask", response as any);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
                 const entries = parseStream(last.content);
-                let found = false;
-                let updated = entries.map(entry => {
-                    const idx = entry.items.findIndex(item => item.kind === "ask" && (item.data as any)?.requestId === clarifyData.requestId);
-                    if (idx === -1) return entry;
-                    found = true;
-                    return { ...entry, items: entry.items.map((item, i) => i === idx ? { kind: "ask" as const, data: clarifyData } : item) };
-                });
-                if (!found) updated = appendToLastEntry(entries, { kind: "ask", data: clarifyData });
+                const updated = upsertRequestCard(entries, "ask", clarifyData);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
 
         } else if (type === "skill_enable_event") {
-            const evt = response as any;
-            const enableData = {
-                requestId: evt.requestId,
-                stage: evt.stage,
-                skillName: evt.skillName,
-                skillId: evt.skillId,
-            };
+            const enableData = buildRequestCardData("skill_enable", response as any);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
                 const entries = parseStream(last.content);
-                let found = false;
-                let updated = entries.map(entry => {
-                    const idx = entry.items.findIndex(item => item.kind === "skill_enable" && (item.data as any)?.requestId === enableData.requestId);
-                    if (idx === -1) return entry;
-                    found = true;
-                    return { ...entry, items: entry.items.map((item, i) => i === idx ? { kind: "skill_enable" as const, data: enableData } : item) };
-                });
-                if (!found) updated = appendToLastEntry(entries, { kind: "skill_enable", data: enableData });
+                const updated = upsertRequestCard(entries, "skill_enable", enableData);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
@@ -1409,24 +1333,7 @@ const AIChat: React.FC = () => {
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
                 const entries = parseStream(last.content);
-                let found = false;
-                let updated = entries.map(entry => {
-                    const idx = entry.items.findIndex(item =>
-                        item.kind === "component" &&
-                        (id ? (item as any).id === id : (item as any).componentType === componentType)
-                    );
-                    if (idx === -1) return entry;
-                    found = true;
-                    return {
-                        ...entry,
-                        items: entry.items.map((item, i) =>
-                            i === idx
-                                ? { ...item, data: { ...(item as any).data, ...data } }
-                                : item
-                        )
-                    };
-                });
-                if (!found) updated = appendToLastEntry(entries, { kind: "component", componentType, id, data });
+                const updated = upsertComponent(entries, componentType, id, data);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
@@ -1449,10 +1356,7 @@ const AIChat: React.FC = () => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
-                msgs[targetIndex] = {
-                    ...last,
-                    content: last.content + "\n<compaction>Your project is large — automatic context compaction is disabled. You may hit the context limit on long sessions. Start a new thread if that happens.</compaction>"
-                };
+                msgs[targetIndex] = { ...last, content: last.content + COMPACTION_DISABLED_NOTICE };
                 return msgs;
             });
 
@@ -1490,13 +1394,11 @@ const AIChat: React.FC = () => {
             activeScaffoldKeyRef.current = null;
             setIsWebToolsEnabled(userWebSearchPreferenceRef.current);
             setWebToolApprovalRequest(null);
-            const abortItem: StreamItem = { kind: "text", text: "*[Request interrupted by user]*" };
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
-                const entries = parseStream(last.content);
-                const updated = [...entries, { description: "", items: [abortItem] }];
+                const updated = appendAbortMarker(parseStream(last.content));
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
