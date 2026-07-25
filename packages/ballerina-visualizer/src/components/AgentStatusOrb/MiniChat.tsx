@@ -28,6 +28,13 @@ import {
     serializeStream,
     parseStream,
     appendToLastEntry,
+    upsertComponent,
+    upsertRequestCard,
+    buildRequestCardData,
+    buildPlanItem,
+    appendAbortMarker,
+    applyTaskWriteResult,
+    COMPACTION_DISABLED_NOTICE,
 } from "../../views/AIPanel/components/AIChat/utils/streamSerialization";
 import {
     Anchor,
@@ -68,6 +75,57 @@ type MiniMsg = Pick<UIChatMessage, "role" | "content" | "messageId">;
 
 /** Transient, non-persisted status appended after the transcript (stop/error/review). */
 type MiniTail = { kind: "notice" | "error"; text: string };
+
+/**
+ * `ChatNotify` types that carry no persisted transcript content, so `applyEvent`
+ * is correct to ignore them (they drive panel-local UI state — metrics widgets,
+ * diagnostics refs, banners — none of which the mini owns).
+ *
+ * Enumerated rather than swallowed by a bare `default` so that adding a variant to
+ * `ChatNotify` breaks the build here, forcing a decision. That guard matters
+ * because this component AUTHORS the persisted transcript: an event the panel
+ * folds into `content` but the mini ignores is data the store silently loses —
+ * which is exactly how the review chip went missing.
+ *
+ * Most of these have an explicit branch in the panel's `handleChatNotify` that only
+ * touches local UI state (`usage_metrics`, `diagnostics`, `messages`,
+ * `intermediary_state`, `generated_sources`, `compaction_start`/`compaction_end`,
+ * `config_change`, and `web_tool_approval_request`, which is banner-only there too).
+ * Three are safe for a different reason, worth knowing before relying on this list:
+ *  - `evals_tool_result` never reaches any webview — `features/ai/utils/events.ts`
+ *    drops it before dispatch.
+ *  - `plan_updated` is declared but never emitted anywhere.
+ *  - `migration_progress` belongs to the migration wizard's own webview, not this
+ *    chat stream. ⚠️ If migration is ever folded into the main chat, this one could
+ *    start mutating persisted content in the panel — and the tripwire will NOT catch
+ *    that, since it only fires on newly added `ChatNotify` variants.
+ */
+/**
+ * The events whose content `applyContentEvent` folds into the transcript. Naming the
+ * set explicitly (rather than accepting any `ChatNotify`) is what lets that function
+ * end in a `never` check — see the tripwire at its tail.
+ */
+type FoldableNotify = Extract<ChatNotify, {
+    type:
+    | "content_block" | "content_replace" | "tool_call" | "tool_result" | "chat_component"
+    | "task_approval_request" | "connector_generation_notification"
+    | "configuration_collection_event" | "clarify_event" | "skill_enable_event"
+    | "abort" | "compaction_disabled";
+}>;
+
+type UnmodelledNotifyType =
+    | "intermediary_state"
+    | "diagnostics"
+    | "messages"
+    | "evals_tool_result"
+    | "usage_metrics"
+    | "generated_sources"
+    | "plan_updated"
+    | "web_tool_approval_request"
+    | "compaction_start"
+    | "compaction_end"
+    | "config_change"
+    | "migration_progress";
 
 /** Friendly one-line label for a tool call (mirrors the status-bar phrasing). */
 function describeTool(toolName: string, toolInput: any): string {
@@ -134,12 +192,21 @@ function ensureAssistantIdx(list: MiniMsg[], genId?: string): number {
 }
 
 /**
- * Fold a happy-path stream event into an assistant turn's serialized content,
- * byte-compatible with the full panel (text merged into the trailing text
- * item; tool_result replaces its matching tool_call). Interactive-prompt items
- * (plan/config/…) are intentionally not modelled — those escalate to the panel.
+ * Fold a stream event into an assistant turn's serialized content, byte-compatible
+ * with the full panel: text merges into the trailing text item, `tool_result`
+ * replaces its matching `tool_call`, and components / request-driven cards go
+ * through the shared upserts in `streamSerialization`.
+ *
+ * This models **everything the panel persists**, not just what the mini renders —
+ * `renderTranscript` shows nothing for cards, yet they are recorded anyway. The
+ * mini's `save_chat` write is authoritative for the store, and once the *final*
+ * write for a finished run lands the run-event buffer that could rebuild the turn is
+ * dropped, so an item missing from it is gone for good. (Mid-run per-step saves do
+ * not clear the buffer — it survives until the execution is no longer active.) The
+ * review chip is the sharpest case: the full panel renders it (and thus the entire
+ * diff view) *only* from a persisted `componentType: "review"` item.
  */
-function applyContentEvent(prevContent: string, evt: ChatNotify): string {
+function applyContentEvent(prevContent: string, evt: FoldableNotify): string {
     const entries = parseStream(prevContent);
     if (evt.type === "content_block" || evt.type === "content_replace") {
         const text = (evt as any).content as string;
@@ -161,9 +228,15 @@ function applyContentEvent(prevContent: string, evt: ChatNotify): string {
         return serializeStream(appendToLastEntry(entries, item), prevContent);
     }
     if (evt.type === "tool_result") {
+        if (evt.toolName === "TaskWrite") {
+            // TaskWrite segments the transcript into named task entries instead of
+            // resolving its tool_call — running it through the generic path below
+            // would both lose the task rail and wrongly resolve the item.
+            return serializeStream(applyTaskWriteResult(entries, evt.toolOutput?.tasks ?? []), prevContent);
+        }
         const resultItem: StreamItem = {
             kind: "tool_result", toolCallId: evt.toolCallId, toolName: evt.toolName,
-            toolOutput: (evt as any).toolOutput, failed: (evt as any).failed,
+            toolOutput: evt.toolOutput, failed: evt.failed,
         };
         let matched = false;
         const updated = entries.map((entry) => {
@@ -175,11 +248,52 @@ function applyContentEvent(prevContent: string, evt: ChatNotify): string {
         });
         return serializeStream(matched ? updated : appendToLastEntry(entries, resultItem), prevContent);
     }
+    if (evt.type === "chat_component") {
+        return serializeStream(upsertComponent(entries, evt.componentType, evt.id, evt.data), prevContent);
+    }
+    if (evt.type === "task_approval_request") {
+        // Only the "plan" flavour has a transcript item; "completion" is banner-only.
+        if (evt.approvalType !== "plan") { return prevContent; }
+        const item = buildPlanItem(evt.requestId, evt.tasks, evt.message, evt.autoApproved);
+        return serializeStream(appendToLastEntry(entries, item), prevContent);
+    }
+    if (evt.type === "connector_generation_notification") {
+        return serializeStream(upsertRequestCard(entries, "connector", buildRequestCardData("connector", evt)), prevContent);
+    }
+    if (evt.type === "configuration_collection_event") {
+        return serializeStream(upsertRequestCard(entries, "config", buildRequestCardData("config", evt)), prevContent);
+    }
+    if (evt.type === "clarify_event") {
+        return serializeStream(upsertRequestCard(entries, "ask", buildRequestCardData("ask", evt)), prevContent);
+    }
+    if (evt.type === "skill_enable_event") {
+        return serializeStream(upsertRequestCard(entries, "skill_enable", buildRequestCardData("skill_enable", evt)), prevContent);
+    }
+    if (evt.type === "abort") {
+        return serializeStream(appendAbortMarker(entries), prevContent);
+    }
+    if (evt.type === "compaction_disabled") {
+        // Raw-content append (outside the blob), matching the panel.
+        return prevContent + COMPACTION_DISABLED_NOTICE;
+    }
+    // Second tripwire, guarding the OTHER direction from the one in `applyEvent`.
+    // Routing and folding live in two separate dispatch tables, so adding a case to
+    // `applyEvent` without a branch here would compile cleanly and silently drop the
+    // event — the very bug this file exists to prevent, reintroduced one table over.
+    // `evt` is typed to exactly the foldable set and every branch above returns, so
+    // anything unhandled shows up here.
+    //
+    // The expected residual is `ChatContent`, not `never`: it declares BOTH content
+    // literals on one interface, so discriminant narrowing can't eliminate it even
+    // though both are handled. Asserting that exact residual still fails the build if
+    // a new type joins `FoldableNotify` without a branch, which is the point.
+    const unfolded: Extract<FoldableNotify, { type: "content_block" | "content_replace" }> = evt;
+    void unfolded;
     return prevContent;
 }
 
 /** Apply a content-bearing event to the message list, targeting the current turn. */
-function reduceEvent(msgs: MiniMsg[], evt: ChatNotify, genId?: string): MiniMsg[] {
+function reduceEvent(msgs: MiniMsg[], evt: FoldableNotify, genId?: string): MiniMsg[] {
     const list = [...msgs];
     const idx = ensureAssistantIdx(list, genId);
     list[idx] = { ...list[idx], content: applyContentEvent(list[idx].content, evt) };
@@ -428,13 +542,17 @@ const SendButton = styled.button`
     }
 `;
 
-function toolRowNode(key: string, label: string, state: "running" | "done" | "failed"): React.ReactNode {
+function toolRowNode(key: string, label: string, state: "running" | "pending" | "done" | "failed"): React.ReactNode {
     return (
         <ToolRow key={key}>
             {state === "running" ? (
                 <SpinIcon>
                     <Codicon name="loading" />
                 </SpinIcon>
+            ) : state === "pending" ? (
+                // Unresolved call with no run in flight (an aborted turn, or TaskWrite,
+                // whose call never resolves by design) — static glyph, never a spinner.
+                <Codicon name="loading" />
             ) : state === "failed" ? (
                 <Codicon name="error" sx={{ color: "var(--vscode-errorForeground)" }} />
             ) : (
@@ -451,7 +569,7 @@ function toolRowNode(key: string, label: string, state: "running" | "done" | "fa
  * with no `<agentstream>` blob (plain text) renders as a single markdown block.
  * Non-happy-path items (plan/config/…) are skipped — they escalate to the panel.
  */
-function renderTranscript(msgs: MiniMsg[]): React.ReactNode[] {
+function renderTranscript(msgs: MiniMsg[], streaming: boolean): React.ReactNode[] {
     const nodes: React.ReactNode[] = [];
     msgs.forEach((m, mi) => {
         if (m.role === "user") {
@@ -482,7 +600,7 @@ function renderTranscript(msgs: MiniMsg[]): React.ReactNode[] {
                         );
                     }
                 } else if (item.kind === "tool_call") {
-                    nodes.push(toolRowNode(key, describeTool(item.toolName ?? "", item.toolInput), "running"));
+                    nodes.push(toolRowNode(key, describeTool(item.toolName ?? "", item.toolInput), streaming ? "running" : "pending"));
                 } else if (item.kind === "tool_result") {
                     nodes.push(toolRowNode(key, describeTool(item.toolName ?? "", undefined), item.failed ? "failed" : "done"));
                 }
@@ -584,6 +702,9 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
                 break;
             case "abort":
                 setStreaming(false);
+                // Persist the interruption marker (the panel does), then show the
+                // transient notice — the marker is for history, the notice for here.
+                setMsgs((prev) => reduceEvent(prev, evt, gen));
                 setTail((prev) => [...prev, { kind: "notice", text: "Generation stopped." }]);
                 break;
             case "error":
@@ -591,14 +712,46 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
                 setTail((prev) => [...prev, { kind: "error", text: evt.content }]);
                 break;
             case "chat_component":
+                // Fold into the transcript BEFORE the trailing save_chat persists it
+                // (both updaters are queued, so ordering holds) — the mini renders
+                // nothing for components, but it still authors the stored turn.
+                setMsgs((prev) => reduceEvent(prev, evt, gen));
                 if (evt.componentType === "review") {
                     setTail((prev) => [...prev, { kind: "notice", text: "Changes are ready to review." }]);
                 }
                 break;
-            default:
-                // Interactive prompts, compaction, metrics, etc. — the escalation
-                // banner (driven by the run status) covers what matters here.
+            // Interactive-prompt cards. The mini renders none of them (the escalation
+            // banner sends the user to the panel to answer) but it MUST still record
+            // them, or a turn it witnessed loses the plan / Q&A / config card for good.
+            case "task_approval_request":
+                // Only the "plan" flavour has a transcript item. Guard here rather than
+                // inside the fold: reduceEvent would otherwise open an empty assistant
+                // bubble for a "completion" approval, which the panel never does.
+                if (evt.approvalType === "plan") {
+                    setMsgs((prev) => reduceEvent(prev, evt, gen));
+                }
                 break;
+            case "connector_generation_notification":
+            case "configuration_collection_event":
+            case "clarify_event":
+            case "skill_enable_event":
+            case "compaction_disabled":
+                setMsgs((prev) => reduceEvent(prev, evt, gen));
+                break;
+            default: {
+                // Metrics, diagnostics, presentational state — nothing persisted.
+                //
+                // Tripwire: this assignment fails to compile when a new `ChatNotify`
+                // variant is added, forcing an explicit decision instead of a silent
+                // drop. That matters because this component AUTHORS the persisted
+                // transcript (see `persistTurn`) — an event the panel folds into
+                // `content` but the mini ignores is data the store loses for good.
+                // If the new variant mutates persisted content, model it above; if it
+                // is genuinely presentational, add it to `UnmodelledNotifyType`.
+                const _unmodelled: UnmodelledNotifyType = evt.type;
+                void _unmodelled;
+                break;
+            }
         }
     };
 
@@ -741,7 +894,7 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
         sendPrompt(prompt);
     };
 
-    const transcript = renderTranscript(msgs);
+    const transcript = renderTranscript(msgs, streaming);
 
     return (
         <Panel style={panelPosition(anchor)} role="dialog" aria-label="WSO2 Copilot mini chat">
