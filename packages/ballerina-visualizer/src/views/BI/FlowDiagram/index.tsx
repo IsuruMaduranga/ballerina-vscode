@@ -133,6 +133,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const [sidePanelView, setSidePanelView] = useState<SidePanelView>(SidePanelView.NODE_LIST);
     const [categories, setCategories] = useState<PanelCategory[]>([]); //
     const [searchText, setSearchText] = useState<string>("");
+    // Kept here so an expanded AI package group survives switching to a form and back.
+    const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
     const [fetchingAiSuggestions, setFetchingAiSuggestions] = useState(false);
     const [showProgressIndicator, setShowProgressIndicator] = useState(false);
     const [showProgressSpinner, setShowProgressSpinner] = useState<boolean>(false);
@@ -901,6 +903,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const resetNodeSelectionStates = () => {
         setShowSidePanel(false);
         setSidePanelView(SidePanelView.NODE_LIST);
+        setExpandedGroupId(null);
         setSubPanel({ view: SubPanelView.UNDEFINED });
         setSelectedNodeId(undefined);
         selectedNodeRef.current = undefined;
@@ -3406,6 +3409,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 onSearchNpFunction={handleSearchNpFunction}
                 onSearchTextChange={handleSearchTextChange}
                 searchText={searchText}
+                expandedGroupId={expandedGroupId}
+                onExpandedGroupChange={setExpandedGroupId}
                 // isSearching={isSearching}
                 onSearchModelProvider={handleSearchModelProvider}
                 onSearchVectorStore={handleSearchVectorStore}

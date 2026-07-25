@@ -393,14 +393,22 @@ export interface CardListProps {
     onSearch?: (text: string) => void;
     onBack?: () => void;
     onClose?: () => void;
+    // Supply both to keep a group expanded across view switches (e.g. returning from a form).
+    expandedGroupId?: string | null;
+    onExpandedGroupChange?: (groupId: string | null) => void;
 }
 
 function CardList(props: CardListProps) {
-    const { categories, title, searchPlaceholder, onSelect, onSearch, onBack, onClose } = props;
+    const { categories, title, searchPlaceholder, onSelect, onSearch, onBack, onClose,
+        expandedGroupId: controlledExpandedGroupId, onExpandedGroupChange } = props;
 
     const [searchText, setSearchText] = useState<string>("");
     const [isSearching, setIsSearching] = useState(false);
-    const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+    const [localExpandedGroupId, setLocalExpandedGroupId] = useState<string | null>(null);
+
+    const isControlled = onExpandedGroupChange !== undefined;
+    const expandedGroupId = isControlled ? controlledExpandedGroupId ?? null : localExpandedGroupId;
+    const setExpandedGroupId = isControlled ? onExpandedGroupChange : setLocalExpandedGroupId;
 
     useEffect(() => {
         if (onSearch) {
@@ -427,7 +435,9 @@ function CardList(props: CardListProps) {
     }, [categories]);
 
     useEffect(() => {
-        setExpandedGroupId(null);
+        if (!isControlled) {
+            setLocalExpandedGroupId(null);
+        }
     }, [categories]);
 
     const handleCardClick = (node: Node) => {
@@ -438,7 +448,7 @@ function CardList(props: CardListProps) {
 
     const handleGroupClick = (category: Category) => {
         const groupId = getGroupId(category);
-        setExpandedGroupId((expandedId) => (expandedId === groupId ? null : groupId));
+        setExpandedGroupId(expandedGroupId === groupId ? null : groupId);
     };
 
     // Filter items based on search text (only if no onSearch prop - local filtering)
