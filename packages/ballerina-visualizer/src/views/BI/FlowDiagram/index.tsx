@@ -83,7 +83,7 @@ import {
     removeToolFromAgentNode,
 } from "../AIChatAgent/utils";
 import { DiagramSkeleton } from "../../../components/Skeletons";
-import { AI_COMPONENT_PROGRESS_MESSAGE, AI_COMPONENT_PROGRESS_MESSAGE_TIMEOUT, GET_DEFAULT_EMBEDDING_PROVIDER, GET_DEFAULT_MODEL_PROVIDER, LOADING_MESSAGE } from "../../../constants";
+import { AI_COMPONENT_PROGRESS_MESSAGE, AI_COMPONENT_PROGRESS_MESSAGE_TIMEOUT, FORM_LOADING_MESSAGE, GET_DEFAULT_EMBEDDING_PROVIDER, GET_DEFAULT_MODEL_PROVIDER, LOADING_MESSAGE } from "../../../constants";
 import { ConnectionListItem } from "@wso2/wso2-platform-core";
 import { usePlatformExtContext } from "../../../providers/platform-ext-ctx-provider";
 
@@ -121,6 +121,16 @@ type NodePromptLaunchOptions = {
 };
 
 const SIDE_PANEL_DEFAULT_ERROR_MESSAGE = "Error while performing the action.";
+
+// AI component pickers resolve templates from Central, so selecting one shows a full-panel loader.
+const AI_COMPONENT_PICKER_VIEWS: SidePanelView[] = [
+    SidePanelView.MODEL_PROVIDERS,
+    SidePanelView.VECTOR_STORES,
+    SidePanelView.EMBEDDING_PROVIDERS,
+    SidePanelView.KNOWLEDGE_BASES,
+    SidePanelView.DATA_LOADERS,
+    SidePanelView.CHUNKERS,
+];
 
 export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const { projectPath, breakpointState, syntaxTree, onUpdate, onReady, onSave } = props;
@@ -1404,6 +1414,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         // Push current state to navigation stack before navigating
         pushToNavigationStack(sidePanelView, categories, selectedNodeRef.current, selectedClientName.current);
 
+        const showFormLoader = AI_COMPONENT_PICKER_VIEWS.includes(sidePanelView);
+
         switch (node.codedata.node) {
             case "FUNCTION":
                 setShowProgressIndicator(true);
@@ -1738,6 +1750,11 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 // default node
                 selectedClientName.current = category;
                 setShowProgressIndicator(true);
+                if (showFormLoader) {
+                    setShowProgressSpinner(true);
+                    setProgressTitle(node.metadata?.label || LOADING_MESSAGE);
+                    setProgressMessage(FORM_LOADING_MESSAGE);
+                }
                 rpcClient.getBIDiagramRpcClient().getNodeTemplate({
                     position: targetRef.current.startLine,
                     filePath: model?.fileName || fileName,
@@ -1759,6 +1776,10 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     })
                     .finally(() => {
                         setShowProgressIndicator(false);
+                        if (showFormLoader) {
+                            setShowProgressSpinner(false);
+                            setProgressMessage(LOADING_MESSAGE);
+                        }
                     });
                 break;
         }
