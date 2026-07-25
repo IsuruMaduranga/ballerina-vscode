@@ -27,6 +27,7 @@ import io.ballerina.compiler.api.symbols.FunctionSymbol;
 import io.ballerina.compiler.api.symbols.ModuleSymbol;
 import io.ballerina.compiler.api.symbols.Qualifier;
 import io.ballerina.compiler.api.symbols.SymbolKind;
+import io.ballerina.flowmodelgenerator.core.AiUtils;
 import io.ballerina.flowmodelgenerator.core.model.AvailableNode;
 import io.ballerina.flowmodelgenerator.core.model.Category;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
@@ -272,7 +273,7 @@ class WorkspaceFunctionNodeBuilder {
     }
 
     static boolean isAgentTool(FunctionSymbol functionSymbol) {
-        return CommonUtils.isAgentToolFunction(functionSymbol);
+        return AiUtils.isAgentToolFunction(functionSymbol);
     }
 
     static boolean isNaturalExprBodiedFunction(FunctionSymbol functionSymbol, Document functionsDoc) {
