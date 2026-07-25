@@ -997,6 +997,8 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             await savePendingReviewRestore({
                 generationId: context.messageId,
                 projectRootPath: workspaceId,
+                // Capture the run's own thread — the reader must not re-derive it from
+                // whatever thread happens to be active at restore time.
                 threadId,
                 tempProjectPath: workingProjectPath,
                 // Direct-edit mode keeps no on-disk baseline copy; the checkpoint snapshot

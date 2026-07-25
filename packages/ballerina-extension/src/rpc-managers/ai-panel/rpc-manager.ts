@@ -177,7 +177,7 @@ function validateMcpServerConfig(cfg: any): string | null {
 }
 
 function getActiveThreadId(projectRootPath?: string): string {
-    return chatStateStorage.getActiveThread(projectRootPath ?? resolveProjectRootPath())?.id ?? 'default';
+    return chatStateStorage.getActiveThreadId(projectRootPath ?? resolveProjectRootPath());
 }
 
 export class AiPanelRpcManager implements AIPanelAPI {
@@ -357,7 +357,9 @@ export class AiPanelRpcManager implements AIPanelAPI {
 
     async abortAIGeneration(params: AbortAIGenerationRequest): Promise<void> {
         const projectRootPath = params?.projectRootPath || resolveProjectRootPath();
-        const threadId = params?.threadId || 'default';
+        // Callers pass `{}` (see AIChat's stop button), so falling back to a
+        // hardcoded 'default' aborted a thread that holds no execution.
+        const threadId = params?.threadId || getActiveThreadId(projectRootPath);
 
         const aborted = chatStateStorage.abortActiveExecution(projectRootPath, threadId);
 

@@ -487,6 +487,20 @@ export class ChatStateStorage {
         return workspace.threads.get(workspace.activeThreadId);
     }
 
+    /**
+     * Id of the active thread, falling back to 'default' for a workspace that has
+     * not been initialized yet.
+     *
+     * Prefer this over inlining `getActiveThread(p)?.id ?? 'default'` at call sites:
+     * threads are dynamic (`thread-<ts>-<rand>`), so every place that reaches for a
+     * thread by name has to resolve the active one, and a hardcoded 'default' is a
+     * silent bug — it reads (and, via getOrCreateThread, can create) a thread the
+     * user isn't looking at. Several such bugs have already been fixed.
+     */
+    getActiveThreadId(projectRootPath: string): string {
+        return this.getActiveThread(projectRootPath)?.id ?? 'default';
+    }
+
     // ============================================
     // Thread Lifecycle Management
     // ============================================
