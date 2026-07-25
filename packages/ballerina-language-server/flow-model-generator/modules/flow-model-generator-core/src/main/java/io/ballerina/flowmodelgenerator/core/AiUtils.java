@@ -770,10 +770,13 @@ public class AiUtils {
             return null;
         }
 
+        // The group icon is always the package icon, independent of the leaves' class-specific icons.
+        String packageIcon = CommonUtils.generateIcon(firstComponent.codedata().org(), packageName,
+                firstComponent.codedata().version());
         Metadata metadata = new Metadata.Builder<Category.Builder>(null)
                 .label(groupLabel)
                 .description(categoryLabel + " available in " + firstComponent.codedata().org() + "/" + packageName)
-                .icon(firstComponent.metadata().icon())
+                .icon(packageIcon)
                 .build();
         return new Category(metadata, new ArrayList<>(matchingComponents));
     }
@@ -1048,7 +1051,10 @@ public class AiUtils {
                 .flatMap(Documentation::description)
                 .orElse(getDefaultNodeLabel(kind, label.split(" ")[0]));
 
-        String icon = CommonUtils.generateIcon(moduleInfo.org(), moduleInfo.packageName(), moduleInfo.version());
+        // Prefer the class-specific icon from the @display annotation; fall back to the package icon.
+        String icon = getDisplayIcon(classSymbol)
+                .orElseGet(() -> CommonUtils.generateIcon(moduleInfo.org(), moduleInfo.packageName(),
+                        moduleInfo.version()));
         Metadata metadata = new Metadata.Builder<>(null).label(label).description(description).icon(icon).build();
         Codedata.Builder<Object> codedataBuilder = new Codedata.Builder<>(null).version(codedataVersion)
                 .packageName(moduleInfo.packageName()).module(moduleInfo.moduleName()).org(moduleInfo.org())
@@ -1064,7 +1070,8 @@ public class AiUtils {
 
     private static AvailableNode reconstructFromCache(AiComponentDiskCache.CachedComponent comp,
                                                       ModuleInfo moduleInfo, String codedataVersion) {
-        String icon = CommonUtils.generateIcon(moduleInfo.org(), moduleInfo.packageName(), moduleInfo.version());
+        String icon = (comp.icon() != null && !comp.icon().isEmpty()) ? comp.icon()
+                : CommonUtils.generateIcon(moduleInfo.org(), moduleInfo.packageName(), moduleInfo.version());
         Metadata metadata = new Metadata.Builder<>(null).label(comp.label()).description(comp.description())
                 .icon(icon).build();
         NodeKind kind = NodeKind.valueOf(comp.category());
@@ -1083,19 +1090,27 @@ public class AiUtils {
                                                                           AvailableNode node, NodeKind category) {
         String className = classSymbol.getName().orElse("");
         return new AiComponentDiskCache.CachedComponent(className, node.metadata().label(),
-                node.metadata().description(), category.name(), node.codedata().symbol());
+                node.metadata().description(), category.name(), node.codedata().symbol(), node.metadata().icon());
     }
 
     private static Optional<String> getDisplayLabel(ClassSymbol classSymbol) {
+        return getDisplayField(classSymbol, "label");
+    }
+
+    private static Optional<String> getDisplayIcon(ClassSymbol classSymbol) {
+        return getDisplayField(classSymbol, "iconPath");
+    }
+
+    private static Optional<String> getDisplayField(ClassSymbol classSymbol, String field) {
         return classSymbol.annotAttachments().stream()
                 .filter(a -> a.typeDescriptor().getName().map("display"::equals).orElse(false))
                 .findFirst()
                 .flatMap(AnnotationAttachmentSymbol::attachmentValue)
                 .filter(v -> v.value() instanceof Map)
-                .map(v -> ((Map<?, ?>) v.value()).get("label"))
+                .map(v -> ((Map<?, ?>) v.value()).get(field))
                 .filter(ConstantValue.class::isInstance)
                 .map(v -> ((ConstantValue) v).value().toString())
-                .filter(label -> !label.isEmpty());
+                .filter(value -> !value.isEmpty());
     }
 
     private static String buildLabel(String moduleName, String className) {

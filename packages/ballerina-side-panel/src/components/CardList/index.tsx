@@ -87,6 +87,8 @@ namespace S {
         transition: all 0.2s ease;
         background-color: ${ThemeColors.SURFACE};
         min-height: 60px;
+        user-select: none;
+        -webkit-user-select: none;
 
         ${({ enabled }) => !enabled && "opacity: 0.5;"}
 
@@ -159,6 +161,8 @@ namespace S {
         border-radius: 8px;
         background-color: ${ThemeColors.SURFACE};
         overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
         transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 
         ${({ expanded }) => expanded && `box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);`}
@@ -184,6 +188,15 @@ namespace S {
         min-height: 60px;
         cursor: pointer;
         background-color: transparent;
+
+        &:focus {
+            outline: none;
+        }
+
+        &:focus-visible {
+            outline: 1px solid var(--vscode-focusBorder, ${ThemeColors.PRIMARY});
+            outline-offset: -2px;
+        }
     `;
 
     export const CountPill = styled.span`
@@ -232,8 +245,8 @@ namespace S {
         display: flex;
         flex-direction: row;
         align-items: center;
-        gap: 10px;
-        padding: 12px 20px;
+        gap: 15px;
+        padding: 12px 16px;
         cursor: ${({ enabled }) => (enabled ? "pointer" : "not-allowed")};
         transition: background-color 0.15s ease;
 
@@ -247,6 +260,51 @@ namespace S {
             ${({ enabled }) =>
             enabled !== false &&
             `background-color: var(--vscode-list-hoverBackground, ${ThemeColors.SURFACE_CONTAINER});`}
+        }
+    `;
+
+    export const ChildIcon = styled.div`
+        position: relative;
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-start;
+        width: 28px;
+        height: 28px;
+        flex-shrink: 0;
+    `;
+
+    export const ChildIconMain = styled.div`
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        & svg,
+        & img {
+            width: 18px !important;
+            height: 18px !important;
+            border-radius: 3px;
+        }
+    `;
+
+    export const ChildIconBadge = styled.div`
+        position: absolute;
+        right: -3px;
+        bottom: -3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        overflow: hidden;
+        background-color: ${ThemeColors.SURFACE};
+        box-shadow: 0 0 0 1px ${ThemeColors.OUTLINE_VARIANT};
+
+        & svg,
+        & img {
+            width: 12px !important;
+            height: 12px !important;
+            border-radius: 2px;
         }
     `;
 
@@ -423,11 +481,11 @@ function CardList(props: CardListProps) {
             .filter(Boolean) as Item[];
     };
 
-    const renderGroupChildren = (items: Item[]) => {
+    const renderGroupChildren = (items: Item[], groupIcon?: JSX.Element) => {
         return items
             .filter((item): item is Node | Category => item != null)
             .map((item, index) => {
-                // Nested categories are not expected inside a group, but fall back gracefully.
+                // Not expected inside a group, but fall back gracefully.
                 if ("items" in item && "title" in item) {
                     return <React.Fragment key={item.title + index}>{renderCards([item])}</React.Fragment>;
                 }
@@ -440,6 +498,10 @@ function CardList(props: CardListProps) {
                         onClick={() => node.enabled !== false && handleCardClick(node)}
                         title={node.description}
                     >
+                        <S.ChildIcon>
+                            <S.ChildIconMain>{groupIcon ? groupIcon : node.icon ? node.icon : <LogIcon />}</S.ChildIconMain>
+                            {groupIcon && node.icon && <S.ChildIconBadge>{node.icon}</S.ChildIconBadge>}
+                        </S.ChildIcon>
                         <S.ChildContent>
                             <S.ChildTitle>{node.label}</S.ChildTitle>
                             {node.description && <S.ChildDescription>{node.description}</S.ChildDescription>}
@@ -515,7 +577,7 @@ function CardList(props: CardListProps) {
                             </S.GroupHeader>
                             {isExpanded && (
                                 <S.GroupBody id={groupChildrenId}>
-                                    {renderGroupChildren(category.items)}
+                                    {renderGroupChildren(category.items, category.icon)}
                                 </S.GroupBody>
                             )}
                         </S.GroupContainer>
