@@ -222,17 +222,8 @@ public class TestManagerService implements ExtendedLanguageServerService {
                     }
 
                     // Generate unique function name for evalSet data provider
-                    List<Symbol> visibleSymbols = semanticModel.get().visibleSymbols(
-                            document.get(),
-                            lineRange.endLine()
-                    );
-                    Set<String> visibleSymbolNames = visibleSymbols.stream()
-                            .map(Symbol::getName)
-                            .filter(Optional::isPresent)
-                            .map(Optional::get)
-                            .collect(Collectors.toSet());
                     dataProviderFunctionName = NameUtil.getValidatedSymbolName(
-                            visibleSymbolNames,
+                            visibleSymbolNames(semanticModel.get(), document.get(), modulePartNode),
                             Constants.DEFAULT_EVALSET_FUNCTION_NAME
                     );
 
@@ -288,8 +279,7 @@ public class TestManagerService implements ExtendedLanguageServerService {
             if (paramName.isBlank()) {
                 throw new IllegalArgumentException("The evaluation input parameter name is required");
             }
-            Set<String> visibleSymbolNames = semanticModel.visibleSymbols(document, lineRange.endLine()).stream()
-                    .map(Symbol::getName).filter(Optional::isPresent).map(Optional::get).collect(Collectors.toSet());
+            Set<String> visibleSymbolNames = visibleSymbolNames(semanticModel, document, modulePartNode);
             if (Constants.DATA_SOURCE_MODE_QUERIES.equals(mode)) {
                 List<String> queries = readQueries(dataSource);
                 if (queries.isEmpty()) {
@@ -390,53 +380,48 @@ public class TestManagerService implements ExtendedLanguageServerService {
         Utils.DataProviderShape shape = provider.map(Utils::getDataProviderShape)
                 .orElse(Utils.DataProviderShape.UNKNOWN);
 
+        // Everything below differs between the two modes only by these values.
+        Utils.DataProviderShape wantedShape = wantsQueries
+                ? Utils.DataProviderShape.QUERIES : Utils.DataProviderShape.EVALSET;
+        String paramType = wantsQueries ? Constants.STRING_TYPE : Constants.AI_CONVERSATION_THREAD_TYPE;
+        String providerVar = wantsQueries ? Constants.QUERY_PROVIDER_VAR : Constants.EVALSET_PROVIDER_VAR;
+        String defaultName = wantsQueries
+                ? Constants.DEFAULT_QUERIES_FUNCTION_NAME : Constants.DEFAULT_EVALSET_FUNCTION_NAME;
+        Function<String, String> providerTemplate;
+        Runnable patchInPlace;
         if (wantsQueries) {
             List<String> queries = readQueries(dataSource);
             if (queries.isEmpty()) {
                 throw new IllegalArgumentException("At least one query is required");
             }
-            if (shape == Utils.DataProviderShape.QUERIES) {
-                Utils.findQueriesListLocation(provider.get()).ifPresent(range ->
-                        edits.add(new TextEdit(Utils.toRange(range), Utils.buildQueriesArray(queries))));
-                return paramName + " = " + boundVariable(request.function(), Constants.STRING_TYPE,
-                        Constants.QUERY_PROVIDER_VAR);
+            providerTemplate = name -> Utils.getQueriesDataProviderFunctionTemplate(name, queries);
+            patchInPlace = () -> Utils.findQueriesListLocation(provider.get()).ifPresent(range ->
+                    edits.add(new TextEdit(Utils.toRange(range), Utils.buildQueriesArray(queries))));
+        } else {
+            String evalSetFile = dataSource.has("evalSetFile") ? dataSource.get("evalSetFile").getAsString() : "";
+            if (evalSetFile.isBlank()) {
+                throw new IllegalArgumentException("An evalset is required for the selected input mode");
             }
-            if (shape == Utils.DataProviderShape.UNKNOWN && provider.isPresent()) {
-                // Hand-written provider: leave it alone and keep binding whatever the signature already declares.
-                return paramName + " = " + boundVariable(request.function(), Constants.STRING_TYPE,
-                        Constants.QUERY_PROVIDER_VAR);
-            }
-            String functionName = replaceDataProvider(document, semanticModel, modulePartNode, provider, edits,
-                    Constants.DEFAULT_QUERIES_FUNCTION_NAME,
-                    name -> Utils.getQueriesDataProviderFunctionTemplate(name, queries));
-            swapDataSourceParameter(request.function(), Constants.STRING_TYPE, Constants.QUERY_PROVIDER_VAR);
-            updateDataProviderField(request.function(), functionName);
-            return paramName + " = " + Constants.QUERY_PROVIDER_VAR;
+            providerTemplate = name -> Utils.getEvalSetDataProviderFunctionTemplate(name, evalSetFile);
+            patchInPlace = () -> updateEvalSetFile(textDocument, modulePartNode, request.function(), edits);
         }
 
-        String evalSetFile = dataSource.has("evalSetFile") ? dataSource.get("evalSetFile").getAsString() : "";
-        if (evalSetFile.isBlank()) {
-            throw new IllegalArgumentException("An evalset is required for the selected input mode");
-        }
-        if (shape == Utils.DataProviderShape.EVALSET) {
-            updateEvalSetFile(textDocument, modulePartNode, request.function(), edits);
-            return paramName + " = " + boundVariable(request.function(), Constants.AI_CONVERSATION_THREAD_TYPE,
-                    Constants.EVALSET_PROVIDER_VAR);
+        if (shape == wantedShape) {
+            patchInPlace.run();
+            return paramName + " = " + boundVariable(request.function(), paramType, providerVar);
         }
         if (shape == Utils.DataProviderShape.UNKNOWN && provider.isPresent()) {
-            return paramName + " = " + boundVariable(request.function(), Constants.AI_CONVERSATION_THREAD_TYPE,
-                    Constants.EVALSET_PROVIDER_VAR);
+            // Hand-written provider: leave it alone and keep binding whatever the signature already declares.
+            return paramName + " = " + boundVariable(request.function(), paramType, providerVar);
         }
-        if (!Utils.isAiModuleImportExists(modulePartNode)) {
+        if (!wantsQueries && !Utils.isAiModuleImportExists(modulePartNode)) {
             edits.add(new TextEdit(Utils.toRange(modulePartNode.lineRange().startLine()), Constants.IMPORT_AI_STMT));
         }
         String functionName = replaceDataProvider(document, semanticModel, modulePartNode, provider, edits,
-                Constants.DEFAULT_EVALSET_FUNCTION_NAME,
-                name -> Utils.getEvalSetDataProviderFunctionTemplate(name, evalSetFile));
-        swapDataSourceParameter(request.function(), Constants.AI_CONVERSATION_THREAD_TYPE,
-                Constants.EVALSET_PROVIDER_VAR);
+                defaultName, providerTemplate);
+        swapDataSourceParameter(request.function(), paramType, providerVar);
         updateDataProviderField(request.function(), functionName);
-        return paramName + " = " + Constants.EVALSET_PROVIDER_VAR;
+        return paramName + " = " + providerVar;
     }
 
     /**

@@ -24,6 +24,7 @@ import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.modelgenerator.commons.SearchResult;
 import io.ballerina.projects.Module;
 import io.ballerina.projects.Package;
+import io.ballerina.projects.PackageCompilation;
 import io.ballerina.projects.Project;
 import io.ballerina.tools.text.LineRange;
 
@@ -39,11 +40,10 @@ import java.util.Optional;
 public class EvalTemplateSearchCommand extends SearchCommand {
 
     /** Keep the demo library identity in one place until the package name is finalized. */
-    public static final String TEMPLATE_ORG = "ballerina";
-    public static final String TEMPLATE_PACKAGE = "ai_evals";
-    public static final String TEMPLATE_MODULE = "ai_evals";
-    public static final String TEMPLATE_VERSION = "0.1.0";
-    private static final String TEMPLATE_REPOSITORY = "local";
+    static final String TEMPLATE_ORG = "ballerina";
+    static final String TEMPLATE_PACKAGE = "ai_evals";
+    static final String TEMPLATE_VERSION = "0.1.0";
+    static final String TEMPLATE_REPOSITORY = "local";
     private static final String TEMPLATE_ANNOTATION = "EvalTemplate";
 
     public EvalTemplateSearchCommand(Project project, LineRange position, Map<String, String> queryMap) {
@@ -75,8 +75,9 @@ public class EvalTemplateSearchCommand extends SearchCommand {
 
         List<Item> templates = new ArrayList<>();
         Package pkg = templatePackage.get();
+        PackageCompilation compilation = PackageUtil.getCompilation(pkg);
         for (Module module : pkg.modules()) {
-            SemanticModel semanticModel = PackageUtil.getCompilation(pkg).getSemanticModel(module.moduleId());
+            SemanticModel semanticModel = compilation.getSemanticModel(module.moduleId());
             for (Symbol symbol : semanticModel.moduleSymbols()) {
                 if (!(symbol instanceof FunctionSymbol functionSymbol) || functionSymbol.getName().isEmpty()
                         || !functionSymbol.qualifiers().contains(Qualifier.PUBLIC)) {
@@ -104,7 +105,7 @@ public class EvalTemplateSearchCommand extends SearchCommand {
     }
 
     private AvailableNode toNode(String functionName, TemplateInfo info) {
-        Codedata codedata = new Codedata(NodeKind.EVAL_TEMPLATE, TEMPLATE_ORG, TEMPLATE_MODULE, TEMPLATE_PACKAGE,
+        Codedata codedata = new Codedata(NodeKind.EVAL_TEMPLATE, TEMPLATE_ORG, TEMPLATE_PACKAGE, TEMPLATE_PACKAGE,
                 null, functionName, TEMPLATE_VERSION, null, null, null, null, null, true, false, null,
                 Map.of("label", info.label, "description", info.description, "kind", info.kind,
                         "needsEvalset", info.needsEvalset));

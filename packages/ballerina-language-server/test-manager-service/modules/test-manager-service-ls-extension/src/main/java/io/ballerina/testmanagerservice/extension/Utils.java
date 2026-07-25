@@ -510,13 +510,17 @@ public class Utils {
      * @return true if the import exists, false otherwise
      */
     public static boolean isTestModuleImportExists(ModulePartNode node) {
+        return isModuleImportExists(node, Constants.MODULE_TEST);
+    }
+
+    private static boolean isModuleImportExists(ModulePartNode node, String module) {
         return node.imports().stream().anyMatch(importDeclarationNode -> {
             String moduleName = importDeclarationNode.moduleName().stream()
                     .map(IdentifierToken::text)
                     .collect(Collectors.joining("."));
-            return importDeclarationNode.orgName().isPresent() &&
-                    Constants.ORG_BALLERINA.equals(importDeclarationNode.orgName().get().orgName().text()) &&
-                    Constants.MODULE_TEST.equals(moduleName);
+            return importDeclarationNode.orgName().isPresent()
+                    && Constants.ORG_BALLERINA.equals(importDeclarationNode.orgName().get().orgName().text())
+                    && module.equals(moduleName);
         });
     }
 
@@ -527,26 +531,12 @@ public class Utils {
      * @return true if the import exists, false otherwise
      */
     public static boolean isAiModuleImportExists(ModulePartNode node) {
-        return node.imports().stream().anyMatch(importDeclarationNode -> {
-            String moduleName = importDeclarationNode.moduleName().stream()
-                    .map(IdentifierToken::text)
-                    .collect(Collectors.joining("."));
-            return importDeclarationNode.orgName().isPresent() &&
-                    Constants.ORG_BALLERINA.equals(importDeclarationNode.orgName().get().orgName().text()) &&
-                    Constants.MODULE_AI.equals(moduleName);
-        });
+        return isModuleImportExists(node, Constants.MODULE_AI);
     }
 
     /** Returns whether the locally configured AI evaluations package is already imported. */
     public static boolean isAiEvalsModuleImportExists(ModulePartNode node) {
-        return node.imports().stream().anyMatch(importDeclarationNode -> {
-            String moduleName = importDeclarationNode.moduleName().stream()
-                    .map(IdentifierToken::text)
-                    .collect(Collectors.joining("."));
-            return importDeclarationNode.orgName().isPresent()
-                    && Constants.ORG_BALLERINA.equals(importDeclarationNode.orgName().get().orgName().text())
-                    && Constants.MODULE_AI_EVALS.equals(moduleName);
-        });
+        return isModuleImportExists(node, Constants.MODULE_AI_EVALS);
     }
 
     /**
@@ -730,19 +720,7 @@ public class Utils {
 
     /** Locates the returned list constructor of a queries provider, for in-place literal updates. */
     public static Optional<LineRange> findQueriesListLocation(FunctionDefinitionNode provider) {
-        FunctionBodyNode body = provider.functionBody();
-        if (body instanceof FunctionBodyBlockNode blockBody) {
-            for (StatementNode statement : blockBody.statements()) {
-                if (statement instanceof ReturnStatementNode returnStmt
-                        && returnStmt.expression().orElse(null) instanceof ListConstructorExpressionNode list) {
-                    return Optional.of(list.lineRange());
-                }
-            }
-        } else if (body instanceof ExpressionFunctionBodyNode exprBody
-                && exprBody.expression() instanceof ListConstructorExpressionNode list) {
-            return Optional.of(list.lineRange());
-        }
-        return Optional.empty();
+        return findQueriesList(provider.functionBody()).map(Node::lineRange);
     }
 
     /** Reads the query literals out of a queries provider. */
@@ -751,12 +729,12 @@ public class Utils {
         if (provider.isEmpty() || getDataProviderShape(provider.get()) != DataProviderShape.QUERIES) {
             return List.of();
         }
-        ListConstructorExpressionNode rows = findQueriesList(provider.get().functionBody());
-        if (rows == null) {
+        Optional<ListConstructorExpressionNode> rows = findQueriesList(provider.get().functionBody());
+        if (rows.isEmpty()) {
             return List.of();
         }
         List<String> queries = new ArrayList<>();
-        for (Node row : rows.expressions()) {
+        for (Node row : rows.get().expressions()) {
             if (row instanceof ListConstructorExpressionNode rowList) {
                 rowList.expressions().stream().findFirst()
                         .ifPresent(value -> queries.add(unquote(value.toSourceCode().trim())));
@@ -767,19 +745,19 @@ public class Utils {
         return queries;
     }
 
-    private static ListConstructorExpressionNode findQueriesList(FunctionBodyNode body) {
+    private static Optional<ListConstructorExpressionNode> findQueriesList(FunctionBodyNode body) {
         if (body instanceof FunctionBodyBlockNode blockBody) {
             for (StatementNode statement : blockBody.statements()) {
                 if (statement instanceof ReturnStatementNode returnStmt
                         && returnStmt.expression().orElse(null) instanceof ListConstructorExpressionNode list) {
-                    return list;
+                    return Optional.of(list);
                 }
             }
         } else if (body instanceof ExpressionFunctionBodyNode exprBody
                 && exprBody.expression() instanceof ListConstructorExpressionNode list) {
-            return list;
+            return Optional.of(list);
         }
-        return null;
+        return Optional.empty();
     }
 
     private static String unquote(String value) {

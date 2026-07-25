@@ -153,8 +153,7 @@ public record Annotation(Metadata metadata, Codedata codedata, String org, Strin
 
             // Always add queries (default to empty list)
             if (queries == null) {
-                queries = value("Queries", "Queries used as the test input", List.of(),
-                        "TEXT_SET", "queries");
+                queries(List.of());
             }
             properties.add(queries);
 

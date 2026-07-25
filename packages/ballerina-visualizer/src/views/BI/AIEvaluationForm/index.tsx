@@ -358,7 +358,9 @@ const withAgentConnectionData = (property: FlowProperty): FlowProperty => {
 
 const CONVERSATION_THREAD_TYPE = 'ConversationThread';
 
-const findDataSourceParam = (node: FlowNode): { paramName: string; kind: 'union' | 'strict' } | undefined => {
+type DataSourceParam = { paramName: string; kind: 'union' | 'strict' };
+
+const findDataSourceParam = (node: FlowNode): DataSourceParam | undefined => {
     for (const [key, property] of Object.entries(node.properties || {})) {
         const templateProperty = property as FlowProperty;
         const data = templateProperty.codedata?.data as { dataSourceParam?: boolean; dataSourceKind?: string } | undefined;
@@ -479,15 +481,11 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const { rpcClient } = useRpcContext();
     const [formFields, setFormFields] = useState<FormField[]>([]);
     const [testFunction, setTestFunction] = useState<TestFunction>();
-    const [formTitle, setFormTitle] = useState<string>('Create New AI Evaluation');
-    const [formSubtitle, setFormSubtitle] = useState<string>('Create a new AI evaluation for your integration');
     const [targetLineRange, setTargetLineRange] = useState<LineRange>();
     const [dataProviderMode, setDataProviderMode] = useState<string>('template');
-    const [customUsesEvalset, setCustomUsesEvalset] = useState(false);
     const [evalsetOptions, setEvalsetOptions] = useState<Array<{ value: string; content: string }>>([]);
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [selectedEvalsetFile, setSelectedEvalsetFile] = useState<string>('');
-    const [evalsetsLoaded, setEvalsetsLoaded] = useState<boolean>(false);
     const [evalsetsLoadError, setEvalsetsLoadError] = useState<boolean>(false);
     const [evalTemplates, setEvalTemplates] = useState<AvailableNode[]>([]);
     const [selectedTemplate, setSelectedTemplate] = useState<AvailableNode>();
@@ -503,6 +501,11 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const [editShape, setEditShape] = useState<EditShape>();
     const [detectedSymbol, setDetectedSymbol] = useState<string>();
     const isEditing = serviceType === 'UPDATE_TEST';
+    const formTitle = isEditing ? 'Update AI Evaluation' : 'Create New AI Evaluation';
+    const formSubtitle = isEditing
+        ? 'Update an existing AI evaluation'
+        : 'Create a new AI evaluation for your integration';
+    const customUsesEvalset = dataProviderMode === 'evalSet';
     const dataSourceParam = useMemo(
         () => (templateNode ? findDataSourceParam(templateNode) : undefined),
         [templateNode]);
@@ -546,19 +549,11 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             if (field.key === 'evalQueries') {
                 return { ...field, hidden: !(mode === 'template' && dsParam?.kind === 'union' && dsMode === 'queries') };
             }
-            if (field.key === 'runs') {
-                return { ...field };
-            }
             return field;
         });
     };
 
     const handleFieldChange = (fieldKey: string, value: any) => {
-        if (fieldKey === 'dataProviderMode') {
-            setDataProviderMode(value);
-            setCustomUsesEvalset(value === 'evalSet');
-            updateFieldVisibility(value);
-        }
         if (fieldKey === 'evalSetFile') {
             setSelectedEvalsetFile(value || '');
         }
@@ -643,20 +638,9 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             setShowTemplatePicker(false);
             setTemplateLoadError(undefined);
             setDataProviderMode('template');
-            setFormFields(current => {
-                const base = current.filter(isBaseField);
-                let withDataSource = base;
-                if (dsParam) {
-                    const idx = base.findIndex(field => field.key === 'evalSetFile');
-                    withDataSource = idx >= 0
-                        ? [...base.slice(0, idx + 1), buildQueriesField(), ...base.slice(idx + 1)]
-                        : [...base, buildQueriesField()];
-                }
-                const queriesField = buildQueriesField(mode === 'queries' ? evalQueries : []);
-                const next = [...withDataSource, ...generateTemplateFields(node)];
-                return applyFieldVisibility(next.map(field =>
-                    field.key === 'evalQueries' ? queriesField : field), 'template', dsParam, mode);
-            });
+            setFormFields(current => applyFieldVisibility(
+                assembleTemplateFields(current, node, dsParam, mode === 'queries' ? evalQueries : []),
+                'template', dsParam, mode));
         } catch (error) {
             console.error('Failed to load evaluation template form:', error);
             setTemplateLoadError('Unable to load the selected template. Please try again.');
@@ -682,13 +666,9 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             if (bootstrapRunRef.current !== run) {
                 return;
             }
-            if (serviceType === 'UPDATE_TEST') {
-                setFormTitle('Update AI Evaluation');
-                setFormSubtitle('Update an existing AI evaluation');
+            if (isEditing) {
                 await loadFunction(options, templates);
             } else {
-                setFormTitle('Create New AI Evaluation');
-                setFormSubtitle('Create a new AI evaluation for your integration');
                 loadEmptyForm(options);
             }
         } finally {
@@ -713,8 +693,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             setEvalsetOptions([]);
             setEvalsetsLoadError(true);
             return [];
-        } finally {
-            setEvalsetsLoaded(true);
         }
     };
 
@@ -780,7 +758,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         const queries = (readConfigField(res.function, 'queries') as string[]) || [];
 
         setDataProviderMode(mode);
-        setCustomUsesEvalset(mode === 'evalSet');
         setDataSourceMode(dsMode);
         setEvalQueries(queries);
         if (isTemplate) {
@@ -792,14 +769,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         setSelectedEvalsetFile(String(formFields.find(f => f.key === 'evalSetFile')?.value || ''));
 
         if (isTemplate && detected.node) {
-            const base = formFields.filter(isBaseField);
-            const index = base.findIndex(field => field.key === 'evalSetFile');
-            const withDataSource = dsParam
-                ? (index >= 0
-                    ? [...base.slice(0, index + 1), buildQueriesField(queries), ...base.slice(index + 1)]
-                    : [...base, buildQueriesField(queries)])
-                : base;
-            formFields = [...withDataSource, ...generateTemplateFields(detected.node)];
+            formFields = assembleTemplateFields(formFields, detected.node, dsParam, queries);
         }
 
         setFormFields(applyFieldVisibility(formFields, mode, dsParam, dsMode, options));
@@ -813,7 +783,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
 
         const mode = 'template';
         setDataProviderMode(mode);
-        setCustomUsesEvalset(false);
 
         formFields = applyFieldVisibility(formFields, mode, undefined, dataSourceMode, options);
         setFormFields(formFields);
@@ -1088,10 +1057,24 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         return baseField;
     }
 
+    // Base evaluation fields, then the queries list next to the evalset select, then the template arguments.
+    const assembleTemplateFields = (base: FormField[], node: FlowNode,
+        dsParam?: DataSourceParam, queries: string[] = []): FormField[] => {
+        const baseFields = base.filter(isBaseField);
+        let fields = baseFields;
+        if (dsParam) {
+            const index = baseFields.findIndex(field => field.key === 'evalSetFile');
+            const queriesField = buildQueriesField(queries);
+            fields = index >= 0
+                ? [...baseFields.slice(0, index + 1), queriesField, ...baseFields.slice(index + 1)]
+                : [...baseFields, queriesField];
+        }
+        return [...fields, ...generateTemplateFields(node, dsParam?.paramName)];
+    };
+
     // The data-source parameter is driven by the Test input section, so it never gets its own field.
-    const generateTemplateFields = (node: FlowNode): FormField[] => {
-        const dsParamName = findDataSourceParam(node)?.paramName;
-        return Object.entries(node.properties || {})
+    const generateTemplateFields = (node: FlowNode, dsParamName?: string): FormField[] =>
+        Object.entries(node.properties || {})
             .filter(([key, property]) => {
                 const templateProperty = property as FlowProperty;
                 return !templateProperty.hidden
@@ -1102,7 +1085,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                 key: `template_${key}`,
                 advanced: false
             }));
-    };
 
     const fillFunctionModel = (formValues: FormValues, formImports: FormImports): TestFunction => {
         let tmpTestFunction = testFunction;
@@ -1439,7 +1421,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             setSelectedTemplate(undefined);
             setTemplateNode(undefined);
             setShowTemplatePicker(false);
-            setCustomUsesEvalset(false);
             setFormFields(fields => fields.filter(isBaseField));
         }
         const mode = value === 'template' ? 'template' : 'function';
@@ -1449,7 +1430,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
 
     const handleCustomEvalsetChange = (usesEvalset: boolean) => {
         const mode = usesEvalset ? 'evalSet' : 'function';
-        setCustomUsesEvalset(usesEvalset);
         setDataProviderMode(mode);
         updateFieldVisibility(mode);
     };
@@ -1617,7 +1597,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                 )}
                                             {((dataProviderMode === 'evalSet')
                                                 || (dataProviderMode === 'template' && dataSourceParam && dataSourceMode === 'evalset'))
-                                                && evalsetsLoaded && evalsetOptions.length === 0
+                                                && evalsetOptions.length === 0
                                                 && !selectedEvalsetFile && (
                                                     <NoticeBox>
                                                         <NoticeTitle>

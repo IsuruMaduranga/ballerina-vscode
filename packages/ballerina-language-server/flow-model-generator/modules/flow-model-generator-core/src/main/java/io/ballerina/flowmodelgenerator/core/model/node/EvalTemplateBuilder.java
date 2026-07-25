@@ -35,6 +35,8 @@ public class EvalTemplateBuilder extends FunctionCall {
 
     private static final String LOCAL_REPOSITORY = "local";
     private static final String CONVERSATION_THREAD_TYPE = "ConversationThread";
+    private static final String AGENT_TYPE = "ai:Agent";
+    private static final String MODEL_PROVIDER_TYPE = "ai:ModelProvider";
     private static final String DATA_SOURCE_PARAM_KEY = "dataSourceParam";
     private static final String DATA_SOURCE_KIND_KEY = "dataSourceKind";
     private static final String DATA_SOURCE_KIND_UNION = "union";
@@ -57,27 +59,29 @@ public class EvalTemplateBuilder extends FunctionCall {
                     .addData("needsEvalset", data.get("needsEvalset"));
         }
 
-        for (Map.Entry<String, Property> entry : properties().build().entrySet()) {
-            Property property = entry.getValue();
+        Map<String, Property> props = properties().build();
+        props.replaceAll((key, property) -> {
             List<PropertyType> types = property.types();
             boolean isConversationThread = types != null && types.stream()
                     .anyMatch(type -> String.valueOf(type.ballerinaType()).contains(CONVERSATION_THREAD_TYPE));
-            String primaryType = types == null || types.isEmpty() ? ""
-                    : String.valueOf(types.getFirst().ballerinaType());
             if (isConversationThread) {
                 boolean isUnion = types.stream().anyMatch(type -> String.valueOf(type.ballerinaType()).contains("|"));
-                properties().build().put(entry.getKey(), Property.Builder.copyFrom(property)
+                return Property.Builder.copyFrom(property)
                         .codedata()
                             .addData(DATA_SOURCE_PARAM_KEY, true)
                             .addData(DATA_SOURCE_KIND_KEY, isUnion ? DATA_SOURCE_KIND_UNION : DATA_SOURCE_KIND_STRICT)
                             .stepOut()
                         .hidden()
-                        .build());
-            } else if (primaryType.contains("ai:Agent") || primaryType.contains("ai:ModelProvider")) {
-                properties().build().put(entry.getKey(), Property.Builder.copyFrom(property).clearTypes()
-                        .type(Property.ValueType.EXPRESSION, primaryType).build());
+                        .build();
             }
-        }
+            String primaryType = types == null || types.isEmpty() ? ""
+                    : String.valueOf(types.getFirst().ballerinaType());
+            if (primaryType.contains(AGENT_TYPE) || primaryType.contains(MODEL_PROVIDER_TYPE)) {
+                return Property.Builder.copyFrom(property).clearTypes()
+                        .type(Property.ValueType.EXPRESSION, primaryType).build();
+            }
+            return property;
+        });
     }
 
     @Override

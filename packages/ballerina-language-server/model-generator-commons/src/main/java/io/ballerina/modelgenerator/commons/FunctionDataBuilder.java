@@ -275,9 +275,9 @@ public class FunctionDataBuilder {
     }
 
     private void resolvePackageAndSemanticModel() {
-        // A caller may have already resolved a package from a non-Central repository and supplied its semantic model.
+        // A caller may have already resolved the package from a non-Central repository.
         // Do not discard that explicit resolution by resolving the same module from Central again.
-        if (resolvedPackage != null || semanticModel != null) {
+        if (resolvedPackage != null) {
             return;
         }
         if (workspaceManager != null && filePath != null) {
