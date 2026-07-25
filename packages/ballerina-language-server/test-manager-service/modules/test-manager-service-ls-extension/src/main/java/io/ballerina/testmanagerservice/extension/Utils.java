@@ -67,6 +67,9 @@ import java.util.stream.Collectors;
  */
 public class Utils {
 
+    private static final String CONVERSATION_THREAD = "ConversationThread";
+    private static final String STRING_ARRAY_2D = "string[][]";
+
     private Utils() {
     }
 
@@ -216,11 +219,18 @@ public class Utils {
             }
         }
 
-        // Extract evalSetFile from data provider function if present
+        // dataProviderMode is never written to source, so recover it from the data provider's shape.
         if (dataProviderName != null) {
             String evalSetPath = extractEvalSetFileFromDataProvider(modulePartNode, dataProviderName);
             if (!evalSetPath.isEmpty()) {
                 builder.evalSetFile(evalSetPath);
+                builder.dataProviderMode(Constants.DATA_PROVIDER_MODE_EVALSET);
+            } else {
+                List<String> queries = extractQueriesFromDataProvider(modulePartNode, dataProviderName);
+                if (!queries.isEmpty()) {
+                    builder.queries(queries);
+                    builder.dataProviderMode(Constants.DATA_SOURCE_MODE_QUERIES);
+                }
             }
         }
 
@@ -647,7 +657,38 @@ public class Utils {
         return builder.toString();
     }
 
-    public static String getQueriesDataProviderFunctionTemplate(String functionName, List<String> queries) {
+    /** Builds {@code check ai_evals:<symbol>(<args>);}. Shared so create and update emit identical source. */
+    public static String buildEvalTemplateInvocation(String symbol, List<String> arguments) {
+        return Constants.KEYWORD_CHECK + Constants.SPACE + Constants.MODULE_AI_EVALS + Constants.COLON + symbol
+                + Constants.OPEN_PARAM + String.join(Constants.COMMA + Constants.SPACE, arguments)
+                + Constants.CLOSED_PARAM + ";";
+    }
+
+    /** Finds the evaluator call in a test function body; empty unless there is exactly one. */
+    public static Optional<ExpressionStatementNode> findEvalTemplateCall(FunctionDefinitionNode function) {
+        if (!(function.functionBody() instanceof FunctionBodyBlockNode blockBody)) {
+            return Optional.empty();
+        }
+        List<ExpressionStatementNode> calls = new ArrayList<>();
+        for (StatementNode statement : blockBody.statements()) {
+            if (statement instanceof ExpressionStatementNode exprStmt && isEvalTemplateCall(exprStmt.expression())) {
+                calls.add(exprStmt);
+            }
+        }
+        return calls.size() == 1 ? Optional.of(calls.getFirst()) : Optional.empty();
+    }
+
+    private static boolean isEvalTemplateCall(ExpressionNode expression) {
+        if (expression instanceof CheckExpressionNode checkExpr) {
+            return isEvalTemplateCall(checkExpr.expression());
+        }
+        return expression instanceof FunctionCallExpressionNode funcCall
+                && funcCall.functionName().toSourceCode().trim()
+                        .startsWith(Constants.MODULE_AI_EVALS + Constants.COLON);
+    }
+
+    /** Renders the query rows as {@code [["a"], ["b"]]} — one single-argument row per test run. */
+    public static String buildQueriesArray(List<String> queries) {
         StringBuilder rows = new StringBuilder();
         for (int i = 0; i < queries.size(); i++) {
             if (i > 0) {
@@ -659,13 +700,92 @@ public class Utils {
                     .append(Constants.DOUBLE_QUOTE)
                     .append(Constants.CLOSE_BRACKET);
         }
+        return Constants.OPEN_BRACKET + rows + Constants.CLOSE_BRACKET;
+    }
+
+    public static String getQueriesDataProviderFunctionTemplate(String functionName, List<String> queries) {
         return Constants.LINE_SEPARATOR + Constants.LINE_SEPARATOR
                 + Constants.KEYWORD_ISOLATED + Constants.SPACE + Constants.KEYWORD_FUNCTION + Constants.SPACE
                 + functionName + Constants.OPEN_PARAM + Constants.CLOSED_PARAM + Constants.SPACE
                 + Constants.KEYWORD_RETURNS + Constants.SPACE + Constants.STRING_ARRAY_2D_RETURN_TYPE + Constants.SPACE
                 + Constants.OPEN_CURLY_BRACE + Constants.LINE_SEPARATOR + Constants.TAB_SEPARATOR
-                + "return " + Constants.OPEN_BRACKET + rows + Constants.CLOSE_BRACKET + ";"
+                + "return " + buildQueriesArray(queries) + ";"
                 + Constants.LINE_SEPARATOR + Constants.CLOSE_CURLY_BRACE;
+    }
+
+    /** What a data provider function supplies, inferred from its return type rather than its name. */
+    public enum DataProviderShape { EVALSET, QUERIES, UNKNOWN }
+
+    public static DataProviderShape getDataProviderShape(FunctionDefinitionNode provider) {
+        String returnType = provider.functionSignature().returnTypeDesc()
+                .map(desc -> desc.type().toSourceCode().trim()).orElse("");
+        if (returnType.contains(CONVERSATION_THREAD)) {
+            return DataProviderShape.EVALSET;
+        }
+        if (returnType.replace(Constants.SPACE, "").contains(STRING_ARRAY_2D)) {
+            return DataProviderShape.QUERIES;
+        }
+        return DataProviderShape.UNKNOWN;
+    }
+
+    /** Locates the returned list constructor of a queries provider, for in-place literal updates. */
+    public static Optional<LineRange> findQueriesListLocation(FunctionDefinitionNode provider) {
+        FunctionBodyNode body = provider.functionBody();
+        if (body instanceof FunctionBodyBlockNode blockBody) {
+            for (StatementNode statement : blockBody.statements()) {
+                if (statement instanceof ReturnStatementNode returnStmt
+                        && returnStmt.expression().orElse(null) instanceof ListConstructorExpressionNode list) {
+                    return Optional.of(list.lineRange());
+                }
+            }
+        } else if (body instanceof ExpressionFunctionBodyNode exprBody
+                && exprBody.expression() instanceof ListConstructorExpressionNode list) {
+            return Optional.of(list.lineRange());
+        }
+        return Optional.empty();
+    }
+
+    /** Reads the query literals out of a queries provider. */
+    public static List<String> extractQueriesFromDataProvider(ModulePartNode modulePartNode, String providerName) {
+        Optional<FunctionDefinitionNode> provider = findFunctionByName(modulePartNode, providerName);
+        if (provider.isEmpty() || getDataProviderShape(provider.get()) != DataProviderShape.QUERIES) {
+            return List.of();
+        }
+        ListConstructorExpressionNode rows = findQueriesList(provider.get().functionBody());
+        if (rows == null) {
+            return List.of();
+        }
+        List<String> queries = new ArrayList<>();
+        for (Node row : rows.expressions()) {
+            if (row instanceof ListConstructorExpressionNode rowList) {
+                rowList.expressions().stream().findFirst()
+                        .ifPresent(value -> queries.add(unquote(value.toSourceCode().trim())));
+            } else {
+                queries.add(unquote(row.toSourceCode().trim()));
+            }
+        }
+        return queries;
+    }
+
+    private static ListConstructorExpressionNode findQueriesList(FunctionBodyNode body) {
+        if (body instanceof FunctionBodyBlockNode blockBody) {
+            for (StatementNode statement : blockBody.statements()) {
+                if (statement instanceof ReturnStatementNode returnStmt
+                        && returnStmt.expression().orElse(null) instanceof ListConstructorExpressionNode list) {
+                    return list;
+                }
+            }
+        } else if (body instanceof ExpressionFunctionBodyNode exprBody
+                && exprBody.expression() instanceof ListConstructorExpressionNode list) {
+            return list;
+        }
+        return null;
+    }
+
+    private static String unquote(String value) {
+        String unquoted = value.replaceAll("^\"|\"$", "");
+        return unquoted.replace("\\\"", "\"").replace("\\n", "\n").replace("\\r", "\r")
+                .replace("\\t", "\t").replace("\\\\", "\\");
     }
 
     private static String escapeStringLiteral(String value) {

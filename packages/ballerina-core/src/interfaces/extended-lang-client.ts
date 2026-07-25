@@ -666,7 +666,6 @@ export interface GetTestFunctionRequest {
 export interface AddOrUpdateTestFunctionRequest {
     filePath: string;
     function: TestFunction;
-    /** Present only when creating an evaluation from an @EvalTemplate function. */
     evalTemplate?: {
         symbol: string;
         parameters: Record<string, string>;

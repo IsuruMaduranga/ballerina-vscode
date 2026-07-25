@@ -25,6 +25,7 @@ import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.syntax.tree.AnnotationNode;
 import io.ballerina.compiler.syntax.tree.ExpressionFunctionBodyNode;
 import io.ballerina.compiler.syntax.tree.ExpressionNode;
+import io.ballerina.compiler.syntax.tree.ExpressionStatementNode;
 import io.ballerina.compiler.syntax.tree.FunctionBodyBlockNode;
 import io.ballerina.compiler.syntax.tree.FunctionBodyNode;
 import io.ballerina.compiler.syntax.tree.FunctionDefinitionNode;
@@ -67,6 +68,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -339,9 +341,163 @@ public class TestManagerService implements ExtendedLanguageServerService {
         return queries;
     }
 
-    private String getTemplateTestFunction(TestFunction function, String symbol, JsonObject parameters,
-                                           String boundArgument) {
-        StringBuilder invocation = new StringBuilder("    check ai_evals:").append(symbol).append("(");
+    /** Rewrites the evaluator call and reconciles its data provider, leaving other statements alone. */
+    private void updateTemplateEvaluation(UpdateTestFunctionRequest request, TextDocument textDocument,
+                                          Document document, SemanticModel semanticModel,
+                                          ModulePartNode modulePartNode, FunctionDefinitionNode functionNode,
+                                          List<TextEdit> edits) {
+        JsonObject template = request.evalTemplate();
+        Optional<ExpressionStatementNode> call = Utils.findEvalTemplateCall(functionNode);
+        if (call.isEmpty()) {
+            // Nothing recognisable to replace; never rewrite a body we did not generate.
+            return;
+        }
+
+        String symbol = template.has("symbol") ? template.get("symbol").getAsString() : "";
+        if (symbol.isBlank()) {
+            throw new IllegalArgumentException("An evaluation template function is required");
+        }
+
+        String boundArgument = reconcileDataSource(request, template, textDocument, document, semanticModel,
+                modulePartNode, edits);
+        String invocation = Utils.buildEvalTemplateInvocation(symbol,
+                readTemplateArguments(template.getAsJsonObject("parameters"), boundArgument));
+        edits.add(new TextEdit(Utils.toRange(call.get().lineRange()), invocation));
+    }
+
+    /**
+     * Brings the data provider, the test parameter and the dataProvider annotation field in line with the
+     * requested input mode. Returns the named argument binding the provider value, or null when there is none.
+     */
+    private String reconcileDataSource(UpdateTestFunctionRequest request, JsonObject template,
+                                       TextDocument textDocument, Document document, SemanticModel semanticModel,
+                                       ModulePartNode modulePartNode, List<TextEdit> edits) {
+        JsonObject dataSource = template.has("dataSource") && template.get("dataSource").isJsonObject()
+                ? template.getAsJsonObject("dataSource") : null;
+        if (dataSource == null) {
+            return null;
+        }
+        String paramName = dataSource.has("paramName") ? dataSource.get("paramName").getAsString() : "";
+        if (paramName.isBlank()) {
+            throw new IllegalArgumentException("The evaluation input parameter name is required");
+        }
+        boolean wantsQueries = Constants.DATA_SOURCE_MODE_QUERIES
+                .equals(dataSource.has("mode") ? dataSource.get("mode").getAsString() : "");
+
+        String providerName = Utils.getConfigFieldValue(request.function(), "dataProvider");
+        Optional<FunctionDefinitionNode> provider = providerName == null || providerName.isBlank()
+                ? Optional.empty() : Utils.findFunctionByName(modulePartNode, providerName);
+        Utils.DataProviderShape shape = provider.map(Utils::getDataProviderShape)
+                .orElse(Utils.DataProviderShape.UNKNOWN);
+
+        if (wantsQueries) {
+            List<String> queries = readQueries(dataSource);
+            if (queries.isEmpty()) {
+                throw new IllegalArgumentException("At least one query is required");
+            }
+            if (shape == Utils.DataProviderShape.QUERIES) {
+                Utils.findQueriesListLocation(provider.get()).ifPresent(range ->
+                        edits.add(new TextEdit(Utils.toRange(range), Utils.buildQueriesArray(queries))));
+                return paramName + " = " + boundVariable(request.function(), Constants.STRING_TYPE,
+                        Constants.QUERY_PROVIDER_VAR);
+            }
+            if (shape == Utils.DataProviderShape.UNKNOWN && provider.isPresent()) {
+                // Hand-written provider: leave it alone and keep binding whatever the signature already declares.
+                return paramName + " = " + boundVariable(request.function(), Constants.STRING_TYPE,
+                        Constants.QUERY_PROVIDER_VAR);
+            }
+            String functionName = replaceDataProvider(document, semanticModel, modulePartNode, provider, edits,
+                    Constants.DEFAULT_QUERIES_FUNCTION_NAME,
+                    name -> Utils.getQueriesDataProviderFunctionTemplate(name, queries));
+            swapDataSourceParameter(request.function(), Constants.STRING_TYPE, Constants.QUERY_PROVIDER_VAR);
+            updateDataProviderField(request.function(), functionName);
+            return paramName + " = " + Constants.QUERY_PROVIDER_VAR;
+        }
+
+        String evalSetFile = dataSource.has("evalSetFile") ? dataSource.get("evalSetFile").getAsString() : "";
+        if (evalSetFile.isBlank()) {
+            throw new IllegalArgumentException("An evalset is required for the selected input mode");
+        }
+        if (shape == Utils.DataProviderShape.EVALSET) {
+            updateEvalSetFile(textDocument, modulePartNode, request.function(), edits);
+            return paramName + " = " + boundVariable(request.function(), Constants.AI_CONVERSATION_THREAD_TYPE,
+                    Constants.EVALSET_PROVIDER_VAR);
+        }
+        if (shape == Utils.DataProviderShape.UNKNOWN && provider.isPresent()) {
+            return paramName + " = " + boundVariable(request.function(), Constants.AI_CONVERSATION_THREAD_TYPE,
+                    Constants.EVALSET_PROVIDER_VAR);
+        }
+        if (!Utils.isAiModuleImportExists(modulePartNode)) {
+            edits.add(new TextEdit(Utils.toRange(modulePartNode.lineRange().startLine()), Constants.IMPORT_AI_STMT));
+        }
+        String functionName = replaceDataProvider(document, semanticModel, modulePartNode, provider, edits,
+                Constants.DEFAULT_EVALSET_FUNCTION_NAME,
+                name -> Utils.getEvalSetDataProviderFunctionTemplate(name, evalSetFile));
+        swapDataSourceParameter(request.function(), Constants.AI_CONVERSATION_THREAD_TYPE,
+                Constants.EVALSET_PROVIDER_VAR);
+        updateDataProviderField(request.function(), functionName);
+        return paramName + " = " + Constants.EVALSET_PROVIDER_VAR;
+    }
+
+    /**
+     * Replaces a generated data provider in place, or appends one when absent. A provider still carrying a
+     * generated default name is renamed to match its new mode; a user-renamed one keeps its name.
+     */
+    private String replaceDataProvider(Document document, SemanticModel semanticModel,
+                                       ModulePartNode modulePartNode, Optional<FunctionDefinitionNode> provider,
+                                       List<TextEdit> edits, String defaultName,
+                                       Function<String, String> template) {
+        String currentName = provider.map(func -> func.functionName().text().trim()).orElse("");
+        boolean generatedName = currentName.startsWith(Constants.DEFAULT_EVALSET_FUNCTION_NAME)
+                || currentName.startsWith(Constants.DEFAULT_QUERIES_FUNCTION_NAME);
+        String functionName = !currentName.isEmpty() && !generatedName ? currentName
+                : NameUtil.getValidatedSymbolName(visibleSymbolNames(semanticModel, document, modulePartNode),
+                        defaultName);
+        String source = template.apply(functionName);
+        if (provider.isPresent()) {
+            edits.add(new TextEdit(Utils.toRange(provider.get().lineRange()), source.stripLeading()));
+        } else {
+            edits.add(new TextEdit(Utils.toRange(modulePartNode.lineRange().endLine()), source));
+        }
+        return functionName;
+    }
+
+    private Set<String> visibleSymbolNames(SemanticModel semanticModel, Document document,
+                                           ModulePartNode modulePartNode) {
+        if (semanticModel == null) {
+            return Set.of();
+        }
+        return semanticModel.visibleSymbols(document, modulePartNode.lineRange().endLine()).stream()
+                .map(Symbol::getName).filter(Optional::isPresent).map(Optional::get).collect(Collectors.toSet());
+    }
+
+    /** Name the generated provider value binds to: an existing parameter of that type, else the default. */
+    private String boundVariable(TestFunction function, String type, String defaultName) {
+        if (function.parameters() == null) {
+            return defaultName;
+        }
+        return function.parameters().stream()
+                .filter(param -> param.type() != null && type.equals(String.valueOf(param.type().value()).trim()))
+                .map(param -> String.valueOf(param.variable().value()).trim())
+                .findFirst().orElse(defaultName);
+    }
+
+    /** Drops the previously bound provider parameter and adds the one the new mode needs. */
+    private void swapDataSourceParameter(TestFunction function, String type, String variable) {
+        if (function.parameters() == null) {
+            return;
+        }
+        String previousType = Constants.STRING_TYPE.equals(type)
+                ? Constants.AI_CONVERSATION_THREAD_TYPE : Constants.STRING_TYPE;
+        function.parameters().stream()
+                .filter(param -> param.type() != null
+                        && previousType.equals(String.valueOf(param.type().value()).trim()))
+                .findFirst()
+                .ifPresent(param -> function.parameters().remove(param));
+        addTestParameter(function, type, variable);
+    }
+
+    private List<String> readTemplateArguments(JsonObject parameters, String boundArgument) {
         List<String> arguments = new ArrayList<>();
         if (parameters != null) {
             for (Map.Entry<String, JsonElement> entry : parameters.entrySet()) {
@@ -354,11 +510,17 @@ public class TestManagerService implements ExtendedLanguageServerService {
         if (boundArgument != null) {
             arguments.add(boundArgument);
         }
-        invocation.append(String.join(", ", arguments)).append(");");
+        return arguments;
+    }
+
+    private String getTemplateTestFunction(TestFunction function, String symbol, JsonObject parameters,
+                                           String boundArgument) {
+        String invocation = Utils.buildEvalTemplateInvocation(symbol, readTemplateArguments(parameters, boundArgument));
         return Utils.buildAnnotation(function.annotations()) + Constants.LINE_SEPARATOR
                 + Constants.KEYWORD_FUNCTION + Constants.SPACE + function.functionName().value()
                 + Utils.buildFunctionSignature(function) + Constants.SPACE + Constants.OPEN_CURLY_BRACE
-                + Constants.LINE_SEPARATOR + invocation + Constants.LINE_SEPARATOR + Constants.CLOSE_CURLY_BRACE;
+                + Constants.LINE_SEPARATOR + Constants.TAB_SEPARATOR + invocation
+                + Constants.LINE_SEPARATOR + Constants.CLOSE_CURLY_BRACE;
     }
 
     private String getDataProviderMode(TestFunction function) {
@@ -437,6 +599,14 @@ public class TestManagerService implements ExtendedLanguageServerService {
 
                 List<TextEdit> edits = new ArrayList<>();
 
+                // Runs first: it can change the signature parameter and the dataProvider annotation field
+                // that the signature and annotation edits below are built from.
+                if (request.evalTemplate() != null) {
+                    updateTemplateEvaluation(request, textDocument, document.get(),
+                            this.workspaceManager.semanticModel(filePath).orElse(null), modulePartNode,
+                            functionDefinitionNode, edits);
+                }
+
                 // Update function name if changed
                 String functionName = functionDefinitionNode.functionName().text().trim();
                 LineRange nameRange = functionDefinitionNode.functionName().lineRange();
@@ -457,8 +627,10 @@ public class TestManagerService implements ExtendedLanguageServerService {
                     updateAnnotations(functionDefinitionNode, request.function(), edits);
                 }
 
-                // Update evalSetFile in data provider if present
-                updateEvalSetFile(textDocument, modulePartNode, request.function(), edits);
+                // Update evalSetFile in data provider if present (the template path owns its own provider)
+                if (request.evalTemplate() == null) {
+                    updateEvalSetFile(textDocument, modulePartNode, request.function(), edits);
+                }
 
                 return new CommonSourceResponse(Map.of(request.filePath(), edits));
             } catch (Throwable e) {
