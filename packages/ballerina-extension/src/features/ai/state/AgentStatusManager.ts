@@ -167,7 +167,7 @@ class AgentStatusManager {
         const label = truncate(this.status.label, STATUS_BAR_LABEL_MAX);
         switch (this.status.state) {
             case 'running':
-                this.statusBarItem.text = `$(loading~spin) ${label ?? 'WSO2 Copilot'}`;
+                this.statusBarItem.text = `$(loading~spin) ${label ?? 'WSO2 Integrator Copilot'}`;
                 this.statusBarItem.backgroundColor = undefined;
                 break;
             case 'awaiting-input':
@@ -184,7 +184,7 @@ class AgentStatusManager {
                 break;
             case 'idle':
             default:
-                this.statusBarItem.text = `$(bi-ai-agent) WSO2 Copilot`;
+                this.statusBarItem.text = `$(bi-ai-agent) WSO2 Integrator Copilot`;
                 this.statusBarItem.backgroundColor = undefined;
                 break;
         }

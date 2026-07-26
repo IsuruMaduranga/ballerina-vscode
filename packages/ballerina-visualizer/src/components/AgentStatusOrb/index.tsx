@@ -360,7 +360,7 @@ export function AgentStatusOrb() {
 
     const state = status.state;
     const colors = ORB_COLORS[state];
-    const label = state === "idle" ? "Chat with WSO2 Copilot" : activeStateLabel(status);
+    const label = state === "idle" ? "Chat with WSO2 Integrator Copilot" : activeStateLabel(status);
     const dragging = dragPos !== null && !snapping;
     // Active states keep the pill visible the whole time. Idle shows the
     // invitation input; dismissing only collapses it into the orb — hovering
@@ -498,7 +498,7 @@ export function AgentStatusOrb() {
                             }
                         }}
                         placeholder="How can I help?"
-                        aria-label="Message WSO2 Copilot"
+                        aria-label="Message WSO2 Integrator Copilot"
                     />
                     <InviteDismiss title="Hide" aria-label="Hide the copilot prompt" onClick={() => setInviteDismissed(true)}>
                         ✕
@@ -513,7 +513,7 @@ export function AgentStatusOrb() {
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 title={label ? `WSO2 Integrator Copilot — ${label}` : "WSO2 Integrator Copilot"}
-                aria-label={label ? `WSO2 Copilot: ${label}. Open the Copilot mini chat.` : "Open the WSO2 Copilot mini chat"}
+                aria-label={label ? `WSO2 Integrator Copilot: ${label}. Open the Copilot mini chat.` : "Open the WSO2 Integrator Copilot mini chat"}
             >
                 {(state === "running" || state === "awaiting-input") && <Halo colors={colors} />}
                 <Aura colors={colors} state={state} />
