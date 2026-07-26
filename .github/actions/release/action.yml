@@ -14,6 +14,14 @@ inputs:
     description: 'Google Chat thread key for grouping release notifications'
     required: false
     default: ''
+  tag:
+    description: >-
+      Fixed, rolling release tag (e.g. "nightly"). When set, any existing
+      release + git tag with this name is deleted and recreated, so the tag
+      always points at the latest build. When empty (default), a unique
+      "v<version>" release is created without deleting anything.
+    required: false
+    default: ''
 
 runs:
   using: "composite"
@@ -27,21 +35,71 @@ runs:
         version=${fileName%.*}
         extension=${{ inputs.name }}
         extensionName="$(echo "$extension" | sed 's/.*/\u&/')"
+        # A non-empty `tag` input selects the rolling release (e.g. nightly);
+        # otherwise fall back to a unique per-version tag.
+        if [ -n "${{ inputs.tag }}" ]; then
+          releaseTag="${{ inputs.tag }}"
+          releaseName="Nightly Build (v${version})"
+        else
+          releaseTag="v${version}"
+          releaseName="Release v${version}"
+        fi
         echo "vsixName=$file" >> $GITHUB_OUTPUT
         echo "version=$version" >> $GITHUB_OUTPUT
         echo "extensionName=$extensionName" >> $GITHUB_OUTPUT
+        echo "releaseTag=$releaseTag" >> $GITHUB_OUTPUT
+        echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
 
     - name: Create a release in ${{ inputs.repo }} repo
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ inputs.repo }}
+        TAG: ${{ steps.vsix.outputs.releaseTag }}
+        RELEASE_NAME: ${{ steps.vsix.outputs.releaseName }}
+        VSIX: ${{ steps.vsix.outputs.vsixName }}
+        ROLLING: ${{ inputs.tag != '' }}
       run: |
-        createResponse=`curl -X POST  -H "Accept: application/vnd.github.v3+json" \
-        -H "Authorization:token ${{ github.token }}" -d '{"tag_name":"v${{ steps.vsix.outputs.version }}", \
-        "draft":false, "name": "Release v${{ steps.vsix.outputs.version }}", "prerelease":true}' \
-        https://api.github.com/repos/${{ inputs.repo }}/releases` \
-          && id=`echo "$createResponse" | sed -n -e 's/"id":\ \([0-9]\+\),/\1/p' | head -n 1 | sed 's/[[:blank:]]//g'` && \
-          uploadResponse=`curl -X POST -H "Authorization:token ${{ github.token }}" -H "Content-Type:application/octet-stream" \
-          --data-binary @${{ steps.vsix.outputs.vsixName }} \
-          https://uploads.github.com/repos/${{ inputs.repo }}/releases/$id/assets?name=${{ steps.vsix.outputs.vsixName }}`
+        set -euo pipefail
+        API="https://api.github.com/repos/${REPO}"
+
+        # Rolling tag (e.g. nightly): delete the previous release + git tag so
+        # the tag always points at the newest build.
+        if [ "${ROLLING}" = "true" ]; then
+          existingId=$(curl -sS -H "Authorization:token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "${API}/releases/tags/${TAG}" | jq -r '.id // empty')
+          if [ -n "${existingId}" ]; then
+            echo "Deleting existing release ${existingId} for tag ${TAG}"
+            curl -sS -X DELETE -H "Authorization:token ${GH_TOKEN}" \
+              "${API}/releases/${existingId}"
+          fi
+          # Remove the git tag ref too (ignore if it doesn't exist).
+          curl -sS -X DELETE -H "Authorization:token ${GH_TOKEN}" \
+            "${API}/git/refs/tags/${TAG}" || true
+        fi
+
+        createResponse=$(curl -sS -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization:token ${GH_TOKEN}" \
+          "${API}/releases" \
+          -d "$(jq -n \
+            --arg tag "${TAG}" \
+            --arg name "${RELEASE_NAME}" \
+            --arg commit "${GITHUB_SHA}" \
+            '{tag_name: $tag, target_commitish: $commit, draft: false, name: $name, prerelease: true}')")
+        id=$(echo "${createResponse}" | jq -r '.id // empty')
+        if [ -z "${id}" ]; then
+          echo "Failed to create release:" >&2
+          echo "${createResponse}" >&2
+          exit 1
+        fi
+
+        curl -sS -X POST \
+          -H "Authorization:token ${GH_TOKEN}" \
+          -H "Content-Type:application/octet-stream" \
+          --data-binary "@${VSIX}" \
+          "https://uploads.github.com/repos/${REPO}/releases/${id}/assets?name=${VSIX}"
 
     - name: "Release Notification"
       shell: bash
@@ -71,7 +129,7 @@ runs:
                         "content": "v${{ steps.vsix.outputs.version }}",
                         "onClick": {
                           "openLink": {
-                            "url": "https://github.com/${{ inputs.repo }}/releases/tag/v${{ steps.vsix.outputs.version }}"
+                            "url": "https://github.com/${{ inputs.repo }}/releases/tag/${{ steps.vsix.outputs.releaseTag }}"
                           }
                         },
                         "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Visual_Studio_Code_1.35_icon.svg/512px-Visual_Studio_Code_1.35_icon.svg.png",
@@ -80,7 +138,7 @@ runs:
                             "text": "Download VSIX",
                             "onClick": {
                               "openLink": {
-                                "url": "https://github.com/${{ inputs.repo }}/releases/download/v${{ steps.vsix.outputs.version }}/${{ steps.vsix.outputs.vsixName }}"
+                                "url": "https://github.com/${{ inputs.repo }}/releases/download/${{ steps.vsix.outputs.releaseTag }}/${{ steps.vsix.outputs.vsixName }}"
                               }
                             }
                           }

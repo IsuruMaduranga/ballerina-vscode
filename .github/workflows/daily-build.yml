@@ -266,6 +266,11 @@ jobs:
       ballerina: true
       runFastTests: true
       runBalE2ETests: true
+      # Daily builds ship only to a rolling GitHub `nightly` release (never the
+      # Marketplace), so they use the plain package.json version — no timestamp
+      # suffix. The bundled LS is built from source (lsSource defaults to
+      # 'local'), so it always matches the extension version regardless of this.
+      isPreRelease: false
 
   # ─────────────────────────────────────────────────────────────────────────
   # Daily pre-release — publish the extension VSIX as a GitHub pre-release
@@ -304,6 +309,9 @@ jobs:
           repo: wso2/ballerina-vscode
           name: ballerina
           chatAPI: ${{ secrets.BI_TEAM_CHAT_API }}
+          # Rolling tag: each daily run deletes and recreates the `nightly`
+          # release so it always points at the latest build.
+          tag: nightly
 
   # ─────────────────────────────────────────────────────────────────────────
   # Notifications
