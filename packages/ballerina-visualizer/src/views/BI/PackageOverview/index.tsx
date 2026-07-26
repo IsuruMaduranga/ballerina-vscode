@@ -996,13 +996,6 @@ export function PackageOverview(props: PackageOverviewProps) {
         }
     };
 
-    const handleGenerate = () => {
-        rpcClient.getBIDiagramRpcClient().openAIChat({
-            readme: false,
-            planMode: true,
-        });
-    };
-
     const handleGenerateWithReadme = () => {
         rpcClient.getBIDiagramRpcClient().openAIChat({
             readme: true,
@@ -1165,9 +1158,6 @@ export function PackageOverview(props: PackageOverviewProps) {
                                     <Title variant="h2">Design</Title>
                                     {!isEmptyIntegration() && (
                                         <ActionContainer>
-                                            <Button appearance="secondary" onClick={handleGenerate}>
-                                                <Icon name="bi-ai-chat" sx={{ marginRight: 8 }} iconSx={{ width: "16px", height: "16px", fontSize: "16px" }} /> Generate with AI
-                                            </Button>
                                             <Button appearance="primary" onClick={handleAddConstruct}>
                                                 <Codicon name="add" sx={{ marginRight: 8 }} /> Add Artifact
                                             </Button>
@@ -1187,14 +1177,12 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 variant="body1"
                                                 sx={{ marginBottom: "24px", color: "var(--vscode-descriptionForeground)" }}
                                             >
-                                                Start by adding artifacts or use AI to generate your integration structure
+                                                Add an artifact to get started, or describe what you want to build in
+                                                the Copilot box above
                                             </Typography>
                                             <ButtonContainer>
                                                 <Button appearance="primary" onClick={handleAddConstruct}>
                                                     <Codicon name="add" sx={{ marginRight: 8 }} /> Add Artifact
-                                                </Button>
-                                                <Button appearance="secondary" onClick={handleGenerate}>
-                                                    <Icon name="bi-ai-chat" sx={{ marginRight: 4 }} iconSx={{ position: "relative", top: "2px" }} /> Generate with AI
                                                 </Button>
                                             </ButtonContainer>
                                         </EmptyStateContainer>
