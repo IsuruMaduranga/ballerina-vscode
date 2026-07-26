@@ -58,6 +58,7 @@ describe.each(CONTEXTS)("mini/full chat context handoff ($type)", (codeContext) 
             isPlanMode: true,
             codeContext,
             fileAttachmentContents: [],
+            promptSource: "mini-chat",
         });
     });
 

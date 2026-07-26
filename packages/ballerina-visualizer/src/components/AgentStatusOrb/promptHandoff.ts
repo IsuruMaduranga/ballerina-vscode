@@ -45,6 +45,7 @@ export function buildMiniChatGenerationRequest(
         isPlanMode: prompt.planMode,
         codeContext: prompt.codeContext,
         fileAttachmentContents: [],
+        promptSource: "mini-chat",
     };
 }
 

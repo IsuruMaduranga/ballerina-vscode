@@ -127,6 +127,7 @@ import { StateMachine, updateView } from "../../stateMachine";
 import { isInDevant, isInWI } from "../../utils";
 import { getLoginMethod, isPlatformExtensionAvailable, loginGithubCopilot } from "../../utils/ai/auth";
 import { normalizeCodeContext } from "../../views/ai-panel/codeContextUtils";
+import { resolveActiveFilePath } from "../../views/ai-panel/activeFileContext";
 import { refreshDataMapper } from "../data-mapper/utils";
 import {
     TEST_DIR_NAME
@@ -454,17 +455,29 @@ export class AiPanelRpcManager implements AIPanelAPI {
     }
 
     async generateAgent(params: GenerateAgentCodeRequest): Promise<boolean> {
+        const smCtx = StateMachine.context();
+        const workspaceRoot = smCtx.workspacePath || smCtx.projectPath;
+
         // Contextual mini-chat launches bypass getDefaultPrompt(), where panel
         // launches normally convert the diagram's absolute file path to the
         // workspace-relative path expected by the agent.
         if (params.codeContext && path.isAbsolute(params.codeContext.filePath)) {
-            const smCtx = StateMachine.context();
-            const workspaceRoot = smCtx.workspacePath || smCtx.projectPath;
             params = {
                 ...params,
                 codeContext: normalizeCodeContext(params.codeContext, workspaceRoot, smCtx.projectPath),
             };
         }
+
+        params = {
+            ...params,
+            // Always overwrite client input with a host-validated path.
+            activeFilePath: resolveActiveFilePath(
+                params.promptSource,
+                smCtx.documentUri,
+                workspaceRoot,
+                smCtx.projectPath,
+            ),
+        };
         return await generateAgent(params);
     }
 

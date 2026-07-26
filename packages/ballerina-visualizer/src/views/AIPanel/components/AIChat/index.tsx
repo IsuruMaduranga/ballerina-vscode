@@ -2059,6 +2059,7 @@ const AIChat: React.FC = () => {
         console.log("Submitting agent prompt:", { useCase, agentMode: agentModeRef.current, codeContext: currentCodeContext, operationType, fileAttatchments });
         await rpcClient.getAiPanelRpcClient().generateAgent({
             generationId: activeRunGenerationIdRef.current,
+            promptSource: 'ai-panel',
             usecase: useCase, hiddenContext: currentHiddenContext, isPlanMode: agentModeRef.current === AgentMode.Plan, codeContext: currentCodeContext, operationType, fileAttachmentContents: fileAttatchments, webSearchEnabled: isWebToolsEnabled
         });
     }

@@ -30,8 +30,11 @@ import { selectPackageOrPrompt, needsProjectDiscovery, requiresPackageSelection 
 import { getCurrentProjectRoot, tryGetCurrentBallerinaFile } from '../../utils/project-utils';
 import { findBallerinaPackageRoot } from '../../utils';
 import { findWorkspaceTypeFromWorkspaceFolders } from '../../rpc-managers/common/utils';
+import { AiPanelWebview } from './webview';
+import { setCompanionTextEditor, setCompanionVisualizer } from './activeFileContext';
 
 export function activateAiPanel(ballerinaExtInstance: BallerinaExtension) {
+    setCompanionTextEditor(vscode.window.activeTextEditor);
     ballerinaExtInstance.context.subscriptions.push(
         vscode.commands.registerCommand(SHARED_COMMANDS.OPEN_AI_PANEL, handleOpenAIPanel)
     );
@@ -43,6 +46,15 @@ export function activateAiPanel(ballerinaExtInstance: BallerinaExtension) {
     ballerinaExtInstance.context.subscriptions.push(
         vscode.window.onDidChangeActiveColorTheme((_event) => {
             notifyAiWebview();
+        })
+    );
+    ballerinaExtInstance.context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor((editor) => {
+            // VS Code reports undefined when focus moves into a webview. Retain
+            // the preceding surface so the AI panel can describe what is beside it.
+            if (editor) {
+                setCompanionTextEditor(editor);
+            }
         })
     );
 
@@ -100,6 +112,14 @@ export function activateAiPanel(ballerinaExtInstance: BallerinaExtension) {
 // --- AI Panel Command Helpers ---
 
 async function handleOpenAIPanel(defaultPrompt?: AIPanelPrompt): Promise<void> {
+    if (!AiPanelWebview.currentPanel?.getWebview()?.active) {
+        if (VisualizerWebview.isVisualizerActive()) {
+            setCompanionVisualizer();
+        } else {
+            setCompanionTextEditor(vscode.window.activeTextEditor);
+        }
+    }
+
     const { projectInfo, projectPath, view, workspacePath } = StateMachine.context();
     const isWebviewOpen = VisualizerWebview.currentPanel !== undefined;
     const hasActiveTextEditor = !!vscode.window.activeTextEditor;
