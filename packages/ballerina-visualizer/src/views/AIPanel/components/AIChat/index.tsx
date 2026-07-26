@@ -1707,7 +1707,7 @@ const AIChat: React.FC = () => {
             const t = setTimeout(() => scrollToEnd("auto"), 120);
             return () => clearTimeout(t);
         }
-    }, [messages, hasActiveReview, isLoading, isCodeLoading]);
+    }, [messages, hasActiveReview, isLoading, isCodeLoading, followupSuggestions]);
 
     async function handleSendQuery(content: {
         input: Input[];
@@ -2540,7 +2540,6 @@ const AIChat: React.FC = () => {
                             // Note: Cannot use useMemo here as it's inside map() callback
                             // The stateless regex implementation in splitContent() ensures no corruption during streaming
                             const segmentedContent = splitContent(message.content);
-                            const hasReviewActions = isLatestAssistantMessage && hasActiveReview;
                             return (
                                 <ChatMessage key={index}>
                                     {/* Checkpoint separator before user messages */}
@@ -2817,8 +2816,8 @@ const AIChat: React.FC = () => {
                                             }
                                         })}
                                     </MessageBody>
-                                    {/* Show feedback bar only for the latest assistant message and when loading is complete, but not if review actions are present */}
-                                    {isAssistantMessage && isLatestAssistantMessage && !isLoading && !isCodeLoading && !hasReviewActions && (
+                                    {/* Show feedback bar for the latest assistant message once loading is complete */}
+                                    {isAssistantMessage && isLatestAssistantMessage && !isLoading && !isCodeLoading && (
                                         <FeedbackBar
                                             messageIndex={index}
                                             onFeedback={handleFeedback}
@@ -2834,7 +2833,6 @@ const AIChat: React.FC = () => {
                                                     text: suggestion.prompt,
                                                     planMode: agentMode === AgentMode.Plan,
                                                 });
-                                                setFollowupSuggestions([]);
                                             }}
                                         />
                                     )}
