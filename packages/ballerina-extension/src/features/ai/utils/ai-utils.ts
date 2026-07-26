@@ -326,10 +326,23 @@ export function sendWebToolToggleNotification(active: boolean): void {
     );
 }
 
-export function sendAIPanelNotification(msg: ChatNotify): void {
-    // Stamp seq/generationId and buffer under the active run (for panel reconnection)
-    // before forwarding. No-op when no run is active.
-    const stamped = runEventStore.stampCurrent(msg);
+export interface AIPanelRunContext {
+    projectRootPath: string;
+    threadId: string;
+    generationId: string;
+}
+
+export function sendAIPanelNotification(msg: ChatNotify, runContext?: AIPanelRunContext): void {
+    // Only executor-owned handlers provide a run context. Unrelated AI-panel
+    // notifications must never be captured by another concurrently running turn.
+    const stamped = runContext
+        ? runEventStore.stamp(
+            runContext.projectRootPath,
+            runContext.threadId,
+            runContext.generationId,
+            msg
+        )
+        : msg;
     // The agent keeps running after the panel is closed (by design). The event is
     // already buffered above, so skipping the post loses nothing — reconnect replays
     // it on reopen. Guard on the live panel and swallow any late-dispose race.

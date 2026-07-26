@@ -85,6 +85,7 @@ import {
     // OpenMemoryRequest,
     GetRunStatusRequest,
     GetRunStatusResponse,
+    HasPendingReviewRequest,
 } from "./interfaces";
 import { RequestType, NotificationType } from "vscode-messenger-common";
 
@@ -132,7 +133,7 @@ export const restoreCheckpoint: RequestType<RestoreCheckpointRequest, void> = { 
 export const clearChat: RequestType<void, void> = { method: `${_preFix}/clearChat` };
 export const updateChatMessage: RequestType<UpdateChatMessageRequest, void> = { method: `${_preFix}/updateChatMessage` };
 export const getActiveTempDir: RequestType<void, string> = { method: `${_preFix}/getActiveTempDir` };
-export const hasPendingReview: RequestType<void, boolean> = { method: `${_preFix}/hasPendingReview` };
+export const hasPendingReview: RequestType<HasPendingReviewRequest, boolean> = { method: `${_preFix}/hasPendingReview` };
 export const getRunStatus: RequestType<GetRunStatusRequest, GetRunStatusResponse> = { method: `${_preFix}/getRunStatus` };
 export const getUsage: RequestType<void, UsageResponse | undefined> = { method: `${_preFix}/getUsage` };
 export const requestQuota: RequestType<QuotaRequestParams, QuotaRequestResult> = { method: `${_preFix}/requestQuota` };

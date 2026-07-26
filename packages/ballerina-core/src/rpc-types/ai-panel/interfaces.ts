@@ -302,6 +302,8 @@ export type CodeContext =
     | { type: 'selection'; startPosition: LinePosition; endPosition: LinePosition, filePath: string };
 
 export interface GenerateAgentCodeRequest {
+    /** Client-created run identity used to reject late events from older runs. */
+    generationId?: string;
     usecase: string;
     hiddenContext?: string;
     operationType?: OperationType;
@@ -428,6 +430,14 @@ export interface RestoreCheckpointRequest {
 export interface UpdateChatMessageRequest {
     messageId: string;
     content: string;
+    /** Exact workspace/thread owning the generation. Omitted only by legacy callers. */
+    projectRootPath?: string;
+    threadId?: string;
+    /**
+     * Set false for intermediate recovery writes. The reconnect buffer is only
+     * cleared by the final, fully rebuilt transcript write.
+     */
+    clearRunBuffer?: boolean;
 }
 
 export interface PlanApprovalRequest {
@@ -548,6 +558,13 @@ export interface AbortAIGenerationRequest {
     threadId?: string;
 }
 
+export interface HasPendingReviewRequest {
+    /** Project root path (defaults to current workspace/project root). */
+    projectRootPath?: string;
+    /** Thread identifier (defaults to the active thread). */
+    threadId?: string;
+}
+
 /**
  * Request for the current run status of a thread (panel reconnection).
  * Optional params default to current workspace and 'default' thread.
@@ -568,9 +585,14 @@ export interface GetRunStatusRequest {
 export interface GetRunStatusResponse {
     isRunning: boolean;
     events: ChatNotify[];
+    /** Resolved identity of the buffer that was queried. */
+    projectRootPath: string;
+    threadId: string;
     isPlanMode?: boolean;
     /** Id of the buffered (active or finished-but-unrecorded) generation, if any. */
     generationId?: string;
+    /** Persisted prompt for the buffered generation, when available. */
+    userPrompt?: string;
     /**
      * True when the buffer overflowed and its earliest events were evicted, so a
      * replay cannot rebuild the turn from the beginning.

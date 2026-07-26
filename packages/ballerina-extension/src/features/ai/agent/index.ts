@@ -29,6 +29,7 @@ import {
 import { extension } from "../../../BalExtensionContext";
 import { getProjectMetrics } from "../../telemetry/common/project-metrics";
 import { getHashedProjectId } from "../../telemetry/common/project-id";
+import { runEventStore } from "../utils/run-event-store";
 
 // ==================================
 // Agent Generation Functions
@@ -58,16 +59,23 @@ export function createExecutorConfig<TParams>(
         existingTempPath?: string;
         projectRootPath?: string;
         threadId?: string;
+        generationId?: string;
     }
 ): AICommandConfig<TParams> {
     const projectRootPath = options.projectRootPath ?? resolveProjectRootPath();
     // Always use the active thread so new generations go to the correct thread
     // after the user has switched sessions via the history dropdown.
     const threadId = options.threadId ?? chatStateStorage.getActiveThread(projectRootPath)?.id ?? 'default';
+    const generationId = options.generationId
+        ?? `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     return {
         executionContext: createExecutionContextFromStateMachine(),
-        eventHandler: createWebviewEventHandler(options.command),
-        generationId: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        eventHandler: createWebviewEventHandler(options.command, {
+            projectRootPath,
+            threadId,
+            generationId,
+        }),
+        generationId,
         abortController: new AbortController(),
         params,
         chatStorage: options.chatStorageEnabled ? {
@@ -87,13 +95,23 @@ export function createExecutorConfig<TParams>(
  * Handles plan mode configuration and review state management
  */
 export async function generateAgent(params: GenerateAgentCodeRequest): Promise<boolean> {
+    let preparedRun: {
+        projectRootPath: string;
+        threadId: string;
+        generationId: string;
+        eventHandler: AICommandConfig<GenerateAgentCodeRequest>["eventHandler"];
+    } | undefined;
+    let executorStarted = false;
     try {
         // Always use the active thread — params.threadId is legacy/unused
         const projectRootPath = resolveProjectRootPath();
         const threadId = chatStateStorage.getActiveThread(projectRootPath)?.id ?? 'default';
 
         // Only one generation may be in flight per thread at a time.
-        if (chatStateStorage.getActiveExecution(projectRootPath, threadId)) {
+        if (
+            chatStateStorage.getActiveExecution(projectRootPath, threadId)
+            || runEventStore.getRunStatus(projectRootPath, threadId).isRunning
+        ) {
             throw new Error('A generation is already in progress. Please wait for it to finish before starting a new one.');
         }
 
@@ -113,6 +131,7 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
             existingTempPath: projectRootPath,
             projectRootPath,
             threadId,
+            generationId: params.generationId,
         });
 
         // Buffer this run's events so a closed/reopened panel can reconnect.
@@ -123,6 +142,32 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
         if (migrationSourcePath) {
             config.toolOptions = { ...config.toolOptions, migrationSourcePath };
         }
+
+        // Persist the user turn and expose its run identity before any awaited
+        // telemetry/preflight work. A panel reopened during startup therefore
+        // loads the correct user message and cannot attach output to the prior turn.
+        chatStateStorage.addGeneration(
+            projectRootPath,
+            threadId,
+            params.usecase,
+            {
+                isPlanMode: params.isPlanMode,
+                operationType: params.operationType,
+                generationType: "agent",
+            },
+            config.generationId
+        );
+        chatStateStorage.setActiveExecution(projectRootPath, threadId, {
+            generationId: config.generationId,
+            abortController: config.abortController,
+        });
+        runEventStore.beginRun(projectRootPath, threadId, config.generationId);
+        preparedRun = {
+            projectRootPath,
+            threadId,
+            generationId: config.generationId,
+            eventHandler: config.eventHandler,
+        };
 
         // Get project metrics, project ID, and chat history for telemetry
         const projectMetrics = await getProjectMetrics(projectRootPath);
@@ -147,10 +192,33 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
             }
         );
 
+        executorStarted = true;
         await new AgentExecutor(config).run();
 
         return true;
     } catch (error) {
+        if (preparedRun) {
+            if (!executorStarted) {
+                preparedRun.eventHandler({
+                    type: "error",
+                    content: error instanceof Error ? error.message : String(error),
+                });
+                preparedRun.eventHandler({
+                    type: "save_chat",
+                    command: Command.Agent,
+                    messageId: preparedRun.generationId,
+                });
+            }
+            runEventStore.endRun(
+                preparedRun.projectRootPath,
+                preparedRun.threadId,
+                preparedRun.generationId
+            );
+            chatStateStorage.clearActiveExecution(
+                preparedRun.projectRootPath,
+                preparedRun.threadId
+            );
+        }
         console.error('[Agent] Error in generateAgent:', error);
         throw error;
     }

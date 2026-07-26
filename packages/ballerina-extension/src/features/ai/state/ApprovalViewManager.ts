@@ -526,14 +526,24 @@ export class ApprovalViewManager {
      */
     private async rebuildReviewDataFromStorage(): Promise<ReviewModeData | null> {
         const ctx = StateMachine.context();
-        const projectRootPath = ctx.workspacePath || ctx.projectPath || '';
-        const generation = chatStateStorage.getDoneGeneration(projectRootPath, 'default');
-        if (!generation) {
+        const restore = getPendingReviewRestore();
+        if (!restore) {
             return null;
         }
-        const restore = getPendingReviewRestore();
-        if (!restore || restore.generationId !== generation.id) {
-            console.error('[ApprovalViewManager] No restore data for pending review generation', generation.id);
+        const projectRootPath = restore.projectRootPath || ctx.workspacePath || ctx.projectPath || '';
+        let threadId = restore.threadId
+            || chatStateStorage.getActiveThread(projectRootPath)?.id
+            || 'default';
+        let generation = chatStateStorage.getGeneration(projectRootPath, threadId, restore.generationId);
+        if (!generation && !restore.threadId) {
+            const located = chatStateStorage.findGenerationScope(projectRootPath, restore.generationId);
+            if (located) {
+                threadId = located.threadId;
+                generation = located.generation;
+            }
+        }
+        if (!generation || generation.reviewState.status !== 'done') {
+            console.error('[ApprovalViewManager] No pending generation for review restore', restore.generationId);
             // Drop the stale payload so we don't repeat this failed lookup every navigation.
             await clearPendingReviewRestore();
             return null;
@@ -546,7 +556,7 @@ export class ApprovalViewManager {
 
         // Rehydrate runtime-only state as well as the view. Accept/decline can now clean up
         // restored temp projects even though chat persistence deliberately omits these fields.
-        chatStateStorage.updateReviewState(projectRootPath, 'default', generation.id, {
+        chatStateStorage.updateReviewState(projectRootPath, threadId, generation.id, {
             tempProjectPath: restore.tempProjectPath,
             affectedPackagePaths: restore.affectedPackagePaths,
         });

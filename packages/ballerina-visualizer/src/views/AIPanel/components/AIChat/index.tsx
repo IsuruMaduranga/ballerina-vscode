@@ -224,6 +224,26 @@ function scaffoldKeyHash(text: string, hiddenContext: string | undefined): strin
 const AIChat: React.FC = () => {
     const { rpcClient } = useRpcContext();
     const [messages, setMessages] = useState<Array<{ role: string; content: string; type: string; checkpointId?: string; messageId?: string }>>([]);
+    const renderedMessagesRef = useRef(messages);
+    const messagesCommitWaitersRef = useRef<Array<() => void>>([]);
+    const [messagesCommitSignal, setMessagesCommitSignal] = useState(0);
+
+    React.useLayoutEffect(() => {
+        renderedMessagesRef.current = messages;
+        const waiters = messagesCommitWaitersRef.current.splice(0);
+        for (const resolve of waiters) {
+            resolve();
+        }
+    }, [messages, messagesCommitSignal]);
+
+    const waitForMessagesCommit = useCallback((): Promise<void> => {
+        return new Promise((resolve) => {
+            messagesCommitWaitersRef.current.push(resolve);
+            // This marker is queued after all preceding message updates. The
+            // layout effect therefore observes their final committed state.
+            setMessagesCommitSignal((value) => value + 1);
+        });
+    }, []);
 
     const getLatestAssistantMessageIndex = (chatMessages: Array<{ role: string }>): number => {
         for (let i = chatMessages.length - 1; i >= 0; i--) {
@@ -255,9 +275,20 @@ const AIChat: React.FC = () => {
         // Without this, replaying a follow-up turn's events on reopen merges them into the previous
         // turn's bubble and the follow-up prompt is pushed below its own response.
         if (targetIndex !== -1 && targetIndex > getLatestUserMessageIndex(chatMessages)) {
+            if (!chatMessages[targetIndex].messageId && activeRunGenerationIdRef.current) {
+                chatMessages[targetIndex] = {
+                    ...chatMessages[targetIndex],
+                    messageId: activeRunGenerationIdRef.current,
+                };
+            }
             return targetIndex;
         }
-        chatMessages.push({ role: "Copilot", content: "", type: "assistant_message" });
+        chatMessages.push({
+            role: "Copilot",
+            content: "",
+            type: "assistant_message",
+            messageId: activeRunGenerationIdRef.current,
+        });
         return chatMessages.length - 1;
     };
 
@@ -366,6 +397,9 @@ const AIChat: React.FC = () => {
     const terminalEventReceivedRef = useRef<boolean>(false); // stop/abort/error seen
     const pollInFlightRef = useRef<boolean>(false);        // prevents overlapping polls
     const activeRunGenerationIdRef = useRef<string | undefined>(undefined); // drop stale-run events
+    const activeRunScopeRef = useRef<{ projectRootPath: string; threadId: string } | undefined>(undefined);
+    const runEpochRef = useRef(0);                         // invalidates old in-flight poll responses
+    const runAcknowledgedRef = useRef(false);              // backend has exposed/evented the expected run
     const handleChatNotifyRef = useRef<(response: ChatNotify) => void | Promise<void>>(() => {});
     const [backendRequestTriggered, setBackendRequestTriggered] = useState(false);
     // True while replaying buffered events on reopen — lets the notify handler skip
@@ -699,6 +733,10 @@ const AIChat: React.FC = () => {
     const reconnectToActiveRun = async (historyMessages: ReturnType<typeof convertToUIMessages>) => {
         try {
             const runStatus = await rpcClient.getAiPanelRpcClient().getRunStatus({});
+            activeRunScopeRef.current = {
+                projectRootPath: runStatus.projectRootPath,
+                threadId: runStatus.threadId,
+            };
             // Prompts still awaiting an answer — used by the replay skip guard to
             // re-show only still-pending interactive prompts.
             pendingRequestIdsRef.current = new Set(runStatus.pendingRequestIds ?? []);
@@ -711,25 +749,37 @@ const AIChat: React.FC = () => {
             // rebuild the turn from it; the persist that follows clears it, so this
             // converges. A live run always proceeds, even with an empty buffer, to arm
             // the spinner and polling fallback.
-            const assistantAlreadyLoaded = !!generationId &&
-                historyMessages.some((m) => m.role === "Copilot" && m.messageId === generationId);
             if (!runStatus.isRunning && runStatus.events.length === 0) {
                 return;
             }
-            // Truncated (overflowed) buffer with a persisted partial: the partial covers
-            // the turn's beginning, which the buffer has already evicted, so a full replay
-            // can't rebuild the turn — keep the partial instead of dropping it, skip the
-            // bulk replay, and fast-forward the seq watermark past the buffered events so
-            // only newer live/polled events append after it. Structural tail events
-            // (review chip, diagnostics, a final error) are still replayed selectively
-            // below: they are emitted after the last mid-run persist, so the partial
-            // cannot contain them, and unlike text deltas they graft onto it safely.
-            const keepPartialSkipReplay = runStatus.truncated && assistantAlreadyLoaded;
+
+            // Older extension versions could expose a run before its generation
+            // was persisted. Repair such a history defensively from the backend's
+            // authoritative prompt so streamed content cannot attach to the prior turn.
+            if (
+                generationId
+                && runStatus.userPrompt
+                && !historyMessages.some((message) =>
+                    message.role === "User" && message.messageId === generationId
+                )
+            ) {
+                setMessages((previous) => [
+                    ...previous,
+                    {
+                        role: "User",
+                        content: runStatus.userPrompt!,
+                        type: "user_message",
+                        messageId: generationId,
+                    },
+                ]);
+            }
 
             // Adopt this run so any stray events from a prior run are dropped.
             activeRunGenerationIdRef.current = generationId;
+            runAcknowledgedRef.current = !!generationId;
+            runEpochRef.current += 1;
             if (ENABLE_STREAM_SAFEGUARDS) {
-                lastReceivedSeqRef.current = keepPartialSkipReplay
+                lastReceivedSeqRef.current = runStatus.truncated
                     ? (runStatus.events[runStatus.events.length - 1]?.seq ?? 0)
                     : 0;
                 lastEventTimeRef.current = Date.now();
@@ -738,13 +788,26 @@ const AIChat: React.FC = () => {
             if (runStatus.isPlanMode !== undefined) {
                 setAgentMode(runStatus.isPlanMode ? AgentMode.Plan : AgentMode.Edit);
             }
-            if (!keepPartialSkipReplay) {
+            if (!runStatus.truncated) {
                 // Drop any assistant bubble already loaded for this generation (stale
                 // partial uiResponse) — the replay rebuilds the full turn from scratch,
                 // and turn-aware ensureAssistantMessage starts a fresh bubble for it.
                 setMessages(prev => prev.filter(
                     (m) => !(m.type === "assistant_message" && m.messageId === generationId)
                 ));
+            } else {
+                // Never present or persist a retained tail as though it were the
+                // complete turn. Keep any durable partial and make the gap explicit.
+                setMessages((previous) => {
+                    const next = [...previous];
+                    const targetIndex = ensureAssistantMessage(next);
+                    const current = next[targetIndex];
+                    const warning = "\n\n*[Some output streamed while this panel was closed could not be recovered. The transcript below may be incomplete.]*";
+                    if (!current.content.includes(warning.trim())) {
+                        next[targetIndex] = { ...current, content: `${current.content}${warning}` };
+                    }
+                    return next;
+                });
             }
             if (runStatus.isRunning) {
                 setIsLoading(true);
@@ -752,18 +815,18 @@ const AIChat: React.FC = () => {
             }
             replayingRef.current = true;
             try {
-                if (!keepPartialSkipReplay) {
+                if (!runStatus.truncated) {
                     for (const ev of runStatus.events) {
                         await handleChatNotifyRef.current(ev);
                     }
                 } else {
-                    // The run may be blocked on a prompt whose event is in the skipped
-                    // buffer — re-surface still-pending prompts so it stays answerable —
-                    // and replay the structural tail events the kept partial can't contain.
+                    // The retained tail is not a complete transcript. Re-surface only
+                    // still-answerable prompts and safe structural state.
                     for (const ev of runStatus.events) {
                         const reqId = (ev as any).requestId;
                         const stillPendingPrompt = !!reqId && pendingRequestIdsRef.current.has(reqId);
                         const structuralTail = ev.type === "chat_component" || ev.type === "diagnostics"
+                            || ev.type === "plan_approval_resolved"
                             || (!runStatus.isRunning && ev.type === "error");
                         if (stillPendingPrompt || structuralTail) {
                             await handleChatNotifyRef.current(ev);
@@ -773,26 +836,30 @@ const AIChat: React.FC = () => {
             } finally {
                 replayingRef.current = false;
             }
-            if (!runStatus.isRunning && generationId) {
+            if (!runStatus.isRunning && generationId && !runStatus.truncated) {
                 // Finished while the panel was closed. Persist the rebuilt transcript so
                 // it's durable, the backend drops the buffer, and later reopens serve from
                 // history. (The replayed save_chat usually does this already; this covers
                 // buffers whose run ended without one, e.g. an error turn.) Read the
-                // transcript via a functional updater: it is queued AFTER every replay
-                // update, so `prev` is the fully rebuilt state and the RPC is ordered
-                // after the replayed save_chat writes. A detached read (ref/timeout)
-                // would race React's commit and could persist a stale pre-replay
-                // snapshot as the LAST write, clobbering the correct transcript.
-                setMessages((prev) => {
-                    const idx = getLatestAssistantMessageIndex(prev);
-                    const content = idx >= 0 ? prev[idx]?.content : "";
-                    if (content) {
-                        rpcClient.getAiPanelRpcClient()
-                            .updateChatMessage({ messageId: generationId, content })
-                            .catch((e) => console.error('[AIChat] Failed to persist recovered transcript:', e));
-                    }
-                    return prev;
-                });
+                // Wait for React to commit every replay update, then perform one
+                // explicit, awaited final write. This is the only recovery write
+                // allowed to clear the backend buffer.
+                await waitForMessagesCommit();
+                const recoveredMessage = [...renderedMessagesRef.current]
+                    .reverse()
+                    .find((message) =>
+                        (message.role === "Copilot" || message.role === "assistant")
+                        && message.messageId === generationId
+                    );
+                if (recoveredMessage?.content) {
+                    await rpcClient.getAiPanelRpcClient().updateChatMessage({
+                        messageId: generationId,
+                        content: recoveredMessage.content,
+                        projectRootPath: runStatus.projectRootPath,
+                        threadId: runStatus.threadId,
+                        clearRunBuffer: true,
+                    });
+                }
             }
         } catch (error) {
             console.error('[AIChat] Failed to restore in-flight run status:', error);
@@ -828,7 +895,7 @@ const AIChat: React.FC = () => {
                 // event, so a webview reload would leave a pending review inactive
                 // (ReviewBar unclickable, auto-accept-on-send skipped).
                 try {
-                    const pending = await rpcClient.getAiPanelRpcClient().hasPendingReview();
+                    const pending = await rpcClient.getAiPanelRpcClient().hasPendingReview({});
                     if (pending) {
                         setHasActiveReview(true);
                     }
@@ -886,15 +953,44 @@ const AIChat: React.FC = () => {
             }
             try {
                 pollInFlightRef.current = true;
+                const requestedEpoch = runEpochRef.current;
+                const requestedGenerationId = activeRunGenerationIdRef.current;
                 const runStatus = await rpcClient.getAiPanelRpcClient().getRunStatus({
                     sinceSeq: lastReceivedSeqRef.current,
                 });
+                // A new send/reconnect happened while this request was in flight,
+                // or the response belongs to a different server-side run.
+                if (
+                    requestedEpoch !== runEpochRef.current
+                    || (
+                        requestedGenerationId
+                        && runStatus.generationId
+                        && requestedGenerationId !== runStatus.generationId
+                    )
+                    || (
+                        requestedGenerationId
+                        && !runStatus.generationId
+                        && !runAcknowledgedRef.current
+                    )
+                ) {
+                    return;
+                }
+                if (
+                    requestedGenerationId
+                    && runStatus.generationId === requestedGenerationId
+                ) {
+                    runAcknowledgedRef.current = true;
+                }
+                activeRunScopeRef.current = {
+                    projectRootPath: runStatus.projectRootPath,
+                    threadId: runStatus.threadId,
+                };
                 for (const ev of runStatus.events) {
                     // Race guard against a push arriving concurrently with the poll.
                     if (typeof ev.seq === "number" && ev.seq <= lastReceivedSeqRef.current) {
                         continue;
                     }
-                    handleChatNotifyRef.current(ev);
+                    await handleChatNotifyRef.current(ev);
                 }
                 if (!runStatus.isRunning && runStatus.events.length === 0 && !terminalEventReceivedRef.current) {
                     // Watchdog: the run is genuinely gone but its terminal event never
@@ -976,6 +1072,19 @@ const AIChat: React.FC = () => {
             response.generationId &&
             activeRunGenerationIdRef.current &&
             response.generationId !== activeRunGenerationIdRef.current
+        ) {
+            return;
+        }
+        if (
+            response.generationId
+            && response.generationId === activeRunGenerationIdRef.current
+        ) {
+            runAcknowledgedRef.current = true;
+        }
+        if (
+            !replayingRef.current
+            && typeof response.seq === "number"
+            && response.seq <= lastReceivedSeqRef.current
         ) {
             return;
         }
@@ -1146,6 +1255,37 @@ const AIChat: React.FC = () => {
                 taskDescription: response.taskDescription,
                 message: response.message,
             });
+
+        } else if (type === "plan_approval_resolved") {
+            setMessages((previous) => {
+                const next = [...previous];
+                const assistantIndex = getLatestAssistantMessageIndex(next);
+                if (assistantIndex === -1) {
+                    return previous;
+                }
+                const assistant = next[assistantIndex];
+                const entries = parseStream(assistant.content);
+                const updated = entries.map((entry) => ({
+                    ...entry,
+                    items: entry.items.map((item) =>
+                        item.kind === "plan" && item.requestId === response.requestId
+                            ? {
+                                ...item,
+                                approvalStatus: response.approved ? "approved" as const : "revised" as const,
+                                approvalComment: response.approved ? undefined : response.comment,
+                            }
+                            : item
+                    ),
+                }));
+                next[assistantIndex] = {
+                    ...assistant,
+                    content: serializeStream(updated, assistant.content),
+                };
+                return next;
+            });
+            setApprovalRequest((pending) =>
+                pending?.requestId === response.requestId ? null : pending
+            );
 
         } else if (type === "web_tool_approval_request") {
             // Banner-only event (no transcript item) — nothing to rebuild for a resolved one.
@@ -1394,19 +1534,36 @@ const AIChat: React.FC = () => {
 
         } else if (type === "save_chat") {
             console.log("Received save_chat signal");
-            // Read the freshest committed messages via the functional updater so
-            // this works during a synchronous reconnect replay too (where the
-            // closed-over `messages` would otherwise be stale).
             const messageId = response.messageId;
-            setMessages((prev) => {
-                const assistantIndex = getLatestAssistantMessageIndex(prev);
-                const contentToSave = assistantIndex >= 0 ? prev[assistantIndex]?.content : prev[prev.length - 1]?.content;
-                rpcClient.getAiPanelRpcClient().updateChatMessage({
+            const isRecoveryIntermediateWrite = replayingRef.current;
+            await waitForMessagesCommit();
+            const scopedAssistant = [...renderedMessagesRef.current]
+                .reverse()
+                .find((message) =>
+                    (message.role === "Copilot" || message.role === "assistant")
+                    && message.messageId === messageId
+                );
+            const fallbackAssistant = (
+                response.generationId === undefined
+                || activeRunGenerationIdRef.current === messageId
+            )
+                ? renderedMessagesRef.current[getLatestAssistantMessageIndex(renderedMessagesRef.current)]
+                : undefined;
+            const contentToSave = scopedAssistant?.content || fallbackAssistant?.content || "";
+            try {
+                await rpcClient.getAiPanelRpcClient().updateChatMessage({
                     messageId,
-                    content: contentToSave || "",
-                }).catch((e: unknown) => console.error('[AIChat] Failed to persist chat message:', e));
-                return prev;
-            });
+                    content: contentToSave,
+                    projectRootPath: activeRunScopeRef.current?.projectRootPath,
+                    threadId: activeRunScopeRef.current?.threadId,
+                    clearRunBuffer: !isRecoveryIntermediateWrite,
+                });
+            } catch (error) {
+                console.error("[AIChat] Failed to persist chat message:", error);
+                if (isRecoveryIntermediateWrite) {
+                    throw error;
+                }
+            }
 
         } else if (type === "error") {
             console.log("Received error signal");
@@ -1644,6 +1801,11 @@ const AIChat: React.FC = () => {
             await rpcClient.getAiPanelRpcClient().acceptChanges().catch((e: unknown) => console.warn("[AIChat] auto-accept failed:", e));
             setHasActiveReview(false);
         }
+        const generationId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        activeRunGenerationIdRef.current = generationId;
+        activeRunScopeRef.current = undefined;
+        runEpochRef.current += 1;
+        runAcknowledgedRef.current = false;
         // Clear until onCheckpointCaptured repopulates with the new set
         setAvailableCheckpointIds(new Set());
         rpcClient.getAiPanelRpcClient().clearInitialPrompt();
@@ -1651,14 +1813,12 @@ const AIChat: React.FC = () => {
         setMessages((prevMessages) => prevMessages.filter((message) => message.type !== "question"));
         setIsLoading(true);
         isErrorChunkReceivedRef.current = false;
-        // Reset reconnection safeguards for the new run and arm the polling
-        // fallback. The generationId is server-assigned, so we clear the adopted
-        // run id (accept all events) until a reconnect adopts a specific run.
+        // Reset reconnection safeguards for the explicitly identified new run
+        // and arm the polling fallback.
         if (ENABLE_STREAM_SAFEGUARDS) {
             lastReceivedSeqRef.current = 0;
             lastEventTimeRef.current = Date.now();
             terminalEventReceivedRef.current = false;
-            activeRunGenerationIdRef.current = undefined;
         }
         setBackendRequestTriggered(true);
         setMessages((prevMessages) =>
@@ -1669,8 +1829,8 @@ const AIChat: React.FC = () => {
         const uerMessage = getUserMessage([stringifiedContent, content.attachments]);
         setMessages((prevMessages) => [
             ...prevMessages,
-            { role: "User", content: uerMessage, type: "user_message" },
-            { role: "Copilot", content: "", type: "assistant_message" }, // Add a new message for the assistant
+            { role: "User", content: uerMessage, type: "user_message", messageId: generationId },
+            { role: "Copilot", content: "", type: "assistant_message", messageId: generationId },
         ]);
 
         await handleSendQuery(content);
@@ -1948,9 +2108,10 @@ const AIChat: React.FC = () => {
         const currentHiddenContext = hiddenContextRef.current;
         hiddenContextRef.current = undefined;
         console.log("Submitting agent prompt:", { useCase, agentMode: agentModeRef.current, codeContext: currentCodeContext, operationType, fileAttatchments });
-        rpcClient.getAiPanelRpcClient().generateAgent({
+        await rpcClient.getAiPanelRpcClient().generateAgent({
+            generationId: activeRunGenerationIdRef.current,
             usecase: useCase, hiddenContext: currentHiddenContext, isPlanMode: agentModeRef.current === AgentMode.Plan, codeContext: currentCodeContext, operationType, fileAttachmentContents: fileAttatchments, webSearchEnabled: isWebToolsEnabled
-        })
+        });
     }
 
     async function handleStop() {
@@ -2156,22 +2317,6 @@ const AIChat: React.FC = () => {
                 requestId: approvalRequest.requestId,
                 comment: undefined
             });
-            // Collapse TodoSection into approval summary — mark plan items as approved
-            setMessages(prevMessages => {
-                const msgs = [...prevMessages];
-                const lastIdx = [...msgs].map(m => m.role).lastIndexOf("Copilot");
-                if (lastIdx === -1) return prevMessages;
-                const last = msgs[lastIdx];
-                const entries = parseStream(last.content);
-                const updated = entries.map(entry => ({
-                    ...entry,
-                    items: entry.items.map(item =>
-                        item.kind === "plan" && item.requestId === approvalRequest.requestId ? { ...item, approvalStatus: "approved" as const } : item
-                    )
-                }));
-                msgs[lastIdx] = { ...last, content: serializeStream(updated, last.content) };
-                return msgs;
-            });
         } else if (approvalRequest.approvalType === "completion") {
             const reviewTasks = approvalRequest.tasks.filter(t => t.status === "review");
             const lastReviewTask = reviewTasks[reviewTasks.length - 1];
@@ -2192,22 +2337,6 @@ const AIChat: React.FC = () => {
             await rpcClient.getAiPanelRpcClient().declinePlan({
                 requestId: approvalRequest.requestId,
                 comment
-            });
-            // Collapse TodoSection into revision summary — mark plan items as revised
-            setMessages(prevMessages => {
-                const msgs = [...prevMessages];
-                const lastIdx = [...msgs].map(m => m.role).lastIndexOf("Copilot");
-                if (lastIdx === -1) return prevMessages;
-                const last = msgs[lastIdx];
-                const entries = parseStream(last.content);
-                const updated = entries.map(entry => ({
-                    ...entry,
-                    items: entry.items.map(item =>
-                        item.kind === "plan" && item.requestId === approvalRequest.requestId ? { ...item, approvalStatus: "revised" as const, approvalComment: comment } : item
-                    )
-                }));
-                msgs[lastIdx] = { ...last, content: serializeStream(updated, last.content) };
-                return msgs;
             });
         } else if (approvalRequest.approvalType === "completion") {
             await rpcClient.getAiPanelRpcClient().declineTask({

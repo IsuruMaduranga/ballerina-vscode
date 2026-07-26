@@ -181,8 +181,11 @@ export abstract class AICommandExecutor<TParams = any> {
         try {
             console.log(`[AICommandExecutor] Starting ${this.getCommandType()} execution: ${this.config.generationId}`);
 
-            // Stage 1: Register active execution for abort support
             clearAiTouchedFiles();
+            await this.initializeWorkspaceThread();
+            await this.prepareForExecution();
+
+            // Stage 1: Register active execution for abort support
             chatStateStorage.setActiveExecution(projectRootPath, threadId, {
                 generationId: this.config.generationId,
                 abortController: this.config.abortController
@@ -193,9 +196,6 @@ export abstract class AICommandExecutor<TParams = any> {
             if (this.config.trackForReconnection) {
                 runEventStore.beginRun(projectRootPath, threadId, this.config.generationId);
             }
-
-            // Stage 2: Initialize workspace/thread in chat storage
-            await this.initializeWorkspaceThread();
 
             // Stage 3: Temp project initialization
             await this.initializeTempProject();
@@ -218,9 +218,17 @@ export abstract class AICommandExecutor<TParams = any> {
             // Mark the run ended (buffer kept so an in-flight poll can still pick
             // up a terminal event).
             if (this.config.trackForReconnection) {
-                runEventStore.endRun(projectRootPath, threadId);
+                runEventStore.endRun(projectRootPath, threadId, this.config.generationId);
             }
         }
+    }
+
+    /**
+     * Hook for subclasses that must persist turn metadata before an execution
+     * is exposed through the reconnection store.
+     */
+    protected async prepareForExecution(): Promise<void> {
+        return;
     }
 
     /**

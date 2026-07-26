@@ -360,6 +360,7 @@ export type ChatNotify = (
     | EvalsToolResult
     | UsageMetricsEvent
     | TaskApprovalRequest
+    | PlanApprovalResolved
     | WebToolApprovalEvent
     | GeneratedSourcesEvent
     | ConnectorGenerationNotification
@@ -495,6 +496,13 @@ export interface TaskApprovalRequest {
     taskDescription?: string;
     message?: string;
     autoApproved?: boolean;
+}
+
+export interface PlanApprovalResolved {
+    type: "plan_approval_resolved";
+    requestId: string;
+    approved: boolean;
+    comment?: string;
 }
 
 export interface WebToolApprovalEvent {

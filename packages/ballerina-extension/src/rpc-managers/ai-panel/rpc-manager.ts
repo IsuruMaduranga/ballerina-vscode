@@ -82,6 +82,7 @@ import {
     ThreadSummary,
     SwitchThreadRequest,
     DeleteThreadRequest,
+    HasPendingReviewRequest,
     // TODO(auto-memory): temporarily disabled for this release.
     // ClearMemoryRequest,
     // OpenMemoryRequest,
@@ -708,30 +709,43 @@ User reverted the last made changes. The files have been restored to the state b
     // }
 
     async updateChatMessage(params: UpdateChatMessageRequest): Promise<void> {
-        const projectRootPath = resolveProjectRootPath();
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const projectRootPath = params.projectRootPath || resolveProjectRootPath();
+        let threadId = params.threadId
+            || chatStateStorage.getActiveThread(projectRootPath)?.id
+            || 'default';
 
-        // The messageId is actually a generation ID
-        // This is called when streaming completes to save the final UI-formatted response
-        const generation = chatStateStorage.getGeneration(projectRootPath, threadId, params.messageId);
+        // The messageId is actually a generation ID. Legacy callers do not send
+        // a thread, so locate the generation by its stable ID rather than trusting
+        // the mutable active-thread pointer.
+        let generation = chatStateStorage.getGeneration(projectRootPath, threadId, params.messageId);
+        if (!generation && !params.threadId) {
+            const located = chatStateStorage.findGenerationScope(projectRootPath, params.messageId);
+            if (located) {
+                threadId = located.threadId;
+                generation = located.generation;
+            }
+        }
 
         if (!generation) {
-            console.warn(`[RPC] Generation ${params.messageId} not found in thread ${threadId}`);
-            return;
+            throw new Error(`[RPC] Generation ${params.messageId} not found in thread ${threadId}`);
         }
 
-        // Once the transcript is durably saved as uiResponse and the run is no longer
-        // active, the reconnection event buffer is redundant — drop it so a future
-        // reopen serves the turn from persisted history instead of replaying it.
-        const active = chatStateStorage.getActiveExecution(projectRootPath, threadId);
-        if (active?.generationId !== params.messageId) {
-            runEventStore.clearBuffer(projectRootPath, threadId, params.messageId);
-        }
-
-        // Update the UI response with the final formatted content
-        chatStateStorage.updateGeneration(projectRootPath, threadId, params.messageId, {
+        // Persist first. ChatStateStorage reports disk failures so the replay
+        // buffer remains available for another reconnect attempt.
+        const persisted = chatStateStorage.updateGeneration(projectRootPath, threadId, params.messageId, {
             uiResponse: params.content
         });
+        if (!persisted) {
+            throw new Error(`[RPC] Failed to persist generation ${params.messageId}`);
+        }
+
+        // Intermediate save_chat events encountered during a finished-run replay
+        // must not clear the only recovery source. The reconnect's final write
+        // explicitly clears it after the fully rebuilt transcript is durable.
+        const active = chatStateStorage.getActiveExecution(projectRootPath, threadId);
+        if (params.clearRunBuffer !== false && active?.generationId !== params.messageId) {
+            runEventStore.clearBuffer(projectRootPath, threadId, params.messageId);
+        }
 
         console.log(`[RPC] Updated generation ${params.messageId} UI response`);
     }
@@ -799,9 +813,12 @@ User reverted the last made changes. The files have been restored to the state b
         return projectPath;
     }
 
-    async hasPendingReview(): Promise<boolean> {
-        const projectRootPath = resolveProjectRootPath();
-        return !!chatStateStorage.getDoneGeneration(projectRootPath, 'default');
+    async hasPendingReview(params: HasPendingReviewRequest): Promise<boolean> {
+        const projectRootPath = params?.projectRootPath || resolveProjectRootPath();
+        const threadId = params?.threadId
+            || chatStateStorage.getActiveThread(projectRootPath)?.id
+            || 'default';
+        return !!chatStateStorage.getDoneGeneration(projectRootPath, threadId);
     }
 
     async getRunStatus(params: GetRunStatusRequest): Promise<GetRunStatusResponse> {
@@ -813,18 +830,17 @@ User reverted the last made changes. The files have been restored to the state b
             || chatStateStorage.getActiveThread(projectRootPath)?.id
             || 'default';
         const status = runEventStore.getRunStatus(projectRootPath, threadId, params?.sinceSeq);
-        // Resolve plan mode from the active generation's persisted metadata (the
-        // single source of truth) rather than duplicating it into the buffer.
-        let isPlanMode: boolean | undefined;
-        if (status.isRunning) {
-            const generationId = chatStateStorage.getActiveExecution(projectRootPath, threadId)?.generationId;
-            if (generationId) {
-                isPlanMode = chatStateStorage.getGeneration(projectRootPath, threadId, generationId)?.metadata?.isPlanMode;
-            }
-        }
+        // Generation storage is materialized before beginRun, so the prompt and
+        // mode are authoritative even when reconnect happens before the first event.
+        const generation = status.generationId
+            ? chatStateStorage.getGeneration(projectRootPath, threadId, status.generationId)
+            : undefined;
         return {
             ...status,
-            isPlanMode,
+            projectRootPath,
+            threadId,
+            isPlanMode: generation?.metadata?.isPlanMode,
+            userPrompt: generation?.userPrompt,
             // Interactive prompts still awaiting an answer — lets the reopened panel
             // re-surface only still-pending prompts during replay and skip resolved ones.
             pendingRequestIds: approvalManager.getPendingRequestIds(),

@@ -51,21 +51,45 @@ interface RunState {
      * `updateChatMessage`) — so a run that finished while the panel was closed stays
      * replayable across reopens until the replay's own `save_chat` round-trip lands.
      */
-    runBuffer: ChatNotify[];
+    runBuffer: BufferedRunEvent[];
+    /** Approximate serialized size used to bound buffers containing large tool payloads. */
+    bufferedBytes: number;
     generationId?: string;
     /** Set when the buffer cap evicted this run's earliest events. */
     truncated: boolean;
 }
 
-/** Per-run buffer cap: beyond this, the oldest events are evicted (bounds memory on very long runs). */
+interface BufferedRunEvent {
+    event: ChatNotify;
+    /** First and last raw sequence represented by this entry. */
+    firstSeq: number;
+    lastSeq: number;
+    /**
+     * Adjacent streamed text chunks are stored together. This keeps a long text
+     * stream from exhausting the event cap while still allowing an exact
+     * `sinceSeq` response without duplicating chunks already seen by the panel.
+     */
+    contentChunks?: Array<{ seq: number; content: string }>;
+    sizeBytes: number;
+}
+
+/** Per-run structured-event cap. Adjacent content deltas count as one entry. */
 const MAX_BUFFERED_EVENTS = 5000;
+/** Per-run approximate serialized byte cap. */
+const MAX_BUFFERED_BYTES = 8 * 1024 * 1024;
 /** Retain buffers for at most this many distinct runs; evict the oldest beyond it. */
 const MAX_RETAINED_RUNS = 20;
 
-class RunEventStore {
+export class RunEventStore {
     private runs = new Map<string, RunState>();
-    /** The key of the run currently emitting events (set by `beginRun`, cleared by `endRun`). */
-    private currentKey: string | undefined;
+
+    constructor(
+        private readonly limits = {
+            maxEvents: MAX_BUFFERED_EVENTS,
+            maxBytes: MAX_BUFFERED_BYTES,
+            maxRuns: MAX_RETAINED_RUNS,
+        }
+    ) {}
 
     private key(projectRootPath: string, threadId: string): string {
         return `${projectRootPath}::${threadId}`;
@@ -74,20 +98,28 @@ class RunEventStore {
     private getOrCreate(key: string): RunState {
         let state = this.runs.get(key);
         if (!state) {
-            state = { isRunning: false, seqCounter: 0, runBuffer: [], truncated: false };
+            state = { isRunning: false, seqCounter: 0, runBuffer: [], bufferedBytes: 0, truncated: false };
             this.runs.set(key, state);
         }
         return state;
     }
 
-    /** Evict the oldest non-active runs so the store doesn't grow unbounded across many workspaces. */
+    private eventSize(event: ChatNotify): number {
+        try {
+            return Buffer.byteLength(JSON.stringify(event), "utf8");
+        } catch {
+            return 1024;
+        }
+    }
+
+    /** Evict the oldest inactive runs so the store doesn't grow unbounded across many workspaces. */
     private evictStaleRuns(): void {
-        // Map preserves insertion order; delete oldest entries that aren't the current run.
+        // Map preserves insertion order; never evict a run that is still active.
         for (const key of this.runs.keys()) {
-            if (this.runs.size <= MAX_RETAINED_RUNS) {
+            if (this.runs.size <= this.limits.maxRuns) {
                 break;
             }
-            if (key !== this.currentKey) {
+            if (!this.runs.get(key)?.isRunning) {
                 this.runs.delete(key);
             }
         }
@@ -97,52 +129,81 @@ class RunEventStore {
     beginRun(projectRootPath: string, threadId: string, generationId: string): void {
         const key = this.key(projectRootPath, threadId);
         const state = this.getOrCreate(key);
+        if (state.isRunning && state.generationId === generationId) {
+            return;
+        }
         state.isRunning = true;
         state.seqCounter = 0;
         state.runBuffer = [];
+        state.bufferedBytes = 0;
         state.truncated = false;
         state.generationId = generationId;
-        this.currentKey = key;
         this.evictStaleRuns();
     }
 
     /** Marks the end of a run. Keeps the buffer so an in-flight poll can still pick up a terminal event. */
-    endRun(projectRootPath: string, threadId: string): void {
+    endRun(projectRootPath: string, threadId: string, generationId: string): void {
         const key = this.key(projectRootPath, threadId);
         const state = this.runs.get(key);
-        if (state) {
+        if (state?.generationId === generationId) {
             state.isRunning = false;
-        }
-        if (this.currentKey === key) {
-            this.currentKey = undefined;
         }
     }
 
     /**
      * Stamps `seq`/`generationId` on an event about to be sent to the panel and
-     * buffers it under the currently-running run. Called from the single
-     * ai-panel send chokepoint (`sendAIPanelNotification`). Returns the same
-     * (mutated) event so the caller can forward it. No-op (returns event
-     * unchanged) when no run is active — e.g. notifications sent outside a run.
+     * buffers it under the explicitly identified run. Returns the same (mutated)
+     * event so the caller can forward it. A stale or unrelated emitter is a
+     * no-op instead of being attributed to whichever run started most recently.
      */
-    stampCurrent(event: ChatNotify): ChatNotify {
-        if (!this.currentKey) {
+    stamp(
+        projectRootPath: string,
+        threadId: string,
+        generationId: string,
+        event: ChatNotify
+    ): ChatNotify {
+        const state = this.runs.get(this.key(projectRootPath, threadId));
+        if (!state || !state.isRunning || state.generationId !== generationId) {
             return event;
         }
-        const state = this.runs.get(this.currentKey);
-        if (!state || !state.isRunning) {
-            return event;
+
+        const seq = ++state.seqCounter;
+        event.seq = seq;
+        event.generationId = generationId;
+
+        const eventBytes = this.eventSize(event);
+        const last = state.runBuffer[state.runBuffer.length - 1];
+        if (event.type === "content_block" && last?.contentChunks) {
+            last.contentChunks.push({ seq, content: event.content });
+            last.lastSeq = seq;
+            last.sizeBytes += eventBytes;
+            state.bufferedBytes += eventBytes;
+        } else {
+            const storedEvent = { ...event } as ChatNotify;
+            state.runBuffer.push({
+                event: storedEvent,
+                firstSeq: seq,
+                lastSeq: seq,
+                contentChunks: event.type === "content_block"
+                    ? [{ seq, content: event.content }]
+                    : undefined,
+                sizeBytes: eventBytes,
+            });
+            state.bufferedBytes += eventBytes;
         }
-        event.seq = ++state.seqCounter;
-        if (state.generationId !== undefined && event.generationId === undefined) {
-            event.generationId = state.generationId;
-        }
-        state.runBuffer.push(event);
-        // Bound memory on pathologically long runs by dropping the oldest events.
-        // `seq` stays monotonic (independent of array index), so polling still works;
-        // only an initial reconnect to such a run loses its earliest transcript.
-        if (state.runBuffer.length > MAX_BUFFERED_EVENTS) {
-            state.runBuffer.shift();
+
+        // Bound memory on pathologically long runs by dropping the oldest grouped
+        // entries. `seq` remains monotonic and `truncated` prevents the client from
+        // treating the retained tail as a complete transcript.
+        while (
+            state.runBuffer.length > this.limits.maxEvents
+            || state.bufferedBytes > this.limits.maxBytes
+        ) {
+            const removed = state.runBuffer.shift();
+            if (!removed) {
+                break;
+            }
+            state.bufferedBytes = Math.max(0, state.bufferedBytes - removed.sizeBytes);
             state.truncated = true;
         }
         return event;
@@ -164,9 +225,33 @@ class RunEventStore {
         if (!state) {
             return { isRunning: false, events: [], truncated: false };
         }
-        const events = sinceSeq !== undefined && sinceSeq >= 0
-            ? state.runBuffer.filter(e => (e.seq ?? 0) > sinceSeq)
-            : [...state.runBuffer];
+        const events = state.runBuffer.flatMap((entry): ChatNotify[] => {
+            if (sinceSeq === undefined || sinceSeq < 0) {
+                if (entry.contentChunks) {
+                    return [{
+                        ...entry.event,
+                        content: entry.contentChunks.map(chunk => chunk.content).join(""),
+                        seq: entry.lastSeq,
+                    } as ChatNotify];
+                }
+                return [{ ...entry.event }];
+            }
+            if (entry.lastSeq <= sinceSeq) {
+                return [];
+            }
+            if (!entry.contentChunks) {
+                return [{ ...entry.event }];
+            }
+            const missedChunks = entry.contentChunks.filter(chunk => chunk.seq > sinceSeq);
+            if (missedChunks.length === 0) {
+                return [];
+            }
+            return [{
+                ...entry.event,
+                content: missedChunks.map(chunk => chunk.content).join(""),
+                seq: missedChunks[missedChunks.length - 1].seq,
+            } as ChatNotify];
+        });
         return { isRunning: state.isRunning, events, generationId: state.generationId, truncated: state.truncated };
     }
 
@@ -182,6 +267,7 @@ class RunEventStore {
             return;
         }
         state.runBuffer = [];
+        state.bufferedBytes = 0;
         state.truncated = false;
         state.generationId = undefined;
     }

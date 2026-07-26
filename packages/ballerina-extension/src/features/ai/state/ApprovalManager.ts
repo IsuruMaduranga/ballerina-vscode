@@ -79,6 +79,10 @@ interface PromiseResolver<T> {
     timeoutId?: NodeJS.Timeout;
 }
 
+interface PlanApprovalResolver extends PromiseResolver<PlanApprovalResponse> {
+    eventHandler: CopilotEventHandler;
+}
+
 /**
  * A queued approval item — holds the emit function that fires the UI event.
  * The queue processes one item at a time so UI prompts never overlap.
@@ -98,7 +102,7 @@ interface ApprovalQueueItem {
 export class ApprovalManager {
     private static instance: ApprovalManager;
 
-    private planApprovals = new Map<string, PromiseResolver<PlanApprovalResponse>>();
+    private planApprovals = new Map<string, PlanApprovalResolver>();
     private taskApprovals = new Map<string, PromiseResolver<TaskApprovalResponse>>();
     private connectorSpecs = new Map<string, PromiseResolver<ConnectorSpecResponse>>();
     private configurationRequests = new Map<string, PromiseResolver<ConfigurationResponse>>();
@@ -161,7 +165,7 @@ export class ApprovalManager {
                 reject(new Error(`Plan approval timeout for request ${requestId}`));
             }, this.DEFAULT_TIMEOUT_MS);
 
-            this.planApprovals.set(requestId, { resolve, reject, timeoutId });
+            this.planApprovals.set(requestId, { resolve, reject, timeoutId, eventHandler });
         });
     }
 
@@ -180,6 +184,16 @@ export class ApprovalManager {
         }
 
         console.log(`[ApprovalManager] Resolving plan approval: ${requestId}, approved: ${approved}`);
+
+        // Persist the user's decision in the run event stream. A reopened panel
+        // can now reconstruct the final plan card instead of merely hiding the
+        // already-resolved approval footer.
+        resolver.eventHandler({
+            type: "plan_approval_resolved",
+            requestId,
+            approved,
+            comment,
+        });
 
         // Clear timeout
         if (resolver.timeoutId) {

@@ -222,6 +222,22 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
         super(config);
     }
 
+    protected async prepareForExecution(): Promise<void> {
+        if (!this.config.chatStorage) {
+            return;
+        }
+        const { projectRootPath, threadId } = this.config.chatStorage;
+        if (chatStateStorage.getGeneration(projectRootPath, threadId, this.config.generationId)) {
+            return;
+        }
+        const params = this.config.params;
+        this.addGeneration(params.usecase, {
+            isPlanMode: params.isPlanMode,
+            operationType: params.operationType,
+            generationType: "agent",
+        });
+    }
+
     /**
      * Execute agent code generation
      *
@@ -273,6 +289,17 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
 
             const projectRootPath = this.config.executionContext.workspacePath || this.config.executionContext.projectPath || '';
             const agentsMd = await prepareAgentsMdForTurn(workspaceId || '', threadId);
+            if (agentsMd.hashToPersist !== undefined) {
+                const generation = chatStateStorage.getGeneration(projectRootPath, threadId, this.config.generationId);
+                if (generation) {
+                    chatStateStorage.updateGeneration(projectRootPath, threadId, this.config.generationId, {
+                        metadata: {
+                            ...generation.metadata,
+                            agentsMdLastReadHash: agentsMd.hashToPersist,
+                        },
+                    });
+                }
+            }
 
             const { allDisabled, projectSkills, userSkills, disabledSkillMetas } =
                 loadSkillsContext(projectRootPath || null);
@@ -289,14 +316,6 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             if (supportsCompaction(loginMethod) && providerOptions === undefined) {
                 warnCompactionDisabledOnce(projectRootPath, this.config.eventHandler);
             }
-
-            // 3. Add generation to chat storage (if enabled)
-            this.addGeneration(params.usecase, {
-                isPlanMode: params.isPlanMode,
-                operationType: params.operationType,
-                generationType: 'agent',
-                agentsMdLastReadHash: agentsMd.hashToPersist,
-            });
 
             // Ensure the pre-edit snapshot exists before any tool can run.
             await chatStateStorage.waitForCheckpointCapture(this.config.generationId);
@@ -977,6 +996,8 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             // stash what the diff view needs to reopen after an extension host restart.
             await savePendingReviewRestore({
                 generationId: context.messageId,
+                projectRootPath: workspaceId,
+                threadId,
                 tempProjectPath: workingProjectPath,
                 // Direct-edit mode keeps no on-disk baseline copy; the checkpoint snapshot
                 // (fallbackOriginalContents on restore) is the source of pre-generation originals.
