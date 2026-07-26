@@ -146,8 +146,42 @@ export function activeStateLabel(status: AgentRunStatus): string {
     }
 }
 
-/** CSS gradient sphere — fallback when a WebGL context can't be created. */
-export const Sphere = styled.div<{ colors: [string, string, string] }>`
+const spherePulse = keyframes`
+    0%, 100% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.05); filter: brightness(1.13); }
+`;
+
+/** Drifts the highlight across the sphere — needs background-size > 100%. */
+const sphereDrift = keyframes`
+    0% { background-position: 30% 30%; }
+    50% { background-position: 70% 62%; }
+    100% { background-position: 30% 30%; }
+`;
+
+interface SphereProps {
+    colors: [string, string, string];
+    /**
+     * Flow speed in 0..1, from ORB_ENERGY. Drives the animation period so the
+     * CSS sphere reads at roughly the same tempo as the shader it stands in for.
+     *
+     * Required, mirroring ShaderOrb's own required `energy`: every call site
+     * renders one or the other from the same AgentRunState, and making this
+     * optional let two of them silently render a running orb at idle tempo.
+     */
+    energy: number;
+}
+
+/**
+ * CSS gradient sphere — the fallback when a WebGL context can't be created,
+ * and the primary rendering for small indicators where a live GL context per
+ * orb isn't worth it (the chat footer's 16px "Generating" dot).
+ *
+ * It animates on its own rather than sitting still: a slow breathing pulse
+ * plus a drifting highlight, both scaled by `energy`. That keeps the
+ * WebGL-failure path from looking frozen wherever Sphere stands in for
+ * ShaderOrb.
+ */
+export const Sphere = styled.div<SphereProps>`
     position: absolute;
     inset: 0;
     border-radius: 50%;
@@ -157,10 +191,24 @@ export const Sphere = styled.div<{ colors: [string, string, string] }>`
     background: radial-gradient(
         circle at 32% 28%,
         rgba(255, 255, 255, 0.55),
-        ${(props: { colors: [string, string, string] }) => props.colors[0]} 45%,
-        ${(props: { colors: [string, string, string] }) => props.colors[1]} 100%
+        ${(props: SphereProps) => props.colors[0]} 45%,
+        ${(props: SphereProps) => props.colors[1]} 100%
     );
+    background-size: 180% 180%;
     box-shadow: inset 0 -5px 10px rgba(0, 0, 0, 0.18);
+    animation:
+        ${spherePulse} ${(props: SphereProps) => (4.2 - props.energy * 2.4).toFixed(2)}s ease-in-out infinite,
+        ${sphereDrift} ${(props: SphereProps) => (7.5 - props.energy * 3.5).toFixed(2)}s ease-in-out infinite;
+
+    /*
+     * Both fallbacks also undo background-size: the enlarged box only exists so
+     * the drift has room to travel, and leaving it scaled would render a
+     * differently-shaped gradient than the unanimated original.
+     */
+    @media (prefers-reduced-motion: reduce), (forced-colors: active) {
+        animation: none;
+        background-size: 100% 100%;
+    }
 `;
 
 /** Glass reflection overlay — sits on top of both the shader and CSS spheres. */

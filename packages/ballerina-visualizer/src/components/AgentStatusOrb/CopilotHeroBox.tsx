@@ -183,7 +183,7 @@ export function CopilotHeroBox() {
             >
                 <OrbHolder>
                     {webglFailed ? (
-                        <Sphere colors={colors} />
+                        <Sphere colors={colors} energy={ORB_ENERGY[state]} />
                     ) : (
                         <ShaderOrb
                             colors={colors}

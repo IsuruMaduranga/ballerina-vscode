@@ -135,7 +135,7 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ isOnboarding = false })
                 <WelcomeOrbHalo>
                     <WelcomeOrb role="img" aria-label="WSO2 Integrator Copilot">
                         {webglFailed ? (
-                            <Sphere colors={ORB_COLORS.idle} />
+                            <Sphere colors={ORB_COLORS.idle} energy={ORB_ENERGY.idle} />
                         ) : (
                             <ShaderOrb
                                 colors={ORB_COLORS.idle}

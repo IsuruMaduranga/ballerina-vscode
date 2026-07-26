@@ -518,7 +518,7 @@ export function AgentStatusOrb() {
                 {(state === "running" || state === "awaiting-input") && <Halo colors={colors} />}
                 <Aura colors={colors} state={state} />
                 {webglFailed ? (
-                    <Sphere colors={colors} />
+                    <Sphere colors={colors} energy={ORB_ENERGY[state]} />
                 ) : (
                     <ShaderOrb
                         colors={colors}

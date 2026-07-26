@@ -16,8 +16,9 @@
  * under the License.
  */
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
+import { keyframes } from "@emotion/react";
 import AIChatInput, { AIChatInputRef, TagOptions } from "../../AIChatInput";
 import { RunningServicesPanel } from "../../AIChatInput/RunningServicesChip";
 import { Input } from "../../AIChatInput/utils/inputUtils";
@@ -27,7 +28,7 @@ import { AttachmentOptions } from "../../AIChatInput/hooks/useAttachments";
 import { getTemplateTextById } from "../../../commandTemplates/utils/utils";
 import CodeContextCard from "../../CodeContextCard";
 import { AgentMode } from "../../AIChatInput/ModeToggle";
-import { Gloss, ORB_COLORS, Sphere } from "../../../../../components/AgentStatusOrb/shared";
+import { Gloss, ORB_COLORS, ORB_ENERGY, Sphere } from "../../../../../components/AgentStatusOrb/shared";
 
 export const FooterContainer = styled.footer({
     padding: "20px 20px 12px",
@@ -81,6 +82,104 @@ const LoadingOrb = styled.div`
     height: 16px;
     flex: none;
 `;
+
+/** Sweeps a brighter band across the label so the wait reads as active. */
+const labelShimmer = keyframes`
+    0% { background-position: 150% 0; }
+    100% { background-position: -50% 0; }
+`;
+
+/** Replayed on every label change, so a new step visually reads as fresh. */
+const labelEnter = keyframes`
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+`;
+
+/**
+ * The label is kept to one line: it sits directly above the composer, so
+ * letting a long tool detail wrap would shift the input as the agent works.
+ */
+const LoadingLabel = styled.span`
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: linear-gradient(
+        90deg,
+        currentColor 0%,
+        currentColor 35%,
+        var(--vscode-foreground) 50%,
+        currentColor 65%,
+        currentColor 100%
+    );
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: ${labelEnter} 0.18s ease-out, ${labelShimmer} 2.4s linear infinite;
+
+    @media (prefers-reduced-motion: reduce), (forced-colors: active) {
+        animation: none;
+        background: none;
+        -webkit-text-fill-color: currentColor;
+    }
+`;
+
+/**
+ * Holds each label on screen for a minimum time before showing the next one.
+ * Some tool calls (a small file read, a cached lookup) resolve fast enough that
+ * without this the indicator strobes through a burst of steps faster than
+ * anyone can read. Intermediate labels are dropped rather than queued, so the
+ * shown label never lags reality by more than one window.
+ */
+const MIN_LABEL_VISIBLE_MS = 700;
+
+function useStickyLabel(value: string, minVisibleMs = MIN_LABEL_VISIBLE_MS): string {
+    const [shown, setShown] = useState(value);
+    const shownSinceRef = useRef(Date.now());
+
+    useEffect(() => {
+        if (value === shown) {
+            return;
+        }
+        const remaining = minVisibleMs - (Date.now() - shownSinceRef.current);
+        if (remaining <= 0) {
+            shownSinceRef.current = Date.now();
+            setShown(value);
+            return;
+        }
+        const timer = setTimeout(() => {
+            shownSinceRef.current = Date.now();
+            setShown(value);
+        }, remaining);
+        return () => clearTimeout(timer);
+    }, [value, shown, minVisibleMs]);
+
+    return shown;
+}
+
+/*
+ * Memoized: the panel re-renders on every streamed token, but the label only
+ * changes when a tool starts or finishes (and at most once per sticky window).
+ * A plain string prop makes this a clean bail-out boundary — the enclosing
+ * Footer can't be memoized, since its callers rebuild its object props inline.
+ */
+const LoadingIndicator: React.FC<{ label: string }> = React.memo(({ label }) => {
+    const shownLabel = useStickyLabel(label);
+    return (
+        // aria-live sits on the stable container: the label itself remounts on
+        // every change, and a replaced node is not announced.
+        <LoadingIndicatorContainer aria-live="polite">
+            <LoadingOrb aria-hidden="true">
+                <Sphere colors={ORB_COLORS.running} energy={ORB_ENERGY.running} />
+                <Gloss />
+            </LoadingOrb>
+            {/* Keyed so a changed label remounts and replays the enter animation. */}
+            <LoadingLabel key={shownLabel}>{shownLabel}</LoadingLabel>
+        </LoadingIndicatorContainer>
+    );
+});
+LoadingIndicator.displayName = "LoadingIndicator";
 
 const renderPrompt = (item: AIPanelPrompt, index: number, aiChatInputRef: React.RefObject<AIChatInputRef>) => {
     if (!item) return null;
@@ -185,15 +284,7 @@ const Footer: React.FC<FooterProps> = ({
             {codeContext && onRemoveCodeContext && (
                 <CodeContextCard codeContext={codeContext} onRemove={onRemoveCodeContext} />
             )}
-            {isLoading && (
-                <LoadingIndicatorContainer>
-                    <LoadingOrb aria-hidden="true">
-                        <Sphere colors={ORB_COLORS.running} />
-                        <Gloss />
-                    </LoadingOrb>
-                    <span>{loadingLabel || "Generating"}</span>
-                </LoadingIndicatorContainer>
-            )}
+            {isLoading && <LoadingIndicator label={loadingLabel || "Generating"} />}
             <AIChatInput
                 ref={aiChatInputRef}
                 initialCommandTemplate={commandTemplates}

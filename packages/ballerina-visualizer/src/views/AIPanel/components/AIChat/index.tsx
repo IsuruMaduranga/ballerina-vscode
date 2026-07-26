@@ -49,6 +49,7 @@ import TryItScenariosSegment from "../TryItScenariosSegment";
 import TodoSection from "../TodoSection";
 import AgentStreamView from "../AgentStreamView";
 import { StreamEntry, StreamItem } from "../AgentStreamView/types";
+import { getToolCallDisplay } from "../AgentStreamView/toolDisplay";
 import { ConnectorGeneratorSegment } from "../ConnectorGeneratorSegment";
 import { ConfigurationCollectorSegment } from "../ConfigurationCollectorSegment";
 import CheckpointSeparator from "../CheckpointSeparator";
@@ -328,6 +329,14 @@ const AIChat: React.FC = () => {
 
     const [isLoading, setIsLoading] = useState(false);
     const [isCompacting, setIsCompacting] = useState(false);
+    // Tools currently in flight, oldest first, for the composer's loading
+    // indicator. This is a list rather than a single slot because a step can run
+    // several tools concurrently (the AI SDK executes a step's calls with
+    // Promise.all, and each tool emits its own tool_call/tool_result): with one
+    // slot, the first result to land would clear a sibling that is still
+    // running. Empty means the model is thinking or writing rather than calling
+    // a tool, and the indicator falls back to its generic label.
+    const [inFlightTools, setInFlightTools] = useState<{ id: string; label: string }[]>([]);
     const [hoveredTurnIndex, setHoveredTurnIndex] = useState<number | null>(null);
     const [lastQuestionIndex, setLastQuestionIndex] = useState(-1);
     const [isCodeLoading, setIsCodeLoading] = useState(false);
@@ -1087,6 +1096,23 @@ const AIChat: React.FC = () => {
         }
     });
 
+    // Backstop for the step label: a run can stop being "loading" through many
+    // paths (terminal event, thrown error, reconnect deciding the run is over,
+    // checkpoint restore, explicit stop), and only some of them are ChatNotify
+    // events. Clearing on the flag itself means the next turn can never open
+    // showing the previous turn's last tool. It is also the only thing that
+    // retires a tool whose result never arrives (a tool that throws produces an
+    // SDK tool-error chunk, which the extension host currently drops).
+    useEffect(() => {
+        if (!isLoading) {
+            setInFlightTools(prev => (prev.length === 0 ? prev : []));
+        }
+    }, [isLoading]);
+
+    // The newest in-flight tool is the step worth showing; older siblings are
+    // still running but the indicator is one line.
+    const activeToolLabel = inFlightTools.length > 0 ? inFlightTools[inFlightTools.length - 1].label : undefined;
+
     const handleChatNotify = async (response: ChatNotify) => {
         // Drop events belonging to a different (previously-interrupted) run once we
         // have adopted a specific run on reconnect — BEFORE any bookkeeping. seq is
@@ -1126,6 +1152,29 @@ const AIChat: React.FC = () => {
         }
 
         const type = response.type;
+
+        // Track in-flight tools for the composer's loading indicator. This is a
+        // separate pass rather than extra lines inside the big dispatch below: it
+        // reads one start signal and four end signals that the dispatch already
+        // handles for other reasons, and keeping it here makes the indicator's
+        // whole data source greppable in one place. This block never returns, so
+        // narrowing re-widens after it and the exhaustiveness guard at the tail of
+        // the dispatch is unaffected in both directions.
+        if (type === "tool_call") {
+            const { label, detail } = getToolCallDisplay(response.toolName, response.toolInput);
+            const entry = { id: response.toolCallId ?? "", label: detail ? `${label} ${detail}` : label };
+            setInFlightTools(prev => [...prev, entry]);
+        } else if (type === "tool_result") {
+            // Drop only the matching call. Tools without an id share the "" key,
+            // so each anonymous result retires the oldest anonymous call.
+            const finishedId = response.toolCallId ?? "";
+            setInFlightTools(prev => {
+                const index = prev.findIndex(tool => tool.id === finishedId);
+                return index === -1 ? prev : [...prev.slice(0, index), ...prev.slice(index + 1)];
+            });
+        } else if (type === "stop" || type === "abort" || type === "error") {
+            setInFlightTools(prev => (prev.length === 0 ? prev : []));
+        }
 
         // True only while replaying a buffered event whose request the backend no longer has
         // pending — its live interaction was already resolved and must not be re-surfaced.
@@ -2861,7 +2910,7 @@ const AIChat: React.FC = () => {
                             onSend={handleSend}
                             onStop={handleStop}
                             isLoading={isLoading}
-                            loadingLabel={isCompacting ? "Compacting conversation" : undefined}
+                            loadingLabel={isCompacting ? "Compacting conversation" : activeToolLabel}
                             showSuggestedCommands={Array.isArray(otherMessages) && otherMessages.length === 0}
                             codeContext={codeContext}
                             onRemoveCodeContext={() => updateCodeContext(undefined)}
