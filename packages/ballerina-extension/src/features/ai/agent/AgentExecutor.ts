@@ -36,6 +36,7 @@ import { getProjectSource } from '../utils/project/temp-project';
 import { getWorkspaceTomlValues } from '../../../utils';
 import { StreamContext } from './stream-handlers/stream-context';
 import { checkCompilationErrors } from './tools/diagnostics-utils';
+import { TASK_WRITE_TOOL_NAME } from './tools/task-writer';
 import { updateAndSaveChat, calculateTotalCost } from '../utils/events';
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
 import * as path from 'path';
@@ -706,6 +707,42 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                     }
                 }
                 break;
+
+            case "tool-error": {
+                // A tool whose execute() throws never reaches its own
+                // emitFileToolResult/eventHandler call, because tools emit their
+                // tool_call/tool_result events from inside execute(). Without a
+                // compensating result the UI leaves that tool_call open forever:
+                // a spinner stuck in the transcript, and — since the composer's
+                // loading indicator reads the same events — a step label that
+                // keeps claiming a finished operation is still running.
+                //
+                // Unlike "error" above, this must not rethrow: the SDK feeds the
+                // tool failure back to the model and the run continues.
+                const failedToolName = (part as any).toolName;
+                const failedToolCallId = (part as any).toolCallId;
+                this._pendingToolCalls.delete(failedToolCallId);
+
+                // TaskWrite is deliberately excluded. Its tool_result drives the
+                // task rail through applyTaskWriteResult, where an empty task
+                // list closes the running task and reopens a floating entry —
+                // corrupting the transcript rather than just marking a failure.
+                // A failed TaskWrite is left to the turn's own error handling.
+                if (failedToolName && failedToolName !== TASK_WRITE_TOOL_NAME) {
+                    const reason = (part as any).error;
+                    context.eventHandler({
+                        type: "tool_result",
+                        toolName: failedToolName,
+                        toolCallId: failedToolCallId,
+                        failed: true,
+                        toolOutput: {
+                            success: false,
+                            error: reason instanceof Error ? reason.message : String(reason ?? "Tool execution failed"),
+                        },
+                    });
+                }
+                break;
+            }
 
             default:
                 // All other stream part types (step-finish, etc.) are handled by the SDK.
