@@ -18,7 +18,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
-import { keyframes } from "@emotion/react";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { SHARED_COMMANDS, AgentRunStatus } from "@wso2/ballerina-core";
 import { Codicon, Icon } from "@wso2/ui-toolkit";
@@ -31,6 +30,7 @@ import {
     Gloss,
     IconOverlay,
     activeStateLabel,
+    AmbientFrame,
     registerHeroPresence,
     subscribeAgentRunStatus,
 } from "./shared";
@@ -47,32 +47,6 @@ import {
  */
 
 const HERO_ORB_SIZE = 44;
-
-const gradientShift = keyframes`
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-`;
-
-/**
- * Animated gradient border + ambient glow around the prompt box — the
- * "this is the AI" signifier, drawn from the orb's idle palette.
- */
-const GradientFrame = styled.div`
-    border-radius: 14px;
-    padding: 1.5px;
-    background: linear-gradient(120deg, #6b5ce8, ${BRAND_ORANGE}, #ffb199, #a78bfa, #6b5ce8);
-    background-size: 300% 300%;
-    animation: ${gradientShift} 9s ease infinite;
-    box-shadow: 0 0 18px rgba(107, 92, 232, 0.25), 0 0 10px rgba(241, 78, 35, 0.12);
-    transition: box-shadow 0.25s ease;
-    &:focus-within {
-        box-shadow: 0 0 26px rgba(107, 92, 232, 0.45), 0 0 14px rgba(241, 78, 35, 0.22);
-    }
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
-`;
 
 const Box = styled.div<{ active: boolean }>`
     display: flex;
@@ -193,74 +167,74 @@ export function CopilotHeroBox() {
     };
 
     return (
-        <GradientFrame>
-        <Box
-            active={active}
-            onClick={() => (active ? openCopilot() : inputRef.current?.focus())}
-            role={active ? "button" : undefined}
-            tabIndex={active ? 0 : undefined}
-            onKeyDown={(event) => {
-                if (active && (event.key === "Enter" || event.key === " ")) {
-                    event.preventDefault();
-                    openCopilot();
-                }
-            }}
-            aria-label={label ? `WSO2 Copilot: ${label}. Open the Copilot chat.` : undefined}
-        >
-            <OrbHolder>
-                {webglFailed ? (
-                    <Sphere colors={colors} />
+        <AmbientFrame $variant="hero" $state={state}>
+            <Box
+                active={active}
+                onClick={() => (active ? openCopilot() : inputRef.current?.focus())}
+                role={active ? "button" : undefined}
+                tabIndex={active ? 0 : undefined}
+                onKeyDown={(event) => {
+                    if (active && (event.key === "Enter" || event.key === " ")) {
+                        event.preventDefault();
+                        openCopilot();
+                    }
+                }}
+                aria-label={label ? `WSO2 Copilot: ${label}. Open the Copilot chat.` : undefined}
+            >
+                <OrbHolder>
+                    {webglFailed ? (
+                        <Sphere colors={colors} />
+                    ) : (
+                        <ShaderOrb
+                            colors={colors}
+                            energy={ORB_ENERGY[state]}
+                            size={HERO_ORB_SIZE}
+                            onContextFailed={handleWebglFailed}
+                        />
+                    )}
+                    <Gloss />
+                    <IconOverlay>
+                        <Icon
+                            name="bi-ai-chat"
+                            sx={{ width: 20, height: 20 }}
+                            iconSx={{ fontSize: "20px", color: "#ffffff", cursor: "inherit" }}
+                        />
+                    </IconOverlay>
+                </OrbHolder>
+                {active ? (
+                    <>
+                        <StatusText>{label}</StatusText>
+                        <OpenHint>
+                            Open Copilot <Codicon name="arrow-right" />
+                        </OpenHint>
+                    </>
                 ) : (
-                    <ShaderOrb
-                        colors={colors}
-                        energy={ORB_ENERGY[state]}
-                        size={HERO_ORB_SIZE}
-                        onContextFailed={handleWebglFailed}
-                    />
-                )}
-                <Gloss />
-                <IconOverlay>
-                    <Icon
-                        name="bi-ai-chat"
-                        sx={{ width: 20, height: 20 }}
-                        iconSx={{ fontSize: "20px", color: "#ffffff", cursor: "inherit" }}
-                    />
-                </IconOverlay>
-            </OrbHolder>
-            {active ? (
-                <>
-                    <StatusText>{label}</StatusText>
-                    <OpenHint>
-                        Open Copilot <Codicon name="arrow-right" />
-                    </OpenHint>
-                </>
-            ) : (
-                <>
-                    <PromptInput
-                        ref={inputRef}
-                        value={text}
-                        onChange={(event) => setText(event.target.value)}
-                        onKeyDown={(event) => {
-                            if (event.key === "Enter") {
+                    <>
+                        <PromptInput
+                            ref={inputRef}
+                            value={text}
+                            onChange={(event) => setText(event.target.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                    submit();
+                                }
+                            }}
+                            placeholder="What do you want to build? Describe it — WSO2 Copilot will generate it"
+                            aria-label="Ask WSO2 Copilot: what do you want to build?"
+                        />
+                        <GenerateButton
+                            title="Generate with WSO2 Copilot"
+                            aria-label="Generate with WSO2 Copilot"
+                            onClick={(event) => {
+                                event.stopPropagation();
                                 submit();
-                            }
-                        }}
-                        placeholder="What do you want to build? Describe it — WSO2 Copilot will generate it"
-                        aria-label="Ask WSO2 Copilot: what do you want to build?"
-                    />
-                    <GenerateButton
-                        title="Generate with WSO2 Copilot"
-                        aria-label="Generate with WSO2 Copilot"
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            submit();
-                        }}
-                    >
-                        <Codicon name="sparkle" /> Generate
-                    </GenerateButton>
-                </>
-            )}
-        </Box>
-        </GradientFrame>
+                            }}
+                        >
+                            <Codicon name="sparkle" /> Generate
+                        </GenerateButton>
+                    </>
+                )}
+            </Box>
+        </AmbientFrame>
     );
 }

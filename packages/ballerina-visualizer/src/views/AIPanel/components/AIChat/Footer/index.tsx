@@ -16,18 +16,18 @@
  * under the License.
  */
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import styled from "@emotion/styled";
-import { keyframes } from "@emotion/css";
 import AIChatInput, { AIChatInputRef, TagOptions } from "../../AIChatInput";
 import { RunningServicesPanel } from "../../AIChatInput/RunningServicesChip";
 import { Input } from "../../AIChatInput/utils/inputUtils";
-import { AIPanelPrompt, Attachment, SkillEntry, TemplateId, CodeContext } from "@wso2/ballerina-core";
+import { AgentRunState, AIPanelPrompt, Attachment, SkillEntry, TemplateId, CodeContext } from "@wso2/ballerina-core";
 import { commandTemplates, suggestedCommandTemplates as defaultSuggestedCommandTemplates } from "../../../commandTemplates/data/commandTemplates.const";
 import { AttachmentOptions } from "../../AIChatInput/hooks/useAttachments";
 import { getTemplateTextById } from "../../../commandTemplates/utils/utils";
 import CodeContextCard from "../../CodeContextCard";
 import { AgentMode } from "../../AIChatInput/ModeToggle";
+import { Gloss, ORB_COLORS, Sphere } from "../../../../../components/AgentStatusOrb/shared";
 
 export const FooterContainer = styled.footer({
     padding: "20px 20px 12px",
@@ -63,17 +63,6 @@ const SuggestionChip = styled.button`
     }
 `;
 
-const bubbleAnimation = keyframes`
-    0% {
-        transform: translateY(3px);
-        opacity: 0.7;
-    }
-    100% {
-        transform: translateY(-3px);
-        opacity: 1;
-    }
-`;
-
 const LoadingIndicatorContainer = styled.div`
     display: flex;
     align-items: center;
@@ -86,28 +75,11 @@ const LoadingIndicatorContainer = styled.div`
     font-size: 13px;
 `;
 
-const Bubbles = styled.div`
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 2px;
-
-    & > span {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background-color: var(--vscode-input-placeholderForeground);
-        display: inline-block;
-        animation: ${bubbleAnimation} 1s infinite alternate;
-    }
-
-    & > span:nth-of-type(2) {
-        animation-delay: 0.2s;
-    }
-
-    & > span:nth-of-type(3) {
-        animation-delay: 0.4s;
-    }
+const LoadingOrb = styled.div`
+    position: relative;
+    width: 16px;
+    height: 16px;
+    flex: none;
 `;
 
 const renderPrompt = (item: AIPanelPrompt, index: number, aiChatInputRef: React.RefObject<AIChatInputRef>) => {
@@ -171,6 +143,7 @@ type FooterProps = {
     onOpenMcpManager?: () => void;
     runningServicesPanel?: RunningServicesPanel;
     skills?: SkillEntry[];
+    ambientState?: AgentRunState;
 };
 
 const Footer: React.FC<FooterProps> = ({
@@ -198,30 +171,9 @@ const Footer: React.FC<FooterProps> = ({
     onOpenMcpManager,
     runningServicesPanel,
     skills,
+    ambientState,
 }) => {
     const footerSuggestedCommandTemplates = suggestedCommandTemplates ?? defaultSuggestedCommandTemplates;
-    const [animatedText, setAnimatedText] = useState("Generating.");
-
-    useEffect(() => {
-        if (isLoading) {
-            const baseText = loadingLabel || "Generating";
-            setAnimatedText(baseText + ".");
-
-            const interval = setInterval(() => {
-                setAnimatedText((prev) => {
-                    // Extract the base text without dots
-                    const dots = prev.match(/\.+$/)?.[0] || "";
-                    const base = prev.slice(0, prev.length - dots.length);
-
-                    // Cycle through 1, 2, 3 dots
-                    if (dots.length >= 3) return base + ".";
-                    return prev + ".";
-                });
-            }, 500);
-
-            return () => clearInterval(interval);
-        }
-    }, [isLoading, loadingLabel]);
 
     return (
         <FooterContainer>
@@ -235,12 +187,11 @@ const Footer: React.FC<FooterProps> = ({
             )}
             {isLoading && (
                 <LoadingIndicatorContainer>
-                    <Bubbles>
-                        <span />
-                        <span />
-                        <span />
-                    </Bubbles>
-                    <span>{animatedText}</span>
+                    <LoadingOrb aria-hidden="true">
+                        <Sphere colors={ORB_COLORS.running} />
+                        <Gloss />
+                    </LoadingOrb>
+                    <span>{loadingLabel || "Generating"}</span>
                 </LoadingIndicatorContainer>
             )}
             <AIChatInput
@@ -264,6 +215,7 @@ const Footer: React.FC<FooterProps> = ({
                 onOpenMcpManager={onOpenMcpManager}
                 runningServicesPanel={runningServicesPanel}
                 skills={skills}
+                ambientState={ambientState ?? (isLoading ? "running" : "idle")}
             />
             <DisclaimerText visible={!showSuggestedCommands}>
                 AI-generated content may contain mistakes. Always review changes.

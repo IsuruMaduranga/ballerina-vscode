@@ -17,6 +17,7 @@
  */
 
 import styled from "@emotion/styled";
+import { keyframes } from "@emotion/react";
 import { AgentRunState, AgentRunStatus, ChatNotify } from "@wso2/ballerina-core";
 import { BallerinaRpcClient } from "@wso2/ballerina-rpc-client";
 import type { MiniChatPrompt } from "./promptHandoff";
@@ -64,6 +65,70 @@ export const ORB_ENERGY: Record<AgentRunState, number> = {
     "completed": 0.45,
     "error": 0.5,
 };
+
+const ambientGradientShift = keyframes`
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+`;
+
+export type AmbientFrameVariant = "hero" | "composer";
+
+interface AmbientFrameProps {
+    $state?: AgentRunState;
+    $variant?: AmbientFrameVariant;
+}
+
+function ambientColors(props: AmbientFrameProps): [string, string, string] {
+    return ORB_COLORS[props.$state ?? "idle"];
+}
+
+/**
+ * Shared ambient AI frame used by the landing-page hero and full chat input.
+ * The transcript remains neutral; this frame identifies the active Copilot surface.
+ */
+export const AmbientFrame = styled.div<AmbientFrameProps>`
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: ${(props: AmbientFrameProps) => props.$variant === "hero" ? "1.5px" : "1px"};
+    border-radius: ${(props: AmbientFrameProps) => props.$variant === "hero" ? "14px" : "10px"};
+    background: ${(props: AmbientFrameProps) => {
+        const [first, second, third] = ambientColors(props);
+        return `linear-gradient(120deg, ${first}, ${second}, ${third}, ${first})`;
+    }};
+    background-size: 300% 300%;
+    animation: ${ambientGradientShift} 9s ease infinite;
+    box-shadow: ${(props: AmbientFrameProps) => {
+        const [first, second] = ambientColors(props);
+        const hero = props.$variant === "hero";
+        const active = !!props.$state && props.$state !== "idle";
+        const outerStrength = hero ? 25 : active ? 20 : 12;
+        const innerStrength = hero ? 12 : active ? 13 : 7;
+        const outerSize = hero ? 18 : active ? 16 : 12;
+        const innerSize = hero ? 10 : active ? 10 : 8;
+        return `0 0 ${outerSize}px color-mix(in srgb, ${first} ${outerStrength}%, transparent), 0 0 ${innerSize}px color-mix(in srgb, ${second} ${innerStrength}%, transparent)`;
+    }};
+    transition: box-shadow 0.25s ease;
+
+    &:focus-within {
+        box-shadow: ${(props: AmbientFrameProps) => {
+            const [first, second] = ambientColors(props);
+            return `0 0 22px color-mix(in srgb, ${first} 34%, transparent), 0 0 13px color-mix(in srgb, ${second} 20%, transparent)`;
+        }};
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+
+    @media (forced-colors: active) {
+        padding: 1px;
+        background: CanvasText;
+        box-shadow: none;
+        animation: none;
+    }
+`;
 
 /** User-facing label for a non-idle run state, shared by the orb and the hero box. */
 export function activeStateLabel(status: AgentRunStatus): string {
