@@ -180,7 +180,7 @@ export function buildPlanItem(
     tasks: any[],
     message: string | undefined,
     autoApproved?: boolean
-): StreamItem {
+): Extract<StreamItem, { kind: "plan" }> {
     return {
         kind: "plan",
         requestId,
@@ -188,6 +188,38 @@ export function buildPlanItem(
         message,
         ...(autoApproved ? { approvalStatus: "approved" as const } : {}),
     };
+}
+
+/**
+ * Mark a persisted plan item as approved or revised.
+ *
+ * Plan approval is resolved by a separate event after the original plan card is
+ * written. Both the full panel and mini chat can author the final transcript, so
+ * they must apply the same update or the last writer can restore a stale pending
+ * plan after the user has already responded.
+ */
+export function applyPlanApprovalResolution(
+    entries: StreamEntry[],
+    requestId: string,
+    approved: boolean,
+    comment?: string
+): StreamEntry[] {
+    let changed = false;
+    const updated = entries.map((entry) => ({
+        ...entry,
+        items: entry.items.map((item) => {
+            if (item.kind !== "plan" || item.requestId !== requestId) {
+                return item;
+            }
+            changed = true;
+            return {
+                ...item,
+                approvalStatus: approved ? "approved" as const : "revised" as const,
+                approvalComment: approved ? undefined : comment,
+            };
+        }),
+    }));
+    return changed ? updated : entries;
 }
 
 /**

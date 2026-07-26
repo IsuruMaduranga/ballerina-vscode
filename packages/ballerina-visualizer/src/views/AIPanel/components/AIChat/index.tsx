@@ -89,7 +89,7 @@ import WelcomeMessage from "./Welcome";
 import { getOnboardingOpens, incrementOnboardingOpens, convertToUIMessages, isContainsSyntaxError } from "./utils/utils";
 import {
     serializeStream, parseStream, appendToLastEntry, upsertComponent, upsertRequestCard,
-    buildRequestCardData, buildPlanItem, appendAbortMarker, applyTaskWriteResult,
+    buildRequestCardData, buildPlanItem, applyPlanApprovalResolution, appendAbortMarker, applyTaskWriteResult,
     COMPACTION_DISABLED_NOTICE,
 } from "./utils/streamSerialization";
 
@@ -1274,18 +1274,15 @@ const AIChat: React.FC = () => {
                 }
                 const assistant = next[assistantIndex];
                 const entries = parseStream(assistant.content);
-                const updated = entries.map((entry) => ({
-                    ...entry,
-                    items: entry.items.map((item) =>
-                        item.kind === "plan" && item.requestId === response.requestId
-                            ? {
-                                ...item,
-                                approvalStatus: response.approved ? "approved" as const : "revised" as const,
-                                approvalComment: response.approved ? undefined : response.comment,
-                            }
-                            : item
-                    ),
-                }));
+                const updated = applyPlanApprovalResolution(
+                    entries,
+                    response.requestId,
+                    response.approved,
+                    response.comment
+                );
+                if (updated === entries) {
+                    return previous;
+                }
                 next[assistantIndex] = {
                     ...assistant,
                     content: serializeStream(updated, assistant.content),

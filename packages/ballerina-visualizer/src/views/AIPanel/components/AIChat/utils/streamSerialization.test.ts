@@ -49,8 +49,10 @@ import {
     upsertRequestCard,
     buildRequestCardData,
     buildPlanItem,
+    applyPlanApprovalResolution,
     appendAbortMarker,
     applyTaskWriteResult,
+    TaskWriteTask,
     ABORT_MARKER_TEXT,
     COMPACTION_DISABLED_NOTICE,
 } from "./streamSerialization";
@@ -191,6 +193,58 @@ describe("buildPlanItem", () => {
     });
 });
 
+describe("applyPlanApprovalResolution", () => {
+    it("updates only the matching plan and survives serialization", () => {
+        const entries = [floating([
+            buildPlanItem("rq-1", [{ description: "A" }], "First"),
+            buildPlanItem("rq-2", [{ description: "B" }], "Second"),
+        ])];
+
+        const updated = applyPlanApprovalResolution(entries, "rq-1", false, "Use a queue instead");
+        const revived = parseStream(serializeStream(updated, ""));
+        expect(revived[0].items).toEqual([
+            {
+                kind: "plan",
+                requestId: "rq-1",
+                tasks: [{ description: "A" }],
+                message: "First",
+                approvalStatus: "revised",
+                approvalComment: "Use a queue instead",
+            },
+            {
+                kind: "plan",
+                requestId: "rq-2",
+                tasks: [{ description: "B" }],
+                message: "Second",
+            },
+        ]);
+    });
+
+    it("marks approval without persisting a stale revision comment", () => {
+        const revised = applyPlanApprovalResolution(
+            [floating([{
+                ...buildPlanItem("rq", [], undefined),
+                approvalStatus: "revised",
+                approvalComment: "Old comment",
+            }])],
+            "rq",
+            true
+        );
+        const revived = parseStream(serializeStream(revised, ""));
+        expect(revived[0].items[0]).toEqual({
+            kind: "plan",
+            requestId: "rq",
+            tasks: [],
+            approvalStatus: "approved",
+        });
+    });
+
+    it("returns the same reference when the request is absent", () => {
+        const entries = [floating([buildPlanItem("other", [], undefined)])];
+        expect(applyPlanApprovalResolution(entries, "missing", true)).toBe(entries);
+    });
+});
+
 describe("appendAbortMarker", () => {
     it("appends a NEW entry instead of merging into the last one", () => {
         // appendToLastEntry would bury the marker inside the previous entry.
@@ -203,7 +257,10 @@ describe("appendAbortMarker", () => {
 });
 
 describe("applyTaskWriteResult", () => {
-    const task = (description: string, status: string) => ({ description, status });
+    const task = (description: string, status: TaskWriteTask["status"]): TaskWriteTask => ({
+        description,
+        status,
+    });
 
     it("walks a plan lifecycle, opening and closing named entries", () => {
         let entries: StreamEntry[] = [floating([

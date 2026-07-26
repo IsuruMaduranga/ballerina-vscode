@@ -32,6 +32,7 @@ import {
     upsertRequestCard,
     buildRequestCardData,
     buildPlanItem,
+    applyPlanApprovalResolution,
     appendAbortMarker,
     applyTaskWriteResult,
     COMPACTION_DISABLED_NOTICE,
@@ -113,7 +114,7 @@ type MiniTail = { kind: "notice" | "error"; text: string };
 type FoldableNotify = Extract<ChatNotify, {
     type:
     | "content_block" | "content_replace" | "tool_call" | "tool_result" | "chat_component"
-    | "task_approval_request" | "connector_generation_notification"
+    | "task_approval_request" | "plan_approval_resolved" | "connector_generation_notification"
     | "configuration_collection_event" | "clarify_event" | "skill_enable_event"
     | "abort" | "compaction_disabled";
 }>;
@@ -261,6 +262,12 @@ function applyContentEvent(prevContent: string, evt: FoldableNotify): string {
         if (evt.approvalType !== "plan") { return prevContent; }
         const item = buildPlanItem(evt.requestId, evt.tasks, evt.message, evt.autoApproved);
         return serializeStream(appendToLastEntry(entries, item), prevContent);
+    }
+    if (evt.type === "plan_approval_resolved") {
+        return serializeStream(
+            applyPlanApprovalResolution(entries, evt.requestId, evt.approved, evt.comment),
+            prevContent
+        );
     }
     if (evt.type === "connector_generation_notification") {
         return serializeStream(upsertRequestCard(entries, "connector", buildRequestCardData("connector", evt)), prevContent);
@@ -735,6 +742,9 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
                 if (evt.approvalType === "plan") {
                     setMsgs((prev) => reduceEvent(prev, evt, gen));
                 }
+                break;
+            case "plan_approval_resolved":
+                setMsgs((prev) => reduceEvent(prev, evt, gen));
                 break;
             case "connector_generation_notification":
             case "configuration_collection_event":
