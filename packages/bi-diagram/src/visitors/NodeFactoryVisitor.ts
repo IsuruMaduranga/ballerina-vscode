@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { BaseVisitor } from "@wso2/ballerina-core";
+import { BaseVisitor, isEvalTemplateCall } from "@wso2/ballerina-core";
 
 import { NodeLinkModel, NodeLinkModelOptions } from "../components/NodeLink";
 import { ApiCallNodeModel } from "../components/nodes/ApiCallNode";
@@ -45,6 +45,7 @@ import { Branch, FlowNode, NodeModel } from "../utils/types";
 import { EndNodeModel } from "../components/nodes/EndNode";
 import { ErrorNodeModel } from "../components/nodes/ErrorNode";
 import { AgentCallNodeModel } from "../components/nodes/AgentCallNode/AgentCallNodeModel";
+import { EvalNodeModel } from "../components/nodes/EvalNode/EvalNodeModel";
 import { PromptNodeModel } from "../components/nodes/PromptNode/PromptNodeModel";
 
 export class NodeFactoryVisitor implements BaseVisitor {
@@ -110,6 +111,13 @@ export class NodeFactoryVisitor implements BaseVisitor {
             return;
         }
         const nodeModel = new BaseNodeModel(node);
+        this.nodes.push(nodeModel);
+        this.updateNodeLinks(node, nodeModel);
+        return nodeModel;
+    }
+
+    private createEvalNode(node: FlowNode): NodeModel {
+        const nodeModel = new EvalNodeModel(node);
         this.nodes.push(nodeModel);
         this.updateNodeLinks(node, nodeModel);
         return nodeModel;
@@ -247,7 +255,11 @@ export class NodeFactoryVisitor implements BaseVisitor {
     beginVisitNode = (node: FlowNode): void => {
         if (!this.validateNode(node)) return;
         if (node.id) {
-            this.createBaseNode(node);
+            if (isEvalTemplateCall(node)) {
+                this.createEvalNode(node);
+            } else {
+                this.createBaseNode(node);
+            }
             this.addSuggestionsButton(node);
         }
     }; // only ui nodes have id

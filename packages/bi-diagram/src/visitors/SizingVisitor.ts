@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { BaseVisitor, NodeMetadata } from "@wso2/ballerina-core";
+import { BaseVisitor, isEvalTemplateCall, NodeMetadata } from "@wso2/ballerina-core";
 
 import {
     AGENT_NODE_ADD_TOOL_BUTTON_WIDTH,
@@ -42,6 +42,7 @@ import {
     WAIT_DATA_DETAILS_WIDTH,
     WHILE_NODE_WIDTH,
 } from "../resources/constants";
+import { getEvalNodeContainerHeight } from "../components/nodes/EvalNode/evalNodePresentation";
 import { reverseCustomNodeId } from "../utils/node";
 import { Branch, FlowNode } from "../utils/types";
 
@@ -168,8 +169,18 @@ export class SizingVisitor implements BaseVisitor {
 
     endVisitNode = (node: FlowNode): void => {
         if (!this.validateNode(node)) return;
+        if (isEvalTemplateCall(node)) {
+            this.createEvalNode(node);
+            return;
+        }
         this.createBaseNode(node);
     };
+
+    private createEvalNode(node: FlowNode): void {
+        const halfNodeWidth = NODE_WIDTH / 2;
+        const containerRightWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH;
+        this.setNodeSize(node, halfNodeWidth, containerRightWidth, getEvalNodeContainerHeight(node));
+    }
 
     endVisitEventStart(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;

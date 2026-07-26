@@ -21,7 +21,7 @@ import { Codicon, Icon, RadioButtonGroup, SearchBox, ThemeColors, Typography, Vi
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { FormField, FormImports, FormValues, Parameter } from "@wso2/ballerina-side-panel";
-import { LineRange, FunctionParameter, TestFunction, ValueProperty, Annotation, getPrimaryInputType, EvalsetItem, AvailableNode, FlowNode, Property as FlowProperty, AddOrUpdateTestFunctionRequest } from "@wso2/ballerina-core";
+import { LineRange, FunctionParameter, TestFunction, ValueProperty, Annotation, getPrimaryInputType, EvalsetItem, AvailableNode, FlowNode, Property as FlowProperty, AddOrUpdateTestFunctionRequest, isEvalTemplateCall } from "@wso2/ballerina-core";
 import { EVENT_TYPE } from "@wso2/ballerina-core";
 import { TitleBar } from "../../../components/TitleBar";
 import { TopNavigationBar } from "../../../components/TopNavigationBar";
@@ -397,15 +397,10 @@ const carryOverArguments = (next: FlowNode, previous?: FlowNode): FlowNode => {
 
 type EvalTemplatePayload = NonNullable<AddOrUpdateTestFunctionRequest['evalTemplate']>;
 
-const EVAL_TEMPLATE_PACKAGE = 'ai_evals';
-
 type EditShape = 'template' | 'template-with-custom' | 'custom' | 'ambiguous' | 'unresolvable';
 
 const flattenFlowNodes = (nodes: FlowNode[] = []): FlowNode[] =>
     nodes.flatMap(node => [node, ...(node.branches || []).flatMap(branch => flattenFlowNodes(branch.children))]);
-
-const isEvalTemplateCall = (node: FlowNode): boolean =>
-    node.codedata?.node === 'FUNCTION_CALL' && node.codedata?.packageName === EVAL_TEMPLATE_PACKAGE;
 
 const isBaseField = (field: FormField): boolean =>
     !field.key.startsWith('template_') && field.key !== 'evalQueries';

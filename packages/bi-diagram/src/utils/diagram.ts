@@ -34,6 +34,7 @@ import { WhileNodeFactory } from "../components/nodes/WhileNode";
 import { EndNodeFactory } from "../components/nodes/EndNode";
 import { ErrorNodeFactory } from "../components/nodes/ErrorNode";
 import { AgentCallNodeFactory } from "../components/nodes/AgentCallNode/AgentCallNodeFactory";
+import { EvalNodeFactory } from "../components/nodes/EvalNode/EvalNodeFactory";
 import { PromptNodeFactory } from "../components/nodes/PromptNode/PromptNodeFactory";
 import { CallActivityNodeFactory } from "../components/nodes/CallActivityNode";
 import { SendDataNodeFactory } from "../components/nodes/SendDataNode";
@@ -67,6 +68,7 @@ export function generateEngine(): DiagramEngine {
     engine.getNodeFactories().registerFactory(new CallActivityNodeFactory());
     engine.getNodeFactories().registerFactory(new SendDataNodeFactory());
     engine.getNodeFactories().registerFactory(new WaitDataNodeFactory());
+    engine.getNodeFactories().registerFactory(new EvalNodeFactory());
 
     engine.getLayerFactories().registerFactory(new OverlayLayerFactory());
 
