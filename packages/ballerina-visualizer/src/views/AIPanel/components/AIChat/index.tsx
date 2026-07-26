@@ -2853,10 +2853,10 @@ const AIChat: React.FC = () => {
                             inputPlaceholder={
                                 footerInputPlaceholder ??
                                 (agentMode === AgentMode.Plan
-                                    ? "Describe what you'd like to plan and build…"
+                                    ? "What would you like to plan?"
                                     : messages.length === 0
-                                        ? "Describe the change you'd like to make…"
-                                        : "Describe what to change next…")
+                                        ? "What would you like to change?"
+                                        : "What should we do next?")
                             }
                             onSend={handleSend}
                             onStop={handleStop}

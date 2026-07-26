@@ -82,7 +82,9 @@ const PANEL_WIDTH = 390;
 type MiniMsg = Pick<UIChatMessage, "role" | "content" | "messageId">;
 
 /** Transient, non-persisted status appended after the transcript (stop/error/review). */
-type MiniTail = { kind: "notice" | "error"; text: string };
+type MiniTail =
+    | { kind: "notice" | "error"; text: string }
+    | { kind: "review"; text: string };
 
 /**
  * `ChatNotify` types that carry no persisted transcript content, so `applyEvent`
@@ -473,6 +475,40 @@ const Notice = styled.div`
     font-style: italic;
 `;
 
+const ReviewNotice = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    color: var(--vscode-foreground);
+    background: color-mix(in srgb, var(--vscode-charts-green) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--vscode-charts-green) 35%, var(--vscode-panel-border));
+    border-radius: 8px;
+    font-size: 12px;
+`;
+
+const ReviewNoticeText = styled.span`
+    flex: 1;
+    min-width: 0;
+`;
+
+const ReviewButton = styled.button`
+    flex: none;
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-family: var(--vscode-font-family);
+    font-size: 12px;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover {
+        background: var(--vscode-button-hoverBackground);
+    }
+`;
+
 const ErrorItem = styled.div`
     color: var(--vscode-errorForeground);
     font-size: 12px;
@@ -742,7 +778,10 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
                 // nothing for components, but it still authors the stored turn.
                 setMsgs((prev) => reduceEvent(prev, evt, gen));
                 if (evt.componentType === "review") {
-                    setTail((prev) => [...prev, { kind: "notice", text: "Changes are ready to review." }]);
+                    setTail((prev) => [
+                        ...prev.filter((item) => item.kind !== "review"),
+                        { kind: "review", text: "Your changes are ready to review." },
+                    ]);
                 }
                 break;
             // Interactive-prompt cards. The mini renders none of them (the escalation
@@ -945,20 +984,29 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
                         <Icon name="bi-ai-chat" sx={{ width: 28, height: 28 }} iconSx={{ fontSize: "28px" }} />
                         <div>
                             {draftPrompt.codeContext?.type === "addition"
-                                ? "Describe what WSO2 Copilot should insert here."
-                                : "Ask WSO2 Copilot anything about your integration."}
+                                ? "What would you like to add here?"
+                                : "How can I help with your integration?"}
                         </div>
-                        <div style={{ fontSize: 11 }}>This is the same conversation as the full chat.</div>
+                        <div style={{ fontSize: 11 }}>You can continue this conversation in the full chat.</div>
                     </EmptyState>
                 )}
                 {transcript}
-                {tail.map((item, index) =>
-                    item.kind === "notice" ? (
+                {tail.map((item, index) => {
+                    if (item.kind === "review") {
+                        return (
+                            <ReviewNotice key={`tail-${index}`}>
+                                <Codicon name="diff" />
+                                <ReviewNoticeText>{item.text}</ReviewNoticeText>
+                                <ReviewButton onClick={openFullChat}>Review changes</ReviewButton>
+                            </ReviewNotice>
+                        );
+                    }
+                    return item.kind === "notice" ? (
                         <Notice key={`tail-${index}`}>{item.text}</Notice>
                     ) : (
                         <ErrorItem key={`tail-${index}`}>{item.text}</ErrorItem>
-                    )
-                )}
+                    );
+                })}
             </Body>
             {awaitingInput && (
                 <EscalationBanner>
@@ -986,10 +1034,10 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
                     }}
                     placeholder={
                         runActive
-                            ? "Copilot is working…"
+                            ? "I’m working on it…"
                             : draftPrompt.codeContext?.type === "addition"
-                                ? "What should Copilot insert here?"
-                                : "Ask a follow-up…"
+                                ? "What should I add here?"
+                                : "What should we work on?"
                     }
                     aria-label="Message WSO2 Copilot"
                     disabled={runActive}

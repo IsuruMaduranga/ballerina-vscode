@@ -84,3 +84,14 @@ it("creates an edit-mode empty prompt for an ordinary orb launch", () => {
         autoSubmit: false,
     });
 });
+
+it("opens a completed review in the full chat without starting another turn", () => {
+    const handoff = buildFullChatHandoffPrompt(createMiniChatPrompt("", { autoSubmit: true }), "");
+
+    expect(handoff).toEqual({
+        type: "text",
+        text: "",
+        planMode: false,
+        autoSubmit: false,
+    });
+});

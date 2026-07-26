@@ -173,7 +173,7 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ isOnboarding = false })
                         marginTop: "16px",
                     }}
                 >
-                    Build integrations faster with AI. Describe what you need and get working integrations instantly.
+                    I can help you build, update, and understand your integration. Tell me what you’d like to do.
                 </Typography>
                 <Typography
                     variant="body1"
@@ -184,7 +184,7 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ isOnboarding = false })
                         marginTop: "36px",
                     }}
                 >
-                    Type <b>/</b> to use commands
+                    Use <b>/</b> for commands
                 </Typography>
                 <Typography
                     variant="body1"
@@ -199,7 +199,7 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ isOnboarding = false })
                     }}
                 >
                     <Icon name="Paperclip" sx={{ fontSize: "16px", verticalAlign: "-3px", marginRight: "-4px" }} />
-                    to attach context
+                    Add files and context
                 </Typography>
                 {isOnboarding && (
                     <GuideChip

@@ -360,7 +360,7 @@ export function AgentStatusOrb() {
 
     const state = status.state;
     const colors = ORB_COLORS[state];
-    const label = state === "idle" ? "Ask WSO2 Copilot" : activeStateLabel(status);
+    const label = state === "idle" ? "Chat with WSO2 Copilot" : activeStateLabel(status);
     const dragging = dragPos !== null && !snapping;
     // Active states keep the pill visible the whole time. Idle shows the
     // invitation input; dismissing only collapses it into the orb — hovering
@@ -497,8 +497,8 @@ export function AgentStatusOrb() {
                                 submitInvite();
                             }
                         }}
-                        placeholder="What do you want to build?"
-                        aria-label="Ask WSO2 Copilot: what do you want to build?"
+                        placeholder="How can I help?"
+                        aria-label="Message WSO2 Copilot"
                     />
                     <InviteDismiss title="Hide" aria-label="Hide the copilot prompt" onClick={() => setInviteDismissed(true)}>
                         ✕

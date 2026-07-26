@@ -219,8 +219,8 @@ export function CopilotHeroBox() {
                                     submit();
                                 }
                             }}
-                            placeholder="What do you want to build? Describe it — WSO2 Copilot will generate it"
-                            aria-label="Ask WSO2 Copilot: what do you want to build?"
+                            placeholder="What can I help you build or change?"
+                            aria-label="Message WSO2 Copilot"
                         />
                         <GenerateButton
                             title="Generate with WSO2 Copilot"
