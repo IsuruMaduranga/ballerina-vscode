@@ -19,6 +19,7 @@
 import styled from "@emotion/styled";
 import { AgentRunState, AgentRunStatus, ChatNotify } from "@wso2/ballerina-core";
 import { BallerinaRpcClient } from "@wso2/ballerina-rpc-client";
+import type { MiniChatPrompt } from "./promptHandoff";
 
 /** WSO2 brand orange — the pulse-icon color from wso2.com/about/brand. */
 export const BRAND_ORANGE = "#F14E23";
@@ -166,6 +167,35 @@ export function subscribeAgentRunStatus(
     }
     return () => {
         statusListeners.delete(listener);
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Contextual mini-chat launch requests.
+//
+// Diagram actions and the orb are siblings in the visualizer tree. Keep their
+// handoff in this small fan-out store so the diagram can pass the complete
+// typed prompt (especially CodeContext) without opening the extension panel.
+// ---------------------------------------------------------------------------
+
+const miniChatOpenListeners = new Set<(prompt: MiniChatPrompt) => void>();
+
+/**
+ * Ask the ambient Copilot surface to open with a contextual prompt.
+ * Returns false only when the orb has not mounted, allowing a full-panel fallback.
+ */
+export function requestMiniChatOpen(prompt: MiniChatPrompt): boolean {
+    if (miniChatOpenListeners.size === 0) {
+        return false;
+    }
+    miniChatOpenListeners.forEach((listener) => listener(prompt));
+    return true;
+}
+
+export function subscribeMiniChatOpen(listener: (prompt: MiniChatPrompt) => void): () => void {
+    miniChatOpenListeners.add(listener);
+    return () => {
+        miniChatOpenListeners.delete(listener);
     };
 }
 

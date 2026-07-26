@@ -39,7 +39,9 @@ import {
     activeStateLabel,
     subscribeAgentRunStatus,
     subscribeHeroPresence,
+    subscribeMiniChatOpen,
 } from "./shared";
+import { createMiniChatPrompt, MiniChatPrompt } from "./promptHandoff";
 
 /**
  * Floating ambient indicator for the Copilot agent's background run.
@@ -301,6 +303,7 @@ const SpinArc = styled.div`
 export function AgentStatusOrb() {
     const { rpcClient } = useRpcContext();
     const [status, setStatus] = useState<AgentRunStatus | null>(null);
+    const statusRef = useRef<AgentRunStatus | null>(null);
     const [hovered, setHovered] = useState(false);
     const [anchor, setAnchor] = useState<Anchor>(loadAnchor);
     /** Orb top-left in px while dragging/snapping; null when docked at an anchor. */
@@ -314,8 +317,10 @@ export function AgentStatusOrb() {
     const [heroPresent, setHeroPresent] = useState(false);
     /** Mini chat overlay toggled by clicking the orb. */
     const [miniOpen, setMiniOpen] = useState(false);
-    /** Prompt typed into the invite input, handed to the mini chat once on open. */
-    const miniPromptRef = useRef<string | undefined>(undefined);
+    /** Contextual prompt handed to the mini chat once on open. */
+    const miniPromptRef = useRef<MiniChatPrompt | undefined>(undefined);
+    /** Forces a fresh mini instance when a diagram launches it while already open. */
+    const [miniChatKey, setMiniChatKey] = useState(0);
     /** WebGL unavailable — render the CSS gradient sphere instead. */
     const [webglFailed, setWebglFailed] = useState(false);
     const handleWebglFailed = useCallback(() => setWebglFailed(true), []);
@@ -325,6 +330,24 @@ export function AgentStatusOrb() {
             return;
         }
         return subscribeAgentRunStatus(rpcClient, setStatus);
+    }, [rpcClient]);
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
+
+    useEffect(() => {
+        return subscribeMiniChatOpen((prompt) => {
+            // If the full panel is already visible, update it in place. Otherwise
+            // keep this interaction ambient and open the contextual mini chat.
+            if (statusRef.current?.aiPanelOpen && rpcClient) {
+                void rpcClient.getAiPanelRpcClient().openAIPanel(prompt);
+                return;
+            }
+            miniPromptRef.current = prompt;
+            setMiniChatKey((key) => key + 1);
+            setMiniOpen(true);
+        });
     }, [rpcClient]);
 
     useEffect(() => subscribeHeroPresence(setHeroPresent), []);
@@ -356,9 +379,10 @@ export function AgentStatusOrb() {
     const submitInvite = () => {
         const text = inviteText.trim();
         if (text) {
-            miniPromptRef.current = text;
+            miniPromptRef.current = createMiniChatPrompt(text, { autoSubmit: true });
         }
         setInviteText("");
+        setMiniChatKey((key) => key + 1);
         setMiniOpen(true);
     };
 
@@ -448,6 +472,7 @@ export function AgentStatusOrb() {
         <>
         {miniOpen && (
             <MiniChat
+                key={miniChatKey}
                 anchor={anchor}
                 onClose={() => setMiniOpen(false)}
                 takeInitialPrompt={() => {

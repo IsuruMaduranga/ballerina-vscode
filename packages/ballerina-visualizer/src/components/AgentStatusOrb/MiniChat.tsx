@@ -20,9 +20,10 @@ import React, { useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
 import { keyframes } from "@emotion/react";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
-import { AgentRunStatus, ChatNotify, GetRunStatusResponse, SHARED_COMMANDS, UIChatMessage } from "@wso2/ballerina-core";
+import { AgentRunStatus, ChatNotify, GetRunStatusResponse, UIChatMessage } from "@wso2/ballerina-core";
 import { Codicon, Icon } from "@wso2/ui-toolkit";
 import MarkdownRenderer from "../../views/AIPanel/components/MarkdownRenderer";
+import CodeContextCard from "../../views/AIPanel/components/CodeContextCard";
 import { StreamItem } from "../../views/AIPanel/components/AgentStreamView/types";
 import {
     serializeStream,
@@ -44,6 +45,12 @@ import {
     subscribeAgentRunStatus,
     subscribeCopilotChatNotify,
 } from "./shared";
+import {
+    buildFullChatHandoffPrompt,
+    buildMiniChatGenerationRequest,
+    createMiniChatPrompt,
+    MiniChatPrompt,
+} from "./promptHandoff";
 
 /**
  * Minimized Copilot chat — a compact overlay opened by clicking the floating
@@ -509,6 +516,12 @@ const Footer = styled.div`
     border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-dropdown-border));
 `;
 
+const ContextArea = styled.div`
+    flex: none;
+    padding: 0 12px;
+    border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-dropdown-border));
+`;
+
 const FooterInput = styled.input`
     flex: 1;
     min-width: 0;
@@ -626,11 +639,10 @@ interface MiniChatProps {
     anchor: Anchor;
     onClose: () => void;
     /**
-     * One-shot accessor for a prompt typed into the orb's invite input:
-     * returns it (and clears it at the source) so the mini sends it
-     * immediately on open — a remount must not re-send it.
+     * One-shot accessor for an orb or diagram launch prompt. The source clears
+     * it after this read so a remount cannot re-apply or re-send the prompt.
      */
-    takeInitialPrompt?: () => string | undefined;
+    takeInitialPrompt?: () => MiniChatPrompt | undefined;
 }
 
 export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) {
@@ -640,6 +652,7 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
     // Transient run signals (stop/error/review) that aren't part of the store.
     const [tail, setTail] = useState<MiniTail[]>([]);
     const [input, setInput] = useState("");
+    const [draftPrompt, setDraftPrompt] = useState<MiniChatPrompt>(() => createMiniChatPrompt());
     const [streaming, setStreaming] = useState(false);
     const [status, setStatus] = useState<AgentRunStatus | null>(null);
     const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -770,15 +783,13 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
         }
     };
 
-    const sendPrompt = (prompt: string) => {
+    const sendPrompt = (prompt: string, promptContext: MiniChatPrompt = draftPrompt) => {
         setTail([]);
         setMsgs((prev) => [...prev, { role: "user", content: prompt }]);
         setStreaming(true);
-        rpcClient?.getAiPanelRpcClient().generateAgent({
-            usecase: prompt,
-            isPlanMode: false,
-            fileAttachmentContents: [],
-        });
+        rpcClient
+            ?.getAiPanelRpcClient()
+            .generateAgent(buildMiniChatGenerationRequest(promptContext, prompt));
     };
 
     useEffect(() => {
@@ -838,8 +849,12 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
             //    new prompt beneath it. No buffer replay (that's a different turn).
             if (initialPrompt) {
                 setMsgs(history);
+                setDraftPrompt(initialPrompt);
+                setInput(initialPrompt.autoSubmit ? "" : initialPrompt.text);
                 finishReplay();
-                sendPrompt(initialPrompt);
+                if (initialPrompt.autoSubmit && initialPrompt.text.trim()) {
+                    sendPrompt(initialPrompt.text.trim(), initialPrompt);
+                }
                 return;
             }
 
@@ -894,7 +909,8 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
     const runActive = streaming || status?.state === "running" || awaitingInput;
 
     const openFullChat = () => {
-        rpcClient?.getCommonRpcClient().executeCommand({ commands: [SHARED_COMMANDS.OPEN_AI_PANEL] });
+        const handoffPrompt = buildFullChatHandoffPrompt(draftPrompt, input);
+        void rpcClient?.getAiPanelRpcClient().openAIPanel(handoffPrompt);
         // The full panel takes over (and the extension stops mirroring events
         // to the visualizer while it is open) — close the mini immediately.
         onClose();
@@ -927,7 +943,11 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
                 {transcript.length === 0 && tail.length === 0 && !streaming && (
                     <EmptyState>
                         <Icon name="bi-ai-chat" sx={{ width: 28, height: 28 }} iconSx={{ fontSize: "28px" }} />
-                        <div>Ask WSO2 Copilot anything about your integration.</div>
+                        <div>
+                            {draftPrompt.codeContext?.type === "addition"
+                                ? "Describe what WSO2 Copilot should insert here."
+                                : "Ask WSO2 Copilot anything about your integration."}
+                        </div>
                         <div style={{ fontSize: 11 }}>This is the same conversation as the full chat.</div>
                     </EmptyState>
                 )}
@@ -947,6 +967,14 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
                     <BannerButton onClick={openFullChat}>Open full chat</BannerButton>
                 </EscalationBanner>
             )}
+            {draftPrompt.codeContext && (
+                <ContextArea>
+                    <CodeContextCard
+                        codeContext={draftPrompt.codeContext}
+                        onRemove={() => setDraftPrompt((prompt) => ({ ...prompt, codeContext: undefined }))}
+                    />
+                </ContextArea>
+            )}
             <Footer>
                 <FooterInput
                     value={input}
@@ -956,7 +984,13 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
                             send();
                         }
                     }}
-                    placeholder={runActive ? "Copilot is working…" : "Ask a follow-up…"}
+                    placeholder={
+                        runActive
+                            ? "Copilot is working…"
+                            : draftPrompt.codeContext?.type === "addition"
+                                ? "What should Copilot insert here?"
+                                : "Ask a follow-up…"
+                    }
                     aria-label="Message WSO2 Copilot"
                     disabled={runActive}
                 />

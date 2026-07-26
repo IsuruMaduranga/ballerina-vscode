@@ -454,6 +454,17 @@ export class AiPanelRpcManager implements AIPanelAPI {
     }
 
     async generateAgent(params: GenerateAgentCodeRequest): Promise<boolean> {
+        // Contextual mini-chat launches bypass getDefaultPrompt(), where panel
+        // launches normally convert the diagram's absolute file path to the
+        // workspace-relative path expected by the agent.
+        if (params.codeContext && path.isAbsolute(params.codeContext.filePath)) {
+            const smCtx = StateMachine.context();
+            const workspaceRoot = smCtx.workspacePath || smCtx.projectPath;
+            params = {
+                ...params,
+                codeContext: normalizeCodeContext(params.codeContext, workspaceRoot, smCtx.projectPath),
+            };
+        }
         return await generateAgent(params);
     }
 
