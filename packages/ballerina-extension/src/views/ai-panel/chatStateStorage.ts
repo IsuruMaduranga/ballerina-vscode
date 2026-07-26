@@ -475,21 +475,29 @@ export class ChatStateStorage {
     }
 
     /**
-     * Get active thread
+     * Get active thread.
+     *
+     * Initializes the workspace rather than reading the in-memory cache directly.
+     * A cold cache used to resolve to 'default' even when the persisted active
+     * thread was something else, and the caller would then go on to *create* that
+     * 'default' thread through getOrCreateThread — repointing activeThreadId and
+     * flushing it to disk, so the user landed in an empty chat with their real
+     * thread still on disk but no longer active. Nothing warms this cache eagerly
+     * (initializeWorkspace has no external callers), so ordering between the
+     * panel's mount RPCs was the only thing preventing it.
+     *
      * @param projectRootPath Workspace identifier
-     * @returns Active thread or undefined
+     * @returns Active thread, or undefined only if its file failed to load
      */
     getActiveThread(projectRootPath: string): ChatThread | undefined {
-        const workspace = this.storage.get(projectRootPath);
-        if (!workspace) {
-            return undefined;
-        }
+        const workspace = this.initializeWorkspace(projectRootPath);
         return workspace.threads.get(workspace.activeThreadId);
     }
 
     /**
-     * Id of the active thread, falling back to 'default' for a workspace that has
-     * not been initialized yet.
+     * Id of the active thread. Resolves against the workspace on disk, so it is
+     * correct even on the first call after an extension-host restart; the
+     * 'default' fallback now only covers a thread whose file failed to load.
      *
      * Prefer this over inlining `getActiveThread(p)?.id ?? 'default'` at call sites:
      * threads are dynamic (`thread-<ts>-<rand>`), so every place that reaches for a
