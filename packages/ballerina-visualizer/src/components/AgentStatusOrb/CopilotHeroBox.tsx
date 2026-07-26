@@ -100,20 +100,20 @@ const OpenHint = styled.div`
     white-space: nowrap;
 `;
 
-const GenerateButton = styled.button`
+const SendButton = styled.button`
     flex: none;
     display: flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     border: none;
     border-radius: 9px;
-    padding: 7px 14px;
-    font-size: 13px;
-    font-family: var(--vscode-font-family);
+    padding: 0;
+    font-size: 16px;
     color: #ffffff;
     background: linear-gradient(135deg, #6b5ce8, ${BRAND_ORANGE});
     cursor: pointer;
-    white-space: nowrap;
     transition: filter 0.15s ease, transform 0.15s ease;
     &:hover {
         filter: brightness(1.12);
@@ -222,16 +222,16 @@ export function CopilotHeroBox() {
                             placeholder="What can I help you build or change?"
                             aria-label="Message WSO2 Copilot"
                         />
-                        <GenerateButton
-                            title="Generate with WSO2 Copilot"
-                            aria-label="Generate with WSO2 Copilot"
+                        <SendButton
+                            title="Send to WSO2 Copilot"
+                            aria-label="Send to WSO2 Copilot"
                             onClick={(event) => {
                                 event.stopPropagation();
                                 submit();
                             }}
                         >
-                            <Codicon name="sparkle" /> Generate
-                        </GenerateButton>
+                            <Icon name="Send" sx={{ fontSize: "16px" }} />
+                        </SendButton>
                     </>
                 )}
             </Box>
