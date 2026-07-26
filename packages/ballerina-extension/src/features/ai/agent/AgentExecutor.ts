@@ -24,6 +24,7 @@ import { getAnthropicClient, getProviderCacheControl, addCacheControlToMessages,
 import { populateHistoryForAgent, getErrorMessage, buildChatError } from '../utils/ai-utils';
 import { sendAgentDidOpenForFreshProjects } from '../utils/project/ls-schema-notifications';
 import { getSystemPrompt, getUserPrompt } from './prompts';
+import { generateFollowupSuggestions } from './followups';
 import { prepareAgentsMdForTurn } from './agents-md';
 // TODO(auto-memory): temporarily disabled for this release.
 // import { executeAutoDream, isMemoryEnabled } from '../memory/autoDream';
@@ -144,6 +145,26 @@ function computeTokenBreakdown(
     const toolResults = Math.round(inputTokens * toolChars / totalChars);
     const toolDefinitions = Math.max(0, inputTokens - systemInstructions - files - messages - toolResults);
     return { systemInstructions, toolDefinitions, reservedOutput: RESERVED_OUTPUT_TOKENS, files, messages, toolResults };
+}
+
+/** Concatenates the assistant's text output from a set of model messages. */
+function extractAssistantText(messages: any[]): string {
+    const parts: string[] = [];
+    for (const message of messages ?? []) {
+        if (message?.role !== 'assistant') {
+            continue;
+        }
+        if (typeof message.content === 'string') {
+            parts.push(message.content);
+        } else if (Array.isArray(message.content)) {
+            for (const item of message.content) {
+                if (item?.type === 'text' && typeof item.text === 'string') {
+                    parts.push(item.text);
+                }
+            }
+        }
+    }
+    return parts.join('\n').trim();
 }
 
 /**
@@ -915,12 +936,55 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         // Emit UI events
         await this.emitReviewActions(context);
 
+        // Follow-up suggestions — best-effort, non-blocking. Only reached on a normally
+        // completed turn (abort/error paths return earlier and never call this).
+        this.maybeEmitFollowupSuggestions(context, assistantMessages);
+
         // TODO(auto-memory): auto-dream consolidation temporarily disabled for this release.
         // // autoDream consolidation — skipped on compaction turns (no real user activity)
         // const workspacePath = context.ctx.workspacePath || context.ctx.projectPath || '';
         // if (workspacePath && !context.wasCompactionTurn) {
         //     executeAutoDream({ workspacePath });
         // }
+    }
+
+    /**
+     * Generates post-turn follow-up suggestions and pushes them to the webview.
+     *
+     * Fire-and-forget: never blocks turn completion, and any failure (disabled, empty
+     * response, model error, abort) simply results in no chips. Honors the turn's abort
+     * signal so a superseded turn does not emit stale suggestions.
+     */
+    private maybeEmitFollowupSuggestions(context: StreamContext, assistantMessages: any[]): void {
+        const enabled = workspace.getConfiguration('ballerina.copilot').get<boolean>('followupSuggestions', true);
+        if (!enabled || this.config.abortController.signal.aborted) {
+            return;
+        }
+
+        const assistantText = extractAssistantText(assistantMessages);
+        if (!assistantText) {
+            return;
+        }
+
+        void (async () => {
+            try {
+                const suggestions = await generateFollowupSuggestions({
+                    userQuery: this.config.params.usecase ?? '',
+                    assistantResponse: assistantText,
+                    mode: this.config.params.isPlanMode ? 'Plan' : 'Edit',
+                    abortSignal: this.config.abortController.signal,
+                });
+                if (suggestions.length > 0 && !this.config.abortController.signal.aborted) {
+                    this.config.eventHandler({
+                        type: 'followup_suggestions',
+                        messageId: context.messageId,
+                        suggestions,
+                    });
+                }
+            } catch (error) {
+                console.warn('[AgentExecutor] Follow-up suggestion generation failed:', error);
+            }
+        })();
     }
 
     /**

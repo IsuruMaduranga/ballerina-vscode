@@ -339,6 +339,12 @@
                     "default": false,
                     "scope": "resource",
                     "description": "Show context usage indicator in the AI chat input footer."
+                },
+                "ballerina.copilot.followupSuggestions": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "resource",
+                    "description": "Suggest follow-up actions after Copilot responds in the AI chat."
                 }
             }
         },

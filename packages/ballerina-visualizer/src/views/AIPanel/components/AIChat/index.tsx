@@ -26,6 +26,7 @@ import {
     Command,
     TemplateId,
     ChatNotify,
+    FollowupSuggestion,
     DocumentationGeneratorIntermediaryState,
     OperationType,
     DocGenerationRequest,
@@ -53,6 +54,7 @@ import { getToolCallDisplay } from "../AgentStreamView/toolDisplay";
 import { ConnectorGeneratorSegment } from "../ConnectorGeneratorSegment";
 import { ConfigurationCollectorSegment } from "../ConfigurationCollectorSegment";
 import CheckpointSeparator from "../CheckpointSeparator";
+import FollowupSuggestions from "../FollowupSuggestions";
 import { Attachment, AttachmentStatus, SkillEnableStage, SkillEntry, TaskApprovalRequest } from "@wso2/ballerina-core";
 import type { ClarifyEvent, ConfigurationCollectionEvent, ConnectorGenerationNotification } from "@wso2/ballerina-core";
 
@@ -328,6 +330,7 @@ const AIChat: React.FC = () => {
     };
 
     const [isLoading, setIsLoading] = useState(false);
+    const [followupSuggestions, setFollowupSuggestions] = useState<FollowupSuggestion[]>([]);
     const [isCompacting, setIsCompacting] = useState(false);
     // Tools currently in flight, oldest first, for the composer's loading
     // indicator. This is a list rather than a single slot because a step can run
@@ -1551,6 +1554,9 @@ const AIChat: React.FC = () => {
                 }
             }
 
+        } else if (type === "followup_suggestions") {
+            setFollowupSuggestions(response.suggestions);
+
         } else if (type === "error") {
             console.log("Received error signal");
             const errorContent = response.content;
@@ -1805,6 +1811,7 @@ const AIChat: React.FC = () => {
         setCurrentGeneratingPromptIndex(otherMessages.length);
         setIsPromptExecutedInCurrentWindow(true);
         setFeedbackGiven(null);
+        setFollowupSuggestions([]);
 
         if (content.input.length === 0) {
             return;
@@ -2816,6 +2823,19 @@ const AIChat: React.FC = () => {
                                             messageIndex={index}
                                             onFeedback={handleFeedback}
                                             currentFeedback={feedbackGiven}
+                                        />
+                                    )}
+                                    {isAssistantMessage && isLatestAssistantMessage && !isLoading && !isCodeLoading && followupSuggestions.length > 0 && (
+                                        <FollowupSuggestions
+                                            suggestions={followupSuggestions}
+                                            onPick={(suggestion) => {
+                                                aiChatInputRef.current?.setInputContent({
+                                                    type: "text",
+                                                    text: suggestion.prompt,
+                                                    planMode: agentMode === AgentMode.Plan,
+                                                });
+                                                setFollowupSuggestions([]);
+                                            }}
                                         />
                                     )}
                                 </ChatMessage>
