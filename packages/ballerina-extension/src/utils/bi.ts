@@ -26,6 +26,7 @@ import {
     CreateComponentResponse,
     createFunctionSignature,
     EVENT_TYPE,
+    isPathInside,
     MigrateRequest,
     NodePosition,
     ProjectMigrationResult,
@@ -671,9 +672,7 @@ export async function convertProjectToWorkspace(params: AddProjectToWorkspaceReq
 
     // The current integration is moved into the new project directory, so the
     // destination cannot be the integration itself or a directory inside it.
-    const normalizedNew = path.resolve(newDirectory);
-    const normalizedCurrent = path.resolve(currentProjectPath);
-    if (normalizedNew === normalizedCurrent || normalizedNew.startsWith(normalizedCurrent + path.sep)) {
+    if (isPathInside(currentProjectPath, newDirectory)) {
         throw new Error('The project location cannot be inside the integration being converted. Please choose a different location.');
     }
 
@@ -847,9 +846,7 @@ async function convertAndAddComponent(projectRequest: ProjectRequest): Promise<{
 
     // The current integration is moved into the new project directory, so the
     // destination cannot be the integration itself or a directory inside it.
-    const normalizedNew = path.resolve(workspaceRoot);
-    const normalizedCurrent = path.resolve(currentProjectPath);
-    if (normalizedNew === normalizedCurrent || normalizedNew.startsWith(normalizedCurrent + path.sep)) {
+    if (isPathInside(currentProjectPath, workspaceRoot)) {
         throw new Error('The project location cannot be inside the integration being converted. Please choose a different location.');
     }
 

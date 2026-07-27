@@ -51,6 +51,14 @@ import {
 } from "./shared/FormPageLayout";
 import { DEFAULT_LIBRARY_NAME, DEFAULT_PACKAGE_NAME } from "./types";
 import { useRealtimeProjectPathValidation } from "./useRealtimeProjectPathValidation";
+import { useDirectoryNameCoupling } from "../../hooks/useDirectoryNameCoupling";
+import {
+    checkNameCollision as resolveNameCollisionMessage,
+    resolveDefaultNameAndDirectory,
+    toTakenNames,
+    emptyTakenNames,
+    TakenNames,
+} from "../../hooks/resolveAvailableDirectoryName";
 
 const FieldGroup = styled.div`
     margin-bottom: 20px;
@@ -66,9 +74,6 @@ const InfoNote = styled.div`
     color: var(--vscode-descriptionForeground);
 `;
 
-
-const MAX_DIRECTORY_ATTEMPTS = 50;
-const NAME_EXISTS_MESSAGE = "An integration or library with this name already exists in the project";
 
 interface LibraryFormData {
     libraryName: string;
@@ -104,8 +109,8 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
     const defaultPathInitialized = useRef(false);
     const libraryNameTouchedRef = useRef(false);
     const [packageNameTouched, setPackageNameTouched] = useState(false);
-    const [directoryName, setDirectoryName] = useState(() => sanitizePackageName(DEFAULT_LIBRARY_NAME));
-    const [dirTouched, setDirTouched] = useState(false);
+    const dirCoupling = useDirectoryNameCoupling(() => sanitizePackageName(DEFAULT_LIBRARY_NAME), sanitizePackageName);
+    const { directoryName, dirTouched } = dirCoupling;
     const [isPackageInfoExpanded, setIsPackageInfoExpanded] = useState(false);
     const [isValidating, setIsValidating] = useState(false);
     const [libraryNameError, setLibraryNameError] = useState<string | null>(null);
@@ -113,9 +118,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
     const [existingWorkspace, setExistingWorkspace] = useState(false);
     // Folder names and component titles already used in the target project, so a
     // library name the user types can be flagged live if it collides.
-    const [takenNames, setTakenNames] = useState<{ folders: Set<string>; titles: Set<string> }>(
-        { folders: new Set(), titles: new Set() }
-    );
+    const [takenNames, setTakenNames] = useState<TakenNames>(emptyTakenNames());
     const [packageNameError, setPackageNameError] = useState<string | null>(null);
     const [orgNameError, setOrgNameError] = useState<string | null>(null);
     const [defaultPath, setDefaultPath] = useState("");
@@ -136,39 +139,12 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
 
     /** Returns a diagnostic when the name collides with an existing integration or
      *  library in the target project (by folder or by title), else null. */
-    const checkNameCollision = (value: string): string | null => {
-        const trimmed = value.trim();
-        if (!trimmed) {
-            return null;
-        }
-        const folder = sanitizePackageName(trimmed);
-        if (takenNames.folders.has(folder.toLowerCase()) || takenNames.titles.has(trimmed.toLowerCase())) {
-            return NAME_EXISTS_MESSAGE;
-        }
-        return null;
-    };
+    const checkNameCollision = (value: string): string | null =>
+        resolveNameCollisionMessage(value, takenNames, sanitizePackageName);
 
     useEffect(() => {
         if (!workspaceReady) return;
         let mounted = true;
-
-        // Pick a default name/folder that collides with neither an existing folder
-        // nor an existing integration/library title in the target project (indexed:
-        // "Untitled_2" / "untitled_2", …).
-        const resolveDefaultNameAndDirectory = (
-            takenFolders: Set<string>,
-            takenTitles: Set<string>
-        ): { name: string; directoryName: string } => {
-            const nameBase = DEFAULT_LIBRARY_NAME;
-            for (let attempt = 0; attempt < MAX_DIRECTORY_ATTEMPTS; attempt++) {
-                const name = attempt === 0 ? nameBase : `${nameBase}_${attempt + 1}`;
-                const directoryName = sanitizePackageName(name);
-                if (!takenFolders.has(directoryName.toLowerCase()) && !takenTitles.has(name.trim().toLowerCase())) {
-                    return { name, directoryName };
-                }
-            }
-            return { name: nameBase, directoryName: sanitizePackageName(nameBase) };
-        };
 
         (async () => {
             // Seed the default path only once — this effect re-runs on workspacePath
@@ -179,24 +155,21 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
                 if (!mounted) return;
                 // Fetch the project's existing folders + titles once: used to pick a
                 // collision-free default AND to flag name collisions live.
-                let takenFolders = new Set<string>();
-                let takenTitles = new Set<string>();
+                let taken = emptyTakenNames();
                 try {
-                    const taken = await wsClient.getProjectComponentNames({ projectPath: dp });
+                    taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: dp }));
                     if (!mounted) return;
-                    takenFolders = new Set((taken?.folders ?? []).map((f: string) => f.toLowerCase()));
-                    takenTitles = new Set((taken?.titles ?? []).map((t: string) => t.trim().toLowerCase()));
                 } catch {
                     // Best effort — fall back to the un-indexed default on failure.
                 }
-                setTakenNames({ folders: takenFolders, titles: takenTitles });
+                setTakenNames(taken);
                 // Resolve the indexed default name/folder BEFORE committing the path so
                 // the fields show the final values immediately (like the wizard).
-                const { name, directoryName: dirName } = resolveDefaultNameAndDirectory(takenFolders, takenTitles);
+                const { name, directoryName: dirName } = resolveDefaultNameAndDirectory(DEFAULT_LIBRARY_NAME, taken, sanitizePackageName);
                 defaultPathInitialized.current = true;
                 // Don't clobber a name the user typed while the seed was resolving.
                 if (!libraryNameTouchedRef.current) {
-                    setDirectoryName(dirName);
+                    dirCoupling.setDirectoryName(dirName);
                     setFormData(prev => ({ ...prev, libraryName: name, packageName: sanitizePackageName(name), path: dp }));
                 } else {
                     setFormData(prev => ({ ...prev, path: dp }));
@@ -288,10 +261,9 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
         }));
         // Reflect the derived folder immediately for a responsive path field. Only the
         // default name is auto-indexed (at seed time); a name the user types is used
-        // verbatim, matching the integration wizard.
-        if (!dirTouched) {
-            setDirectoryName(sanitized);
-        }
+        // verbatim, matching the integration wizard. Unlike the other Create-flow
+        // forms, a blank name is sanitized as-is rather than clearing the folder.
+        dirCoupling.handleDisplayNameChange(value, { guardBlank: false });
     };
 
     const handlePathSelection = async () => {
@@ -423,8 +395,8 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
                                         const base = extractBase(value, name);
                                         setPathTouched(true);
                                         setEditablePath(base);
-                                        setDirTouched(true);
-                                        setDirectoryName(name);
+                                        dirCoupling.setDirectoryName(name);
+                                        dirCoupling.setDirTouched(true);
                                     }}
                                     onBlur={() => {
                                         if (pathTouched && editablePath !== formData.path) {

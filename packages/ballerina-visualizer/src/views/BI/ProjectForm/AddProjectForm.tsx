@@ -29,6 +29,7 @@ import { ProjectContext } from "../CreateIntegrationWizard/types";
 import { BiWsClientProvider } from "../wsManager/WsClientContext";
 import { CreateFlowShell } from "./embedded/integrator-form/shared/CreateFlowShell";
 import { FormFooter } from "./embedded/integrator-form/shared/FormPageLayout";
+import { useDirectoryNameCoupling } from "./hooks/useDirectoryNameCoupling";
 export function AddProjectForm() {
     const { rpcClient } = useRpcContext();
     const [formData, setFormData] = useState<AddProjectFormData>({
@@ -50,8 +51,7 @@ export function AddProjectForm() {
     // directory name (last path segment) defaults to the project name but can be
     // edited independently once the user touches it.
     const [convertBaseDir, setConvertBaseDir] = useState<string>("");
-    const [convertDirName, setConvertDirName] = useState<string>("");
-    const [convertDirTouched, setConvertDirTouched] = useState<boolean>(false);
+    const convertDirCoupling = useDirectoryNameCoupling("", sanitizePackageName);
     const [convertPathError, setConvertPathError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [pathValidationError, setPathValidationError] = useState<string | null>(null);
@@ -72,7 +72,9 @@ export function AddProjectForm() {
         : sanitizePackageName(formData.workspaceName || "");
     // The folder segment actually used: the manually edited value once the user has
     // taken control, otherwise the name-derived default.
-    const effectiveConvertDirName = convertDirTouched ? convertDirName.trim() : autoConvertDirName;
+    const effectiveConvertDirName = convertDirCoupling.dirTouched
+        ? convertDirCoupling.directoryName.trim()
+        : autoConvertDirName;
     const convertFullPath = joinPath(convertBaseDir, effectiveConvertDirName);
 
     const handleFormDataChange = useCallback((data: Partial<AddProjectFormData>) => {
@@ -135,8 +137,7 @@ export function AddProjectForm() {
         // manual control so subsequent name edits no longer overwrite it.
         const { base, name } = splitPath(value);
         setConvertBaseDir(base);
-        setConvertDirName(name);
-        setConvertDirTouched(name !== autoConvertDirName);
+        convertDirCoupling.handleDirectoryNameEdit(name, autoConvertDirName);
         setConvertPathError(null);
     };
 

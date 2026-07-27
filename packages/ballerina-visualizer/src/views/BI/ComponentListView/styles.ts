@@ -17,6 +17,7 @@
  */
 import styled from "@emotion/styled";
 import { Typography, ThemeColors } from "@wso2/ui-toolkit";
+import { Chip, ChipRow, FilterBarBase, SearchSlot } from "../components/ChipFilterBar.styles";
 
 export const LoadingContainer = styled.div`
     display: flex;
@@ -41,62 +42,15 @@ export const AddPanel = styled.div({
 });
 
 // ── Filter bar (colored category chips + compact search), mirroring the Create
-//    wizard's Integration Type step so the Add-Artifact screen reads the same. ──
+//    wizard's Integration Type step so the Add-Artifact screen reads the same.
+//    Shared building blocks live in ChipFilterBar.styles.ts; only the bar's own
+//    padding differs between the two call sites. ──
 
-export const FilterBar = styled.div`
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
+export const FilterBar = styled(FilterBarBase)`
     padding: 8px 16px 12px;
-    background-color: var(--vscode-editor-background);
 `;
 
-export const ChipRow = styled.div`
-    display: flex;
-    gap: 6px;
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-`;
-
-export const SearchSlot = styled.div`
-    flex-shrink: 0;
-    width: 220px;
-`;
-
-export const Chip = styled.button<{ active?: boolean; accent: string }>`
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-    padding: 5px 12px;
-    border-radius: 999px;
-    /* Category-colored, matching the Project Overview type labels; the active
-       (filter) chip gets a stronger tint + weight. */
-    border: 1px solid ${(props: { active?: boolean; accent: string }) =>
-        `color-mix(in srgb, ${props.accent} ${props.active ? "55%" : "24%"}, transparent)`};
-    background-color: ${(props: { active?: boolean; accent: string }) =>
-        `color-mix(in srgb, ${props.accent} ${props.active ? "22%" : "12%"}, transparent)`};
-    color: ${(props: { accent: string }) => props.accent};
-    font-size: 12px;
-    font-weight: ${(props: { active?: boolean }) => (props.active ? 600 : 500)};
-    white-space: nowrap;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-    &:hover {
-        background-color: ${(props: { active?: boolean; accent: string }) =>
-            `color-mix(in srgb, ${props.accent} ${props.active ? "22%" : "18%"}, transparent)`};
-    }
-    &:focus-visible {
-        outline: 1px solid var(--vscode-focusBorder);
-        outline-offset: 1px;
-    }
-`;
+export { Chip, ChipRow, SearchSlot };
 
 export const PanelViewMore = styled.div<{ disabled?: boolean }>`
     display: flex;

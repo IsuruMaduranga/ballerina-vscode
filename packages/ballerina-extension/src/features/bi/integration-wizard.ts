@@ -132,7 +132,7 @@ export async function cancelIntegrationWizard(): Promise<void> {
 
 /** Alias kept for the mount-time sweep; identical to {@link cancelIntegrationWizard}. */
 export async function cleanupAbandonedScaffolds(): Promise<void> {
-    cleanupStaging();
+    await cancelIntegrationWizard();
 }
 
 /** Version-skew handshake for embedded hosts (see `WizardCapabilitiesResponse`). */

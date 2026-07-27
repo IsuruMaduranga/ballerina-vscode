@@ -22,6 +22,7 @@ import { Codicon, SearchBox, ThemeColors, Typography } from "@wso2/ui-toolkit";
 import { TriggerModelsResponse } from "@wso2/ballerina-core";
 import ButtonCard from "../../../../components/ButtonCard";
 import { RelativeLoader } from "../../../../components/RelativeLoader";
+import { Chip, ChipRow, FilterBarBase, SearchSlot } from "../../components/ChipFilterBar.styles";
 import { useContainerWidth } from "../hooks/useContainerWidth";
 import {
     ARTIFACT_CATEGORIES,
@@ -107,63 +108,11 @@ const RailCount = styled.span`
 
 /* --- Narrow layout: sticky header (search + horizontal chips). --- */
 
-const NarrowHeader = styled.div`
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
+// Chip/ChipRow/SearchSlot are shared with the Add-Artifact component list panel
+// (ComponentListView/styles.ts) via ChipFilterBar.styles.ts. Only this bar's own
+// padding differs between the two call sites.
+const NarrowHeader = styled(FilterBarBase)`
     padding-bottom: 10px;
-    background-color: var(--vscode-editor-background);
-`;
-
-const ChipRow = styled.div`
-    display: flex;
-    gap: 6px;
-    /* Take the row, leaving the compact search box pinned to the right. */
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
-    /* Keep chips on a single scrollable line. */
-    flex-wrap: nowrap;
-`;
-
-/** Holds the search box on the right of the chip row — narrow and de-emphasized
- *  so it doesn't compete with the integration name field above. */
-const SearchSlot = styled.div`
-    flex-shrink: 0;
-    width: 220px;
-`;
-
-const Chip = styled.button<{ active?: boolean; accent: string }>`
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-    padding: 5px 12px;
-    border-radius: 999px;
-    /* Category-colored, mirroring the Project Overview type labels (color-mix on a
-       per-type accent). The active/filter chip gets a stronger tint + weight. */
-    border: 1px solid ${(props: { active?: boolean; accent: string }) =>
-        `color-mix(in srgb, ${props.accent} ${props.active ? "55%" : "24%"}, transparent)`};
-    background-color: ${(props: { active?: boolean; accent: string }) =>
-        `color-mix(in srgb, ${props.accent} ${props.active ? "22%" : "12%"}, transparent)`};
-    color: ${(props: { accent: string }) => props.accent};
-    font-size: 12px;
-    font-weight: ${(props: { active?: boolean }) => (props.active ? 600 : 500)};
-    white-space: nowrap;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-    &:hover {
-        background-color: ${(props: { active?: boolean; accent: string }) =>
-            `color-mix(in srgb, ${props.accent} ${props.active ? "22%" : "18%"}, transparent)`};
-    }
-    &:focus-visible {
-        outline: 1px solid var(--vscode-focusBorder);
-        outline-offset: 1px;
-    }
 `;
 
 /* --- Grid pane (shared by both layouts). --- */

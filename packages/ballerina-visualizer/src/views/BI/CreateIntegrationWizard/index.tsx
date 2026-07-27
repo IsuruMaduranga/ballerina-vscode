@@ -33,6 +33,14 @@ import { joinPath, sanitizePackageName, splitPath, validateComponentName } from 
 import { ArtifactCard } from "./artifactCatalog";
 import { BasicInfo, ProjectContext, ScaffoldState, WizardStep } from "./types";
 import { useRealtimeProjectPathValidation } from "./hooks/useRealtimeProjectPathValidation";
+import { deriveDirectoryName, isDirectoryNameTouched } from "../ProjectForm/hooks/useDirectoryNameCoupling";
+import {
+    checkNameCollision as resolveNameCollisionMessage,
+    resolveDefaultNameAndDirectory,
+    toTakenNames,
+    emptyTakenNames,
+    TakenNames,
+} from "../ProjectForm/hooks/resolveAvailableDirectoryName";
 import { BasicInfoStep } from "./steps/BasicInfoStep";
 import { IntegrationTypeStep } from "./steps/IntegrationTypeStep";
 import { ConfigureStep } from "./steps/ConfigureStep";
@@ -51,8 +59,6 @@ const WIZARD_STEPS = ["Type", "Configure"];
 const DEFAULT_INTEGRATION_NAME = "Untitled";
 const REQUIRED_PATH_MESSAGE = "Path is required";
 const INVALID_PATH_MESSAGE = "Please select a valid directory";
-const NAME_EXISTS_MESSAGE = "An integration or library with this name already exists in the project";
-const MAX_DEFAULT_DIRECTORY_ATTEMPTS = 50;
 
 interface CreateIntegrationWizardProps {
     /** Hide the page header when the embedding host renders its own chrome. */
@@ -103,9 +109,7 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
     const [existingWorkspace, setExistingWorkspace] = useState(false);
     // Folder names and component titles already used in the target project, so a
     // name the user types can be flagged live if it collides with an existing one.
-    const [takenNames, setTakenNames] = useState<{ folders: Set<string>; titles: Set<string> }>(
-        { folders: new Set(), titles: new Set() }
-    );
+    const [takenNames, setTakenNames] = useState<TakenNames>(emptyTakenNames());
     const [triggers, setTriggers] = useState<TriggerModelsResponse | null>(null);
     const [selection, setSelection] = useState<ArtifactCard | null>(null);
     // Service model cached across step navigation (keyed by the selected card),
@@ -230,9 +234,8 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
     // the path, it is honored exactly — including an empty segment, which means
     // "create the integration directly in the parent directory" (no new folder).
     // Otherwise it falls back to the name-derived package name.
-    const effectiveDirectoryName = basicInfo.dirTouched
-        ? basicInfo.directoryName.trim()
-        : basicInfo.directoryName.trim() || packageName;
+    const trimmedDirectoryName = basicInfo.directoryName.trim();
+    const effectiveDirectoryName = basicInfo.dirTouched ? trimmedDirectoryName : trimmedDirectoryName || packageName;
     // Full creation path shown in the path field.
     const fullPath = joinPath(basicInfo.baseDir, basicInfo.directoryName);
 
@@ -252,20 +255,6 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
         // with that folder OR that title, an indexed variant is used for BOTH the
         // name and folder ("Untitled_2" / "untitled_2", …) so the new integration
         // collides with neither an existing folder nor an existing integration name.
-        const resolveDefaultNameAndDirectory = (
-            takenFolders: Set<string>,
-            takenTitles: Set<string>
-        ): { name: string; directoryName: string } => {
-            const nameBase = DEFAULT_INTEGRATION_NAME;
-            for (let attempt = 0; attempt < MAX_DEFAULT_DIRECTORY_ATTEMPTS; attempt++) {
-                const name = attempt === 0 ? nameBase : `${nameBase}_${attempt + 1}`;
-                const directoryName = sanitizePackageName(name);
-                if (!takenFolders.has(directoryName.toLowerCase()) && !takenTitles.has(name.trim().toLowerCase())) {
-                    return { name, directoryName };
-                }
-            }
-            return { name: nameBase, directoryName: sanitizePackageName(nameBase) };
-        };
 
         // When the chooser resolved a project, the integration lives inside that
         // workspace folder — seed the path from it directly. Otherwise fall back to
@@ -278,17 +267,14 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
             .then(async (seedPath: string) => {
                 // Fetch the project's existing folders + component titles once: used
                 // to pick a collision-free default AND to flag name collisions live.
-                let takenFolders = new Set<string>();
-                let takenTitles = new Set<string>();
+                let taken = emptyTakenNames();
                 try {
-                    const taken = await wsClient.getProjectComponentNames({ projectPath: seedPath });
-                    takenFolders = new Set((taken?.folders ?? []).map((f: string) => f.toLowerCase()));
-                    takenTitles = new Set((taken?.titles ?? []).map((t: string) => t.trim().toLowerCase()));
+                    taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: seedPath }));
                 } catch (error) {
                     console.error(">>> Error fetching existing component names", error);
                 }
-                setTakenNames({ folders: takenFolders, titles: takenTitles });
-                const { name, directoryName } = resolveDefaultNameAndDirectory(takenFolders, takenTitles);
+                setTakenNames(taken);
+                const { name, directoryName } = resolveDefaultNameAndDirectory(DEFAULT_INTEGRATION_NAME, taken, sanitizePackageName);
                 setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: seedPath, integrationName: name, directoryName }));
             })
             .catch((error: unknown) => console.error(">>> Error seeding the creation path", error));
@@ -304,7 +290,7 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
         // the mount-time sweep is the race-free backstop).
         return () => {
             if (scaffoldRef.current.status === "ready") {
-                wsClient.cancelIntegrationWizard({}).catch(() => { });
+                wsClient.cancelIntegrationWizard().catch(() => { });
             }
         };
     }, [wsClient]);
@@ -334,17 +320,8 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
 
     /** Returns a diagnostic when the name collides with an existing integration or
      *  library in the target project (by folder or by title), else null. */
-    const checkNameCollision = (value: string): string | null => {
-        const trimmed = value.trim();
-        if (!trimmed) {
-            return null;
-        }
-        const folder = sanitizePackageName(trimmed);
-        if (takenNames.folders.has(folder.toLowerCase()) || takenNames.titles.has(trimmed.toLowerCase())) {
-            return NAME_EXISTS_MESSAGE;
-        }
-        return null;
-    };
+    const checkNameCollision = (value: string): string | null =>
+        resolveNameCollisionMessage(value, takenNames, sanitizePackageName);
 
     /** Integration name change — also re-derives the directory segment while the
      *  user has not taken manual control of it. */
@@ -352,11 +329,7 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
         setBasicInfo((prev) => ({
             ...prev,
             integrationName: value,
-            directoryName: prev.dirTouched
-                ? prev.directoryName
-                : value.trim()
-                    ? sanitizePackageName(value)
-                    : "",
+            directoryName: deriveDirectoryName(value, prev.dirTouched, prev.directoryName, sanitizePackageName),
         }));
         setNameError(validateComponentName(value, false) || checkNameCollision(value));
     };
@@ -370,7 +343,7 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
             ...prev,
             baseDir: base,
             directoryName: name,
-            dirTouched: name !== autoDirectoryName,
+            dirTouched: isDirectoryNameTouched(name, autoDirectoryName),
             pathTouched: true,
         }));
     };
@@ -439,7 +412,7 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
         }
         setScaffold({ status: "creating" });
         try {
-            const res = await wsClient.scaffoldIntegrationProject({});
+            const res = await wsClient.scaffoldIntegrationProject();
             setScaffold({ status: "ready", projectRoot: res.projectRoot });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);

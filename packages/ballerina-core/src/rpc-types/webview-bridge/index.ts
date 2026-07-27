@@ -171,14 +171,12 @@ export interface IntegrationProjectParams {
 }
 
 /**
- * Requests the throwaway staging package the step-3 artifact form resolves its
- * language-server model against. The staging package lives in the OS temp dir —
- * NOT at the user's chosen path — so an abandoned wizard can never occupy (and
- * later collide with) the final location. The real project is created only at
- * finalize (`createIntegration`). Reserved for future use; no fields today.
+ * Response to the request for the throwaway staging package the step-3 artifact
+ * form resolves its language-server model against. The staging package lives in
+ * the OS temp dir — NOT at the user's chosen path — so an abandoned wizard can
+ * never occupy (and later collide with) the final location. The real project is
+ * created only at finalize (`createIntegration`).
  */
-export type ScaffoldIntegrationProjectRequest = Record<string, never>;
-
 export interface ScaffoldIntegrationProjectResponse {
     /** Absolute path of the temp staging package (used only for model fetching). */
     projectRoot: string;
@@ -191,9 +189,6 @@ export interface CreateIntegrationRequest {
     /** Configured first artifact; absent for an empty integration. */
     artifact?: PendingIntegrationArtifactPayload;
 }
-
-/** Cancels the active wizard session, discarding its temp staging package. */
-export type CancelIntegrationWizardRequest = Record<string, never>;
 
 /** Version-skew handshake: embedded hosts call this first and fall back to the
  *  legacy single-step form when it fails or `threeStepWizard` is false. */

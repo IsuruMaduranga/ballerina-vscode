@@ -21,6 +21,7 @@ import * as path from "path";
 import { ProgressLocation, window } from "vscode";
 import {
     EVENT_TYPE,
+    isPathInside,
     isSamePath,
     MACHINE_VIEW,
     PendingIntegrationArtifactKind,
@@ -61,13 +62,6 @@ interface PendingIntegrationArtifactPointer {
 
 function pendingArtifactFilePath(projectRoot: string): string {
     return path.join(projectRoot, PENDING_ARTIFACT_RELATIVE_PATH);
-}
-
-/** True when `child` is `parent` itself or a directory nested inside it. */
-function isPathInside(child: string, parent: string): boolean {
-    const resolvedChild = path.resolve(child);
-    const resolvedParent = path.resolve(parent);
-    return resolvedChild === resolvedParent || resolvedChild.startsWith(resolvedParent + path.sep);
 }
 
 /**
@@ -127,7 +121,7 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
         // package living under the opened workspace).
         const ctx = StateMachine.context();
         const opensStoredPackage = isSamePath(stored.projectRoot, ctx.projectPath);
-        const insideOpenWorkspace = !!ctx.workspacePath && isPathInside(stored.projectRoot, ctx.workspacePath);
+        const insideOpenWorkspace = !!ctx.workspacePath && isPathInside(ctx.workspacePath, stored.projectRoot);
         if (!opensStoredPackage && !insideOpenWorkspace) {
             console.log(
                 `[IntegrationWizard] Pending artifact project (${stored.projectRoot}) does not match ` +

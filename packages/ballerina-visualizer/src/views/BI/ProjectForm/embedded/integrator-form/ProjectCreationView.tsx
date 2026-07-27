@@ -44,12 +44,8 @@ import {
 } from "./shared/FormPageLayout";
 import { FieldGroup } from "./styles";
 import { DEFAULT_PROJECT_NAME } from "./types";
-
-// Upper bound on the indexed-directory probe (untitled, untitled_2, ... default, default_2, ...).
-const MAX_DIRECTORY_ATTEMPTS = 50;
-// Sentinel returned by validateProjectPath when the target directory already exists.
-const DIRECTORY_EXISTS_MESSAGE = "A directory with this name already exists at the selected location";
-
+import { useDirectoryNameCoupling } from "../../hooks/useDirectoryNameCoupling";
+import { resolveDefaultNameAndDirectory, toTakenNames, emptyTakenNames } from "../../hooks/resolveAvailableDirectoryName";
 
 export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?: () => void; ballerinaUnavailable?: boolean }) {
     const { wsClient } = useVisualizerContext();
@@ -68,8 +64,8 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
     // The on-disk folder name. Defaults to a name-derived value and stays in sync with
     // the project name until the user edits the path's last segment (dirTouched), after
     // which it is left under manual control.
-    const [directoryName, setDirectoryName] = useState(() => sanitizePackageName(DEFAULT_PROJECT_NAME));
-    const [dirTouched, setDirTouched] = useState(false);
+    const dirCoupling = useDirectoryNameCoupling(() => sanitizePackageName(DEFAULT_PROJECT_NAME), sanitizePackageName);
+    const { directoryName, dirTouched } = dirCoupling;
 
     const debouncedSetProjectNameError = useMemo(
         () => debounce((error: string) => setProjectNameError(error), 300),
@@ -86,31 +82,11 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
     // default creation directory. The indexed default directory name is resolved here —
     // BEFORE the path and name are committed — so the path field shows the final value
     // immediately (like the wizard) rather than flashing the un-indexed "default" and an
-    // "already exists" diagnostic while a reactive re-index catches up.
+    // "already exists" diagnostic while a reactive re-index catches up. The candidate is
+    // resolved locally against a single upfront folder listing (matching the integration
+    // wizard / library form) rather than probing `validateProjectPath` once per candidate.
     useEffect(() => {
         let mounted = true;
-
-        const resolveDefaultDirectoryName = async (baseDir: string): Promise<string> => {
-            const base = sanitizePackageName(DEFAULT_PROJECT_NAME);
-            for (let attempt = 0; attempt < MAX_DIRECTORY_ATTEMPTS; attempt++) {
-                const candidate = attempt === 0 ? base : `${base}_${attempt + 1}`;
-                try {
-                    const result = await wsClient.validateProjectPath({
-                        projectPath: baseDir,
-                        projectName: candidate,
-                        createDirectory: true,
-                    });
-                    // First candidate that is either valid or fails for a reason other
-                    // than an existing directory is the one we keep.
-                    if (result.isValid || result.errorMessage !== DIRECTORY_EXISTS_MESSAGE) {
-                        return candidate;
-                    }
-                } catch {
-                    return candidate;
-                }
-            }
-            return base;
-        };
 
         (async () => {
             if (defaultPathInitialized.current) return;
@@ -119,15 +95,21 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
                 if (!mounted) return;
                 const dp = workspacePath || (await wsClient.getDefaultCreationPath()).path;
                 if (!mounted) return;
-                const dirName = await resolveDefaultDirectoryName(dp);
+                let taken = emptyTakenNames();
+                try {
+                    taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: dp }));
+                } catch {
+                    // Best effort — fall back to the un-indexed default on failure.
+                }
                 if (!mounted) return;
+                const { directoryName: dirName } = resolveDefaultNameAndDirectory(DEFAULT_PROJECT_NAME, taken, sanitizePackageName);
                 defaultPathInitialized.current = true;
                 // Set the resolved directory name BEFORE the path becomes non-empty so no
                 // render ever pairs a real path with the un-indexed default name (which is
                 // what triggers the realtime "already exists" diagnostic flash).
                 // Don't clobber a name the user typed while the seed was resolving.
                 if (!projectNameTouchedRef.current) {
-                    setDirectoryName(dirName);
+                    dirCoupling.setDirectoryName(dirName);
                 }
                 setDefaultPath(dp);
                 setEditablePath(dp);
@@ -187,9 +169,7 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
         // Keep the directory name in sync with the project name until the user edits it.
         // (Only the default name is auto-indexed, at seed time — a name the user types is
         // used verbatim, matching the integration wizard.)
-        if (!dirTouched) {
-            setDirectoryName(value.trim() ? sanitizePackageName(value) : "");
-        }
+        dirCoupling.handleDisplayNameChange(value);
     };
 
     const handlePathChange = (value: string) => {
@@ -198,8 +178,7 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
         const { base, name } = splitPath(value);
         setPathTouched(true);
         setEditablePath(base);
-        setDirectoryName(name);
-        setDirTouched(name !== autoDirectoryName);
+        dirCoupling.handleDirectoryNameEdit(name, autoDirectoryName);
     };
 
     const handlePathSelection = async () => {

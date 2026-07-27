@@ -21,7 +21,6 @@
 import {
     BINodeTemplateRequest,
     BINodeTemplateResponse,
-    CancelIntegrationWizardRequest,
     ChatNotify,
     CreateIntegrationRequest,
     DownloadProgress,
@@ -34,7 +33,6 @@ import {
     OpenSubProjectReportRequest,
     ProjectMigrationResult,
     SaveMigrationReportRequest,
-    ScaffoldIntegrationProjectRequest,
     ScaffoldIntegrationProjectResponse,
     ServiceModelInitResponse,
     ServiceModelRequest,
@@ -210,16 +208,16 @@ export class BiWsClient {
         return this.request("getWizardFormTarget", params);
     }
 
-    public scaffoldIntegrationProject(params: ScaffoldIntegrationProjectRequest): Promise<ScaffoldIntegrationProjectResponse> {
-        return this.request("scaffoldIntegrationProject", params);
+    public scaffoldIntegrationProject(): Promise<ScaffoldIntegrationProjectResponse> {
+        return this.request("scaffoldIntegrationProject", {});
     }
 
     public createIntegration(params: CreateIntegrationRequest): Promise<void> {
         return this.request("createIntegration", params);
     }
 
-    public cancelIntegrationWizard(params: CancelIntegrationWizardRequest): Promise<void> {
-        return this.request("cancelIntegrationWizard", params);
+    public cancelIntegrationWizard(): Promise<void> {
+        return this.request("cancelIntegrationWizard", {});
     }
 
     public cleanupAbandonedIntegrationScaffolds(): Promise<void> {

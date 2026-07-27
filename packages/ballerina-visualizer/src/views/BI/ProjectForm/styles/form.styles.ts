@@ -48,12 +48,6 @@ export const OptionalSectionsLabel = styled.div`
     margin-bottom: 12px;
 `;
 
-export const ProjectSection = styled.div`
-    margin-bottom: 24px;
-    padding-bottom: 24px;
-    border-bottom: 1px solid var(--vscode-panel-border);
-`;
-
 // ---- Grouped form sections (titled blocks) ----
 
 export const FormSection = styled.div`

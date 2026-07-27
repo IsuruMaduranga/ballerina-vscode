@@ -32,6 +32,7 @@ import { FieldGroup } from "./styles";
 import { DEFAULT_PROJECT_NAME } from "./types";
 import { CreateFlowShell } from "./shared/CreateFlowShell";
 import { FormFooter } from "./shared/FormPageLayout";
+import { useDirectoryNameCoupling } from "../../hooks/useDirectoryNameCoupling";
 import { LibraryCreationView } from "./LibraryCreationView";
 import { ProjectTypeSelector } from "../../components";
 import { CreateIntegrationWizard } from "../../../CreateIntegrationWizard";
@@ -90,8 +91,8 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
     const [isLibrary, setIsLibrary] = useState(false);
 
     const [projectName, setProjectName] = useState(DEFAULT_PROJECT_NAME);
-    const [directoryName, setDirectoryName] = useState(() => sanitizePackageName(DEFAULT_PROJECT_NAME));
-    const [dirTouched, setDirTouched] = useState(false);
+    const dirCoupling = useDirectoryNameCoupling(() => sanitizePackageName(DEFAULT_PROJECT_NAME), sanitizePackageName);
+    const { directoryName, dirTouched } = dirCoupling;
     const [defaultPath, setDefaultPath] = useState("");
     const [editablePath, setEditablePath] = useState("");
     const [pathTouched, setPathTouched] = useState(false);
@@ -132,7 +133,7 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
                 if (!mounted) return;
                 if (info?.isProject && info.name && !projectNameTouchedRef.current) {
                     setProjectName(info.name);
-                    setDirTouched(true);
+                    dirCoupling.setDirTouched(true);
                 }
             } catch (error) {
                 console.error("Failed to fetch default path:", error);
@@ -183,22 +184,20 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
         setProjectName(value);
         // Editing the name (re)couples the folder to it — so renaming a browsed
         // existing project retargets to a NEW project at <parent>/<derived-name>.
-        setDirectoryName(value.trim() ? sanitizePackageName(value) : "");
-        setDirTouched(false);
+        dirCoupling.handleDisplayNameChange(value, { recouple: true });
     };
 
     const handlePathChange = (value: string) => {
         const { base, name } = splitPath(value);
         setPathTouched(true);
         setEditablePath(base);
-        setDirectoryName(name);
-        setDirTouched(name !== autoDirectoryName);
+        dirCoupling.handleDirectoryNameEdit(name, autoDirectoryName);
     };
 
     /**
      * Browse for the project folder. The picked folder IS the project location
      * (its parent + its own name — not an appended, name-derived subfolder). If it
-     * is an existing project, its real name (from `.wso2/context.yaml`) is shown
+     * is an existing project, its real name is shown
      * and it is used as-is; otherwise it becomes a new project at that path.
      * Editing the name afterwards retargets to a new sibling project.
      */
@@ -210,9 +209,9 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
             const info = await wsClient.getExistingProjectInfo({ projectPath: result.path });
             projectNameTouchedRef.current = true;
             setEditablePath(base);
-            setDirectoryName(folderName);
+            dirCoupling.setDirectoryName(folderName);
             setProjectName(info?.isProject ? (info.name || folderName) : folderName);
-            setDirTouched(true);
+            dirCoupling.setDirTouched(true);
             setPathTouched(true);
         } catch (error) {
             console.error("Failed to select path:", error);
