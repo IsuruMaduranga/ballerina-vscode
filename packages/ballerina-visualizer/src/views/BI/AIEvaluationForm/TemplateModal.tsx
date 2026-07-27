@@ -21,7 +21,6 @@ import { createPortal } from "react-dom";
 import styled from "@emotion/styled";
 import { Codicon, ThemeColors } from "@wso2/ui-toolkit";
 import { AvailableNode } from "@wso2/ballerina-core";
-import { RelativeLoader } from "../../../components/RelativeLoader";
 import {
     PopupOverlay, PopupContainer, PopupHeader, HeaderTitleContainer, PopupTitle, PopupSubtitle,
     CloseButton, PopupContent
@@ -34,14 +33,6 @@ import {
 import {
     TemplateFilterKind, getTemplateIcon, getTemplateKind, matchesTemplateFilter, templateNeedsEvalset
 } from "./templateUtils";
-
-// Resolving ai_evals recompiles the package per call, so this is not always fast enough to skip.
-const CatalogLoader = styled.div`
-    display: grid;
-    flex: 1;
-    min-height: 240px;
-    place-items: center;
-`;
 
 // 150ms ease-out, matching AIAgentSidePanel's connection-step animations.
 const MOTION_MS = 150;
@@ -91,22 +82,19 @@ interface TemplateModalProps {
     templateLoadError?: string;
     /** Highlights the current choice when reopened via "Change Template" */
     selectedTemplate?: AvailableNode;
-    /** True while getNodeTemplate is in flight for a freshly clicked template */
-    isSelecting: boolean;
     onSelectTemplate: (template: AvailableNode) => void;
     onClose: () => void;
 }
 
 /**
- * Browsing only. The chosen template's arguments are configured inline in the form, so this dialog has
- * a single job and no commit of its own: picking a template applies it and the parent closes us.
+ * Browsing only. Picking a template applies it and dismisses this dialog straight away; fetching the
+ * template and configuring its arguments both happen in the form's template card.
  */
 export function TemplateModal(props: TemplateModalProps) {
-    const { templates, templateLoadError, selectedTemplate, isSelecting, onSelectTemplate, onClose } = props;
+    const { templates, templateLoadError, selectedTemplate, onSelectTemplate, onClose } = props;
 
     const [query, setQuery] = useState('');
     const [filter, setFilter] = useState<TemplateFilterKind>('all');
-    const [pendingLabel, setPendingLabel] = useState<string>();
     // The parent unmounts us as soon as it closes, so an exit animation needs the unmount deferred.
     const [closing, setClosing] = useState(false);
     const closeTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -123,13 +111,13 @@ export function TemplateModal(props: TemplateModalProps) {
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape' && !event.defaultPrevented && !isSelecting) {
+            if (event.key === 'Escape' && !event.defaultPrevented) {
                 handleClose();
             }
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [isSelecting, closing]);
+    }, [closing]);
 
     const filteredTemplates = useMemo(() => {
         const text = query.trim().toLowerCase();
@@ -140,11 +128,16 @@ export function TemplateModal(props: TemplateModalProps) {
         });
     }, [templates, filter, query]);
 
+    // Apply immediately and dismiss. The template still has to be fetched, but that is reported by a
+    // loader in the form's template card, not here: once a choice is made this dialog has no job left,
+    // and a modal containing only a spinner is a surface the user cannot act on. `closing` doubles as
+    // the guard against a second click landing during the exit animation.
     const handleSelect = (template: AvailableNode) => {
-        if (!isSelecting) {
-            setPendingLabel(template.metadata.label);
-            onSelectTemplate(template);
+        if (closing) {
+            return;
         }
+        onSelectTemplate(template);
+        handleClose();
     };
 
     // Portalled so the dialog is not subject to Form hiding its content subtree behind `display: none`
@@ -172,72 +165,62 @@ export function TemplateModal(props: TemplateModalProps) {
                     </CloseButton>
                 </PopupHeader>
 
-                {/* The loader owns the whole body below the header. */}
-                {isSelecting && (
-                    <CatalogLoader>
-                        <RelativeLoader message={pendingLabel ? `Loading ${pendingLabel}…` : 'Loading template…'} />
-                    </CatalogLoader>
-                )}
+                <ModalControls>
+                    <TemplateSearch
+                        value={query}
+                        placeholder="Search by name, type, or behavior"
+                        onChange={setQuery}
+                        size={60}
+                        autoFocus
+                    />
+                    <TemplateFilters>
+                        {([
+                            ['all', 'All'],
+                            ['rule-based', 'Rule-based'],
+                            ['llm-as-judge', 'LLM-as-Judge'],
+                            ['uses-evalset', 'Evalset required'],
+                            ['no-evalset', 'Evalset or queries']
+                        ] as Array<[TemplateFilterKind, string]>).map(([value, label]) => (
+                            <TemplateFilter key={value} type="button" active={filter === value}
+                                onClick={() => setFilter(value)}>{label}</TemplateFilter>
+                        ))}
+                    </TemplateFilters>
+                </ModalControls>
 
-                {!isSelecting && (
-                    <>
-                        <ModalControls>
-                            <TemplateSearch
-                                value={query}
-                                placeholder="Search by name, type, or behavior"
-                                onChange={setQuery}
-                                size={60}
-                                autoFocus
-                            />
-                            <TemplateFilters>
-                                {([
-                                    ['all', 'All'],
-                                    ['rule-based', 'Rule-based'],
-                                    ['llm-as-judge', 'LLM-as-Judge'],
-                                    ['uses-evalset', 'Evalset required'],
-                                    ['no-evalset', 'Evalset or queries']
-                                ] as Array<[TemplateFilterKind, string]>).map(([value, label]) => (
-                                    <TemplateFilter key={value} type="button" active={filter === value}
-                                        onClick={() => setFilter(value)}>{label}</TemplateFilter>
-                                ))}
-                            </TemplateFilters>
-                        </ModalControls>
-                        <PopupContent>
-                            {templateLoadError ? (
-                                <EmptyTemplates>{templateLoadError}</EmptyTemplates>
-                            ) : filteredTemplates.length === 0 ? (
-                                <EmptyTemplates>No templates match the current search and filters.</EmptyTemplates>
-                            ) : (
-                                <TemplateResultsGrid>
-                                    {filteredTemplates.map(template => {
-                                        const isSelected = selectedTemplate?.codedata.symbol === template.codedata.symbol;
-                                        return (
-                                            <TemplateOption key={template.codedata.symbol} type="button"
-                                                selected={isSelected} onClick={() => handleSelect(template)}>
-                                                <TemplateIconTile size={32}>
-                                                    <Codicon name={getTemplateIcon(template)}
-                                                        sx={{ display: 'flex', height: 'auto', width: 'auto', cursor: 'pointer' }}
-                                                        iconSx={{ fontSize: '18px', lineHeight: 1, display: 'block', WebkitTextStroke: '0.4px currentColor' }} />
-                                                </TemplateIconTile>
-                                                <TemplateOptionContent>
-                                                    <TemplateOptionHeading>
-                                                        <span>{template.metadata.label}</span>
-                                                        {isSelected && <Codicon name="check" />}
-                                                    </TemplateOptionHeading>
-                                                    <TemplateOptionDescription>{template.metadata.description}</TemplateOptionDescription>
-                                                    <TemplateTags>
-                                                        <Badge>{getTemplateKind(template)}</Badge>
-                                                        <Badge>{templateNeedsEvalset(template) ? 'Evalset required' : 'Evalset or queries'}</Badge>
-                                                    </TemplateTags>
-                                                </TemplateOptionContent>
-                                            </TemplateOption>
-                                        );
-                                    })}
-                                </TemplateResultsGrid>
-                            )}
-                        </PopupContent>
-                    </>
-                )}
+                <PopupContent>
+                    {templateLoadError ? (
+                        <EmptyTemplates>{templateLoadError}</EmptyTemplates>
+                    ) : filteredTemplates.length === 0 ? (
+                        <EmptyTemplates>No templates match the current search and filters.</EmptyTemplates>
+                    ) : (
+                        <TemplateResultsGrid>
+                            {filteredTemplates.map(template => {
+                                const isSelected = selectedTemplate?.codedata.symbol === template.codedata.symbol;
+                                return (
+                                    <TemplateOption key={template.codedata.symbol} type="button"
+                                        selected={isSelected} onClick={() => handleSelect(template)}>
+                                        <TemplateIconTile size={32}>
+                                            <Codicon name={getTemplateIcon(template)}
+                                                sx={{ display: 'flex', height: 'auto', width: 'auto', cursor: 'pointer' }}
+                                                iconSx={{ fontSize: '18px', lineHeight: 1, display: 'block', WebkitTextStroke: '0.4px currentColor' }} />
+                                        </TemplateIconTile>
+                                        <TemplateOptionContent>
+                                            <TemplateOptionHeading>
+                                                <span>{template.metadata.label}</span>
+                                                {isSelected && <Codicon name="check" />}
+                                            </TemplateOptionHeading>
+                                            <TemplateOptionDescription>{template.metadata.description}</TemplateOptionDescription>
+                                            <TemplateTags>
+                                                <Badge>{getTemplateKind(template)}</Badge>
+                                                <Badge>{templateNeedsEvalset(template) ? 'Evalset required' : 'Evalset or queries'}</Badge>
+                                            </TemplateTags>
+                                        </TemplateOptionContent>
+                                    </TemplateOption>
+                                );
+                            })}
+                        </TemplateResultsGrid>
+                    )}
+                </PopupContent>
             </AnimatedContainer>
         </>,
         document.body

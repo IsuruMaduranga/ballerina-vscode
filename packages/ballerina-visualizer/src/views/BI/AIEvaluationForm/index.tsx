@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Codicon, Icon, RadioButtonGroup, Typography, View, ViewContent } from "@wso2/ui-toolkit";
+import { Button, Codicon, Icon, RadioButtonGroup, ThemeColors, Typography, View, ViewContent } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { FormField, FormImports, FormValues, Parameter } from "@wso2/ballerina-side-panel";
@@ -30,6 +30,7 @@ import ArtifactForm from "../Forms/ArtifactForm";
 import { getImportsForProperty } from "../../../utils/bi";
 import { CardSelector } from "./CardSelector";
 import { LoadingView } from "../../../components/LoadingView";
+import { RelativeLoader } from "../../../components/RelativeLoader";
 import { TemplateModal } from "./TemplateModal";
 import { TemplateConfigCard } from "./TemplateConfigCard";
 import {
@@ -98,6 +99,19 @@ const TemplatePicker = styled.div`
 // The unfilled slot. Dashed to read as "nothing here yet" against the config card's solid border,
 // and deliberately not clickable itself: the button is the only interactive element, so the affordance
 // is unmistakable and there is no button nested inside a button.
+// Occupies the card's place while the template is fetched, so the feedback appears where the result
+// will, rather than in a dialog that has already done its job.
+const LoadingSlot = styled.div`
+    display: grid;
+    width: 100%;
+    min-height: 148px;
+    box-sizing: border-box;
+    place-items: center;
+    padding: 16px;
+    border: 1px dashed var(--vscode-panel-border);
+    border-radius: 8px;
+`;
+
 const EmptyTemplateSlot = styled.div`
     ${cardBox}
     align-items: center;
@@ -150,6 +164,8 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     // The catalog dialog is for choosing a template only; its arguments are configured inline.
     const [showTemplateCatalog, setShowTemplateCatalog] = useState(false);
     const [isSelectingTemplate, setIsSelectingTemplate] = useState(false);
+    // Named in the card's loading message; selectedTemplate is only set once the fetch resolves.
+    const [selectingLabel, setSelectingLabel] = useState<string>();
     const [templateLoadError, setTemplateLoadError] = useState<string>();
     const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('evalset');
     const [evalQueries, setEvalQueries] = useState<string[]>([]);
@@ -255,7 +271,10 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     };
 
     const selectEvalTemplate = async (template: AvailableNode) => {
+        // The dialog dismisses itself on click, so progress is reported by the template card instead.
         setIsSelectingTemplate(true);
+        setSelectingLabel(template.metadata.label);
+        setTemplateLoadError(undefined);
         try {
             const res = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
                 filePath,
@@ -280,8 +299,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             setFormFields(current => applyFieldVisibility(
                 assembleTemplateFields(current, node, dsParam, mode === 'queries' ? evalQueries : []),
                 'template', dsParam, mode));
-            // Close only once the node is loaded, so the inline card never renders half-built.
-            setShowTemplateCatalog(false);
         } catch (error) {
             console.error('Failed to load evaluation template form:', error);
             setTemplateLoadError('Unable to load the selected template. Please try again.');
@@ -1173,7 +1190,13 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                     <SectionLabel style={{ marginBottom: '8px' }}>
                                                         Evaluation template
                                                     </SectionLabel>
-                                                    {selectedTemplate && templateNode ? (
+                                                    {isSelectingTemplate ? (
+                                                        <LoadingSlot>
+                                                            <RelativeLoader message={selectingLabel
+                                                                ? `Loading ${selectingLabel}…`
+                                                                : 'Loading template…'} />
+                                                        </LoadingSlot>
+                                                    ) : selectedTemplate && templateNode ? (
                                                         <TemplateConfigCard
                                                             template={selectedTemplate}
                                                             templateFields={templateFields}
@@ -1205,6 +1228,15 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                             </Button>
                                                         </EmptyTemplateSlot>
                                                     )}
+                                                    {/* The dialog is already gone by the time a fetch can
+                                                        fail, so its error surfaces here. The empty slot
+                                                        shows it inline, so only report it alongside a
+                                                        card that survived the failed change. */}
+                                                    {templateLoadError && selectedTemplate && !isSelectingTemplate && (
+                                                        <HintText style={{ color: ThemeColors.ERROR }}>
+                                                            {templateLoadError}
+                                                        </HintText>
+                                                    )}
                                                     {editShape === 'template-with-custom' && (
                                                         <HintText>
                                                             This evaluation also contains custom code. Saving updates only the{' '}
@@ -1218,7 +1250,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                     templates={evalTemplates}
                                                     templateLoadError={templateLoadError}
                                                     selectedTemplate={selectedTemplate}
-                                                    isSelecting={isSelectingTemplate}
                                                     onSelectTemplate={selectEvalTemplate}
                                                     onClose={() => setShowTemplateCatalog(false)}
                                                 />
