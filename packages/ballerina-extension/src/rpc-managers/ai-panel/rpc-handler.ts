@@ -46,8 +46,10 @@ import {
     generateContextTypes,
     generateOpenAPI,
     GenerateOpenAPIRequest,
+    HasPendingReviewRequest,
     getActiveTempDir,
     hasPendingReview,
+    getRunStatus,
     getAIMachineSnapshot,
     getChatMessages,
     getCheckpoints,
@@ -200,7 +202,8 @@ export function registerAiPanelRpcHandlers(messenger: Messenger) {
     messenger.onRequest(clearChat, () => rpcManger.clearChat());
     messenger.onRequest(updateChatMessage, (args: UpdateChatMessageRequest) => rpcManger.updateChatMessage(args));
     messenger.onRequest(getActiveTempDir, () => rpcManger.getActiveTempDir());
-    messenger.onRequest(hasPendingReview, () => rpcManger.hasPendingReview());
+    messenger.onRequest(hasPendingReview, (args: HasPendingReviewRequest) => rpcManger.hasPendingReview(args));
+    messenger.onRequest(getRunStatus, (args) => rpcManger.getRunStatus(args));
     messenger.onRequest(getUsage, () => rpcManger.getUsage());
     messenger.onRequest(requestQuota, (args: QuotaRequestParams) => rpcManger.requestQuota(args));
     messenger.onNotification(openFileDiff, (args: OpenFileDiffRequest) => rpcManger.openFileDiff(args));

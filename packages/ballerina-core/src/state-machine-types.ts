@@ -332,7 +332,20 @@ export interface DownloadProgress {
     step?: number;
 }
 
-export type ChatNotify =
+/**
+ * Metadata stamped onto every {@link ChatNotify} at emit time by the backend
+ * `RunEventStore` to support panel reconnection:
+ * - `seq`: monotonic sequence number used for replay dedup / polling (`sinceSeq`).
+ * - `generationId`: identifies the run so a reconnecting/late panel can drop
+ *   events belonging to a previously-interrupted run.
+ * Both are optional so existing emitters/consumers are unaffected.
+ */
+export interface ChatNotifyMeta {
+    seq?: number;
+    generationId?: string;
+}
+
+export type ChatNotify = (
     | ChatStart
     | IntermidaryState
     | ChatContent
@@ -347,6 +360,7 @@ export type ChatNotify =
     | EvalsToolResult
     | UsageMetricsEvent
     | TaskApprovalRequest
+    | PlanApprovalResolved
     | WebToolApprovalEvent
     | GeneratedSourcesEvent
     | ConnectorGenerationNotification
@@ -359,7 +373,8 @@ export type ChatNotify =
     | CompactionEndEvent
     | CompactionDisabledEvent
     | ConfigChangeEvent
-    | MigrationProgressEvent;
+    | MigrationProgressEvent
+) & ChatNotifyMeta;
 
 /** Structured progress event emitted by the migration orchestrator at each stage boundary. */
 export interface MigrationProgressEvent {
@@ -481,6 +496,13 @@ export interface TaskApprovalRequest {
     taskDescription?: string;
     message?: string;
     autoApproved?: boolean;
+}
+
+export interface PlanApprovalResolved {
+    type: "plan_approval_resolved";
+    requestId: string;
+    approved: boolean;
+    comment?: string;
 }
 
 export interface WebToolApprovalEvent {

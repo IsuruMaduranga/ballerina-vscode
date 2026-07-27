@@ -28,6 +28,9 @@ import { extension } from '../../../BalExtensionContext';
  */
 export interface ReviewRestoreData {
     generationId: string;
+    /** Exact chat scope. Optional for payloads written by older versions. */
+    projectRootPath?: string;
+    threadId?: string;
     tempProjectPath: string;
     /** Frozen pre-generation Ballerina sources. Optional for payloads written by older versions. */
     baselineProjectPath?: string;

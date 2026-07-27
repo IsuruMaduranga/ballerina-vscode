@@ -52,7 +52,8 @@ import { StreamEntry, StreamItem } from "../AgentStreamView/types";
 import { ConnectorGeneratorSegment } from "../ConnectorGeneratorSegment";
 import { ConfigurationCollectorSegment, ConfigurationCollectionData } from "../ConfigurationCollectorSegment";
 import CheckpointSeparator from "../CheckpointSeparator";
-import { Attachment, AttachmentStatus, SkillEntry, TaskApprovalRequest } from "@wso2/ballerina-core";
+import { Attachment, AttachmentStatus, SkillEnableStage, SkillEntry, TaskApprovalRequest } from "@wso2/ballerina-core";
+import type { ClarifyEvent, ConfigurationCollectionEvent, ConnectorGenerationNotification } from "@wso2/ballerina-core";
 
 import { AIChatView, Header, HeaderButtons, ChatMessage, TurnGroup, AuthProviderChip, UsageBadge, ApprovalOverlay, OverlayMessage, OverlayCloseButton } from "../../styles";
 import { SessionHistoryDropdown } from "../SessionHistory";
@@ -193,6 +194,21 @@ function appendToLastEntry(entries: StreamEntry[], item: StreamItem): StreamEntr
     return [...entries.slice(0, -1), { ...last, items: [...last.items, item] }];
 }
 
+// Interactive-prompt events need care while replaying buffered events on reopen: their
+// transcript cards must be rebuilt (they are part of the turn), but a "waiting for user"
+// state may only be re-surfaced when the backend still has the request pending (in-chat
+// prompts survive panel close and stay answerable). For card-driven prompts — whose waiting
+// UI derives from the card's `stage` — the pending-stage event of an already-resolved
+// request is dropped; its resolution event later in the buffer rebuilds the card in its
+// final state. Banner-driven prompts (task/web-tool approval) are handled inside their
+// branches instead: transcript items are always rebuilt, only the banner is suppressed.
+const REPLAY_PENDING_STAGES: Record<string, string> = {
+    clarify_event: "asking" satisfies ClarifyEvent["stage"],
+    skill_enable_event: SkillEnableStage.PROMPTING,
+    configuration_collection_event: "collecting" satisfies ConfigurationCollectionEvent["stage"],
+    connector_generation_notification: "requesting_input" satisfies ConnectorGenerationNotification["stage"],
+};
+
 const SCAFFOLD_DONE_PREFIX = "ballerina.scaffold.done:";
 
 // Stable, non-crypto hash for keying scaffold runs by (prompt + steps).
@@ -208,6 +224,26 @@ function scaffoldKeyHash(text: string, hiddenContext: string | undefined): strin
 const AIChat: React.FC = () => {
     const { rpcClient } = useRpcContext();
     const [messages, setMessages] = useState<Array<{ role: string; content: string; type: string; checkpointId?: string; messageId?: string }>>([]);
+    const renderedMessagesRef = useRef(messages);
+    const messagesCommitWaitersRef = useRef<Array<() => void>>([]);
+    const [messagesCommitSignal, setMessagesCommitSignal] = useState(0);
+
+    React.useLayoutEffect(() => {
+        renderedMessagesRef.current = messages;
+        const waiters = messagesCommitWaitersRef.current.splice(0);
+        for (const resolve of waiters) {
+            resolve();
+        }
+    }, [messages, messagesCommitSignal]);
+
+    const waitForMessagesCommit = useCallback((): Promise<void> => {
+        return new Promise((resolve) => {
+            messagesCommitWaitersRef.current.push(resolve);
+            // This marker is queued after all preceding message updates. The
+            // layout effect therefore observes their final committed state.
+            setMessagesCommitSignal((value) => value + 1);
+        });
+    }, []);
 
     const getLatestAssistantMessageIndex = (chatMessages: Array<{ role: string }>): number => {
         for (let i = chatMessages.length - 1; i >= 0; i--) {
@@ -219,15 +255,41 @@ const AIChat: React.FC = () => {
         return -1;
     };
 
+    const getLatestUserMessageIndex = (chatMessages: Array<{ role: string }>): number => {
+        for (let i = chatMessages.length - 1; i >= 0; i--) {
+            const role = chatMessages[i]?.role;
+            if (role === "User" || role === "user") {
+                return i;
+            }
+        }
+        return -1;
+    };
+
     const ensureAssistantMessage = (
         chatMessages: Array<{ role: string; content: string; type: string; checkpointId?: string; messageId?: string }>
     ): number => {
-        let targetIndex = getLatestAssistantMessageIndex(chatMessages);
-        if (targetIndex === -1) {
-            chatMessages.push({ role: "Copilot", content: "", type: "assistant_message" });
-            targetIndex = chatMessages.length - 1;
+        const targetIndex = getLatestAssistantMessageIndex(chatMessages);
+        // Reuse the trailing assistant bubble only if it belongs to the CURRENT turn — i.e. it
+        // comes after the most recent user message. Otherwise (a newer user prompt exists, or there
+        // is no assistant yet) start a fresh bubble so streamed content lands under the right turn.
+        // Without this, replaying a follow-up turn's events on reopen merges them into the previous
+        // turn's bubble and the follow-up prompt is pushed below its own response.
+        if (targetIndex !== -1 && targetIndex > getLatestUserMessageIndex(chatMessages)) {
+            if (!chatMessages[targetIndex].messageId && activeRunGenerationIdRef.current) {
+                chatMessages[targetIndex] = {
+                    ...chatMessages[targetIndex],
+                    messageId: activeRunGenerationIdRef.current,
+                };
+            }
+            return targetIndex;
         }
-        return targetIndex;
+        chatMessages.push({
+            role: "Copilot",
+            content: "",
+            type: "assistant_message",
+            messageId: activeRunGenerationIdRef.current,
+        });
+        return chatMessages.length - 1;
     };
 
     const updateLastMessage = (updater: (content: string) => string) => {
@@ -321,6 +383,53 @@ const AIChat: React.FC = () => {
 
     const isErrorChunkReceivedRef = useRef(false);
     const activeScaffoldKeyRef = useRef<string | null>(null);
+
+    // --- Panel reconnection safeguards ---
+    // The agent run survives the panel closing; these let a reopened panel
+    // re-attach to an in-flight run, replay missed events, and poll for events
+    // that were dropped while no panel was listening.
+    const ENABLE_STREAM_SAFEGUARDS = true;
+    const ENABLE_STREAM_POLLING_FALLBACK = ENABLE_STREAM_SAFEGUARDS;
+    const POLL_STALE_THRESHOLD_MS = 5_000;
+    const POLL_INTERVAL_MS = 3_000;
+    const lastReceivedSeqRef = useRef<number>(0);          // highest seq seen (push or replay)
+    const lastEventTimeRef = useRef<number>(0);            // timestamp of last event (staleness)
+    const terminalEventReceivedRef = useRef<boolean>(false); // stop/abort/error seen
+    const pollInFlightRef = useRef<boolean>(false);        // prevents overlapping polls
+    const activeRunGenerationIdRef = useRef<string | undefined>(undefined); // drop stale-run events
+    const activeRunScopeRef = useRef<{ projectRootPath: string; threadId: string } | undefined>(undefined);
+    const runEpochRef = useRef(0);                         // invalidates old in-flight poll responses
+    const runAcknowledgedRef = useRef(false);              // backend has exposed/evented the expected run
+    const handleChatNotifyRef = useRef<(response: ChatNotify) => void | Promise<void>>(() => {});
+    const [backendRequestTriggered, setBackendRequestTriggered] = useState(false);
+    // True while replaying buffered events on reopen — lets the notify handler skip
+    // interactive prompts that were already resolved earlier in the run.
+    const replayingRef = useRef(false);
+    // Ensures the reconnect/replay runs at most once for this panel mount
+    // (guards StrictMode double-effects and rpcClient identity churn).
+    const didReconnectRef = useRef(false);
+    // Request ids of interactive prompts still awaiting a response, captured at reconnect.
+    // During replay, a buffered prompt is re-shown only if its id is in here (still pending).
+    const pendingRequestIdsRef = useRef<Set<string>>(new Set());
+    // Live-event gate. The onChatNotify subscription is active from the first render, but
+    // reconnect (history load + buffer replay) happens later and asynchronously. While the gate
+    // is CLOSED, incoming live events are queued instead of processed, so they can't interleave
+    // with the replay. The reconnect effect drains the queue in order (seq-deduped against the
+    // replay's high-water mark) and opens the gate once replay is done.
+    const liveGateClosedRef = useRef(true);
+    const liveQueueRef = useRef<ChatNotify[]>([]);
+    // Resolved once the mount-time reconnect (history load + buffer replay + recovery
+    // persist) has settled. Sends await this before hitting the backend: a new run's
+    // beginRun resets the event buffer, so a send racing the replay (e.g. an
+    // auto-submitted initial prompt) would wipe a finished run's not-yet-persisted
+    // tail — review chip and final transcript included.
+    const reconnectSettledResolveRef = useRef<(() => void) | null>(null);
+    const reconnectSettledRef = useRef<Promise<void> | null>(null);
+    if (reconnectSettledRef.current === null) {
+        reconnectSettledRef.current = new Promise<void>((resolve) => {
+            reconnectSettledResolveRef.current = resolve;
+        });
+    }
 
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
@@ -613,35 +722,298 @@ const AIChat: React.FC = () => {
     };
 
     /**
+     * Re-attach to an agent run after the panel was closed and reopened: fetch
+     * the buffered events, adopt the run, and replay what the closed panel
+     * missed. Covers both a run that is still executing (live re-attach) and a
+     * run that finished while the panel was closed — the backend serves the
+     * latter's buffer exactly once, and replaying its save_chat also persists
+     * the final transcript the closed panel never round-tripped. No-op when
+     * there is nothing to replay.
+     */
+    const reconnectToActiveRun = async (historyMessages: ReturnType<typeof convertToUIMessages>) => {
+        try {
+            const runStatus = await rpcClient.getAiPanelRpcClient().getRunStatus({});
+            activeRunScopeRef.current = {
+                projectRootPath: runStatus.projectRootPath,
+                threadId: runStatus.threadId,
+            };
+            // Prompts still awaiting an answer — used by the replay skip guard to
+            // re-show only still-pending interactive prompts.
+            pendingRequestIdsRef.current = new Set(runStatus.pendingRequestIds ?? []);
+
+            const generationId = runStatus.generationId
+                ?? runStatus.events.find(e => !!e.generationId)?.generationId;
+            // A buffer only exists while the turn's FINAL transcript is not yet persisted
+            // (per-step save_chat writes partial uiResponses mid-run, so a history bubble
+            // for this generation does NOT imply completeness) — whenever one exists,
+            // rebuild the turn from it; the persist that follows clears it, so this
+            // converges. A live run always proceeds, even with an empty buffer, to arm
+            // the spinner and polling fallback.
+            if (!runStatus.isRunning && runStatus.events.length === 0) {
+                return;
+            }
+
+            // Older extension versions could expose a run before its generation
+            // was persisted. Repair such a history defensively from the backend's
+            // authoritative prompt so streamed content cannot attach to the prior turn.
+            if (
+                generationId
+                && runStatus.userPrompt
+                && !historyMessages.some((message) =>
+                    message.role === "User" && message.messageId === generationId
+                )
+            ) {
+                setMessages((previous) => [
+                    ...previous,
+                    {
+                        role: "User",
+                        content: runStatus.userPrompt!,
+                        type: "user_message",
+                        messageId: generationId,
+                    },
+                ]);
+            }
+
+            // Adopt this run so any stray events from a prior run are dropped.
+            activeRunGenerationIdRef.current = generationId;
+            runAcknowledgedRef.current = !!generationId;
+            runEpochRef.current += 1;
+            if (ENABLE_STREAM_SAFEGUARDS) {
+                lastReceivedSeqRef.current = runStatus.truncated
+                    ? (runStatus.events[runStatus.events.length - 1]?.seq ?? 0)
+                    : 0;
+                lastEventTimeRef.current = Date.now();
+                terminalEventReceivedRef.current = false;
+            }
+            if (runStatus.isPlanMode !== undefined) {
+                setAgentMode(runStatus.isPlanMode ? AgentMode.Plan : AgentMode.Edit);
+            }
+            if (!runStatus.truncated) {
+                // Drop any assistant bubble already loaded for this generation (stale
+                // partial uiResponse) — the replay rebuilds the full turn from scratch,
+                // and turn-aware ensureAssistantMessage starts a fresh bubble for it.
+                setMessages(prev => prev.filter(
+                    (m) => !(m.type === "assistant_message" && m.messageId === generationId)
+                ));
+            } else {
+                // Never present or persist a retained tail as though it were the
+                // complete turn. Keep any durable partial and make the gap explicit.
+                setMessages((previous) => {
+                    const next = [...previous];
+                    const targetIndex = ensureAssistantMessage(next);
+                    const current = next[targetIndex];
+                    const warning = "\n\n*[Some output streamed while this panel was closed could not be recovered. The transcript below may be incomplete.]*";
+                    if (!current.content.includes(warning.trim())) {
+                        next[targetIndex] = { ...current, content: `${current.content}${warning}` };
+                    }
+                    return next;
+                });
+            }
+            if (runStatus.isRunning) {
+                setIsLoading(true);
+                setBackendRequestTriggered(true);
+            }
+            replayingRef.current = true;
+            try {
+                if (!runStatus.truncated) {
+                    for (const ev of runStatus.events) {
+                        await handleChatNotifyRef.current(ev);
+                    }
+                } else {
+                    // The retained tail is not a complete transcript. Re-surface only
+                    // still-answerable prompts and safe structural state.
+                    for (const ev of runStatus.events) {
+                        const reqId = (ev as any).requestId;
+                        const stillPendingPrompt = !!reqId && pendingRequestIdsRef.current.has(reqId);
+                        const structuralTail = ev.type === "chat_component" || ev.type === "diagnostics"
+                            || ev.type === "plan_approval_resolved"
+                            || (!runStatus.isRunning && ev.type === "error");
+                        if (stillPendingPrompt || structuralTail) {
+                            await handleChatNotifyRef.current(ev);
+                        }
+                    }
+                }
+            } finally {
+                replayingRef.current = false;
+            }
+            if (!runStatus.isRunning && generationId && !runStatus.truncated) {
+                // Finished while the panel was closed. Persist the rebuilt transcript so
+                // it's durable, the backend drops the buffer, and later reopens serve from
+                // history. (The replayed save_chat usually does this already; this covers
+                // buffers whose run ended without one, e.g. an error turn.) Read the
+                // Wait for React to commit every replay update, then perform one
+                // explicit, awaited final write. This is the only recovery write
+                // allowed to clear the backend buffer.
+                await waitForMessagesCommit();
+                const recoveredMessage = [...renderedMessagesRef.current]
+                    .reverse()
+                    .find((message) =>
+                        (message.role === "Copilot" || message.role === "assistant")
+                        && message.messageId === generationId
+                    );
+                if (recoveredMessage?.content) {
+                    await rpcClient.getAiPanelRpcClient().updateChatMessage({
+                        messageId: generationId,
+                        content: recoveredMessage.content,
+                        projectRootPath: runStatus.projectRootPath,
+                        threadId: runStatus.threadId,
+                        clearRunBuffer: true,
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('[AIChat] Failed to restore in-flight run status:', error);
+        }
+    };
+
+    /**
      * Effect: Load initial chat history from aiChatMachine context
      */
     useEffect(function loadInitialChatHistory() {
         const loadHistory = async () => {
-            try {
-                const historyMessages = await rpcClient.getAiPanelRpcClient().getChatMessages();
-                if (historyMessages && historyMessages.length > 0) {
-                    const uiMessages = convertToUIMessages(historyMessages);
-                    setMessages((prevMessages) => (prevMessages.length > 0 ? prevMessages : uiMessages));
-                }
-            } catch (error) {
-                console.error('[AIChat] Failed to load initial chat history:', error);
-                // Continue with empty messages - don't block the UI
+            // Duplicate/concurrent mount (React StrictMode, or an rpcClient identity
+            // change): the primary run owns history load, gate and replay. Bail so we
+            // never replay twice or double-open the gate.
+            if (didReconnectRef.current) {
+                return;
             }
-            // Re-derive the review flag: it is otherwise only set by the live stream
-            // event, so a webview reload would leave a pending review inactive
-            // (ReviewBar unclickable, auto-accept-on-send skipped).
+            didReconnectRef.current = true;
+
             try {
-                const pending = await rpcClient.getAiPanelRpcClient().hasPendingReview();
-                if (pending) {
-                    setHasActiveReview(true);
+                let uiMessages: ReturnType<typeof convertToUIMessages> = [];
+                try {
+                    const historyMessages = await rpcClient.getAiPanelRpcClient().getChatMessages();
+                    if (historyMessages && historyMessages.length > 0) {
+                        uiMessages = convertToUIMessages(historyMessages);
+                        setMessages((prevMessages) => (prevMessages.length > 0 ? prevMessages : uiMessages));
+                    }
+                } catch (error) {
+                    console.error('[AIChat] Failed to load initial chat history:', error);
+                    // Continue with empty messages - don't block the UI
                 }
-            } catch (error) {
-                console.error('[AIChat] Failed to check pending review state:', error);
+                // Re-derive the review flag: it is otherwise only set by the live stream
+                // event, so a webview reload would leave a pending review inactive
+                // (ReviewBar unclickable, auto-accept-on-send skipped).
+                try {
+                    const pending = await rpcClient.getAiPanelRpcClient().hasPendingReview({});
+                    if (pending) {
+                        setHasActiveReview(true);
+                    }
+                } catch (error) {
+                    console.error('[AIChat] Failed to check pending review state:', error);
+                }
+
+                // Reconnect to an in-flight run: the run keeps executing on the
+                // extension host while the panel is closed, buffering the events we
+                // missed. Replay them so the reopened panel shows live progress.
+                await reconnectToActiveRun(uiMessages);
+            } finally {
+                // Open the gate: replay is done (or was skipped). Drain live events
+                // that arrived meanwhile, in order, deduped against the replay's seq
+                // high-water mark; then resume direct dispatch. Events arriving during
+                // the drain re-queue and are picked up by the loop, so opening the
+                // gate right after the loop (synchronously) can't drop anything.
+                const q = liveQueueRef.current;
+                while (q.length > 0) {
+                    const ev = q.shift();
+                    if (!ev) { continue; }
+                    if (typeof ev.seq === "number" && ev.seq <= lastReceivedSeqRef.current) {
+                        continue; // already applied by the replay
+                    }
+                    try {
+                        await handleChatNotifyRef.current(ev);
+                    } catch (e) {
+                        console.error('[AIChat] live drain failed:', e);
+                    }
+                }
+                liveGateClosedRef.current = false;
+                reconnectSettledResolveRef.current?.();
             }
         };
 
         loadHistory();
     }, [rpcClient]);
+
+    /**
+     * Effect: Polling fallback for panel reconnection. When a run is active but
+     * live push events go stale (e.g. the panel was briefly closed, or a burst
+     * was dropped), poll `getRunStatus` for events since the last seen `seq` and
+     * replay them. Stops once a terminal event is seen or the run ends.
+     */
+    useEffect(() => {
+        if (!ENABLE_STREAM_POLLING_FALLBACK || !backendRequestTriggered || !rpcClient) {
+            return;
+        }
+        const intervalId = setInterval(async () => {
+            if (terminalEventReceivedRef.current || pollInFlightRef.current) {
+                return;
+            }
+            if (Date.now() - lastEventTimeRef.current < POLL_STALE_THRESHOLD_MS) {
+                return;
+            }
+            try {
+                pollInFlightRef.current = true;
+                const requestedEpoch = runEpochRef.current;
+                const requestedGenerationId = activeRunGenerationIdRef.current;
+                const runStatus = await rpcClient.getAiPanelRpcClient().getRunStatus({
+                    sinceSeq: lastReceivedSeqRef.current,
+                });
+                // A new send/reconnect happened while this request was in flight,
+                // or the response belongs to a different server-side run.
+                if (
+                    requestedEpoch !== runEpochRef.current
+                    || (
+                        requestedGenerationId
+                        && runStatus.generationId
+                        && requestedGenerationId !== runStatus.generationId
+                    )
+                    || (
+                        requestedGenerationId
+                        && !runStatus.generationId
+                        && !runAcknowledgedRef.current
+                    )
+                ) {
+                    return;
+                }
+                if (
+                    requestedGenerationId
+                    && runStatus.generationId === requestedGenerationId
+                ) {
+                    runAcknowledgedRef.current = true;
+                }
+                activeRunScopeRef.current = {
+                    projectRootPath: runStatus.projectRootPath,
+                    threadId: runStatus.threadId,
+                };
+                for (const ev of runStatus.events) {
+                    // Race guard against a push arriving concurrently with the poll.
+                    if (typeof ev.seq === "number" && ev.seq <= lastReceivedSeqRef.current) {
+                        continue;
+                    }
+                    await handleChatNotifyRef.current(ev);
+                }
+                if (!runStatus.isRunning && runStatus.events.length === 0 && !terminalEventReceivedRef.current) {
+                    // Watchdog: the run is genuinely gone but its terminal event never
+                    // reached us (and there's nothing left to replay) — release the
+                    // spinner instead of stranding it. The transcript on screen is
+                    // whatever streamed/replayed; only the loading state is stuck.
+                    console.warn('[AIChat] Polling watchdog clearing a stuck spinner (missed terminal signal).');
+                    setIsLoading(false);
+                    setIsCodeLoading(false);
+                    setIsCompacting(false);
+                    setBackendRequestTriggered(false);
+                }
+            } catch {
+                // best-effort; try again next tick
+            } finally {
+                pollInFlightRef.current = false;
+            }
+        }, POLL_INTERVAL_MS);
+        return () => {
+            clearInterval(intervalId);
+            pollInFlightRef.current = false;
+        };
+    }, [backendRequestTriggered, rpcClient]);
 
     /**
      * Effect: Check for an active migration session that needs AI enhancement.
@@ -690,8 +1062,62 @@ const AIChat: React.FC = () => {
         }
     });
 
-    rpcClient?.onChatNotify(async (response: ChatNotify) => {
+    const handleChatNotify = async (response: ChatNotify) => {
+        // Drop events belonging to a different (previously-interrupted) run once we
+        // have adopted a specific run on reconnect — BEFORE any bookkeeping. seq is
+        // per-run, so a stale run's event must not advance the adopted run's seq
+        // high-water mark (it would poison sinceSeq polling) or set the terminal
+        // flag (it would stop polling for the still-live adopted run).
+        if (
+            response.generationId &&
+            activeRunGenerationIdRef.current &&
+            response.generationId !== activeRunGenerationIdRef.current
+        ) {
+            return;
+        }
+        if (
+            response.generationId
+            && response.generationId === activeRunGenerationIdRef.current
+        ) {
+            runAcknowledgedRef.current = true;
+        }
+        if (
+            !replayingRef.current
+            && typeof response.seq === "number"
+            && response.seq <= lastReceivedSeqRef.current
+        ) {
+            return;
+        }
+        // Reconnection bookkeeping: track the seq high-water mark, staleness
+        // timestamp, and terminal state for the accepted event.
+        if (ENABLE_STREAM_SAFEGUARDS) {
+            if (typeof response.seq === "number" && response.seq > lastReceivedSeqRef.current) {
+                lastReceivedSeqRef.current = response.seq;
+            }
+            lastEventTimeRef.current = Date.now();
+            if (response.type === "stop" || response.type === "abort" || response.type === "error") {
+                terminalEventReceivedRef.current = true;
+            }
+        }
+
         const type = response.type;
+
+        // True only while replaying a buffered event whose request the backend no longer has
+        // pending — its live interaction was already resolved and must not be re-surfaced.
+        // A still-pending prompt falls through and renders live (answerable after reopen).
+        const isResolvedReplayedPrompt = (reqId?: string) =>
+            replayingRef.current && (!reqId || !pendingRequestIdsRef.current.has(reqId));
+
+        // Card-driven prompts: drop the pending-stage event of an already-resolved request;
+        // its resolution event later in the buffer rebuilds the card in its final state.
+        const pendingStage = REPLAY_PENDING_STAGES[type];
+        if (
+            pendingStage &&
+            (response as any).stage === pendingStage &&
+            isResolvedReplayedPrompt((response as any).requestId)
+        ) {
+            return;
+        }
 
         if (type === "content_block") {
             const content = response.content;
@@ -805,6 +1231,12 @@ const AIChat: React.FC = () => {
                 });
             }
 
+            // Replayed, already-resolved approval: the plan transcript item above is still
+            // rebuilt; only the interactive banner / auto-approve side effects are skipped.
+            if (isResolvedReplayedPrompt(response.requestId)) {
+                return;
+            }
+
             // Skip approval UI when auto-approved from backend (scaffold mode)
             if (response.autoApproved) {
                 return;
@@ -824,7 +1256,42 @@ const AIChat: React.FC = () => {
                 message: response.message,
             });
 
+        } else if (type === "plan_approval_resolved") {
+            setMessages((previous) => {
+                const next = [...previous];
+                const assistantIndex = getLatestAssistantMessageIndex(next);
+                if (assistantIndex === -1) {
+                    return previous;
+                }
+                const assistant = next[assistantIndex];
+                const entries = parseStream(assistant.content);
+                const updated = entries.map((entry) => ({
+                    ...entry,
+                    items: entry.items.map((item) =>
+                        item.kind === "plan" && item.requestId === response.requestId
+                            ? {
+                                ...item,
+                                approvalStatus: response.approved ? "approved" as const : "revised" as const,
+                                approvalComment: response.approved ? undefined : response.comment,
+                            }
+                            : item
+                    ),
+                }));
+                next[assistantIndex] = {
+                    ...assistant,
+                    content: serializeStream(updated, assistant.content),
+                };
+                return next;
+            });
+            setApprovalRequest((pending) =>
+                pending?.requestId === response.requestId ? null : pending
+            );
+
         } else if (type === "web_tool_approval_request") {
+            // Banner-only event (no transcript item) — nothing to rebuild for a resolved one.
+            if (isResolvedReplayedPrompt(response.requestId)) {
+                return;
+            }
             setWebToolApprovalRequest({
                 requestId: response.requestId,
                 toolName: response.toolName,
@@ -1027,6 +1494,7 @@ const AIChat: React.FC = () => {
             setIsCodeLoading(false);
             setIsLoading(false);
             setIsMigrationEnhancementRunning(false);
+            setBackendRequestTriggered(false);
             fetchUsage();
             setAgentMode(AgentMode.Edit);
             if (activeScaffoldKeyRef.current && !isErrorChunkReceivedRef.current) {
@@ -1052,6 +1520,7 @@ const AIChat: React.FC = () => {
             setIsCompacting(false);
             setIsCodeLoading(false);
             setIsLoading(false);
+            setBackendRequestTriggered(false);
             if (isMigrationEnhancementRunning) {
                 setIsMigrationEnhancementRunning(false);
                 // Re-fetch session so the Resume card appears
@@ -1065,12 +1534,36 @@ const AIChat: React.FC = () => {
 
         } else if (type === "save_chat") {
             console.log("Received save_chat signal");
-            const assistantIndex = getLatestAssistantMessageIndex(messages);
-            const contentToSave = assistantIndex >= 0 ? messages[assistantIndex]?.content : messages[messages.length - 1]?.content;
-            await rpcClient.getAiPanelRpcClient().updateChatMessage({
-                messageId: response.messageId,
-                content: contentToSave || "",
-            });
+            const messageId = response.messageId;
+            const isRecoveryIntermediateWrite = replayingRef.current;
+            await waitForMessagesCommit();
+            const scopedAssistant = [...renderedMessagesRef.current]
+                .reverse()
+                .find((message) =>
+                    (message.role === "Copilot" || message.role === "assistant")
+                    && message.messageId === messageId
+                );
+            const fallbackAssistant = (
+                response.generationId === undefined
+                || activeRunGenerationIdRef.current === messageId
+            )
+                ? renderedMessagesRef.current[getLatestAssistantMessageIndex(renderedMessagesRef.current)]
+                : undefined;
+            const contentToSave = scopedAssistant?.content || fallbackAssistant?.content || "";
+            try {
+                await rpcClient.getAiPanelRpcClient().updateChatMessage({
+                    messageId,
+                    content: contentToSave,
+                    projectRootPath: activeRunScopeRef.current?.projectRootPath,
+                    threadId: activeRunScopeRef.current?.threadId,
+                    clearRunBuffer: !isRecoveryIntermediateWrite,
+                });
+            } catch (error) {
+                console.error("[AIChat] Failed to persist chat message:", error);
+                if (isRecoveryIntermediateWrite) {
+                    throw error;
+                }
+            }
 
         } else if (type === "error") {
             console.log("Received error signal");
@@ -1121,9 +1614,26 @@ const AIChat: React.FC = () => {
             setIsCompacting(false);
             setIsCodeLoading(false);
             setIsLoading(false);
+            setBackendRequestTriggered(false);
             isErrorChunkReceivedRef.current = true;
         }
-    });
+    };
+
+    // Keep the subscription behaviour identical to before (fresh closure per
+    // render so `messages`-reading branches stay current), and expose the
+    // latest handler via a ref for the reconnect/poll replay paths.
+    handleChatNotifyRef.current = handleChatNotify;
+    // Live subscription. While the reconnect gate is closed (mount → replay done),
+    // queue events so they can't interleave with the async replay; the reconnect
+    // effect drains them in order (seq-deduped) and opens the gate.
+    const onLiveChatNotify = (response: ChatNotify) => {
+        if (liveGateClosedRef.current) {
+            liveQueueRef.current.push(response);
+            return;
+        }
+        return handleChatNotify(response);
+    };
+    rpcClient?.onChatNotify(onLiveChatNotify);
 
     function generateNaturalProgrammingTemplate(isReqFileExists: boolean) {
         if (isReqFileExists) {
@@ -1275,6 +1785,11 @@ const AIChat: React.FC = () => {
      * triggers the auto-submit effect.
      */
     async function handleSend(content: { input: Input[]; attachments: Attachment[]; metadata?: Record<string, any> }) {
+        // A new run's beginRun resets the backend event buffer — wait for the
+        // mount-time reconnect to finish replaying/persisting any buffered run
+        // first, so an auto-submitted prompt can't wipe a finished run's
+        // not-yet-persisted tail (review chip and final transcript included).
+        await reconnectSettledRef.current;
         setCurrentGeneratingPromptIndex(otherMessages.length);
         setIsPromptExecutedInCurrentWindow(true);
         setFeedbackGiven(null);
@@ -1286,6 +1801,11 @@ const AIChat: React.FC = () => {
             await rpcClient.getAiPanelRpcClient().acceptChanges().catch((e: unknown) => console.warn("[AIChat] auto-accept failed:", e));
             setHasActiveReview(false);
         }
+        const generationId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        activeRunGenerationIdRef.current = generationId;
+        activeRunScopeRef.current = undefined;
+        runEpochRef.current += 1;
+        runAcknowledgedRef.current = false;
         // Clear until onCheckpointCaptured repopulates with the new set
         setAvailableCheckpointIds(new Set());
         rpcClient.getAiPanelRpcClient().clearInitialPrompt();
@@ -1293,6 +1813,14 @@ const AIChat: React.FC = () => {
         setMessages((prevMessages) => prevMessages.filter((message) => message.type !== "question"));
         setIsLoading(true);
         isErrorChunkReceivedRef.current = false;
+        // Reset reconnection safeguards for the explicitly identified new run
+        // and arm the polling fallback.
+        if (ENABLE_STREAM_SAFEGUARDS) {
+            lastReceivedSeqRef.current = 0;
+            lastEventTimeRef.current = Date.now();
+            terminalEventReceivedRef.current = false;
+        }
+        setBackendRequestTriggered(true);
         setMessages((prevMessages) =>
             prevMessages.filter((message, index) => index <= lastQuestionIndex || message.type !== "question")
         );
@@ -1301,8 +1829,8 @@ const AIChat: React.FC = () => {
         const uerMessage = getUserMessage([stringifiedContent, content.attachments]);
         setMessages((prevMessages) => [
             ...prevMessages,
-            { role: "User", content: uerMessage, type: "user_message" },
-            { role: "Copilot", content: "", type: "assistant_message" }, // Add a new message for the assistant
+            { role: "User", content: uerMessage, type: "user_message", messageId: generationId },
+            { role: "Copilot", content: "", type: "assistant_message", messageId: generationId },
         ]);
 
         await handleSendQuery(content);
@@ -1580,9 +2108,10 @@ const AIChat: React.FC = () => {
         const currentHiddenContext = hiddenContextRef.current;
         hiddenContextRef.current = undefined;
         console.log("Submitting agent prompt:", { useCase, agentMode: agentModeRef.current, codeContext: currentCodeContext, operationType, fileAttatchments });
-        rpcClient.getAiPanelRpcClient().generateAgent({
+        await rpcClient.getAiPanelRpcClient().generateAgent({
+            generationId: activeRunGenerationIdRef.current,
             usecase: useCase, hiddenContext: currentHiddenContext, isPlanMode: agentModeRef.current === AgentMode.Plan, codeContext: currentCodeContext, operationType, fileAttachmentContents: fileAttatchments, webSearchEnabled: isWebToolsEnabled
-        })
+        });
     }
 
     async function handleStop() {
@@ -1788,22 +2317,6 @@ const AIChat: React.FC = () => {
                 requestId: approvalRequest.requestId,
                 comment: undefined
             });
-            // Collapse TodoSection into approval summary — mark plan items as approved
-            setMessages(prevMessages => {
-                const msgs = [...prevMessages];
-                const lastIdx = [...msgs].map(m => m.role).lastIndexOf("Copilot");
-                if (lastIdx === -1) return prevMessages;
-                const last = msgs[lastIdx];
-                const entries = parseStream(last.content);
-                const updated = entries.map(entry => ({
-                    ...entry,
-                    items: entry.items.map(item =>
-                        item.kind === "plan" && item.requestId === approvalRequest.requestId ? { ...item, approvalStatus: "approved" as const } : item
-                    )
-                }));
-                msgs[lastIdx] = { ...last, content: serializeStream(updated, last.content) };
-                return msgs;
-            });
         } else if (approvalRequest.approvalType === "completion") {
             const reviewTasks = approvalRequest.tasks.filter(t => t.status === "review");
             const lastReviewTask = reviewTasks[reviewTasks.length - 1];
@@ -1824,22 +2337,6 @@ const AIChat: React.FC = () => {
             await rpcClient.getAiPanelRpcClient().declinePlan({
                 requestId: approvalRequest.requestId,
                 comment
-            });
-            // Collapse TodoSection into revision summary — mark plan items as revised
-            setMessages(prevMessages => {
-                const msgs = [...prevMessages];
-                const lastIdx = [...msgs].map(m => m.role).lastIndexOf("Copilot");
-                if (lastIdx === -1) return prevMessages;
-                const last = msgs[lastIdx];
-                const entries = parseStream(last.content);
-                const updated = entries.map(entry => ({
-                    ...entry,
-                    items: entry.items.map(item =>
-                        item.kind === "plan" && item.requestId === approvalRequest.requestId ? { ...item, approvalStatus: "revised" as const, approvalComment: comment } : item
-                    )
-                }));
-                msgs[lastIdx] = { ...last, content: serializeStream(updated, last.content) };
-                return msgs;
             });
         } else if (approvalRequest.approvalType === "completion") {
             await rpcClient.getAiPanelRpcClient().declineTask({

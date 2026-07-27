@@ -272,19 +272,21 @@ export class ChatStateStorage {
      * Flush a thread to disk after mutation.
      * Called after every state change to keep files as the source of truth.
      */
-    private flushThread(projectRootPath: string, threadId: string): void {
+    private flushThread(projectRootPath: string, threadId: string): boolean {
         const workspace = this.storage.get(projectRootPath);
         if (!workspace) {
-            return;
+            return false;
         }
         const thread = workspace.threads.get(threadId);
         if (!thread) {
-            return;
+            return false;
         }
         try {
             this.persistenceStore.saveThread(projectRootPath, threadId, toPersistedThread(thread));
+            return true;
         } catch (err) {
             console.error(`[ChatStateStorage] Failed to persist thread ${threadId}:`, err);
+            return false;
         }
     }
 
@@ -710,13 +712,13 @@ export class ChatStateStorage {
         threadId: string,
         generationId: string,
         updates: Partial<Generation>
-    ): void {
+    ): boolean {
         const thread = this.getOrCreateThread(projectRootPath, threadId);
         const generation = thread.generations.find(g => g.id === generationId);
 
         if (!generation) {
             console.error(`[ChatStateStorage] Generation not found: ${generationId}`);
-            return;
+            return false;
         }
 
         // Apply updates
@@ -724,8 +726,9 @@ export class ChatStateStorage {
         thread.updatedAt = Date.now();
 
         // Persist immediately
-        this.flushThread(projectRootPath, threadId);
+        const persisted = this.flushThread(projectRootPath, threadId);
         console.log(`[ChatStateStorage] Updated generation: ${generationId}`);
+        return persisted;
     }
 
     /**
@@ -762,6 +765,24 @@ export class ChatStateStorage {
     ): Generation | undefined {
         const thread = this.getOrCreateThread(projectRootPath, threadId);
         return thread.generations.find(g => g.id === generationId);
+    }
+
+    /**
+     * Locate a generation without relying on the mutable active-thread pointer.
+     * Generation IDs are unique within a workspace.
+     */
+    findGenerationScope(
+        projectRootPath: string,
+        generationId: string
+    ): { threadId: string; generation: Generation } | undefined {
+        const workspace = this.initializeWorkspace(projectRootPath);
+        for (const [threadId, thread] of workspace.threads) {
+            const generation = thread.generations.find(candidate => candidate.id === generationId);
+            if (generation) {
+                return { threadId, generation };
+            }
+        }
+        return undefined;
     }
 
     /**
@@ -1178,6 +1199,14 @@ export class ChatStateStorage {
         threadId: string,
         execution: ActiveExecution
     ): void {
+        const existing = this.activeExecutions.get(projectRootPath)?.get(threadId);
+        if (
+            existing?.generationId === execution.generationId
+            && existing.abortController === execution.abortController
+        ) {
+            return;
+        }
+
         // Abort any existing execution for this thread first
         this.abortActiveExecution(projectRootPath, threadId);
 

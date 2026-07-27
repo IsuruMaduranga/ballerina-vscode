@@ -82,6 +82,9 @@ import {
     // TODO(auto-memory): temporarily disabled for this release.
     // ClearMemoryRequest,
     // OpenMemoryRequest,
+    GetRunStatusRequest,
+    GetRunStatusResponse,
+    HasPendingReviewRequest,
 } from "./interfaces";
 
 export interface AIPanelAPI {
@@ -142,7 +145,8 @@ export interface AIPanelAPI {
     clearChat: () => Promise<void>;
     updateChatMessage: (params: UpdateChatMessageRequest) => Promise<void>;
     getActiveTempDir: () => Promise<string>;
-    hasPendingReview: () => Promise<boolean>;
+    hasPendingReview: (params: HasPendingReviewRequest) => Promise<boolean>;
+    getRunStatus: (params: GetRunStatusRequest) => Promise<GetRunStatusResponse>;
     getUsage: () => Promise<UsageResponse | undefined>;
     requestQuota: (params: QuotaRequestParams) => Promise<QuotaRequestResult>;
     openFileDiff: (params: OpenFileDiffRequest) => void;
