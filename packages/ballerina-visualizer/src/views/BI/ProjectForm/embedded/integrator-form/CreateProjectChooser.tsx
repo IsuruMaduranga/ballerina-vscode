@@ -279,7 +279,7 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
                         <Icon name="info" isCodicon sx={{ marginTop: "1px" }} />
                         <span>
                             {existingWorkspace
-                                ? <>Existing project — your new {startingPointNoun} will be added here.</>
+                                ? <>This is an existing project. Your new {startingPointNoun} will be added here.</>
                                 : <>A new project will be created at this location.</>}
                         </span>
                     </InfoNote>

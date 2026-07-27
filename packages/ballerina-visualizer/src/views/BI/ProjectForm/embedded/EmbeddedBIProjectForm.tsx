@@ -27,6 +27,7 @@ import { BIProjectForm } from "./integrator-form";
 import { ProjectCreationView } from "./integrator-form/ProjectCreationView";
 import { LibraryCreationView } from "./integrator-form/LibraryCreationView";
 import { CreateProjectChooser } from "./integrator-form/CreateProjectChooser";
+import { CreateFlowShell } from "./integrator-form/shared/CreateFlowShell";
 import { EmbeddedWsRpc, createCompositeClient, WsCoords } from "./wsRpc";
 import { BiWsClient } from "../../wsManager/WsClient";
 import { BiWsClientProvider } from "../../wsManager/WsClientContext";
@@ -165,44 +166,42 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
         };
     }, [wsClient, mode]);
 
-    if (error) {
-        return (
-            <div style={stateContainerStyle}>
-                <Typography variant="h4">Unable to start the integration service</Typography>
-                <Typography variant="body2">{error}</Typography>
-            </div>
-        );
-    }
-
-    if (mode === "integration" && wizardSupport === "supported" && biWsClient) {
-        return (
-            <BiWsClientProvider wsClient={biWsClient} onBack={onBack}>
-                <CreateIntegrationWizard showHeader={false} />
-            </BiWsClientProvider>
-        );
-    }
-
-    // The unified Create flow needs both clients: the composite (chooser screen +
-    // library route) and the wizard client (integration route). Wait for both.
+    // The unified Create flow renders every transient state (error, update-required,
+    // connecting) inside the shared Create shell so they appear within the bordered
+    // panel rather than floating alone.
     if (mode === "create") {
+        if (error) {
+            return (
+                <CreateFlowShell title="Create" onBack={onBack}>
+                    <div style={stateContainerStyle}>
+                        <Typography variant="h4">Unable to start the integration service</Typography>
+                        <Typography variant="body2">{error}</Typography>
+                    </div>
+                </CreateFlowShell>
+            );
+        }
         if (wizardSupport === "unsupported") {
             // The bundle and extension ship together, so this only happens on a
             // host/extension version skew — the welcome should have gated it out.
             return (
-                <div style={stateContainerStyle}>
-                    <Typography variant="h4">Update required</Typography>
-                    <Typography variant="body2">
-                        Creating a project requires a newer version of the Ballerina extension.
-                    </Typography>
-                </div>
+                <CreateFlowShell title="Create" onBack={onBack}>
+                    <div style={stateContainerStyle}>
+                        <Typography variant="h4">Update required</Typography>
+                        <Typography variant="body2">
+                            Creating a project requires a newer version of the Ballerina extension.
+                        </Typography>
+                    </div>
+                </CreateFlowShell>
             );
         }
         if (wizardSupport === "probing" || !rpcClient || !biWsClient) {
             return (
-                <div style={stateContainerStyle}>
-                    <ProgressIndicator />
-                    <Typography variant="body2">Connecting to the integration service…</Typography>
-                </div>
+                <CreateFlowShell title="Create" onBack={onBack}>
+                    <div style={stateContainerStyle}>
+                        <ProgressIndicator />
+                        <Typography variant="body2">Connecting to the integration service…</Typography>
+                    </div>
+                </CreateFlowShell>
             );
         }
         return (
@@ -217,6 +216,23 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
                     </CloudContextProvider>
                 </QueryClientProvider>
             </WsClientProvider>
+        );
+    }
+
+    if (error) {
+        return (
+            <div style={stateContainerStyle}>
+                <Typography variant="h4">Unable to start the integration service</Typography>
+                <Typography variant="body2">{error}</Typography>
+            </div>
+        );
+    }
+
+    if (mode === "integration" && wizardSupport === "supported" && biWsClient) {
+        return (
+            <BiWsClientProvider wsClient={biWsClient} onBack={onBack}>
+                <CreateIntegrationWizard showHeader={false} />
+            </BiWsClientProvider>
         );
     }
 
