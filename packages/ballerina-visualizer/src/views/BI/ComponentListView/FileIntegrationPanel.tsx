@@ -23,18 +23,21 @@ import { EVENT_TYPE, MACHINE_VIEW, SCOPE, ServiceModel, TriggerModelsResponse } 
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
-import { OutOfScopeComponentTooltip } from './componentListUtils';
+import { cardMatchesSearch, OutOfScopeComponentTooltip } from './componentListUtils';
 import { RelativeLoader } from '../../../components/RelativeLoader';
 
 interface FileIntegrationPanelProps {
     scope: SCOPE;
     triggers: TriggerModelsResponse;
+    searchQuery?: string;
 };
 
 export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
     const { rpcClient } = useRpcContext();
 
     const isDisabled = props.scope && (props.scope !== SCOPE.FILE_INTEGRATION && props.scope !== SCOPE.ANY);
+    const q = props.searchQuery;
+    const matched = props.triggers.local.filter((t) => t.type === "file" && cardMatchesSearch(t.name, q));
 
     const handleOnSelect = async (model: ServiceModel) => {
         await rpcClient.getVisualizerRpcClient().openView({
@@ -51,6 +54,11 @@ export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
         });
     };
 
+    // While searching, hide the whole panel when no file trigger matches.
+    if (q?.trim() && matched.length === 0) {
+        return null;
+    }
+
     return (
         <PanelViewMore disabled={isDisabled}>
             <TitleWrapper>
@@ -58,9 +66,8 @@ export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
                 <BodyText>Create an integration that can be triggered by the availability of files in a location.</BodyText>
             </TitleWrapper>
             <CardGrid>
-                {props.triggers.local.length === 0 && <RelativeLoader />}
-                {props.triggers.local
-                    .filter((t) => t.type === "file")
+                {!q?.trim() && props.triggers.local.length === 0 && <RelativeLoader />}
+                {matched
                     .map((item, index) => {
                         return (
                             <ButtonCard

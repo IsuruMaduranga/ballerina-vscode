@@ -22,10 +22,11 @@ import { EVENT_TYPE, MACHINE_VIEW, SCOPE } from '@wso2/ballerina-core';
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
-import { OutOfScopeComponentTooltip } from './componentListUtils';
+import { cardMatchesSearch, OutOfScopeComponentTooltip } from './componentListUtils';
 
 interface IntegrationAPIPanelProps {
     scope: SCOPE;
+    searchQuery?: string;
 };
 
 interface ServiceModel {
@@ -52,6 +53,11 @@ export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
         });
     };
 
+    const q = props.searchQuery;
+    if (!["HTTP Service", "GraphQL Service", "TCP Service"].some((t) => cardMatchesSearch(t, q))) {
+        return null;
+    }
+
     return (
         <>
             <PanelViewMore disabled={isDisabled}>
@@ -62,7 +68,7 @@ export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
                     </BodyText>
                 </TitleWrapper>
                 <CardGrid>
-                    <ButtonCard
+                    {cardMatchesSearch("HTTP Service", q) && <ButtonCard
                         id="http-service-card"
                         icon={<Icon name="bi-globe" />}
                         title="HTTP Service"
@@ -74,8 +80,8 @@ export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
                         })}
                         disabled={isDisabled}
                         tooltip={isDisabled ? OutOfScopeComponentTooltip : ""}
-                    />
-                    <ButtonCard
+                    />}
+                    {cardMatchesSearch("GraphQL Service", q) && <ButtonCard
                         id="graphql-service-card"
                         data-testid="websocket-service-card"
                         icon={<Icon name="bi-graphql" sx={{ color: "#e535ab" }} />}
@@ -89,8 +95,8 @@ export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
                         disabled={isDisabled}
                         tooltip={isDisabled ? OutOfScopeComponentTooltip : ""}
                         isBeta
-                    />
-                    <ButtonCard
+                    />}
+                    {cardMatchesSearch("TCP Service", q) && <ButtonCard
                         id="tcp-service-card"
                         data-testid="websocket-service-card"
                         icon={<Icon name="bi-tcp" />}
@@ -104,7 +110,7 @@ export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
                         disabled={isDisabled}
                         tooltip={isDisabled ? OutOfScopeComponentTooltip : ""}
                         isBeta
-                    />
+                    />}
                     {/* TODO: Add this when GRPC is working */}
                     {/* <ButtonCard
                     icon={<Icon name="bi-grpc" />}

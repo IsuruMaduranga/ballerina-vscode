@@ -24,10 +24,12 @@ import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
 import { useVisualizerContext } from '../../../Context';
+import { cardMatchesSearch } from './componentListUtils';
 
 interface OtherArtifactsPanelProps {
     isNPSupported: boolean;
     isLibrary?: boolean;
+    searchQuery?: string;
 }
 
 export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
@@ -97,6 +99,19 @@ export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
         }
     };
 
+    const q = props.searchQuery;
+    const availableTitles = [
+        "Function",
+        ...(showNaturalFunctions ? ["Natural Function"] : []),
+        "Data Mapper",
+        "Type",
+        "Connection",
+        "Configuration",
+    ];
+    if (!availableTitles.some((t) => cardMatchesSearch(t, q))) {
+        return null;
+    }
+
     return (
         <PanelViewMore>
             <TitleWrapper>
@@ -106,14 +121,14 @@ export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
                 </BodyText>
             </TitleWrapper>
             <CardGrid>
-                <ButtonCard
+                {cardMatchesSearch("Function", q) && <ButtonCard
                     id="bi-function"
                     data-testid="function"
                     icon={<Icon name="bi-function" />}
                     title="Function"
                     onClick={() => handleClick(DIRECTORY_MAP.FUNCTION)}
-                />
-                {showNaturalFunctions &&
+                />}
+                {showNaturalFunctions && cardMatchesSearch("Natural Function", q) &&
                     <ButtonCard
                         id="bi-ai-function"
                         icon={<Icon name="bi-ai-function" />}
@@ -122,30 +137,30 @@ export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
                         isBeta
                     />
                 }
-                <ButtonCard
+                {cardMatchesSearch("Data Mapper", q) && <ButtonCard
                     id="data-mapper"
                     icon={<Icon name="dataMapper" />}
                     title="Data Mapper"
                     onClick={() => handleClick(DIRECTORY_MAP.DATA_MAPPER)}
-                />
-                <ButtonCard
+                />}
+                {cardMatchesSearch("Type", q) && <ButtonCard
                     id="type"
                     icon={<Icon name="bi-type" />}
                     title="Type"
                     onClick={() => handleClick(DIRECTORY_MAP.TYPE)}
-                />
-                <ButtonCard
+                />}
+                {cardMatchesSearch("Connection", q) && <ButtonCard
                     id="connection"
                     icon={<Icon name="bi-connection" />}
                     title="Connection"
                     onClick={() => handleClick(DIRECTORY_MAP.CONNECTION)}
-                />
-                <ButtonCard
+                />}
+                {cardMatchesSearch("Configuration", q) && <ButtonCard
                     id="configurable"
                     icon={<Icon name="bi-config" />}
                     title="Configuration"
                     onClick={() => handleClick(DIRECTORY_MAP.CONFIGURABLE)}
-                />
+                />}
             </CardGrid>
         </PanelViewMore>
     );

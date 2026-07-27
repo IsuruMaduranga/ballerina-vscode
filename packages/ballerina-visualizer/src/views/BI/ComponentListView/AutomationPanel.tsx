@@ -23,10 +23,11 @@ import { DIRECTORY_MAP, EVENT_TYPE, isSamePath, MACHINE_VIEW, SCOPE } from '@wso
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
-import { AutomationAlreadyExistsTooltip, OutOfScopeComponentTooltip } from './componentListUtils';
+import { AutomationAlreadyExistsTooltip, cardMatchesSearch, OutOfScopeComponentTooltip } from './componentListUtils';
 
 interface AutomationPanelProps {
     scope: SCOPE;
+    searchQuery?: string;
 };
 
 export function AutomationPanel(props: AutomationPanelProps) {
@@ -60,6 +61,10 @@ export function AutomationPanel(props: AutomationPanelProps) {
             },
         });
     };
+
+    if (!cardMatchesSearch("Automation", props.searchQuery)) {
+        return null;
+    }
 
     return (
         <PanelViewMore disabled={isDisabled}>

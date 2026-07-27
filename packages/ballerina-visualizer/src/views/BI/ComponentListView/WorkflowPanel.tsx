@@ -22,8 +22,9 @@ import { EVENT_TYPE, MACHINE_VIEW } from '@wso2/ballerina-core';
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
+import { cardMatchesSearch } from './componentListUtils';
 
-export function WorkflowPanel() {
+export function WorkflowPanel({ searchQuery }: { searchQuery?: string }) {
     const { rpcClient } = useRpcContext();
 
     const handleClick = () => {
@@ -34,6 +35,10 @@ export function WorkflowPanel() {
             },
         });
     };
+
+    if (!cardMatchesSearch("Workflow", searchQuery)) {
+        return null;
+    }
 
     return (
         <PanelViewMore>

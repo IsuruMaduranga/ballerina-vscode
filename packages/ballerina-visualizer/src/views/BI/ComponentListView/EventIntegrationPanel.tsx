@@ -23,17 +23,20 @@ import { DIRECTORY_MAP, EVENT_TYPE, MACHINE_VIEW, TriggerModelsResponse, Service
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
-import { isBetaModule, OutOfScopeComponentTooltip } from './componentListUtils';
+import { cardMatchesSearch, isBetaModule, OutOfScopeComponentTooltip } from './componentListUtils';
 import { RelativeLoader } from '../../../components/RelativeLoader';
 
 interface EventIntegrationPanelProps {
     scope: SCOPE;
     triggers: TriggerModelsResponse;
+    searchQuery?: string;
 };
 
 export function EventIntegrationPanel(props: EventIntegrationPanelProps) {
     const { rpcClient } = useRpcContext();
     const isDisabled = props.scope && (props.scope !== SCOPE.EVENT_INTEGRATION && props.scope !== SCOPE.ANY);
+    const q = props.searchQuery;
+    const matched = props.triggers.local.filter((t) => t.type === "event" && cardMatchesSearch(t.name, q));
 
     const handleClick = async (key: DIRECTORY_MAP, model: ServiceModel) => {
         await rpcClient.getVisualizerRpcClient().openView({
@@ -50,6 +53,11 @@ export function EventIntegrationPanel(props: EventIntegrationPanelProps) {
         });
     };
 
+    // While searching, hide the whole panel when no event matches.
+    if (q?.trim() && matched.length === 0) {
+        return null;
+    }
+
     return (
         <PanelViewMore disabled={isDisabled}>
             <TitleWrapper>
@@ -59,10 +67,9 @@ export function EventIntegrationPanel(props: EventIntegrationPanelProps) {
                 </BodyText>
             </TitleWrapper>
             <CardGrid>
-                {props.triggers.local.length === 0 && <RelativeLoader />}
+                {!q?.trim() && props.triggers.local.length === 0 && <RelativeLoader />}
                 {
-                    props.triggers.local
-                        .filter((t) => t.type === "event")
+                    matched
                         .map((item, index) => {
                             return (
                                 <ButtonCard
