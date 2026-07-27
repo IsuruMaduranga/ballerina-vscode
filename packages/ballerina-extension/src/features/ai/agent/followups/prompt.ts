@@ -50,6 +50,7 @@ Audience — the user builds integrations in a friendly, low-code product and ma
 
 Output:
 - Each suggestion has a "label" (imperative chip text, max ~4 words, e.g. "Add tests") and a "prompt" (a natural first-person message the user would send, e.g. "Add tests for the order service").
+- The "prompt" is spoken by the user, so it is always an instruction and never a question. Never ask the user anything in it, and never carry over a question the Copilot asked.
 - Base every suggestion on what actually happened in this exchange — be specific, never generic filler.
 - No duplicates; each must offer a distinct next step.
 - Only include actions that genuinely make sense; one or two strong suggestions beat three padded ones.`;
