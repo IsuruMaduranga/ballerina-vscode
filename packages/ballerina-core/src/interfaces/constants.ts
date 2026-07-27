@@ -45,6 +45,8 @@ export const BI_COMMANDS = {
     VIEW_CONFIGURATION: 'BI.project-explorer.view-configuration',
     ADD_PROJECT: 'BI.project-explorer.add',
     CONVERT_TO_PROJECT: 'BI.project-explorer.convert',
+    OPEN_ENCLOSING_PROJECT: 'BI.project-explorer.open-project',
+    ADD_TO_ENCLOSING_PROJECT: 'BI.project-explorer.add-to-project',
     SHOW_OVERVIEW: 'BI.project-explorer.overview',
     ADD_DATA_MAPPER: 'BI.project-explorer.add-data-mapper',
     ADD_WORKFLOW: 'BI.project-explorer.add-workflow',

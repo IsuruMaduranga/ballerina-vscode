@@ -47,6 +47,7 @@ import { buildProjectsStructure } from './utils/project-artifacts';
 import { runCommandWithOutput } from './utils/runCommand';
 import { buildOutputChannel } from './utils/logger';
 import { closeOrphanWebviewTabs } from './views/closeOrphanWebviewTabs';
+import { getEnclosingProjectStatus } from './utils/bi';
 
 export interface ProjectMetadata {
     readonly isBI: boolean;
@@ -1063,7 +1064,7 @@ async function handleMultipleWorkspaceFolders(workspaceFolders: readonly Workspa
         const scope = isBI && fetchScope(balProjects[0].uri);
         const { orgName, packageName } = getOrgPackageName(balProjects[0].uri.fsPath);
         const projectPath = normalizeProjectPath(balProjects[0].uri.fsPath);
-        setContextValues(isBI, projectPath);
+        setContextValues(isBI, projectPath, undefined, getEnclosingProjectStatus(projectPath).status);
         return { isBI, projectPath, scope, orgName, packageName };
     }
 
@@ -1086,7 +1087,11 @@ async function handleSingleWorkspaceFolder(workspaceURI: Uri): Promise<ProjectMe
         const projectPath = isBallerinaPackage ? normalizedFsPath : "";
         const { orgName, packageName } = getOrgPackageName(projectPath);
 
-        setContextValues(isBI, projectPath);
+        // A standalone package may already be nested inside an existing project on
+        // disk (opened in isolation rather than as part of that project). Surface
+        // that as a context key so the tree-view menus (Convert/Open/Add) can react.
+        const enclosingProjectStatus = isBallerinaPackage ? getEnclosingProjectStatus(projectPath).status : undefined;
+        setContextValues(isBI, projectPath, undefined, enclosingProjectStatus);
         if (!isBI) {
             console.error("No BI enabled workspace found");
         }
@@ -1131,7 +1136,11 @@ function notifyTreeView(
     }
 }
 
-function setContextValues(isBI: boolean, projectPath?: string, workspacePath?: string) {
+function setContextValues(isBI: boolean, projectPath?: string, workspacePath?: string, enclosingProjectStatus?: string) {
     commands.executeCommand('setContext', 'isBIProject', isBI);
     commands.executeCommand('setContext', 'isSupportedProject', projectPath || workspacePath);
+    // 'none' | 'member' | 'orphaned' | 'invalid' — see getEnclosingProjectStatus.
+    // Consumed by the project-explorer tree-view menus to gate the Convert/Open/Add
+    // action shown for a standalone package (only 'none' is genuinely standalone).
+    commands.executeCommand('setContext', 'BI.enclosingProjectStatus', enclosingProjectStatus ?? 'none');
 }

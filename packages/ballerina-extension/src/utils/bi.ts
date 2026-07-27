@@ -171,6 +171,77 @@ function classifyBallerinaProject(dir: string): 'workspace' | 'package' | null {
     }
 }
 
+export interface EnclosingProjectStatus {
+    /**
+     * 'none' — no ancestor Ballerina.toml found; the package is genuinely standalone.
+     * 'member' — the nearest ancestor is a workspace and this package IS listed in
+     *     its `packages` — already a project member, just opened in isolation.
+     * 'orphaned' — the nearest ancestor is a workspace but this package is NOT
+     *     listed — sitting inside a project folder without being registered.
+     * 'invalid' — the nearest ancestor Ballerina.toml is itself a `[package]` (a
+     *     package nested inside another package) — an already-broken layout.
+     */
+    status: 'none' | 'member' | 'orphaned' | 'invalid';
+    projectPath?: string;
+    projectName?: string;
+}
+
+/**
+ * Walks up from a standalone package's directory looking for an existing Ballerina
+ * project it may already be nested inside. Integrations can live at any depth
+ * inside a project (`<project>/<pkg>` or `<project>/<subdir>/<pkg>`), so this
+ * checks every ancestor in turn rather than only the immediate parent — the first
+ * ancestor with a `Ballerina.toml` decides the outcome.
+ */
+export function getEnclosingProjectStatus(packagePath: string): EnclosingProjectStatus {
+    let dir = path.dirname(packagePath);
+    let parent = path.dirname(dir);
+
+    while (true) {
+        const kind = classifyBallerinaProject(dir);
+        if (kind === 'workspace') {
+            let packages: string[] = [];
+            let title: string | undefined;
+            try {
+                const tomlData = parse(fs.readFileSync(path.join(dir, 'Ballerina.toml'), 'utf8')) as Partial<WorkspaceTomlValues>;
+                packages = tomlData?.workspace?.packages ?? [];
+                const rawTitle = (tomlData?.workspace as { title?: unknown } | undefined)?.title;
+                if (typeof rawTitle === 'string' && rawTitle.trim()) {
+                    title = rawTitle.trim();
+                }
+            } catch {
+                // Unreadable workspace toml — can't confirm membership; treat as orphaned.
+            }
+            const relativeToProject = path.normalize(path.relative(dir, packagePath));
+            const isMember = packages.some((pkg) => path.normalize(pkg) === relativeToProject);
+            return {
+                status: isMember ? 'member' : 'orphaned',
+                projectPath: dir,
+                projectName: title ?? path.basename(dir),
+            };
+        }
+        if (kind === 'package') {
+            return { status: 'invalid', projectPath: dir };
+        }
+        if (dir === parent) {
+            // Reached the filesystem root without finding a Ballerina.toml.
+            return { status: 'none' };
+        }
+        dir = parent;
+        parent = path.dirname(dir);
+    }
+}
+
+/**
+ * Registers an already-existing, orphaned package directory into an enclosing
+ * project's workspace `Ballerina.toml` (the `getEnclosingProjectStatus` 'orphaned'
+ * case) — no files are moved, only the workspace `packages` list is updated.
+ */
+export function adoptOrphanedPackageIntoProject(packagePath: string, projectPath: string): void {
+    const relativeToProject = path.normalize(path.relative(projectPath, packagePath));
+    addToWorkspaceToml(projectPath, relativeToProject);
+}
+
 /**
  * Inspects a directory the user picked as an "existing project" (via the Create
  * chooser's "Open an existing project" action). Returns whether it is a Ballerina
@@ -674,6 +745,18 @@ export async function convertProjectToWorkspace(params: AddProjectToWorkspaceReq
     // destination cannot be the integration itself or a directory inside it.
     if (isPathInside(currentProjectPath, newDirectory)) {
         throw new Error('The project location cannot be inside the integration being converted. Please choose a different location.');
+    }
+
+    // A new project can never be created inside an already-existing Ballerina
+    // project (workspace or package) — e.g. converting an integration whose real
+    // parent directory is itself an unopened project would otherwise nest a new
+    // project inside it. `getEnclosingProjectStatus` checks `newDirectory`'s own
+    // parent chain, so this also catches a destination pointed AT an ancestor of
+    // the current integration. Safety net behind the UI, which should route this
+    // case to "Open Project"/"Add to Project" before ever reaching here.
+    const enclosing = getEnclosingProjectStatus(newDirectory);
+    if (enclosing.status !== 'none') {
+        throw new Error(`The selected location is already inside an existing Ballerina project (${enclosing.projectPath}). Choose a location outside that project, or open/add to it instead of converting.`);
     }
 
     try {
