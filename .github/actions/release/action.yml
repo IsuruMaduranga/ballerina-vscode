@@ -162,18 +162,31 @@ runs:
         # the rolling tag tracks the newest build. Both happen after a verified
         # upload, so tag and artifact never disagree on a failed run.
         if [ -n "${existingId}" ]; then
-          "${CURL_API[@]}" -X PATCH \
+          releasePatch=$("${CURL_API[@]}" -X PATCH \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization:token ${GH_TOKEN}" \
             "${API}/releases/${id}" \
             -d "$(jq -n --arg name "${RELEASE_NAME}" \
-              '{name: $name, draft: false, prerelease: true}')" > /dev/null
-          "${CURL_API[@]}" -X PATCH \
+              '{name: $name, draft: false, prerelease: true}')")
+          if [ -z "$(echo "${releasePatch}" | jq -r '.id // empty')" ]; then
+            echo "Failed to update release ${id}:" >&2
+            echo "${releasePatch}" >&2
+            exit 1
+          fi
+          # Compare the returned ref target rather than just checking for a body:
+          # a rejected ref update (missing ref, concurrent move) would otherwise
+          # leave ${TAG} on a stale commit while the release serves the new VSIX.
+          refPatch=$("${CURL_API[@]}" -X PATCH \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization:token ${GH_TOKEN}" \
             "${API}/git/refs/tags/${TAG}" \
             -d "$(jq -n --arg sha "${GITHUB_SHA}" \
-              '{sha: $sha, force: true}')" > /dev/null
+              '{sha: $sha, force: true}')")
+          if [ "$(echo "${refPatch}" | jq -r '.object.sha // empty')" != "${GITHUB_SHA}" ]; then
+            echo "Failed to move tag ${TAG} to ${GITHUB_SHA}:" >&2
+            echo "${refPatch}" >&2
+            exit 1
+          fi
           echo "Moved tag ${TAG} to ${GITHUB_SHA}"
         fi
 
