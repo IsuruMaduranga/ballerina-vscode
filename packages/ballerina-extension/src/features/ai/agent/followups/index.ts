@@ -106,6 +106,12 @@ export function startFollowupSuggestions(turn: FollowupTurn): boolean {
             if (suggestions.length === 0 || (!aborted && abortSignal.aborted)) {
                 return;
             }
+            // The webview shows whatever arrives, and it cannot tell that the user switched
+            // threads while this was generating — so these chips would land on the wrong thread.
+            if (chatStateStorage.getActiveThread(projectRootPath)?.id !== threadId) {
+                console.log(`[Followups] Dropped for ${messageId} — thread is no longer active`);
+                return;
+            }
 
             chatStateStorage.updateGeneration(projectRootPath, threadId, messageId, { followupSuggestions: suggestions });
             eventHandler({ type: "followup_suggestions", messageId, suggestions });
