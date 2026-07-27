@@ -49,8 +49,9 @@ import TryItScenariosSegment from "../TryItScenariosSegment";
 import TodoSection from "../TodoSection";
 import AgentStreamView from "../AgentStreamView";
 import { StreamEntry, StreamItem } from "../AgentStreamView/types";
+import { getToolCallDisplay } from "../AgentStreamView/toolDisplay";
 import { ConnectorGeneratorSegment } from "../ConnectorGeneratorSegment";
-import { ConfigurationCollectorSegment, ConfigurationCollectionData } from "../ConfigurationCollectorSegment";
+import { ConfigurationCollectorSegment } from "../ConfigurationCollectorSegment";
 import CheckpointSeparator from "../CheckpointSeparator";
 import { Attachment, AttachmentStatus, SkillEnableStage, SkillEntry, TaskApprovalRequest } from "@wso2/ballerina-core";
 import type { ClarifyEvent, ConfigurationCollectionEvent, ConnectorGenerationNotification } from "@wso2/ballerina-core";
@@ -87,6 +88,11 @@ import { McpManagerPanel } from "../../McpManagerPanel";
 export type PanelRoute = "settings" | "mcp" | "skills";
 import WelcomeMessage from "./Welcome";
 import { getOnboardingOpens, incrementOnboardingOpens, convertToUIMessages, isContainsSyntaxError } from "./utils/utils";
+import {
+    serializeStream, parseStream, appendToLastEntry, upsertComponent, upsertRequestCard,
+    buildRequestCardData, buildPlanItem, applyPlanApprovalResolution, appendAbortMarker, applyTaskWriteResult,
+    COMPACTION_DISABLED_NOTICE,
+} from "./utils/streamSerialization";
 
 import FeedbackBar from "./../FeedbackBar";
 import QuotaRequestDialog from "./../QuotaRequestDialog";
@@ -173,26 +179,8 @@ const UsageLimitNoticeContainer = styled.div`
 `;
 
 // ── Agent stream serialization ────────────────────────────────────────────────
-
-function serializeStream(entries: StreamEntry[], existingContent: string): string {
-    const blob = `<agentstream>${JSON.stringify({ entries })}</agentstream>`;
-    if (existingContent.includes("<agentstream>")) {
-        return existingContent.replace(/<agentstream>[\s\S]*?<\/agentstream>/, blob);
-    }
-    return existingContent + blob;
-}
-
-function parseStream(content: string): StreamEntry[] {
-    const match = content.match(/<agentstream>([\s\S]*?)<\/agentstream>/);
-    if (!match) return [];
-    try { return JSON.parse(match[1]).entries ?? []; } catch { return []; }
-}
-
-function appendToLastEntry(entries: StreamEntry[], item: StreamItem): StreamEntry[] {
-    if (entries.length === 0) return [{ description: "", items: [item] }];
-    const last = entries[entries.length - 1];
-    return [...entries.slice(0, -1), { ...last, items: [...last.items, item] }];
-}
+// Shared with the floating-orb mini chat so both surfaces read/write the same
+// persisted `<agentstream>` transcript format. See ./utils/streamSerialization.
 
 // Interactive-prompt events need care while replaying buffered events on reopen: their
 // transcript cards must be rebuilt (they are part of the turn), but a "waiting for user"
@@ -208,6 +196,44 @@ const REPLAY_PENDING_STAGES: Record<string, string> = {
     configuration_collection_event: "collecting" satisfies ConfigurationCollectionEvent["stage"],
     connector_generation_notification: "requesting_input" satisfies ConnectorGenerationNotification["stage"],
 };
+
+/**
+ * `ChatNotify` types `handleChatNotify` deliberately ignores: they carry nothing that
+ * belongs in the persisted assistant transcript, and nothing this panel renders.
+ *
+ * Enumerated rather than swallowed by a bare `default` so that adding a variant to
+ * `ChatNotify` breaks the build here, forcing a decision. That guard matters because
+ * this panel AUTHORS the persisted transcript (its `save_chat` branch writes the
+ * rendered scrollback back via `updateChatMessage`, which drops the run-event buffer
+ * that could otherwise rebuild the turn — once the run is no longer active; mid-run
+ * per-step saves keep it, see `clearBuffer`'s guard in `rpc-manager.ts`) — an event
+ * that should be folded into
+ * `content` but is silently ignored is data the store loses for good. Mirrors
+ * `MiniChat.tsx`'s `UnmodelledNotifyType`; deliberately named differently because the
+ * two lists are NOT meant to match — the panel models strictly more events, so its
+ * residual is smaller. Keep both greppable rather than trying to share one type.
+ *
+ * ⚠️ Coverage boundary: this fires only when a variant is ADDED to `ChatNotify`. It
+ * does NOT fire when a type already listed below starts carrying transcript content,
+ * or starts being emitted on a path it previously wasn't — that stays a human
+ * judgement call, so re-read the justifications below when touching an emitter.
+ *
+ * Why each of these is safe to ignore *here*:
+ *  - `start` — the panel already enters its loading state when it sends the request.
+ *  - `evals_tool_result` never reaches any webview: `features/ai/utils/events.ts`
+ *    drops it before dispatch.
+ *  - `plan_updated` is declared but never emitted anywhere.
+ *  - `migration_progress` is pure progress telemetry with no transcript content. Note
+ *    it genuinely DOES reach this panel — `createAIPanelMigrationEventHandler`
+ *    forwards every event when migration enhancement runs from AI Chat — so it is
+ *    exactly the case the coverage boundary above applies to: if migration is ever
+ *    folded into the main chat transcript, the tripwire will NOT catch it.
+ */
+type PanelUnmodelledNotifyType =
+    | "start"
+    | "evals_tool_result"
+    | "plan_updated"
+    | "migration_progress";
 
 const SCAFFOLD_DONE_PREFIX = "ballerina.scaffold.done:";
 
@@ -303,6 +329,14 @@ const AIChat: React.FC = () => {
 
     const [isLoading, setIsLoading] = useState(false);
     const [isCompacting, setIsCompacting] = useState(false);
+    // Tools currently in flight, oldest first, for the composer's loading
+    // indicator. This is a list rather than a single slot because a step can run
+    // several tools concurrently (the AI SDK executes a step's calls with
+    // Promise.all, and each tool emits its own tool_call/tool_result): with one
+    // slot, the first result to land would clear a sibling that is still
+    // running. Empty means the model is thinking or writing rather than calling
+    // a tool, and the indicator falls back to its generic label.
+    const [inFlightTools, setInFlightTools] = useState<{ id: string; label: string }[]>([]);
     const [hoveredTurnIndex, setHoveredTurnIndex] = useState<number | null>(null);
     const [lastQuestionIndex, setLastQuestionIndex] = useState(-1);
     const [isCodeLoading, setIsCodeLoading] = useState(false);
@@ -1062,6 +1096,23 @@ const AIChat: React.FC = () => {
         }
     });
 
+    // Backstop for the step label: a run can stop being "loading" through many
+    // paths (terminal event, thrown error, reconnect deciding the run is over,
+    // checkpoint restore, explicit stop), and only some of them are ChatNotify
+    // events. Clearing on the flag itself means the next turn can never open
+    // showing the previous turn's last tool. It is also the only thing that
+    // retires a tool whose result never arrives (a tool that throws produces an
+    // SDK tool-error chunk, which the extension host currently drops).
+    useEffect(() => {
+        if (!isLoading) {
+            setInFlightTools(prev => (prev.length === 0 ? prev : []));
+        }
+    }, [isLoading]);
+
+    // The newest in-flight tool is the step worth showing; older siblings are
+    // still running but the indicator is one line.
+    const activeToolLabel = inFlightTools.length > 0 ? inFlightTools[inFlightTools.length - 1].label : undefined;
+
     const handleChatNotify = async (response: ChatNotify) => {
         // Drop events belonging to a different (previously-interrupted) run once we
         // have adopted a specific run on reconnect — BEFORE any bookkeeping. seq is
@@ -1102,6 +1153,29 @@ const AIChat: React.FC = () => {
 
         const type = response.type;
 
+        // Track in-flight tools for the composer's loading indicator. This is a
+        // separate pass rather than extra lines inside the big dispatch below: it
+        // reads one start signal and four end signals that the dispatch already
+        // handles for other reasons, and keeping it here makes the indicator's
+        // whole data source greppable in one place. This block never returns, so
+        // narrowing re-widens after it and the exhaustiveness guard at the tail of
+        // the dispatch is unaffected in both directions.
+        if (type === "tool_call") {
+            const { label, detail } = getToolCallDisplay(response.toolName, response.toolInput);
+            const entry = { id: response.toolCallId ?? "", label: detail ? `${label} ${detail}` : label };
+            setInFlightTools(prev => [...prev, entry]);
+        } else if (type === "tool_result") {
+            // Drop only the matching call. Tools without an id share the "" key,
+            // so each anonymous result retires the oldest anonymous call.
+            const finishedId = response.toolCallId ?? "";
+            setInFlightTools(prev => {
+                const index = prev.findIndex(tool => tool.id === finishedId);
+                return index === -1 ? prev : [...prev.slice(0, index), ...prev.slice(index + 1)];
+            });
+        } else if (type === "stop" || type === "abort" || type === "error") {
+            setInFlightTools(prev => (prev.length === 0 ? prev : []));
+        }
+
         // True only while replaying a buffered event whose request the backend no longer has
         // pending — its live interaction was already resolved and must not be re-surfaced.
         // A still-pending prompt falls through and renders live (answerable after reopen).
@@ -1119,9 +1193,11 @@ const AIChat: React.FC = () => {
             return;
         }
 
-        if (type === "content_block") {
+        if (type === "content_block" || type === "content_replace") {
             const content = response.content;
-            if (content === "") return;
+            // An empty append is a no-op; an empty *replace* is meaningful (it clears
+            // the trailing text), so only the append path short-circuits.
+            if (type === "content_block" && content === "") return;
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
@@ -1132,7 +1208,8 @@ const AIChat: React.FC = () => {
                     const lastEntry = entries[entries.length - 1];
                     const lastItem = lastEntry.items[lastEntry.items.length - 1];
                     if (lastItem?.kind === "text") {
-                        const updatedItems = [...lastEntry.items.slice(0, -1), { ...lastItem, text: lastItem.text + content }];
+                        const mergedText = type === "content_block" ? lastItem.text + content : content;
+                        const updatedItems = [...lastEntry.items.slice(0, -1), { ...lastItem, text: mergedText }];
                         const updated = [...entries.slice(0, -1), { ...lastEntry, items: updatedItems }];
                         msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                         return msgs;
@@ -1157,34 +1234,16 @@ const AIChat: React.FC = () => {
 
         } else if (type === "tool_result") {
             if (response.toolName === "TaskWrite") {
-                const tasks: Array<{ status: string; description: string }> = response.toolOutput?.tasks ?? [];
-                const inProgressTask = tasks.find(t => t.status === "in_progress");
-                const lastCompletedTask = [...tasks].reverse().find(t => t.status === "completed");
+                const tasks = response.toolOutput?.tasks ?? [];
                 setMessages(prevMessages => {
                     const msgs = [...prevMessages];
                     const targetIndex = ensureAssistantMessage(msgs);
                     const last = msgs[targetIndex];
-                    let entries = parseStream(last.content);
-                    if (inProgressTask) {
-                        // Push a named entry for this task (skip if already present)
-                        if (entries.some(e => e.description === inProgressTask.description)) return prevMessages;
-                        entries = [...entries, { description: inProgressTask.description, items: [], status: "in_progress" as const }];
-                    } else {
-                        // Mark the just-completed named entry as done
-                        if (lastCompletedTask) {
-                            entries = entries.map(e =>
-                                e.description === lastCompletedTask.description
-                                    ? { ...e, status: "completed" as const }
-                                    : e
-                            );
-                        }
-                        // Push a floating entry for subsequent content (if not already present)
-                        const lastEntry = entries[entries.length - 1];
-                        if (!lastEntry || lastEntry.description !== "") {
-                            entries = [...entries, { description: "", items: [] }];
-                        }
-                    }
-                    msgs[targetIndex] = { ...last, content: serializeStream(entries, last.content) };
+                    const entries = parseStream(last.content);
+                    const updated = applyTaskWriteResult(entries, tasks);
+                    // Unchanged (task entry already open) — skip the redundant write.
+                    if (updated === entries) return prevMessages;
+                    msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                     return msgs;
                 });
             } else {
@@ -1194,7 +1253,7 @@ const AIChat: React.FC = () => {
                     const targetIndex = ensureAssistantMessage(msgs);
                     const last = msgs[targetIndex];
                     const entries = parseStream(last.content);
-                    const resultItem: StreamItem = { kind: "tool_result", toolCallId: response.toolCallId, toolName: response.toolName, toolOutput: response.toolOutput, failed: (response as any).failed };
+                    const resultItem: StreamItem = { kind: "tool_result", toolCallId: response.toolCallId, toolName: response.toolName, toolOutput: response.toolOutput, failed: response.failed };
                     let matched = false;
                     const updated = entries.map(entry => {
                         if (matched) return entry;
@@ -1221,11 +1280,10 @@ const AIChat: React.FC = () => {
                     const targetIndex = ensureAssistantMessage(msgs);
                     const last = msgs[targetIndex];
                     const entries = parseStream(last.content);
-                    const planItem: StreamItem = {
-                        kind: "plan", requestId: response.requestId, tasks: response.tasks, message: response.message,
-                        ...(response.autoApproved ? { approvalStatus: "approved" as const } : {})
-                    };
-                    const updated = appendToLastEntry(entries, planItem);
+                    const updated = appendToLastEntry(
+                        entries,
+                        buildPlanItem(response.requestId, response.tasks, response.message, response.autoApproved)
+                    );
                     msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                     return msgs;
                 });
@@ -1265,18 +1323,15 @@ const AIChat: React.FC = () => {
                 }
                 const assistant = next[assistantIndex];
                 const entries = parseStream(assistant.content);
-                const updated = entries.map((entry) => ({
-                    ...entry,
-                    items: entry.items.map((item) =>
-                        item.kind === "plan" && item.requestId === response.requestId
-                            ? {
-                                ...item,
-                                approvalStatus: response.approved ? "approved" as const : "revised" as const,
-                                approvalComment: response.approved ? undefined : response.comment,
-                            }
-                            : item
-                    ),
-                }));
+                const updated = applyPlanApprovalResolution(
+                    entries,
+                    response.requestId,
+                    response.approved,
+                    response.comment
+                );
+                if (updated === entries) {
+                    return previous;
+                }
                 next[assistantIndex] = {
                     ...assistant,
                     content: serializeStream(updated, assistant.content),
@@ -1308,110 +1363,49 @@ const AIChat: React.FC = () => {
             setCurrentFileArray(response.fileArray);
 
         } else if (type === "connector_generation_notification") {
-            const connectorNotification = response as any;
-            const connectorData = {
-                requestId: connectorNotification.requestId,
-                stage: connectorNotification.stage,
-                serviceName: connectorNotification.serviceName,
-                serviceDescription: connectorNotification.serviceDescription,
-                spec: connectorNotification.spec,
-                connector: connectorNotification.connector,
-                error: connectorNotification.error,
-                message: connectorNotification.message,
-                inputMethod: connectorNotification.inputMethod,
-                sourceIdentifier: connectorNotification.sourceIdentifier
-            };
+            const connectorData = buildRequestCardData("connector", response);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
                 const entries = parseStream(last.content);
-                let found = false;
-                let updated = entries.map(entry => {
-                    const idx = entry.items.findIndex(item => item.kind === "connector" && (item.data as any)?.requestId === connectorData.requestId);
-                    if (idx === -1) return entry;
-                    found = true;
-                    return { ...entry, items: entry.items.map((item, i) => i === idx ? { kind: "connector" as const, data: connectorData } : item) };
-                });
-                if (!found) updated = appendToLastEntry(entries, { kind: "connector", data: connectorData });
+                const updated = upsertRequestCard(entries, "connector", connectorData);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
 
         } else if (type === "configuration_collection_event") {
-            const configurationNotification = response as any;
-            const configurationData: ConfigurationCollectionData = {
-                requestId: configurationNotification.requestId,
-                stage: configurationNotification.stage,
-                variables: configurationNotification.variables,
-                existingValues: configurationNotification.existingValues,
-                message: configurationNotification.message,
-                isTestConfig: configurationNotification.isTestConfig,
-                error: configurationNotification.error
-            };
+            const configurationData = buildRequestCardData("config", response);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
                 const entries = parseStream(last.content);
-                let found = false;
-                let updated = entries.map(entry => {
-                    const idx = entry.items.findIndex(item => item.kind === "config" && (item.data as any)?.requestId === configurationData.requestId);
-                    if (idx === -1) return entry;
-                    found = true;
-                    return { ...entry, items: entry.items.map((item, i) => i === idx ? { kind: "config" as const, data: configurationData } : item) };
-                });
-                if (!found) updated = appendToLastEntry(entries, { kind: "config", data: configurationData });
+                const updated = upsertRequestCard(entries, "config", configurationData);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
 
         } else if (type === "clarify_event") {
-            const clarifyNotification = response as any;
-            const clarifyData = {
-                requestId: clarifyNotification.requestId,
-                stage: clarifyNotification.stage,
-                questions: clarifyNotification.questions,
-                answers: clarifyNotification.answers,
-            };
+            const clarifyData = buildRequestCardData("ask", response);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
                 const entries = parseStream(last.content);
-                let found = false;
-                let updated = entries.map(entry => {
-                    const idx = entry.items.findIndex(item => item.kind === "ask" && (item.data as any)?.requestId === clarifyData.requestId);
-                    if (idx === -1) return entry;
-                    found = true;
-                    return { ...entry, items: entry.items.map((item, i) => i === idx ? { kind: "ask" as const, data: clarifyData } : item) };
-                });
-                if (!found) updated = appendToLastEntry(entries, { kind: "ask", data: clarifyData });
+                const updated = upsertRequestCard(entries, "ask", clarifyData);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
 
         } else if (type === "skill_enable_event") {
-            const evt = response as any;
-            const enableData = {
-                requestId: evt.requestId,
-                stage: evt.stage,
-                skillName: evt.skillName,
-                skillId: evt.skillId,
-            };
+            const enableData = buildRequestCardData("skill_enable", response);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
                 const entries = parseStream(last.content);
-                let found = false;
-                let updated = entries.map(entry => {
-                    const idx = entry.items.findIndex(item => item.kind === "skill_enable" && (item.data as any)?.requestId === enableData.requestId);
-                    if (idx === -1) return entry;
-                    found = true;
-                    return { ...entry, items: entry.items.map((item, i) => i === idx ? { kind: "skill_enable" as const, data: enableData } : item) };
-                });
-                if (!found) updated = appendToLastEntry(entries, { kind: "skill_enable", data: enableData });
+                const updated = upsertRequestCard(entries, "skill_enable", enableData);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
@@ -1419,31 +1413,14 @@ const AIChat: React.FC = () => {
         } else if (type === "diagnostics") {
             currentDiagnosticsRef.current = response.diagnostics;
 
-        } else if ((response as any).type === "chat_component") {
-            const { componentType, id, data } = response as any;
+        } else if (type === "chat_component") {
+            const { componentType, id, data } = response;
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
                 const entries = parseStream(last.content);
-                let found = false;
-                let updated = entries.map(entry => {
-                    const idx = entry.items.findIndex(item =>
-                        item.kind === "component" &&
-                        (id ? (item as any).id === id : (item as any).componentType === componentType)
-                    );
-                    if (idx === -1) return entry;
-                    found = true;
-                    return {
-                        ...entry,
-                        items: entry.items.map((item, i) =>
-                            i === idx
-                                ? { ...item, data: { ...(item as any).data, ...data } }
-                                : item
-                        )
-                    };
-                });
-                if (!found) updated = appendToLastEntry(entries, { kind: "component", componentType, id, data });
+                const updated = upsertComponent(entries, componentType, id, data);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
@@ -1466,24 +1443,21 @@ const AIChat: React.FC = () => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
-                msgs[targetIndex] = {
-                    ...last,
-                    content: last.content + "\n<compaction>Your project is large — automatic context compaction is disabled. You may hit the context limit on long sessions. Start a new thread if that happens.</compaction>"
-                };
+                msgs[targetIndex] = { ...last, content: last.content + COMPACTION_DISABLED_NOTICE };
                 return msgs;
             });
 
         } else if (type === "usage_metrics") {
-            const inputTokens = (response as any).usage?.inputTokens ?? 0;
+            const inputTokens = response.usage?.inputTokens ?? 0;
             const percentage = Math.min(100, Math.round((inputTokens / MAX_CONTEXT_WINDOW) * 100));
-            const breakdown = (response as any).breakdown;
+            const breakdown = response.breakdown;
             setContextUsage({ inputTokens, percentage, breakdown });
 
         } else if (type === "config_change") {
-            if ((response as any).key === 'showContextUsage') {
-                setShowContextUsage((response as any).value);
-            } else if ((response as any).key === 'mcpToolsEnabled') {
-                setMcpToolsEnabled((response as any).value);
+            if (response.key === 'showContextUsage') {
+                setShowContextUsage(response.value);
+            } else if (response.key === 'mcpToolsEnabled') {
+                setMcpToolsEnabled(response.value);
             }
 
         } else if (type === "stop") {
@@ -1507,13 +1481,11 @@ const AIChat: React.FC = () => {
             activeScaffoldKeyRef.current = null;
             setIsWebToolsEnabled(userWebSearchPreferenceRef.current);
             setWebToolApprovalRequest(null);
-            const abortItem: StreamItem = { kind: "text", text: "*[Request interrupted by user]*" };
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
                 const last = msgs[targetIndex];
-                const entries = parseStream(last.content);
-                const updated = [...entries, { description: "", items: [abortItem] }];
+                const updated = appendAbortMarker(parseStream(last.content));
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });
@@ -1616,6 +1588,32 @@ const AIChat: React.FC = () => {
             setIsLoading(false);
             setBackendRequestTriggered(false);
             isErrorChunkReceivedRef.current = true;
+
+        } else {
+            // Tripwire: this assignment fails to compile when a new `ChatNotify` variant
+            // is added, forcing an explicit decision instead of a silent drop. If the new
+            // variant contributes to the persisted transcript, give it a branch above; if
+            // it is genuinely presentational, add it to `PanelUnmodelledNotifyType` (and
+            // check whether the mini chat needs the same branch — it authors the same
+            // record). See that type for what this guard does NOT cover.
+            //
+            // Relies on aliased-discriminant narrowing (TS 4.4+) of `type`, so every
+            // branch above must test `type`, not `response.type` — a branch that tests
+            // `response.type` (or casts through `as any`) silently opts out of narrowing
+            // and drops its own literal from this residual without failing the build.
+            type ResidualAtTail = typeof type;
+            // Forward direction: residual ⊆ declared. Catches an unhandled variant.
+            const _unmodelled: PanelUnmodelledNotifyType = type;
+            // Reverse direction: declared ⊆ residual. Catches a STALE entry — one that
+            // has since gained a branch above, so the list would otherwise keep claiming
+            // an event is unmodelled when it is actually folded. Assigning the narrowed
+            // residual into the hand-written union only ever checks the forward direction,
+            // so without this the list can silently rot into inaccurate documentation.
+            // (`typeof type` captures the flow-narrowed residual at this point, not the
+            // declared union — verified; that is what makes this check non-vacuous.)
+            const _noStaleEntries: ResidualAtTail = {} as PanelUnmodelledNotifyType;
+            void _unmodelled;
+            void _noStaleEntries;
         }
     };
 
@@ -2110,6 +2108,7 @@ const AIChat: React.FC = () => {
         console.log("Submitting agent prompt:", { useCase, agentMode: agentModeRef.current, codeContext: currentCodeContext, operationType, fileAttatchments });
         await rpcClient.getAiPanelRpcClient().generateAgent({
             generationId: activeRunGenerationIdRef.current,
+            promptSource: 'ai-panel',
             usecase: useCase, hiddenContext: currentHiddenContext, isPlanMode: agentModeRef.current === AgentMode.Plan, codeContext: currentCodeContext, operationType, fileAttachmentContents: fileAttatchments, webSearchEnabled: isWebToolsEnabled
         });
     }
@@ -2903,15 +2902,15 @@ const AIChat: React.FC = () => {
                             inputPlaceholder={
                                 footerInputPlaceholder ??
                                 (agentMode === AgentMode.Plan
-                                    ? "Describe what you'd like to plan and build…"
+                                    ? "What would you like to plan?"
                                     : messages.length === 0
-                                        ? "Describe the change you'd like to make…"
-                                        : "Describe what to change next…")
+                                        ? "What would you like to change?"
+                                        : "What should we do next?")
                             }
                             onSend={handleSend}
                             onStop={handleStop}
                             isLoading={isLoading}
-                            loadingLabel={isCompacting ? "Compacting conversation" : undefined}
+                            loadingLabel={isCompacting ? "Compacting conversation" : activeToolLabel}
                             showSuggestedCommands={Array.isArray(otherMessages) && otherMessages.length === 0}
                             codeContext={codeContext}
                             onRemoveCodeContext={() => updateCodeContext(undefined)}

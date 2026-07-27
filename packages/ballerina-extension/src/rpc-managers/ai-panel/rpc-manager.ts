@@ -127,6 +127,7 @@ import { StateMachine, updateView } from "../../stateMachine";
 import { isInDevant, isInWI } from "../../utils";
 import { getLoginMethod, isPlatformExtensionAvailable, loginGithubCopilot } from "../../utils/ai/auth";
 import { normalizeCodeContext } from "../../views/ai-panel/codeContextUtils";
+import { resolveActiveFilePath } from "../../views/ai-panel/activeFileContext";
 import { refreshDataMapper } from "../data-mapper/utils";
 import {
     TEST_DIR_NAME
@@ -177,7 +178,7 @@ function validateMcpServerConfig(cfg: any): string | null {
 }
 
 function getActiveThreadId(projectRootPath?: string): string {
-    return chatStateStorage.getActiveThread(projectRootPath ?? resolveProjectRootPath())?.id ?? 'default';
+    return chatStateStorage.getActiveThreadId(projectRootPath ?? resolveProjectRootPath());
 }
 
 export class AiPanelRpcManager implements AIPanelAPI {
@@ -357,7 +358,9 @@ export class AiPanelRpcManager implements AIPanelAPI {
 
     async abortAIGeneration(params: AbortAIGenerationRequest): Promise<void> {
         const projectRootPath = params?.projectRootPath || resolveProjectRootPath();
-        const threadId = params?.threadId || 'default';
+        // Callers pass `{}` (see AIChat's stop button), so falling back to a
+        // hardcoded 'default' aborted a thread that holds no execution.
+        const threadId = params?.threadId || getActiveThreadId(projectRootPath);
 
         const aborted = chatStateStorage.abortActiveExecution(projectRootPath, threadId);
 
@@ -452,6 +455,29 @@ export class AiPanelRpcManager implements AIPanelAPI {
     }
 
     async generateAgent(params: GenerateAgentCodeRequest): Promise<boolean> {
+        const smCtx = StateMachine.context();
+        const workspaceRoot = smCtx.workspacePath || smCtx.projectPath;
+
+        // Contextual mini-chat launches bypass getDefaultPrompt(), where panel
+        // launches normally convert the diagram's absolute file path to the
+        // workspace-relative path expected by the agent.
+        if (params.codeContext && path.isAbsolute(params.codeContext.filePath)) {
+            params = {
+                ...params,
+                codeContext: normalizeCodeContext(params.codeContext, workspaceRoot, smCtx.projectPath),
+            };
+        }
+
+        params = {
+            ...params,
+            // Always overwrite client input with a host-validated path.
+            activeFilePath: resolveActiveFilePath(
+                params.promptSource,
+                smCtx.documentUri,
+                workspaceRoot,
+                smCtx.projectPath,
+            ),
+        };
         return await generateAgent(params);
     }
 
@@ -611,7 +637,7 @@ User reverted the last made changes. The files have been restored to the state b
     async restoreCheckpoint(params: RestoreCheckpointRequest): Promise<void> {
         // Get project root path and thread identifiers
         const projectRootPath = resolveProjectRootPath();
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
 
         // Find the checkpoint
         const found = chatStateStorage.findCheckpoint(projectRootPath, threadId, params.checkpointId);
@@ -711,8 +737,7 @@ User reverted the last made changes. The files have been restored to the state b
     async updateChatMessage(params: UpdateChatMessageRequest): Promise<void> {
         const projectRootPath = params.projectRootPath || resolveProjectRootPath();
         let threadId = params.threadId
-            || chatStateStorage.getActiveThread(projectRootPath)?.id
-            || 'default';
+            || chatStateStorage.getActiveThreadId(projectRootPath);
 
         // The messageId is actually a generation ID. Legacy callers do not send
         // a thread, so locate the generation by its stable ID rather than trusting
@@ -752,7 +777,7 @@ User reverted the last made changes. The files have been restored to the state b
 
     async getChatMessages(): Promise<UIChatMessage[]> {
         const projectRootPath = resolveProjectRootPath();
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
 
         // Get all generations from chat storage
         const generations = chatStateStorage.getGenerations(projectRootPath, threadId);
@@ -783,7 +808,7 @@ User reverted the last made changes. The files have been restored to the state b
 
     async getCheckpoints(): Promise<CheckpointInfo[]> {
         const projectRootPath = resolveProjectRootPath();
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
 
         // Get checkpoints from ChatStateStorage
         const checkpoints = chatStateStorage.getCheckpoints(projectRootPath, threadId);
@@ -799,7 +824,7 @@ User reverted the last made changes. The files have been restored to the state b
 
     async getActiveTempDir(): Promise<string> {
         const projectRootPath = resolveProjectRootPath();
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
 
         // Always get tempProjectPath from the currently open ('done') generation
         const doneGeneration = chatStateStorage.getDoneGeneration(projectRootPath, threadId);
@@ -816,8 +841,7 @@ User reverted the last made changes. The files have been restored to the state b
     async hasPendingReview(params: HasPendingReviewRequest): Promise<boolean> {
         const projectRootPath = params?.projectRootPath || resolveProjectRootPath();
         const threadId = params?.threadId
-            || chatStateStorage.getActiveThread(projectRootPath)?.id
-            || 'default';
+            || chatStateStorage.getActiveThreadId(projectRootPath);
         return !!chatStateStorage.getDoneGeneration(projectRootPath, threadId);
     }
 
@@ -827,8 +851,7 @@ User reverted the last made changes. The files have been restored to the state b
         // it the same way generateAgent does, or a reconnect on a non-default
         // thread would look up an empty buffer.
         const threadId = params?.threadId
-            || chatStateStorage.getActiveThread(projectRootPath)?.id
-            || 'default';
+            || chatStateStorage.getActiveThreadId(projectRootPath);
         const status = runEventStore.getRunStatus(projectRootPath, threadId, params?.sinceSeq);
         // Generation storage is materialized before beginRun, so the prompt and
         // mode are authoritative even when reconnect happens before the first event.
@@ -937,7 +960,7 @@ User reverted the last made changes. The files have been restored to the state b
 
         const context = StateMachine.context();
         const workspaceId = context.workspacePath || context.projectPath;
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
         const generation = chatStateStorage.getGeneration(workspaceId, threadId, params.generationId);
         const tempProjectPath = generation?.reviewState.tempProjectPath;
 

@@ -312,6 +312,10 @@ export interface GenerateAgentCodeRequest {
     isPlanMode: boolean;
     codeContext?: CodeContext;
     webSearchEnabled?: boolean;
+    /** Identifies the UI surface so the host can resolve the correct ambient file context. */
+    promptSource?: 'ai-panel' | 'mini-chat';
+    /** Host-validated workspace-relative Ballerina file currently associated with the prompt surface. */
+    activeFilePath?: string;
 }
 
 export type LibraryMode = "CORE" | "HEALTHCARE" | "ALL";

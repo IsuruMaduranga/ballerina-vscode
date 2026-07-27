@@ -28,8 +28,21 @@ import { extension } from '../../../BalExtensionContext';
  */
 export interface ReviewRestoreData {
     generationId: string;
-    /** Exact chat scope. Optional for payloads written by older versions. */
+    /** Exact workspace scope. Optional for payloads written by older versions. */
     projectRootPath?: string;
+    /**
+     * Thread the review's generation lives in, captured when the review starts.
+     *
+     * Required because the reader cannot infer it: threads are dynamic, and the
+     * *currently active* thread is not the same thing as "the thread this past
+     * generation belongs to" — they diverge as soon as the user switches threads
+     * or starts a new chat before the restart. Deriving it on read (previously a
+     * hardcoded `'default'`, then the active thread) looked up the wrong thread and
+     * made the pending review silently fail to rebuild.
+     *
+     * Optional for payloads written by older versions, which fall back to the
+     * active thread.
+     */
     threadId?: string;
     tempProjectPath: string;
     /** Frozen pre-generation Ballerina sources. Optional for payloads written by older versions. */

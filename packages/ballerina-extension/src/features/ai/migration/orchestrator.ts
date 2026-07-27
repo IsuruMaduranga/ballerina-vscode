@@ -704,7 +704,7 @@ async function runStagesForPackage(opts: StageRunnerOpts): Promise<void> {
 let _migrationAbortController: AbortController | undefined;
 
 /** Module-level selected model ID (set by the UI's model selector). */
-let _selectedModelId: string = "wso2"; // default to WSO2 BI Copilot
+let _selectedModelId: string = "wso2"; // default to WSO2 Integrator Copilot
 
 /**
  * Update the selected model ID from the webview.
@@ -955,7 +955,7 @@ async function ensureAuthenticated(): Promise<boolean> {
     }
 
     // Tell the wizard UI we're signing in
-    const signingInMsg = { type: "content_block" as const, content: "Signing in to BI Copilot...\n\n" };
+    const signingInMsg = { type: "content_block" as const, content: "Signing in to WSO2 Integrator Copilot...\n\n" };
     sendVisualizerMigrationNotification(signingInMsg);
     _wizardChatEmitter.fire(signingInMsg);
 
@@ -1025,7 +1025,7 @@ export function isAIAuthenticated(): boolean {
 }
 
 /**
- * Triggers the BI Copilot browser sign-in flow and waits until the user is
+ * Triggers the WSO2 Integrator Copilot browser sign-in flow and waits until the user is
  * authenticated, cancels, or the 2-minute timeout elapses.
  *
  * Unlike `ensureAuthenticated`, this function does NOT emit any messages to a

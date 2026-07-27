@@ -26,6 +26,7 @@ import { TEST_RUNNER_TOOL_NAME } from "./tools/test-runner";
 import { getLanglibInstructions } from "../utils/libs/langlibs";
 import { formatCodebaseStructure, formatCodeContext } from "./utils";
 import { GenerateAgentCodeRequest, OperationType, ProjectSource } from "@wso2/ballerina-core";
+import { formatActiveFileReminder } from "./activeFileReminder";
 import { getRequirementAnalysisCodeGenPrefix, getRequirementAnalysisTestGenPrefix } from "./np/prompts";
 import { extractResourceDocumentContent, flattenProjectToFiles } from "../utils/ai-utils";
 import { BALLERINA_RUN_TOOL_NAME } from "./tools/ballerina-run";
@@ -306,6 +307,14 @@ export function getUserPrompt(
         text: formatCodebaseStructure(projects, tempProjectPath)
     });
 
+    const activeFileReminder = formatActiveFileReminder(params.activeFilePath);
+    if (activeFileReminder) {
+        content.push({
+            type: 'text' as const,
+            text: activeFileReminder,
+        });
+    }
+
     // Add code context if available
     if (params.codeContext) {
         const codeContextText = formatCodeContext(params.codeContext, tempProjectPath);
@@ -419,4 +428,3 @@ function getNPSuffix(projects: ProjectSource[], op?: OperationType): string {
     }
     return basePrompt;
 }
-

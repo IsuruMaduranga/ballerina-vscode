@@ -35,6 +35,7 @@ import { clearFormState } from "../../rpc-managers/bi-diagram/form-state";
 import { isInWI } from "../../utils/config";
 import { chatStateStorage } from "../ai-panel/chatStateStorage";
 import { isAiTouchedFile } from "../../rpc-managers/diagram-validity";
+import { setCompanionVisualizer } from "../ai-panel/activeFileContext";
 
 export class VisualizerWebview {
     public static currentPanel: VisualizerWebview | undefined;
@@ -146,6 +147,9 @@ export class VisualizerWebview {
 
         this._panel.onDidChangeViewState(() => {
             vscode.commands.executeCommand('setContext', 'isBalVisualizerActive', this._panel?.active);
+            if (this._panel?.active) {
+                setCompanionVisualizer();
+            }
             // Refresh the webview when becomes active
             const state = StateMachine.state();
             const popupState = StateMachinePopup.state();

@@ -25,6 +25,7 @@ import { extension } from '../../BalExtensionContext';
 import { AIStateMachine } from './aiMachine';
 import { AIMachineEventType } from '@wso2/ballerina-core';
 import { approvalManager } from '../../features/ai/state/ApprovalManager';
+import { agentStatusManager } from '../../features/ai/state/AgentStatusManager';
 
 export class AiPanelWebview {
     public static currentPanel: AiPanelWebview | undefined;
@@ -37,6 +38,7 @@ export class AiPanelWebview {
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
         this._panel.webview.html = this.getWebviewContent(this._panel.webview);
         RPCLayer.create(this._panel);
+        agentStatusManager.setAiPanelOpen(true);
     }
 
     private static createWebview(): vscode.WebviewPanel {
@@ -136,6 +138,7 @@ export class AiPanelWebview {
         approvalManager.cancelOnPanelClose("AI Panel closed");
 
         AiPanelWebview.currentPanel = undefined;
+        agentStatusManager.setAiPanelOpen(false);
         AIStateMachine.sendEvent(AIMachineEventType.DISPOSE);
         this._panel?.dispose();
 
