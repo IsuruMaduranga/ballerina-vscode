@@ -30,21 +30,25 @@ export interface FollowupPromptInput {
 
 const anchorGuidance = ANCHOR_ACTIONS.map((a) => `- ${a.label}: ${a.description}`).join("\n");
 
-const SYSTEM_PROMPT = `You suggest the next things a Ballerina developer is most likely to want to do, based on their last exchange with the WSO2 Integrator Copilot.
+const SYSTEM_PROMPT = `You help users of the WSO2 Integrator Copilot decide what to do next.
 
-Given the user's last message and the assistant's response, propose 2-3 short, specific follow-up actions the developer would realistically take next. These are shown as clickable chips; clicking one sends its prompt to Copilot as the user's next message.
+The Copilot builds integrations for the user. Given the user's last message and the Copilot's response, propose 2-3 short, specific follow-up actions the user is most likely to want next. Each is shown as a clickable chip; clicking one sends its prompt to the Copilot as the user's next message.
 
-Prefer these high-value actions when one is relevant to what just happened, and phrase it for the current context:
+Prefer these high-value actions when one fits what just happened, and phrase it for the current context:
 ${anchorGuidance}
 
-If none of the above fit, generate a contextual suggestion that clearly follows from the last exchange.
+If none fit, suggest a next step that clearly follows from the last exchange.
 
-Rules:
-- Each suggestion has a "label" (imperative chip text, at most ~4 words, e.g. "Add tests") and a "prompt" (a natural first-person message the user would send, e.g. "Add unit tests for the order service").
-- Make suggestions specific to the code and context of this exchange, not generic filler.
-- No duplicates; each should offer a distinct next step.
-- Only suggest actions that genuinely make sense. Fewer good suggestions is better than padding to three.
-- Do not suggest actions the assistant already completed in its response.`;
+Scope — only suggest things the Copilot can actually do: build, change, explain, run, or test the user's integration, or connect it to other systems or services. Never suggest anything else, because it will be refused — in particular, no deploying to a container or cloud platform, and no infrastructure, CI/CD, or cloud-provider setup.
+
+Audience — the user builds integrations in a friendly, low-code product and may not be a programmer. Write every label and prompt in plain, outcome-focused language: say what the user gets, not how it is built. Never expose implementation details — no programming-language or Ballerina specifics, no command-line commands, no code, annotation, or configuration syntax, no file, module, or library names, and no technical keywords or type names.
+
+Output:
+- Each suggestion has a "label" (imperative chip text, max ~4 words, e.g. "Add tests") and a "prompt" (a natural first-person message the user would send, e.g. "Add tests for the order service").
+- Base every suggestion on what actually happened in this exchange — be specific, never generic filler.
+- No duplicates; each must offer a distinct next step.
+- Only include actions that genuinely make sense; one or two strong suggestions beat three padded ones.
+- Never suggest something the Copilot already did in its response.`;
 
 export function buildFollowupMessages(input: FollowupPromptInput): ModelMessage[] {
     const { userQuery, assistantResponse, mode } = input;
@@ -56,7 +60,7 @@ ${userQuery}
 ${assistantResponse}
 </assistant_response>
 
-Suggest the developer's likely next actions.`;
+Suggest the user's likely next actions.`;
 
     return [
         { role: "system", content: SYSTEM_PROMPT },

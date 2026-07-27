@@ -31,13 +31,12 @@ export interface AnchorAction {
 }
 
 export const ANCHOR_ACTIONS: AnchorAction[] = [
-    { label: "Add tests", description: "generate unit or integration tests for the code just written" },
-    { label: "Try it out", description: "run or invoke the service/function to see it working" },
-    { label: "Add error handling", description: "handle errors, timeouts, and edge cases in the code" },
-    { label: "Add authentication", description: "secure the service (auth/authz, API keys, OAuth2)" },
-    { label: "Add logging", description: "add logging or observability for debugging and monitoring" },
-    { label: "Validate input", description: "validate and sanitize incoming request payloads or parameters" },
-    { label: "Explain the code", description: "walk through how the generated code works" },
-    { label: "Add a connector", description: "integrate an external service using a Ballerina connector" },
-    { label: "Deploy", description: "deploy or containerize the integration" },
+    { label: "Add tests", description: "add tests that check the integration behaves as expected" },
+    { label: "Try it out", description: "run the integration and see it working" },
+    { label: "Handle errors", description: "handle failures, timeouts, and unexpected input gracefully" },
+    { label: "Add authentication", description: "secure the service so only authorized callers can use it" },
+    { label: "Add logging", description: "record activity so the integration can be monitored and debugged" },
+    { label: "Validate input", description: "check incoming requests so bad data is rejected safely" },
+    { label: "Explain how it works", description: "walk through what the integration does" },
+    { label: "Add a connector", description: "connect to another system or service, such as a database, API, or SaaS app" },
 ];
