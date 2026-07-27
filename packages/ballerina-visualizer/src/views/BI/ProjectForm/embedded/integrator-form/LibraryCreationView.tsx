@@ -68,7 +68,7 @@ const InfoNote = styled.div`
 
 
 const MAX_DIRECTORY_ATTEMPTS = 50;
-const DIRECTORY_EXISTS_MESSAGE = "A directory with this name already exists at the selected location";
+const NAME_EXISTS_MESSAGE = "An integration or library with this name already exists in the project";
 
 interface LibraryFormData {
     libraryName: string;
@@ -111,6 +111,11 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
     const [libraryNameError, setLibraryNameError] = useState<string | null>(null);
     const [pathError, setPathError] = useState<string | null>(null);
     const [existingWorkspace, setExistingWorkspace] = useState(false);
+    // Folder names and component titles already used in the target project, so a
+    // library name the user types can be flagged live if it collides.
+    const [takenNames, setTakenNames] = useState<{ folders: Set<string>; titles: Set<string> }>(
+        { folders: new Set(), titles: new Set() }
+    );
     const [packageNameError, setPackageNameError] = useState<string | null>(null);
     const [orgNameError, setOrgNameError] = useState<string | null>(null);
     const [defaultPath, setDefaultPath] = useState("");
@@ -129,30 +134,40 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
         []
     );
 
+    /** Returns a diagnostic when the name collides with an existing integration or
+     *  library in the target project (by folder or by title), else null. */
+    const checkNameCollision = (value: string): string | null => {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return null;
+        }
+        const folder = sanitizePackageName(trimmed);
+        if (takenNames.folders.has(folder.toLowerCase()) || takenNames.titles.has(trimmed.toLowerCase())) {
+            return NAME_EXISTS_MESSAGE;
+        }
+        return null;
+    };
+
     useEffect(() => {
         if (!workspaceReady) return;
         let mounted = true;
 
-        const resolveDefaultDirectoryName = async (baseDir: string): Promise<string> => {
-            const base = sanitizePackageName(DEFAULT_LIBRARY_NAME);
+        // Pick a default name/folder that collides with neither an existing folder
+        // nor an existing integration/library title in the target project (indexed:
+        // "Untitled_2" / "untitled_2", …).
+        const resolveDefaultNameAndDirectory = (
+            takenFolders: Set<string>,
+            takenTitles: Set<string>
+        ): { name: string; directoryName: string } => {
+            const nameBase = DEFAULT_LIBRARY_NAME;
             for (let attempt = 0; attempt < MAX_DIRECTORY_ATTEMPTS; attempt++) {
-                const candidate = attempt === 0 ? base : `${base}_${attempt + 1}`;
-                try {
-                    const result = await wsClient.validateProjectPath({
-                        projectPath: baseDir,
-                        projectName: candidate,
-                        createDirectory: true,
-                    });
-                    // First candidate that is either valid or fails for a reason other
-                    // than an existing directory is the one we keep.
-                    if (result.isValid || result.errorMessage !== DIRECTORY_EXISTS_MESSAGE) {
-                        return candidate;
-                    }
-                } catch {
-                    return candidate;
+                const name = attempt === 0 ? nameBase : `${nameBase}_${attempt + 1}`;
+                const directoryName = sanitizePackageName(name);
+                if (!takenFolders.has(directoryName.toLowerCase()) && !takenTitles.has(name.trim().toLowerCase())) {
+                    return { name, directoryName };
                 }
             }
-            return base;
+            return { name: nameBase, directoryName: sanitizePackageName(nameBase) };
         };
 
         (async () => {
@@ -162,18 +177,31 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
             if (!defaultPathInitialized.current) {
                 const dp = workspacePath || (await wsClient.getDefaultCreationPath()).path;
                 if (!mounted) return;
-                // Resolve the indexed default directory name BEFORE committing the path so
-                // the path field shows the final value immediately (like the wizard), rather
-                // than the un-indexed default catching up after an async re-index.
-                const dirName = await resolveDefaultDirectoryName(dp);
-                if (!mounted) return;
+                // Fetch the project's existing folders + titles once: used to pick a
+                // collision-free default AND to flag name collisions live.
+                let takenFolders = new Set<string>();
+                let takenTitles = new Set<string>();
+                try {
+                    const taken = await wsClient.getProjectComponentNames({ projectPath: dp });
+                    if (!mounted) return;
+                    takenFolders = new Set((taken?.folders ?? []).map((f: string) => f.toLowerCase()));
+                    takenTitles = new Set((taken?.titles ?? []).map((t: string) => t.trim().toLowerCase()));
+                } catch {
+                    // Best effort — fall back to the un-indexed default on failure.
+                }
+                setTakenNames({ folders: takenFolders, titles: takenTitles });
+                // Resolve the indexed default name/folder BEFORE committing the path so
+                // the fields show the final values immediately (like the wizard).
+                const { name, directoryName: dirName } = resolveDefaultNameAndDirectory(takenFolders, takenTitles);
                 defaultPathInitialized.current = true;
                 // Don't clobber a name the user typed while the seed was resolving.
                 if (!libraryNameTouchedRef.current) {
                     setDirectoryName(dirName);
+                    setFormData(prev => ({ ...prev, libraryName: name, packageName: sanitizePackageName(name), path: dp }));
+                } else {
+                    setFormData(prev => ({ ...prev, path: dp }));
                 }
                 setDefaultPath(dp);
-                setFormData(prev => ({ ...prev, path: dp }));
             }
         })();
         return () => {
@@ -204,9 +232,10 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
     }, [formData.orgName]);
 
     // Real-time library name validation — clear immediately when valid, debounce new errors
-    // to avoid flashing "required" on every keystroke.
+    // to avoid flashing "required" on every keystroke. Also flags a name that collides
+    // with an existing integration/library (by folder or title) in the target project.
     useEffect(() => {
-        const error = validateComponentName(formData.libraryName);
+        const error = validateComponentName(formData.libraryName) || checkNameCollision(formData.libraryName);
         if (!error) {
             debouncedSetLibraryNameError.cancel();
             setLibraryNameError(null);
@@ -214,7 +243,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
         }
         debouncedSetLibraryNameError(error);
         return () => debouncedSetLibraryNameError.cancel();
-    }, [formData.libraryName]);
+    }, [formData.libraryName, takenNames]);
 
     // Focus and select the first field on mount — VSCodeTextField is a web component,
     // so the real <input> is inside its shadow DOM and needs to be targeted directly.
@@ -284,7 +313,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
 
         let hasError = false;
 
-        const libraryNameErr = validateComponentName(formData.libraryName);
+        const libraryNameErr = validateComponentName(formData.libraryName) || checkNameCollision(formData.libraryName);
         if (libraryNameErr) {
             setLibraryNameError(libraryNameErr);
             hasError = true;

@@ -123,6 +123,10 @@ export class BiWsClient {
         return this.request("validateProjectPath", params);
     }
 
+    public getProjectComponentNames(params: { projectPath: string }): Promise<{ folders: string[]; titles: string[] }> {
+        return this.request("getProjectComponentNames", params);
+    }
+
     public selectFileOrDirPath(params: any): Promise<any> {
         return this.request("selectFileOrDirPath", params);
     }

@@ -28,7 +28,7 @@ import {
     validateProjectName,
 } from "./utils";
 import { useRealtimeProjectPathValidation } from "./useRealtimeProjectPathValidation";
-import { FieldGroup, SectionDivider } from "./styles";
+import { FieldGroup } from "./styles";
 import { DEFAULT_PROJECT_NAME } from "./types";
 import { CreateFlowShell } from "./shared/CreateFlowShell";
 import { FormFooter } from "./shared/FormPageLayout";
@@ -47,6 +47,14 @@ const InfoNote = styled.div`
     font-size: 12px;
     line-height: 1.4;
     color: var(--vscode-descriptionForeground);
+`;
+
+/** A group of related fields, separated by generous whitespace rather than a
+ *  hard divider so the form reads as a couple of calm sections. */
+const Section = styled.section`
+    & + & {
+        margin-top: 32px;
+    }
 `;
 
 /** Which screen of the Create flow is showing. */
@@ -115,6 +123,17 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
                 defaultPathInitialized.current = true;
                 setDefaultPath(dp);
                 setEditablePath(dp);
+
+                // If the default project already exists, show its real name (from its
+                // Ballerina.toml) instead of the "Default" placeholder — matching what
+                // Browse does. The folder stays "default"; only the display name changes.
+                const defaultProjectPath = joinPath(dp, directoryName);
+                const info = await wsClient.getExistingProjectInfo({ projectPath: defaultProjectPath });
+                if (!mounted) return;
+                if (info?.isProject && info.name && !projectNameTouchedRef.current) {
+                    setProjectName(info.name);
+                    setDirTouched(true);
+                }
             } catch (error) {
                 console.error("Failed to fetch default path:", error);
             }
@@ -251,49 +270,51 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
             subtitle="A project helps you organize your integrations and libraries."
             onBack={onBack}
         >
-            <FieldGroup>
-                <TextField
-                    ref={firstFieldRef}
-                    onTextChange={handleNameChange}
-                    value={projectName}
-                    label="Project name"
-                    placeholder="Enter a project name"
-                    required={true}
-                    errorMsg={projectNameError || ""}
+            <Section>
+                <FieldGroup>
+                    <TextField
+                        ref={firstFieldRef}
+                        onTextChange={handleNameChange}
+                        value={projectName}
+                        label="Project name"
+                        placeholder="Enter a project name"
+                        required={true}
+                        errorMsg={projectNameError || ""}
+                    />
+                </FieldGroup>
+
+                <FieldGroup>
+                    <DirectorySelector
+                        id="project-location-selector"
+                        label="Location"
+                        placeholder="Browse to select a location..."
+                        selectedPath={resolvedPath}
+                        required={true}
+                        onSelect={handlePathSelection}
+                        onChange={handlePathChange}
+                        errorMsg={pathError || undefined}
+                    />
+                    {!pathError && resolvedPath && (
+                        <InfoNote>
+                            <Icon name="info" isCodicon sx={{ marginTop: "1px" }} />
+                            <span>
+                                {existingWorkspace
+                                    ? <>This is an existing project. Your new {startingPointNoun} will be added here.</>
+                                    : <>A new project will be created at this location.</>}
+                            </span>
+                        </InfoNote>
+                    )}
+                </FieldGroup>
+            </Section>
+
+            <Section>
+                <ProjectTypeSelector
+                    label="Choose your starting point"
+                    value={isLibrary}
+                    onChange={setIsLibrary}
+                    note="This is just your starting point. You can add more integrations and libraries to the project later."
                 />
-            </FieldGroup>
-
-            <FieldGroup>
-                <DirectorySelector
-                    id="project-location-selector"
-                    label="Location"
-                    placeholder="Browse to select a location..."
-                    selectedPath={resolvedPath}
-                    required={true}
-                    onSelect={handlePathSelection}
-                    onChange={handlePathChange}
-                    errorMsg={pathError || undefined}
-                />
-                {!pathError && resolvedPath && (
-                    <InfoNote>
-                        <Icon name="info" isCodicon sx={{ marginTop: "1px" }} />
-                        <span>
-                            {existingWorkspace
-                                ? <>This is an existing project. Your new {startingPointNoun} will be added here.</>
-                                : <>A new project will be created at this location.</>}
-                        </span>
-                    </InfoNote>
-                )}
-            </FieldGroup>
-
-            <SectionDivider />
-
-            <ProjectTypeSelector
-                label="Choose your starting point"
-                value={isLibrary}
-                onChange={setIsLibrary}
-                note="This is just your starting point. You can add more integrations and libraries to the project later."
-            />
+            </Section>
 
             <FormFooter>
                 <span title={ballerinaUnavailable ? "Ballerina distribution is not set up. Use Configure to set it up." : undefined}>

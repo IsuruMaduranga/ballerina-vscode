@@ -92,8 +92,8 @@ export function ProjectTypeSelector({
                                 <Icon
                                     name={option.icon}
                                     isCodicon
-                                    sx={{ width: "18px", height: "18px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                                    iconSx={{ fontSize: "18px", lineHeight: 1 }}
+                                    sx={{ width: "24px", height: "24px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                    iconSx={{ fontSize: "24px", lineHeight: 1 }}
                                 />
                             </RadioIcon>
                             <RadioContent>

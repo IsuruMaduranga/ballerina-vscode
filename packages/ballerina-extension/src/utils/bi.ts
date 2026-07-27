@@ -196,6 +196,58 @@ export function getExistingProjectInfo(dir: string): { isProject: boolean; name?
     return { isProject: true, name: name ?? path.basename(dir), path: dir };
 }
 
+/**
+ * Gathers the folder names and component titles already in use within a project
+ * directory, so a default integration/library name AND folder can be chosen that
+ * collides with neither. `folders` covers on-disk subdirectories plus any packages
+ * registered in the workspace `Ballerina.toml`; `titles` are the `[package].title`
+ * values read from each package's `Ballerina.toml`. Returns empty lists for a
+ * brand-new project directory that does not exist yet.
+ */
+export function getProjectComponentNames(projectPath: string): { folders: string[]; titles: string[] } {
+    const folders = new Set<string>();
+    const titles: string[] = [];
+    if (!projectPath) {
+        return { folders: [], titles };
+    }
+
+    // On-disk subdirectories directly under the project.
+    try {
+        for (const entry of fs.readdirSync(projectPath, { withFileTypes: true })) {
+            if (entry.isDirectory() && !entry.name.startsWith('.')) {
+                folders.add(entry.name);
+            }
+        }
+    } catch {
+        // The project directory does not exist yet (a brand-new project) — nothing taken.
+    }
+
+    if (classifyBallerinaProject(projectPath) === 'workspace') {
+        try {
+            const tomlData = parse(fs.readFileSync(path.join(projectPath, 'Ballerina.toml'), 'utf8')) as Partial<WorkspaceTomlValues>;
+            for (const pkg of tomlData?.workspace?.packages ?? []) {
+                folders.add(path.basename(path.normalize(pkg)));
+            }
+        } catch {
+            // Unreadable workspace toml — rely on the on-disk folders gathered above.
+        }
+        // Read each package folder's `[package].title`.
+        for (const folder of folders) {
+            try {
+                const pkgToml = parse(fs.readFileSync(path.join(projectPath, folder, 'Ballerina.toml'), 'utf8')) as { package?: { title?: unknown } };
+                const title = pkgToml?.package?.title;
+                if (typeof title === 'string' && title.trim()) {
+                    titles.push(title.trim());
+                }
+            } catch {
+                // Not a package folder (or no title) — skip.
+            }
+        }
+    }
+
+    return { folders: Array.from(folders), titles };
+}
+
 export function validateProjectPath(
     projectPath: string,
     projectName: string,

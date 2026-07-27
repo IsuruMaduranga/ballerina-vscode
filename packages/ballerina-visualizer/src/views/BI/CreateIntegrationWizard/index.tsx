@@ -51,8 +51,8 @@ const WIZARD_STEPS = ["Basics", "Configure"];
 const DEFAULT_INTEGRATION_NAME = "Untitled";
 const REQUIRED_PATH_MESSAGE = "Path is required";
 const INVALID_PATH_MESSAGE = "Please select a valid directory";
+const NAME_EXISTS_MESSAGE = "An integration or library with this name already exists in the project";
 const MAX_DEFAULT_DIRECTORY_ATTEMPTS = 50;
-const DIRECTORY_EXISTS_MESSAGE = "A directory with this name already exists at the selected location";
 
 interface CreateIntegrationWizardProps {
     /** Hide the page header when the embedding host renders its own chrome. */
@@ -101,6 +101,11 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
     const [nameError, setNameError] = useState<string | null>(null);
     const [pathError, setPathError] = useState<string | null>(null);
     const [existingWorkspace, setExistingWorkspace] = useState(false);
+    // Folder names and component titles already used in the target project, so a
+    // name the user types can be flagged live if it collides with an existing one.
+    const [takenNames, setTakenNames] = useState<{ folders: Set<string>; titles: Set<string> }>(
+        { folders: new Set(), titles: new Set() }
+    );
     const [triggers, setTriggers] = useState<TriggerModelsResponse | null>(null);
     const [selection, setSelection] = useState<ArtifactCard | null>(null);
     // Service model cached across step navigation (keyed by the selected card),
@@ -242,29 +247,24 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
 
         // Seed the path field: prefer the currently open workspace folder (matching
         // the native/embedded project & library forms), falling back to the default
-        // creation directory only when no folder is open. The default directory
-        // segment is "untitled"; if one already exists at the seeded location, an
-        // indexed variant (untitled_2, untitled_3, ...) is used instead.
-        const resolveDefaultDirectoryName = async (baseDir: string): Promise<string> => {
-            const base = sanitizePackageName(DEFAULT_INTEGRATION_NAME);
+        // creation directory only when no folder is open. The default name/folder
+        // is "Untitled"/"untitled"; if the target project already has a component
+        // with that folder OR that title, an indexed variant is used for BOTH the
+        // name and folder ("Untitled_2" / "untitled_2", …) so the new integration
+        // collides with neither an existing folder nor an existing integration name.
+        const resolveDefaultNameAndDirectory = (
+            takenFolders: Set<string>,
+            takenTitles: Set<string>
+        ): { name: string; directoryName: string } => {
+            const nameBase = DEFAULT_INTEGRATION_NAME;
             for (let attempt = 0; attempt < MAX_DEFAULT_DIRECTORY_ATTEMPTS; attempt++) {
-                const candidate = attempt === 0 ? base : `${base}_${attempt + 1}`;
-                try {
-                    const result = await wsClient.validateProjectPath({
-                        projectPath: baseDir,
-                        projectName: base,
-                        createDirectory: true,
-                        directoryName: candidate,
-                    });
-                    if (result.isValid || result.errorMessage !== DIRECTORY_EXISTS_MESSAGE) {
-                        return candidate;
-                    }
-                } catch (error) {
-                    console.error(">>> Error checking default directory availability", error);
-                    return candidate;
+                const name = attempt === 0 ? nameBase : `${nameBase}_${attempt + 1}`;
+                const directoryName = sanitizePackageName(name);
+                if (!takenFolders.has(directoryName.toLowerCase()) && !takenTitles.has(name.trim().toLowerCase())) {
+                    return { name, directoryName };
                 }
             }
-            return base;
+            return { name: nameBase, directoryName: sanitizePackageName(nameBase) };
         };
 
         // When the chooser resolved a project, the integration lives inside that
@@ -276,8 +276,20 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
 
         seedBaseDir
             .then(async (seedPath: string) => {
-                const directoryName = await resolveDefaultDirectoryName(seedPath);
-                setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: seedPath, directoryName }));
+                // Fetch the project's existing folders + component titles once: used
+                // to pick a collision-free default AND to flag name collisions live.
+                let takenFolders = new Set<string>();
+                let takenTitles = new Set<string>();
+                try {
+                    const taken = await wsClient.getProjectComponentNames({ projectPath: seedPath });
+                    takenFolders = new Set((taken?.folders ?? []).map((f: string) => f.toLowerCase()));
+                    takenTitles = new Set((taken?.titles ?? []).map((t: string) => t.trim().toLowerCase()));
+                } catch (error) {
+                    console.error(">>> Error fetching existing component names", error);
+                }
+                setTakenNames({ folders: takenFolders, titles: takenTitles });
+                const { name, directoryName } = resolveDefaultNameAndDirectory(takenFolders, takenTitles);
+                setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: seedPath, integrationName: name, directoryName }));
             })
             .catch((error: unknown) => console.error(">>> Error seeding the creation path", error));
 
@@ -320,6 +332,20 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
         allowExistingDirectory: true,
     });
 
+    /** Returns a diagnostic when the name collides with an existing integration or
+     *  library in the target project (by folder or by title), else null. */
+    const checkNameCollision = (value: string): string | null => {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return null;
+        }
+        const folder = sanitizePackageName(trimmed);
+        if (takenNames.folders.has(folder.toLowerCase()) || takenNames.titles.has(trimmed.toLowerCase())) {
+            return NAME_EXISTS_MESSAGE;
+        }
+        return null;
+    };
+
     /** Integration name change — also re-derives the directory segment while the
      *  user has not taken manual control of it. */
     const handleNameChange = (value: string) => {
@@ -332,7 +358,7 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
                     ? sanitizePackageName(value)
                     : "",
         }));
-        setNameError(validateComponentName(value, false));
+        setNameError(validateComponentName(value, false) || checkNameCollision(value));
     };
 
     /** Path field edit — re-split into parent directory + directory name. Editing
@@ -395,7 +421,7 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
 
     const validateBasicInfo = (): boolean => {
         const nameValidation = basicInfo.integrationName.trim()
-            ? validateComponentName(basicInfo.integrationName, false)
+            ? (validateComponentName(basicInfo.integrationName, false) || checkNameCollision(basicInfo.integrationName))
             : null;
         setNameError(nameValidation);
         return !nameValidation;

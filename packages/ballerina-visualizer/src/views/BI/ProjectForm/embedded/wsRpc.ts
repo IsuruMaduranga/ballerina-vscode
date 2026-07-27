@@ -36,6 +36,7 @@ const PROJECT_ACTIONS = new Set([
     "createBIProject",
     "validateProjectPath",
     "getExistingProjectInfo",
+    "getProjectComponentNames",
     "selectFileOrDirPath",
     "getWorkspaceRoot",
     "getDefaultOrgName",

@@ -223,65 +223,52 @@ export const ProjectTypeLabel = styled.div`
 `;
 
 export const RadioGroup = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 10px;
 `;
 
 export const RadioOption = styled.label<{ isSelected: boolean }>`
     display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 12px;
-    border-radius: 6px;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 8px;
     cursor: pointer;
-    border: 1px solid ${(props: { isSelected: boolean }) => 
+    border: 1px solid ${(props: { isSelected: boolean }) =>
         props.isSelected ? 'var(--vscode-focusBorder)' : 'var(--vscode-panel-border)'};
-    background-color: ${(props: { isSelected: boolean }) => 
-        props.isSelected ? 'var(--vscode-list-hoverBackground)' : 'transparent'};
-    transition: all 0.15s ease;
+    background-color: ${(props: { isSelected: boolean }) =>
+        props.isSelected ? 'color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent)' : 'transparent'};
+    transition: border-color 0.15s ease, background-color 0.15s ease;
 
     &:hover {
         border-color: var(--vscode-focusBorder);
-        background-color: var(--vscode-list-hoverBackground);
+        background-color: ${(props: { isSelected: boolean }) =>
+            props.isSelected
+                ? 'color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent)'
+                : 'var(--vscode-list-hoverBackground)'};
     }
 `;
 
+/** The radio input itself is visually hidden — selection is conveyed by the
+ *  option card's border/background. It stays in the DOM for keyboard and form
+ *  semantics; radio-group focus always lands on the selected card, so its blue
+ *  border doubles as the focus indicator (no separate outline needed). */
 export const RadioInput = styled.input`
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    border: 1px solid var(--vscode-checkbox-border);
-    border-radius: 50%;
-    background: var(--vscode-checkbox-background);
-    cursor: pointer;
-    margin-top: 2px;
-    flex-shrink: 0;
-    position: relative;
-
-    &:checked {
-        border-color: var(--vscode-focusBorder);
-        background: var(--vscode-focusBorder);
-    }
-
-    &:checked::after {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--vscode-checkbox-background);
-    }
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
 `;
 
-/** Rounded icon badge shown between the radio dot and the option text. */
+/** Rounded icon badge that fronts each option. */
 export const RadioIcon = styled.div`
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
