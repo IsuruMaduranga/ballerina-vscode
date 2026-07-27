@@ -975,6 +975,9 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                     abortSignal: this.config.abortController.signal,
                 });
                 if (suggestions.length > 0 && !this.config.abortController.signal.aborted) {
+                    const projectRootPath = context.ctx.workspacePath || context.ctx.projectPath || '';
+                    const threadId = this.config.chatStorage?.threadId ?? 'default';
+                    chatStateStorage.updateGeneration(projectRootPath, threadId, context.messageId, { followupSuggestions: suggestions });
                     this.config.eventHandler({
                         type: 'followup_suggestions',
                         messageId: context.messageId,

@@ -980,6 +980,16 @@ const AIChat: React.FC = () => {
                 liveGateClosedRef.current = false;
                 reconnectSettledResolveRef.current?.();
             }
+            // Follow-up chips arrive via a live notification, so a webview reload would
+            // otherwise lose them — re-derive from the latest generation, like review state.
+            try {
+                const suggestions = await rpcClient.getAiPanelRpcClient().getLatestFollowupSuggestions();
+                if (suggestions?.length > 0) {
+                    setFollowupSuggestions(suggestions);
+                }
+            } catch (error) {
+                console.error('[AIChat] Failed to restore follow-up suggestions:', error);
+            }
         };
 
         loadHistory();

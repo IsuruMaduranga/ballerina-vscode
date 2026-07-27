@@ -881,6 +881,8 @@ export interface Generation {
     fileAttachments?: FileAttatchment[];
     /** Code context for this generation */
     codeContext?: CodeContext;
+    /** Post-turn follow-up suggestions; runtime-only, not persisted across a restart */
+    followupSuggestions?: FollowupSuggestion[];
     /** Generation metadata */
     metadata: GenerationMetadata;
 }

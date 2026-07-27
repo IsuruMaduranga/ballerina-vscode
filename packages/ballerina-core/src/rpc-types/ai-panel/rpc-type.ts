@@ -17,7 +17,7 @@
  * 
  * THIS FILE INCLUDES AUTO GENERATED CODE
  */
-import { LoginMethod } from "../../state-machine-types";
+import { LoginMethod, FollowupSuggestion } from "../../state-machine-types";
 import {
     TestGenerationMentions,
     RequirementSpecification,
@@ -135,6 +135,7 @@ export const updateChatMessage: RequestType<UpdateChatMessageRequest, void> = { 
 export const getActiveTempDir: RequestType<void, string> = { method: `${_preFix}/getActiveTempDir` };
 export const hasPendingReview: RequestType<HasPendingReviewRequest, boolean> = { method: `${_preFix}/hasPendingReview` };
 export const getRunStatus: RequestType<GetRunStatusRequest, GetRunStatusResponse> = { method: `${_preFix}/getRunStatus` };
+export const getLatestFollowupSuggestions: RequestType<void, FollowupSuggestion[]> = { method: `${_preFix}/getLatestFollowupSuggestions` };
 export const getUsage: RequestType<void, UsageResponse | undefined> = { method: `${_preFix}/getUsage` };
 export const requestQuota: RequestType<QuotaRequestParams, QuotaRequestResult> = { method: `${_preFix}/requestQuota` };
 export const openFileDiff: NotificationType<OpenFileDiffRequest> = { method: `${_preFix}/openFileDiff` };
