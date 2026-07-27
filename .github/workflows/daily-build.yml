@@ -289,7 +289,7 @@ jobs:
       - ls-windows-build
       - ls-trivy
       - Build
-    if: ${{ github.repository == 'wso2/ballerina-vscode' }}
+    if: ${{ github.repository == 'ballerina-platform/ballerina-vscode' }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -310,7 +310,7 @@ jobs:
       - name: Publish pre-release
         uses: ./.github/actions/release
         with:
-          repo: wso2/ballerina-vscode
+          repo: ${{ github.repository }}
           name: ballerina
           chatAPI: ${{ secrets.BI_TEAM_CHAT_API }}
           # Rolling tag: each daily run deletes and recreates the `nightly`
@@ -356,7 +356,7 @@ jobs:
       - ls-windows-build
       - ls-trivy
       - Build
-    if: ${{ always() && contains(needs.*.result, 'failure') && github.repository == 'wso2/ballerina-vscode' }}
+    if: ${{ always() && contains(needs.*.result, 'failure') && github.repository == 'ballerina-platform/ballerina-vscode' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
