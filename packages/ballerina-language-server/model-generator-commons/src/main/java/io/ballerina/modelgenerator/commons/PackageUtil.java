@@ -400,7 +400,7 @@ public class PackageUtil {
             if (FORCE_OFFLINE && version == null) {
                 throw new IllegalStateException(String.format(
                         "Package '%s/%s' is not provisioned in the offline test cache. Add it to "
-                                + "build-config/ballerina_dependencies (Ballerina.toml) and regenerate Dependencies.toml.",
+                        + "build-config/ballerina_dependencies (Ballerina.toml) " + "and regenerate Dependencies.toml.",
                         moduleInfo.org(), moduleInfo.packageName()));
             }
             return new ModuleInfo(moduleInfo.org(), moduleInfo.packageName(), moduleInfo.moduleName(), version);
