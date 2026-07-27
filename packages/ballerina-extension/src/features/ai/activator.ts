@@ -41,7 +41,16 @@ import { resolveProjectPath } from '../../utils/project-utils';
 import { MESSAGES } from '../project';
 import { AICommandConfig } from './executors/base/AICommandExecutor';
 import { AgentExecutor } from './agent/AgentExecutor';
-import { initMcpClientManager, disposeMcpClientManager, watchMcpConfig, getMcpClientManager, type EnabledOverrideStore } from './agent/mcp';
+import {
+    initMcpClientManager,
+    disposeMcpClientManager,
+    watchMcpConfig,
+    watchProjectMcpConfigPresence,
+    getMcpClientManager,
+    isMcpToolsEnabled,
+    MCP_ENABLE_SETTING_KEY,
+    type EnabledOverrideStore
+} from './agent/mcp';
 import { registerAgentsMdWatcher } from './agent/agents-md';
 import { resolveProjectRootPath } from './agent';
 import { extension } from '../../BalExtensionContext';
@@ -264,14 +273,12 @@ export function activateAIFeatures(ballerinaExternalInstance: BallerinaExtension
     });
 }
 
-const MCP_ENABLE_SETTING = 'copilot.enableMcpTools';
-
 let mcpWatchDisposer: (() => void) | null = null;
 let mcpTrustDisposable: { dispose(): void } | null = null;
 
-// MCP runs only when the user enabled it.
+// MCP runs when the user enabled it, or when the project carries a `.mcp.json`.
 function isMcpEnabled(): boolean {
-    return vscodeWorkspace.getConfiguration('ballerina').get<boolean>(MCP_ENABLE_SETTING, false);
+    return isMcpToolsEnabled(resolveProjectRootPath() || undefined);
 }
 
 function setupMcp(): void {
@@ -398,19 +405,31 @@ function activateMcp(): void {
     if (isMcpEnabled()) {
         setupMcp();
     }
-    const disposable = vscodeWorkspace.onDidChangeConfiguration((e) => {
-        const enableChanged = e.affectsConfiguration(`ballerina.${MCP_ENABLE_SETTING}`);
-        if (!enableChanged) {
-            return;
-        }
+    const reevaluate = () => {
+        const enabled = isMcpEnabled();
         queueMcpLifecycleTransition(async () => {
-            if (isMcpEnabled()) {
+            if (enabled) {
                 setupMcp();
             } else {
                 await teardownMcp();
             }
         });
-        sendConfigChangeNotification('mcpToolsEnabled', isMcpEnabled());
-    });
-    extension.context?.subscriptions.push(disposable);
+        sendConfigChangeNotification('mcpToolsEnabled', enabled);
+    };
+    const subscriptions: vscode.Disposable[] = [
+        vscodeWorkspace.onDidChangeConfiguration((e) => {
+            if (e.affectsConfiguration(MCP_ENABLE_SETTING_KEY)) {
+                reevaluate();
+            }
+        }),
+        // Trust unlocks the project `.mcp.json`, which may be the only opt-in signal.
+        vscodeWorkspace.onDidGrantWorkspaceTrust(() => reevaluate()),
+    ];
+    // A `.mcp.json` appearing or being removed flips the implicit opt-in, so it has to
+    // be watched even while MCP is off and no manager (with its own watcher) exists.
+    const projectRoot = resolveProjectRootPath();
+    if (projectRoot) {
+        subscriptions.push(watchProjectMcpConfigPresence(projectRoot, reevaluate));
+    }
+    extension.context?.subscriptions.push(...subscriptions);
 }

@@ -96,7 +96,7 @@ import {
     openOrCreateAgentsMd as openOrCreateAgentsMdImpl,
 } from "../../features/ai/agent/agents-md";
 import { ConfigurationTarget } from "vscode";
-import { getMcpClientManager, ensureMcpConfigFileExists, writeMcpServer, updateMcpServer, deleteMcpServer } from "../../features/ai/agent/mcp";
+import { getMcpClientManager, ensureMcpConfigFileExists, writeMcpServer, updateMcpServer, deleteMcpServer, isMcpToolsEnabled, MCP_ENABLE_SETTING } from "../../features/ai/agent/mcp";
 import { notifyMcpServersChanged, notifyMcpLoadErrorsChanged } from "../../RPCLayer";
 import * as os from "os";
 import * as fs from 'fs';
@@ -1449,7 +1449,7 @@ User reverted the last made changes. The files have been restored to the state b
     }
 
     async getMcpToolsEnabled(): Promise<boolean> {
-        return workspace.getConfiguration('ballerina').get<boolean>('copilot.enableMcpTools', false);
+        return isMcpToolsEnabled(resolveProjectRootPath() || undefined);
     }
 
 
@@ -1558,7 +1558,7 @@ User reverted the last made changes. The files have been restored to the state b
 
     async setMcpToolsEnabled(params: SetMcpToolsEnabledRequest): Promise<void> {
         await workspace.getConfiguration('ballerina')
-            .update('copilot.enableMcpTools', !!params?.enabled, ConfigurationTarget.Global);
+            .update(MCP_ENABLE_SETTING, !!params?.enabled, ConfigurationTarget.Global);
     }
 
     async getAgentsMdFileInfo(): Promise<AgentsMdFileInfoDTO> {

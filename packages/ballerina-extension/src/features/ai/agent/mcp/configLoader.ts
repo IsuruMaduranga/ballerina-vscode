@@ -38,6 +38,18 @@ export function workspaceMcpConfigPath(workspacePath: string): string {
     return path.join(path.resolve(workspacePath), PROJECT_MCP_FILENAME);
 }
 
+/** Presence of the project-tree `.mcp.json` — the implicit opt-in signal for MCP tool support. */
+export function hasProjectMcpConfig(workspacePath?: string): boolean {
+    if (!workspacePath) {
+        return false;
+    }
+    try {
+        return fs.existsSync(workspaceMcpConfigPath(workspacePath));
+    } catch {
+        return false;
+    }
+}
+
 /** Returns the on-disk path for the given scope. Throws if scope=workspace without a workspace path. */
 export function configFilePath(scope: McpScope, workspacePath?: string): string {
     if (scope === "user") {
@@ -302,4 +314,17 @@ export function watchMcpConfig(workspacePath: string | undefined, onChange: () =
     return () => {
         for (const d of disposers) { d(); }
     };
+}
+
+/**
+ * Watches only for the project `.mcp.json` appearing or disappearing (edits are
+ * ignored). Kept separate from `watchMcpConfig` because this one has to run even
+ * while MCP is off — the file's presence is what flips the implicit opt-in.
+ */
+export function watchProjectMcpConfigPresence(workspacePath: string, onChange: () => void): vscode.Disposable {
+    const pattern = new vscode.RelativePattern(vscode.Uri.file(workspacePath), PROJECT_MCP_FILENAME);
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern, false, true, false);
+    watcher.onDidCreate(() => onChange());
+    watcher.onDidDelete(() => onChange());
+    return watcher;
 }

@@ -23,13 +23,17 @@ export {
     ensureMcpConfigFileExists,
     loadMcpConfig,
     USER_MCP_CONFIG_PATH,
+    PROJECT_MCP_FILENAME,
     workspaceMcpConfigPath,
+    hasProjectMcpConfig,
     configFilePath,
     watchMcpConfig,
+    watchProjectMcpConfigPresence,
     writeMcpServer,
     updateMcpServer,
     deleteMcpServer,
 } from "./configLoader";
+export { isMcpToolsEnabled, MCP_ENABLE_SETTING, MCP_ENABLE_SETTING_KEY } from "./enablement";
 export {
     McpClientManager,
     initMcpClientManager,
