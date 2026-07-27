@@ -354,7 +354,20 @@ export function AgentStatusOrb() {
 
     useEffect(() => () => clearTimeout(snapTimerRef.current), []);
 
-    if (!status || status.aiPanelOpen || heroPresent) {
+    // The orb hides without unmounting, so mini-chat state outlives it. Left alone,
+    // `miniOpen` stays true and the mini resurfaces unprompted as soon as the orb
+    // returns — the full panel closing, or navigating off a hero-bearing view.
+    // A prompt queued by `subscribeMiniChatOpen` is discarded for the same reason:
+    // MiniChat cannot mount while hidden, so it is never taken, only left to go stale.
+    const orbHidden = !status || status.aiPanelOpen || heroPresent;
+    useEffect(() => {
+        if (orbHidden) {
+            setMiniOpen(false);
+            miniPromptRef.current = undefined;
+        }
+    }, [orbHidden]);
+
+    if (orbHidden) {
         return null;
     }
 
