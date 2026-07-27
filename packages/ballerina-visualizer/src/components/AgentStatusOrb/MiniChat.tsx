@@ -144,7 +144,11 @@ type UnmodelledNotifyType =
 
 /** Friendly one-line label for a tool call (mirrors the status-bar phrasing). */
 function describeTool(toolName: string, toolInput: any): string {
-    const rawPath = toolInput?.file_path ?? toolInput?.filePath;
+    // The file tools emit `toolInput: { fileName }` (emitFileToolCall, host-side
+    // agent/tools/text-editor.ts). `file_path` is the raw-Zod-input spelling carried by
+    // pass-through tools; `filePath` matches neither emitter and is kept only as a
+    // belt-and-braces fallback. Miss `fileName` and every file row reads "Editing files".
+    const rawPath = toolInput?.fileName ?? toolInput?.file_path ?? toolInput?.filePath;
     const file = typeof rawPath === "string" ? rawPath.split(/[\\/]/).pop() : undefined;
     switch (toolName) {
         case "file_write":
