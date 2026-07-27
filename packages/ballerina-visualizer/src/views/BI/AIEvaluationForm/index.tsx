@@ -96,11 +96,13 @@ const TemplatePicker = styled.div`
     box-sizing: border-box;
 `;
 
-// The unfilled slot. Dashed to read as "nothing here yet" against the config card's solid border,
-// and deliberately not clickable itself: the button is the only interactive element, so the affordance
-// is unmistakable and there is no button nested inside a button.
-// Occupies the card's place while the template is fetched, so the feedback appears where the result
-// will, rather than in a dialog that has already done its job.
+const FormLoadingSlot = styled.div`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+`;
+
 const LoadingSlot = styled.div`
     display: grid;
     width: 100%;
@@ -164,8 +166,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     // The catalog dialog is for choosing a template only; its arguments are configured inline.
     const [showTemplateCatalog, setShowTemplateCatalog] = useState(false);
     const [isSelectingTemplate, setIsSelectingTemplate] = useState(false);
-    // Named in the card's loading message; selectedTemplate is only set once the fetch resolves.
-    const [selectingLabel, setSelectingLabel] = useState<string>();
     const [templateLoadError, setTemplateLoadError] = useState<string>();
     const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('evalset');
     const [evalQueries, setEvalQueries] = useState<string[]>([]);
@@ -202,10 +202,8 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     }, [dataProviderMode, selectedEvalsetFile, selectedTemplate, dataSourceParam, dataSourceMode,
         evalQueries, serviceType]);
 
-    // Template arguments and the data-source fields are rendered by the modal, so they stay in the
-    // field list (which keeps them registered with the shared form) but never render inline.
     const applyFieldVisibility = (fields: FormField[], mode: string,
-        dsParam = dataSourceParam, dsMode = dataSourceMode, options = evalsetOptions): FormField[] => {
+        options = evalsetOptions): FormField[] => {
         return fields.map(field => {
             if (isTemplateField(field) || field.key === QUERIES_FIELD_KEY) {
                 return { ...field, hidden: true };
@@ -214,7 +212,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                 return { ...field, hidden: mode !== 'function' };
             }
             if (field.key === EVALSET_FIELD_KEY) {
-                // Inline only for the non-template evalset path; in template mode the modal renders it.
                 const hidden = mode !== 'evalSet' || (options.length === 0 && !selectedEvalsetFile);
                 return { ...field, hidden };
             }
@@ -273,7 +270,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const selectEvalTemplate = async (template: AvailableNode) => {
         // The dialog dismisses itself on click, so progress is reported by the template card instead.
         setIsSelectingTemplate(true);
-        setSelectingLabel(template.metadata.label);
         setTemplateLoadError(undefined);
         try {
             const res = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
@@ -298,7 +294,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             setDataProviderMode('template');
             setFormFields(current => applyFieldVisibility(
                 assembleTemplateFields(current, node, dsParam, mode === 'queries' ? evalQueries : []),
-                'template', dsParam, mode));
+                'template'));
         } catch (error) {
             console.error('Failed to load evaluation template form:', error);
             setTemplateLoadError('Unable to load the selected template. Please try again.');
@@ -423,7 +419,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             formFields = assembleTemplateFields(formFields, detected.node, dsParam, queries);
         }
 
-        setFormFields(applyFieldVisibility(formFields, mode, dsParam, dsMode, options));
+        setFormFields(applyFieldVisibility(formFields, mode, options));
     }
 
     const loadEmptyForm = (options = evalsetOptions) => {
@@ -435,7 +431,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         const mode = 'template';
         setDataProviderMode(mode);
 
-        formFields = applyFieldVisibility(formFields, mode, undefined, dataSourceMode, options);
+        formFields = applyFieldVisibility(formFields, mode, options);
         setFormFields(formFields);
     }
 
@@ -1114,7 +1110,9 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                     <FormHeader title={formTitle} />
                     <FormContainer>
                         {(isLoading || !targetLineRange) && (
-                            <LoadingView message="Loading form data..." />
+                            <FormLoadingSlot>
+                                <LoadingView message="Loading form data..." />
+                            </FormLoadingSlot>
                         )}
                         {!isLoading && targetLineRange && (
                             <ArtifactForm
@@ -1192,9 +1190,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                     </SectionLabel>
                                                     {isSelectingTemplate ? (
                                                         <LoadingSlot>
-                                                            <RelativeLoader message={selectingLabel
-                                                                ? `Loading ${selectingLabel}…`
-                                                                : 'Loading template…'} />
+                                                            <RelativeLoader message="Loading template..." />
                                                         </LoadingSlot>
                                                     ) : selectedTemplate && templateNode ? (
                                                         <TemplateConfigCard
