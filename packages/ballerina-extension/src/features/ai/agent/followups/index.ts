@@ -17,48 +17,126 @@
  */
 
 import { generateObject } from "ai";
-import { FollowupSituation } from "@wso2/ballerina-core";
+import { FollowupSuggestion } from "@wso2/ballerina-core";
+import { workspace } from "vscode";
+import { chatStateStorage } from "../../../../views/ai-panel/chatStateStorage";
+import { CopilotEventHandler } from "../../utils/events";
 import { ANTHROPIC_HAIKU, getAnthropicClient } from "../../utils/ai-client";
-import { buildFollowupMessages, FollowupPromptInput } from "./prompt";
+import { buildFollowupMessages, FollowupPromptInput, FollowupSituation } from "./prompt";
 import { followupSuggestionsSchema, GeneratedFollowupSuggestion } from "./schema";
 
-const DEFAULT_TIMEOUT_MS = 8_000;
+export { FollowupSituation } from "./prompt";
 
-export interface GenerateFollowupsOptions extends FollowupPromptInput {
-    /** Aborts the call when the turn is superseded or the panel closes. */
-    abortSignal?: AbortSignal;
-    /** Caps the call so a hung request cannot linger for the session. */
-    timeoutMs?: number;
-    /** Upper bound on returned suggestions. */
-    maxSuggestions?: number;
+const TIMEOUT_MS = 8_000;
+
+/** Below this much partial output an aborted turn gets the Continue chip only, with no model call. */
+const MIN_CHARS_FOR_ABORT = 200;
+
+/** Offered whenever a turn is stopped part-way. */
+const CONTINUE_SUGGESTION: FollowupSuggestion = {
+    label: "Continue",
+    prompt: "Redo the step you were interrupted on and carry on.",
+};
+
+export interface FollowupTurn {
+    situation: FollowupSituation;
+    /** Generation this turn belongs to. */
+    messageId: string;
+    projectRootPath: string;
+    threadId: string;
+    /** Model messages for the turn; the assistant text is taken from these. */
+    assistantMessages: any[];
+    userQuery: string;
+    isPlanMode: boolean;
+    /** The turn's signal — already tripped on the aborted path. */
+    abortSignal: AbortSignal;
+    eventHandler: CopilotEventHandler;
 }
 
 /**
- * Generates a small set of follow-up suggestions for a completed turn.
+ * Produces follow-up suggestions for a finished turn and pushes them to the webview.
  *
- * Best-effort: any failure (model error, timeout, abort, or output that fails schema
- * validation) resolves to an empty array so the caller can simply show no chips.
+ * Fire-and-forget: never blocks turn completion, and any failure (disabled, empty response,
+ * model error, abort) simply results in no chips.
+ *
+ * @returns whether generation started, so the caller can avoid running twice for one turn.
  */
-export async function generateFollowupSuggestions(
-    options: GenerateFollowupsOptions
-): Promise<GeneratedFollowupSuggestion[]> {
-    const { abortSignal, timeoutMs = DEFAULT_TIMEOUT_MS, maxSuggestions = 3, ...promptInput } = options;
+export function startFollowupSuggestions(turn: FollowupTurn): boolean {
+    const { situation, messageId, projectRootPath, threadId, assistantMessages, userQuery, isPlanMode, abortSignal, eventHandler } = turn;
 
-    // Nothing to build suggestions from.
-    if (!promptInput.assistantResponse?.trim()) {
-        return [];
+    if (process.env.AI_TEST_ENV) {
+        return false;
+    }
+    if (!workspace.getConfiguration("ballerina.copilot").get<boolean>("followupSuggestions", true)) {
+        return false;
     }
 
+    const aborted = situation === "aborted";
+    // On the aborted path the turn's signal is already tripped, so it can neither gate nor be reused.
+    if (!aborted && abortSignal.aborted) {
+        return false;
+    }
+
+    const assistantText = extractAssistantText(assistantMessages);
+    if (!aborted && !assistantText) {
+        return false;
+    }
+
+    // Users abort constantly; only pay for a model call when there is enough to pivot from.
+    const worthGenerating = !aborted || assistantText.length >= MIN_CHARS_FOR_ABORT;
+    console.log(`[Followups] Scheduling for ${messageId} (situation=${situation})`);
+
+    void (async () => {
+        try {
+            const generated = worthGenerating
+                ? await generateSuggestions({
+                    userQuery,
+                    assistantResponse: assistantText,
+                    mode: isPlanMode ? "Plan" : "Edit",
+                    situation,
+                }, abortSignal)
+                : [];
+
+            const suggestions = aborted ? [CONTINUE_SUGGESTION, ...generated] : generated;
+            if (suggestions.length === 0 || (!aborted && abortSignal.aborted)) {
+                return;
+            }
+
+            chatStateStorage.updateGeneration(projectRootPath, threadId, messageId, { followupSuggestions: suggestions });
+            eventHandler({ type: "followup_suggestions", messageId, suggestions });
+            console.log(`[Followups] Emitted for ${messageId}: ${suggestions.map(s => s.label).join(", ")}`);
+        } catch (error) {
+            console.warn(`[Followups] Generation failed for ${messageId}:`, error);
+        }
+    })();
+
+    return true;
+}
+
+/**
+ * Best-effort: any failure (model error, timeout, abort, or output that fails schema validation)
+ * resolves to an empty array so the caller simply shows no chips.
+ */
+async function generateSuggestions(
+    input: FollowupPromptInput,
+    turnSignal: AbortSignal
+): Promise<GeneratedFollowupSuggestion[]> {
+    if (!input.assistantResponse?.trim()) {
+        return [];
+    }
+    const aborted = input.situation === "aborted";
     try {
         const { object } = await generateObject({
             model: await getAnthropicClient(ANTHROPIC_HAIKU),
             maxOutputTokens: 1024,
             temperature: 0.3,
-            messages: buildFollowupMessages(promptInput),
+            messages: buildFollowupMessages(input),
             schema: followupSuggestionsSchema,
-            abortSignal: abortSignal ?? AbortSignal.timeout(timeoutMs),
+            // A stopped turn's signal is already tripped, so fall back to a plain timeout.
+            abortSignal: aborted ? AbortSignal.timeout(TIMEOUT_MS) : turnSignal,
         });
-        return sanitize(object.suggestions, maxSuggestions, promptInput.situation);
+        // Leave room for the Continue chip that an aborted turn prepends.
+        return sanitize(object.suggestions, aborted ? 2 : 3, input.situation);
     } catch (error) {
         console.warn("[Followups] Suggestion generation failed:", error);
         return [];
@@ -94,4 +172,24 @@ function sanitize(
         }
     }
     return out;
+}
+
+/** Concatenates the assistant's text output from a set of model messages. */
+function extractAssistantText(messages: any[]): string {
+    const parts: string[] = [];
+    for (const message of messages ?? []) {
+        if (message?.role !== "assistant") {
+            continue;
+        }
+        if (typeof message.content === "string") {
+            parts.push(message.content);
+        } else if (Array.isArray(message.content)) {
+            for (const item of message.content) {
+                if (item?.type === "text" && typeof item.text === "string") {
+                    parts.push(item.text);
+                }
+            }
+        }
+    }
+    return parts.join("\n").trim();
 }

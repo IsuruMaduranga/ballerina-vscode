@@ -17,8 +17,10 @@
  */
 
 import { ModelMessage } from "ai";
-import { FollowupSituation } from "@wso2/ballerina-core";
 import { ANCHOR_ACTIONS } from "./anchors";
+
+/** How the turn these suggestions belong to ended. */
+export type FollowupSituation = "completed" | "aborted";
 
 export interface FollowupPromptInput {
     /** The user's last message that produced the response. */

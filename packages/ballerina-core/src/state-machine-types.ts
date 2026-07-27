@@ -377,9 +377,6 @@ export type ChatNotify = (
     | FollowupSuggestionsEvent
 ) & ChatNotifyMeta;
 
-/** How the turn these suggestions belong to ended. */
-export type FollowupSituation = "completed" | "aborted";
-
 /** A single clickable follow-up suggestion shown after a completed turn. */
 export interface FollowupSuggestion {
     /** Short imperative chip text (what the user sees). */
@@ -394,8 +391,6 @@ export interface FollowupSuggestionsEvent {
     /** The assistant message these suggestions belong to. */
     messageId: string;
     suggestions: FollowupSuggestion[];
-    /** Lets the webview merge rather than replace chips it already showed (e.g. Continue on abort). */
-    reason?: FollowupSituation;
 }
 
 /** Structured progress event emitted by the migration orchestrator at each stage boundary. */

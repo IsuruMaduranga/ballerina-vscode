@@ -17,14 +17,14 @@
  */
 
 import { AICommandExecutor, AICommandConfig, AIExecutionResult } from '../executors/base/AICommandExecutor';
-import { Command, GenerateAgentCodeRequest, ProjectSource, ExecutionContext, SemanticDiff, ReviewModeData, PROJECT_KIND, LoginMethod, FollowupSituation, FollowupSuggestion } from '@wso2/ballerina-core';
+import { Command, GenerateAgentCodeRequest, ProjectSource, ExecutionContext, SemanticDiff, ReviewModeData, PROJECT_KIND, LoginMethod } from '@wso2/ballerina-core';
 import { StateMachine } from '../../../stateMachine';
 import { ModelMessage, stepCountIs, streamText, TextStreamPart } from 'ai';
 import { getAnthropicClient, getProviderCacheControl, addCacheControlToMessages, ANTHROPIC_SONNET_4 } from '../utils/ai-client';
 import { populateHistoryForAgent, getErrorMessage, buildChatError } from '../utils/ai-utils';
 import { sendAgentDidOpenForFreshProjects } from '../utils/project/ls-schema-notifications';
 import { getSystemPrompt, getUserPrompt } from './prompts';
-import { generateFollowupSuggestions } from './followups';
+import { FollowupSituation, startFollowupSuggestions } from './followups';
 import { prepareAgentsMdForTurn } from './agents-md';
 // TODO(auto-memory): temporarily disabled for this release.
 // import { executeAutoDream, isMemoryEnabled } from '../memory/autoDream';
@@ -68,14 +68,6 @@ import { runningServicesManager } from './tools/running-service-manager';
 
 
 const RESERVED_OUTPUT_TOKENS = 8_192;
-
-/** Below this much partial output an aborted turn gets the Continue chip only, with no model call. */
-const MIN_CHARS_FOR_ABORT_FOLLOWUPS = 200;
-
-const CONTINUE_SUGGESTION: FollowupSuggestion = {
-    label: 'Continue',
-    prompt: 'Redo the step you were interrupted on and carry on.',
-};
 
 /**
  * Tracks threads that have already received a compaction_disabled warning this session.
@@ -153,26 +145,6 @@ function computeTokenBreakdown(
     const toolResults = Math.round(inputTokens * toolChars / totalChars);
     const toolDefinitions = Math.max(0, inputTokens - systemInstructions - files - messages - toolResults);
     return { systemInstructions, toolDefinitions, reservedOutput: RESERVED_OUTPUT_TOKENS, files, messages, toolResults };
-}
-
-/** Concatenates the assistant's text output from a set of model messages. */
-function extractAssistantText(messages: any[]): string {
-    const parts: string[] = [];
-    for (const message of messages ?? []) {
-        if (message?.role !== 'assistant') {
-            continue;
-        }
-        if (typeof message.content === 'string') {
-            parts.push(message.content);
-        } else if (Array.isArray(message.content)) {
-            for (const item of message.content) {
-                if (item?.type === 'text' && typeof item.text === 'string') {
-                    parts.push(item.text);
-                }
-            }
-        }
-    }
-    return parts.join('\n').trim();
 }
 
 /**
@@ -666,7 +638,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
 
                     // Only meaningful once the turn produced something to pivot away from.
                     if (partialLLMMessages.length > 0) {
-                        this.scheduleFollowups(streamContext, partialLLMMessages, 'aborted');
+                        this.maybeScheduleFollowups(streamContext, partialLLMMessages, 'aborted');
                     }
 
                     // Note: Abort event is sent by base class handleExecutionError()
@@ -953,7 +925,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         await this.emitReviewActions(context);
 
         // Follow-up suggestions — best-effort, non-blocking.
-        this.scheduleFollowups(context, assistantMessages, 'completed');
+        this.maybeScheduleFollowups(context, assistantMessages, 'completed');
 
         // TODO(auto-memory): auto-dream consolidation temporarily disabled for this release.
         // // autoDream consolidation — skipped on compaction turns (no real user activity)
@@ -963,100 +935,24 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         // }
     }
 
-    /**
-     * Generates post-turn follow-up suggestions and pushes them to the webview.
-     *
-     * Fire-and-forget: never blocks turn completion, and any failure (disabled, empty
-     * response, model error, abort) simply results in no chips. Honors the turn's abort
-     * signal so a superseded turn does not emit stale suggestions.
-     */
-    private scheduleFollowups(context: StreamContext, assistantMessages: any[], situation: FollowupSituation): void {
-        if (this._followupsScheduled || process.env.AI_TEST_ENV) {
-            return;
-        }
+    /** Hands the finished turn to the follow-up suggestion flow; at most once per turn. */
+    private maybeScheduleFollowups(context: StreamContext, assistantMessages: any[], situation: FollowupSituation): void {
         // Migration and evals drive this executor with their own handlers and no chat storage —
         // suggestions there would burn a call and leak chips into the wrong panel.
-        if (!this.config.chatStorage?.enabled) {
+        if (this._followupsScheduled || !this.config.chatStorage?.enabled) {
             return;
         }
-        if (!workspace.getConfiguration('ballerina.copilot').get<boolean>('followupSuggestions', true)) {
-            return;
-        }
-
-        const aborted = situation === 'aborted';
-        // On the aborted path the turn's signal is already tripped, so it can neither gate nor be reused.
-        if (!aborted && this.config.abortController.signal.aborted) {
-            return;
-        }
-
-        const assistantText = extractAssistantText(assistantMessages);
-        if (!aborted && !assistantText) {
-            return;
-        }
-
-        this._followupsScheduled = true;
-
-        const projectRootPath = context.ctx.workspacePath || context.ctx.projectPath || '';
-        const threadId = this.config.chatStorage.threadId;
-        // Users abort constantly; only pay for a model call when there is enough to pivot from.
-        const worthGenerating = assistantText.length >= MIN_CHARS_FOR_ABORT_FOLLOWUPS || !aborted;
-        console.log(`[Followups] Scheduling for ${context.messageId} (situation=${situation})`);
-
-        void (async () => {
-            try {
-                const generated = worthGenerating
-                    ? await generateFollowupSuggestions({
-                        userQuery: this.config.params.usecase ?? '',
-                        assistantResponse: assistantText,
-                        mode: this.config.params.isPlanMode ? 'Plan' : 'Edit',
-                        situation,
-                        maxSuggestions: aborted ? 2 : 3,
-                        abortSignal: aborted ? undefined : this.config.abortController.signal,
-                    })
-                    : [];
-
-                const suggestions = aborted ? [CONTINUE_SUGGESTION, ...generated] : generated;
-                if (suggestions.length === 0) {
-                    return;
-                }
-                if (!aborted && this.config.abortController.signal.aborted) {
-                    return;
-                }
-                if (!this.isTurnStillCurrent(projectRootPath, threadId, context.messageId)) {
-                    console.log(`[Followups] Dropped for ${context.messageId} — no longer the latest turn`);
-                    return;
-                }
-
-                chatStateStorage.updateGeneration(projectRootPath, threadId, context.messageId, { followupSuggestions: suggestions });
-                this.config.eventHandler({
-                    type: 'followup_suggestions',
-                    messageId: context.messageId,
-                    suggestions,
-                    reason: situation,
-                });
-                console.log(`[Followups] Emitted for ${context.messageId}: ${suggestions.map(s => s.label).join(', ')}`);
-            } catch (error) {
-                console.warn(`[Followups] Generation failed for ${context.messageId}:`, error);
-            }
-        })();
-    }
-
-    /**
-     * Whether the turn is still the one the user is looking at, checked after the model call.
-     * The webview cannot tell stale suggestions apart, so a thread switch or a newer prompt
-     * during the call must suppress them.
-     */
-    private isTurnStillCurrent(projectRootPath: string, threadId: string, messageId: string): boolean {
-        // Checked first: getGenerations would otherwise recreate a thread that was just cleared.
-        if (chatStateStorage.getActiveThread(projectRootPath)?.id !== threadId) {
-            return false;
-        }
-        const active = chatStateStorage.getActiveExecution(projectRootPath, threadId);
-        if (active && active.generationId !== messageId) {
-            return false;
-        }
-        const generations = chatStateStorage.getGenerations(projectRootPath, threadId);
-        return generations[generations.length - 1]?.id === messageId;
+        this._followupsScheduled = startFollowupSuggestions({
+            situation,
+            messageId: context.messageId,
+            projectRootPath: context.ctx.workspacePath || context.ctx.projectPath || '',
+            threadId: this.config.chatStorage.threadId,
+            assistantMessages,
+            userQuery: this.config.params.usecase ?? '',
+            isPlanMode: this.config.params.isPlanMode,
+            abortSignal: this.config.abortController.signal,
+            eventHandler: this.config.eventHandler,
+        });
     }
 
     /**
