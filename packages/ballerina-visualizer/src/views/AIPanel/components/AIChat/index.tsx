@@ -112,6 +112,17 @@ const DRIFT_CHECK_ERROR = "Failed to check drift between the code and the docume
 const USAGE_EXCEEDED_THRESHOLD_PERCENT = 3;
 const QUOTA_CONTACT_EMAIL = "support@wso2.com";
 
+/** Shown the moment a turn is stopped, before the generated pivot chips arrive. */
+const CONTINUE_SUGGESTION: FollowupSuggestion = {
+    label: "Continue",
+    prompt: "Redo the step you were interrupted on and carry on.",
+};
+
+const mergeSuggestions = (existing: FollowupSuggestion[], incoming: FollowupSuggestion[]): FollowupSuggestion[] => {
+    const seen = new Set(existing.map((s) => s.label.toLowerCase()));
+    return [...existing, ...incoming.filter((s) => !seen.has(s.label.toLowerCase()))];
+};
+
 //TODO: Add better error handling from backend. stream error type and non 200 status codes
 
 const MessageBody = styled.div<{ isUserMessage: boolean }>(({ isUserMessage }: { isUserMessage: boolean }) => ({
@@ -330,6 +341,12 @@ const AIChat: React.FC = () => {
     };
 
     const [isLoading, setIsLoading] = useState(false);
+    // onChatNotify is re-registered each render, so stale closures fire too — suggestion
+    // staleness has to be judged against a ref, not the captured isLoading value.
+    const isLoadingRef = useRef(false);
+    isLoadingRef.current = isLoading;
+    /** Whether the current turn streamed anything — "continue" is meaningless if it didn't. */
+    const turnProducedOutputRef = useRef(false);
     const [followupSuggestions, setFollowupSuggestions] = useState<FollowupSuggestion[]>([]);
     const [isCompacting, setIsCompacting] = useState(false);
     // Tools currently in flight, oldest first, for the composer's loading
@@ -659,6 +676,17 @@ const AIChat: React.FC = () => {
         rpcClient.getAiPanelRpcClient().getMcpToolsEnabled().then(setMcpToolsEnabled).catch(() => {});
     }, []);
 
+    /** Re-derives chips for whichever turn is now last (after a restore or a thread change). */
+    const refreshFollowupSuggestions = async () => {
+        try {
+            const suggestions = await rpcClient.getAiPanelRpcClient().getLatestFollowupSuggestions();
+            setFollowupSuggestions(suggestions ?? []);
+        } catch (error) {
+            console.error('[AIChat] Failed to refresh follow-up suggestions:', error);
+            setFollowupSuggestions([]);
+        }
+    };
+
     const handleCheckpointRestore = async (checkpointId: string) => {
         // Guard against concurrent restores — the separator UI also disables
         // itself, but this is defensive in case the handler is called directly.
@@ -697,13 +725,7 @@ const AIChat: React.FC = () => {
             setContextUsage(null);
             setHasActiveReview(false);
             // History is trimmed to the checkpoint — re-derive so the reverted turn's chips drop.
-            try {
-                const suggestions = await rpcClient.getAiPanelRpcClient().getLatestFollowupSuggestions();
-                setFollowupSuggestions(suggestions ?? []);
-            } catch (error) {
-                console.error('[AIChat] Failed to refresh follow-up suggestions after restore:', error);
-                setFollowupSuggestions([]);
-            }
+            await refreshFollowupSuggestions();
         } catch (error) {
             console.error("Failed to restore checkpoint:", error);
         } finally {
@@ -1233,6 +1255,7 @@ const AIChat: React.FC = () => {
             // An empty append is a no-op; an empty *replace* is meaningful (it clears
             // the trailing text), so only the append path short-circuits.
             if (type === "content_block" && content === "") return;
+            turnProducedOutputRef.current = true;
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
@@ -1528,6 +1551,11 @@ const AIChat: React.FC = () => {
             setIsCodeLoading(false);
             setIsLoading(false);
             setBackendRequestTriggered(false);
+            // Offer Continue straight away; the generated pivot chips merge in a moment later.
+            if (turnProducedOutputRef.current) {
+                console.log('[Followups] Showing Continue immediately after abort');
+                setFollowupSuggestions([CONTINUE_SUGGESTION]);
+            }
             if (isMigrationEnhancementRunning) {
                 setIsMigrationEnhancementRunning(false);
                 // Re-fetch session so the Resume card appears
@@ -1573,7 +1601,14 @@ const AIChat: React.FC = () => {
             }
 
         } else if (type === "followup_suggestions") {
-            setFollowupSuggestions(response.suggestions);
+            console.log(`[Followups] Received: ${response.suggestions.map(s => s.label).join(', ')}`);
+            // Chips only ever describe a finished turn, so anything arriving mid-turn is stale.
+            if (isLoadingRef.current) {
+                return;
+            }
+            setFollowupSuggestions((prev) =>
+                response.reason === "aborted" ? mergeSuggestions(prev, response.suggestions) : response.suggestions
+            );
 
         } else if (type === "error") {
             console.log("Received error signal");
@@ -1830,6 +1865,7 @@ const AIChat: React.FC = () => {
         setIsPromptExecutedInCurrentWindow(true);
         setFeedbackGiven(null);
         setFollowupSuggestions([]);
+        turnProducedOutputRef.current = false;
 
         if (content.input.length === 0) {
             return;
@@ -2176,6 +2212,7 @@ const AIChat: React.FC = () => {
         setMessages([]);
         setApprovalRequest(null);
         setContextUsage(null);
+        setFollowupSuggestions([]);
         await rpcClient.getAiPanelRpcClient().clearChat();
         loadThreads();
     }
@@ -2210,6 +2247,7 @@ const AIChat: React.FC = () => {
         setRestoringCheckpointId(null);
         setApprovalRequest(null);
         setContextUsage(null);
+        await refreshFollowupSuggestions();
         loadThreads();
     }
 
@@ -2227,6 +2265,7 @@ const AIChat: React.FC = () => {
         setRestoringCheckpointId(null);
         setApprovalRequest(null);
         setContextUsage(null);
+        await refreshFollowupSuggestions();
         loadThreads();
     }
 

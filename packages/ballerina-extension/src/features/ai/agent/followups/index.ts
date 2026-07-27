@@ -17,15 +17,20 @@
  */
 
 import { generateObject } from "ai";
+import { FollowupSituation } from "@wso2/ballerina-core";
 import { ANTHROPIC_HAIKU, getAnthropicClient } from "../../utils/ai-client";
 import { buildFollowupMessages, FollowupPromptInput } from "./prompt";
 import { followupSuggestionsSchema, GeneratedFollowupSuggestion } from "./schema";
 
-const MAX_SUGGESTIONS = 3;
+const DEFAULT_TIMEOUT_MS = 8_000;
 
 export interface GenerateFollowupsOptions extends FollowupPromptInput {
     /** Aborts the call when the turn is superseded or the panel closes. */
     abortSignal?: AbortSignal;
+    /** Caps the call so a hung request cannot linger for the session. */
+    timeoutMs?: number;
+    /** Upper bound on returned suggestions. */
+    maxSuggestions?: number;
 }
 
 /**
@@ -37,7 +42,7 @@ export interface GenerateFollowupsOptions extends FollowupPromptInput {
 export async function generateFollowupSuggestions(
     options: GenerateFollowupsOptions
 ): Promise<GeneratedFollowupSuggestion[]> {
-    const { abortSignal, ...promptInput } = options;
+    const { abortSignal, timeoutMs = DEFAULT_TIMEOUT_MS, maxSuggestions = 3, ...promptInput } = options;
 
     // Nothing to build suggestions from.
     if (!promptInput.assistantResponse?.trim()) {
@@ -51,9 +56,9 @@ export async function generateFollowupSuggestions(
             temperature: 0.3,
             messages: buildFollowupMessages(promptInput),
             schema: followupSuggestionsSchema,
-            abortSignal: abortSignal ?? new AbortController().signal,
+            abortSignal: abortSignal ?? AbortSignal.timeout(timeoutMs),
         });
-        return sanitize(object.suggestions);
+        return sanitize(object.suggestions, maxSuggestions, promptInput.situation);
     } catch (error) {
         console.warn("[Followups] Suggestion generation failed:", error);
         return [];
@@ -61,7 +66,11 @@ export async function generateFollowupSuggestions(
 }
 
 /** Trims, drops blanks/duplicates, and caps the list. */
-function sanitize(raw: GeneratedFollowupSuggestion[]): GeneratedFollowupSuggestion[] {
+function sanitize(
+    raw: GeneratedFollowupSuggestion[],
+    max: number,
+    situation?: FollowupSituation
+): GeneratedFollowupSuggestion[] {
     const seen = new Set<string>();
     const out: GeneratedFollowupSuggestion[] = [];
     for (const s of raw ?? []) {
@@ -70,13 +79,17 @@ function sanitize(raw: GeneratedFollowupSuggestion[]): GeneratedFollowupSuggesti
         if (!label || !prompt) {
             continue;
         }
+        // The aborted flow offers its own Continue chip, so drop model-generated near-duplicates.
+        if (situation === "aborted" && /^(continue|resume|finish|complete)\b/i.test(label)) {
+            continue;
+        }
         const key = label.toLowerCase();
         if (seen.has(key)) {
             continue;
         }
         seen.add(key);
         out.push({ label, prompt });
-        if (out.length >= MAX_SUGGESTIONS) {
+        if (out.length >= max) {
             break;
         }
     }
