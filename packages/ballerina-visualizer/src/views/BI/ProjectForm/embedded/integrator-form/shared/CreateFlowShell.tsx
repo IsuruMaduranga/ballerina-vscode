@@ -56,12 +56,15 @@ const ShellContainer = styled.div`
     flex-direction: column;
 `;
 
-/** Body slot for screens that manage their own internal scroll (the wizard). */
+/** Body slot for screens that manage their own internal scroll (the wizard).
+ *  Centers its child on the cross axis so the wizard's capped content column
+ *  sits centered, matching the chooser's centered form column. */
 const ShellBodyFill = styled.div`
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
+    align-items: center;
 `;
 
 export interface CreateFlowShellProps {

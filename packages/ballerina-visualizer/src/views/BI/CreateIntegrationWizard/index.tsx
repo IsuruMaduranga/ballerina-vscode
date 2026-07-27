@@ -47,7 +47,7 @@ const ErrorBanner = styled.div`
     font-size: 13px;
 `;
 
-const WIZARD_STEPS = ["Basics", "Configure"];
+const WIZARD_STEPS = ["Type", "Configure"];
 const DEFAULT_INTEGRATION_NAME = "Untitled";
 const REQUIRED_PATH_MESSAGE = "Path is required";
 const INVALID_PATH_MESSAGE = "Please select a valid directory";
@@ -562,6 +562,7 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
                         <IntegrationTypeStep
                             triggers={triggers}
                             selection={selection}
+                            compact={embedded}
                             onSelect={(card) => {
                                 if (card.id !== selection?.id) {
                                     setServiceModelCache(null);

@@ -25,11 +25,11 @@ import { FormHeader } from "../../../../../components/FormHeader";
  *  get from ArtifactForm's `footerActionButton` mode, so all three "Create
  *  Integration" buttons behave and align consistently. */
 const FormContainer = styled.div`
-    max-width: 600px;
+    /* Fill the wizard's content column so the Configure step matches the width of
+       the previous steps (Type picker / chooser) rather than a narrower 600px. */
     width: 100%;
     height: 100%;
     min-height: 0;
-    margin: 0 auto;
     display: flex;
     flex-direction: column;
 `;

@@ -31,12 +31,14 @@ export const WizardPage = styled.div<{ embedded?: boolean }>`
     ${({ embedded }: { embedded?: boolean }) =>
         embedded
             ? `
-        /* Fill the bounded Create shell. A flex item with auto side margins
-           shrinks to its content width — which made the panel width jump as the
-           card grid changed and collapsed the category rail below its threshold
-           when a sparse type (e.g. Workflow) was selected. Filling 100% keeps the
-           width stable regardless of the selected type. */
+        /* Fill up to a capped column that matches the chooser's content width, and
+           let the shell body (align-items: center) center it. Width is set via
+           max-width + width:100% rather than auto side margins, which on a flex
+           item would collapse it to its content width (making the panel width jump
+           per selected type). Content width (≈800px) mirrors the chooser's
+           FormContent so the wizard reads as the same column. */
         width: 100%;
+        max-width: 864px;
         min-width: 0;
     `
             : `

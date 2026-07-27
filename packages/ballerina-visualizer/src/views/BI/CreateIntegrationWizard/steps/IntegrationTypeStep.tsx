@@ -112,36 +112,54 @@ const NarrowHeader = styled.div`
     top: 0;
     z-index: 1;
     display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding-bottom: 4px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 10px;
     background-color: var(--vscode-editor-background);
 `;
 
 const ChipRow = styled.div`
     display: flex;
     gap: 6px;
+    /* Take the row, leaving the compact search box pinned to the right. */
+    flex: 1;
+    min-width: 0;
     overflow-x: auto;
-    padding-bottom: 4px;
     /* Keep chips on a single scrollable line. */
     flex-wrap: nowrap;
 `;
 
-const Chip = styled.button<{ active?: boolean }>`
+/** Holds the search box on the right of the chip row — narrow and de-emphasized
+ *  so it doesn't compete with the integration name field above. */
+const SearchSlot = styled.div`
+    flex-shrink: 0;
+    width: 220px;
+`;
+
+const Chip = styled.button<{ active?: boolean; accent: string }>`
     display: inline-flex;
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
-    padding: 4px 10px;
+    padding: 5px 12px;
     border-radius: 999px;
-    border: 1px solid
-        ${(props: { active?: boolean }) => (props.active ? ThemeColors.PRIMARY : ThemeColors.OUTLINE_VARIANT)};
-    background-color: ${(props: { active?: boolean }) =>
-        props.active ? ThemeColors.PRIMARY_CONTAINER : "transparent"};
-    color: var(--vscode-foreground);
+    /* Category-colored, mirroring the Project Overview type labels (color-mix on a
+       per-type accent). The active/filter chip gets a stronger tint + weight. */
+    border: 1px solid ${(props: { active?: boolean; accent: string }) =>
+        `color-mix(in srgb, ${props.accent} ${props.active ? "55%" : "24%"}, transparent)`};
+    background-color: ${(props: { active?: boolean; accent: string }) =>
+        `color-mix(in srgb, ${props.accent} ${props.active ? "22%" : "12%"}, transparent)`};
+    color: ${(props: { accent: string }) => props.accent};
     font-size: 12px;
+    font-weight: ${(props: { active?: boolean }) => (props.active ? 600 : 500)};
     white-space: nowrap;
     cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    &:hover {
+        background-color: ${(props: { active?: boolean; accent: string }) =>
+            `color-mix(in srgb, ${props.accent} ${props.active ? "22%" : "18%"}, transparent)`};
+    }
     &:focus-visible {
         outline: 1px solid var(--vscode-focusBorder);
         outline-offset: 1px;
@@ -153,17 +171,20 @@ const Chip = styled.button<{ active?: boolean }>`
 const GridPane = styled.div`
     flex: 1;
     min-width: 0;
-    padding: 2px 8px 0 12px;
+    padding: 4px 0 0 0;
 `;
 
 const CategorySection = styled.div`
-    margin-bottom: 16px;
+    & + & {
+        margin-top: 24px;
+    }
 `;
 
 const CategoryHeader = styled.div`
     display: flex;
     align-items: baseline;
     gap: 6px;
+    margin-bottom: 2px;
 `;
 
 const CategoryTitle = styled(Typography)`
@@ -178,15 +199,23 @@ const CategoryCount = styled.span`
 `;
 
 const CategoryDescription = styled(Typography)`
-    margin: 0 0 8px 0;
+    margin: 0 0 12px 0;
     font-size: 11px;
+    line-height: 1.4;
     color: ${ThemeColors.ON_SURFACE_VARIANT};
 `;
 
 const CardGrid = styled.div`
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
+    gap: 12px;
+
+    /* Align the artifact cards with the chooser's type cards: softer 8px corners
+       and a touch more breathing room than the component's dense defaults. */
+    div[data-testid^="function-card-"] {
+        border-radius: 8px;
+        padding: 14px 16px;
+    }
 
     /* Keep card titles subordinate to the section headings (13px/600):
        the card root carries the function-card testid; its only <p> is the title. */
@@ -243,18 +272,27 @@ interface IntegrationTypeStepProps {
     triggers: TriggerModelsResponse | null;
     selection: ArtifactCard | null;
     onSelect: (card: ArtifactCard) => void;
+    /**
+     * Force the single-column layout (search + horizontal category chips above a
+     * card grid) regardless of width. Used inside the unified Create flow so the
+     * picker reads as one calm column, consistent with the chooser, instead of the
+     * denser two-pane rail.
+     */
+    compact?: boolean;
 }
 
 /**
  * Step 2 — the Integration Type picker. A category rail (or a chip row in
- * narrow panels) filters a searchable grid of artifact cards; selecting a card
- * chooses the artifact and drives step 3. Selecting a category is navigation
+ * narrow/compact panels) filters a searchable grid of artifact cards; selecting a
+ * card chooses the artifact and drives step 3. Selecting a category is navigation
  * only — it never chooses the artifact, so the two highlights stay distinct.
  */
-export function IntegrationTypeStep({ triggers, selection, onSelect }: IntegrationTypeStepProps) {
+export function IntegrationTypeStep({ triggers, selection, onSelect, compact = false }: IntegrationTypeStepProps) {
     const [searchQuery, setSearchQuery] = useState("");
     const [activeCategoryKey, setActiveCategoryKey] = useState(ALL_KEY);
     const { ref, isNarrow } = useContainerWidth<HTMLDivElement>(NARROW_WIDTH);
+    // Compact mode always uses the single-column (chip) layout.
+    const useSingleColumn = compact || isNarrow;
 
     // Resolve dynamic trigger markers into concrete cards, per category.
     const resolvedCategories = useMemo<ResolvedCategory[]>(() => {
@@ -459,12 +497,18 @@ export function IntegrationTypeStep({ triggers, selection, onSelect }: Integrati
         return ARTIFACT_CATEGORIES.find((item) => item.key === key)?.icon;
     };
 
+    /** Category accent color for the chips — "All" is neutral; the rest mirror the
+     *  Project Overview type-label colors defined on each category. */
+    const railColor = (key: string): string =>
+        key === ALL_KEY
+            ? "var(--vscode-foreground)"
+            : ARTIFACT_CATEGORIES.find((item) => item.key === key)?.color ?? "var(--vscode-foreground)";
+
     return (
         <StepRoot ref={ref}>
-            {isNarrow ? (
+            {useSingleColumn ? (
                 <>
                     <NarrowHeader>
-                        {searchBox}
                         <ChipRow role="tablist" aria-label="Integration categories">
                             {railKeys.map((key) => {
                                 const count = railCount(key);
@@ -474,6 +518,7 @@ export function IntegrationTypeStep({ triggers, selection, onSelect }: Integrati
                                         role="tab"
                                         aria-selected={activeCategoryKey === key}
                                         active={activeCategoryKey === key}
+                                        accent={railColor(key)}
                                         onClick={() => setActiveCategoryKey(key)}
                                     >
                                         {railLabel(key)}
@@ -482,6 +527,7 @@ export function IntegrationTypeStep({ triggers, selection, onSelect }: Integrati
                                 );
                             })}
                         </ChipRow>
+                        <SearchSlot>{searchBox}</SearchSlot>
                     </NarrowHeader>
                     {grid}
                 </>
