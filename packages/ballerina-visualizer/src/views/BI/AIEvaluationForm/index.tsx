@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Codicon, Icon, RadioButtonGroup, SearchBox, ThemeColors, Typography, View, ViewContent } from "@wso2/ui-toolkit";
+import { Button, Codicon, Icon, RadioButtonGroup, Typography, View, ViewContent } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { FormField, FormImports, FormValues, Parameter } from "@wso2/ballerina-side-panel";
@@ -27,10 +27,20 @@ import { TitleBar } from "../../../components/TitleBar";
 import { TopNavigationBar } from "../../../components/TopNavigationBar";
 import { FormHeader } from "../../../components/FormHeader";
 import ArtifactForm from "../Forms/ArtifactForm";
-import { convertNodePropertyToFormField, getImportsForProperty } from "../../../utils/bi";
+import { getImportsForProperty } from "../../../utils/bi";
 import { CardSelector } from "./CardSelector";
 import { LoadingView } from "../../../components/LoadingView";
-import { PopupOverlay, PopupContainer, PopupHeader, HeaderTitleContainer, PopupTitle, PopupSubtitle, CloseButton, PopupContent } from "../Connection/styles";
+import { TemplateModal } from "./TemplateModal";
+import { TemplateConfigCard } from "./TemplateConfigCard";
+import {
+    FormSection, GrowingContent, HintText, MonospaceHint, NoticeBox, NoticeTitle, SectionLabel,
+    SelectableIcon, StatusRow, TitleRow, cardBox
+} from "./styles";
+import {
+    DataSourceMode, DataSourceParam, EVALSET_FIELD_KEY, QUERIES_FIELD_KEY, buildQueriesField,
+    carryOverArguments, findDataSourceParam, generateTemplateFields, isDataSourceSatisfied,
+    isTemplateField, templateNeedsEvalset
+} from "./templateUtils";
 
 const FormContainer = styled.div`
     display: flex;
@@ -78,78 +88,6 @@ const CenteredMessage = styled.div`
     text-align: center;
 `;
 
-// Full-width block between form fields.
-const FormSection = styled.div`
-    width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-    margin-top: 16px;
-`;
-
-const SectionLabel = styled.div`
-    color: var(--vscode-foreground);
-    font-size: 13px;
-    font-weight: 600;
-`;
-
-const HintText = styled.div`
-    margin-top: 2px;
-    color: var(--vscode-descriptionForeground);
-    font-size: 12px;
-    line-height: 1.5;
-`;
-
-const TruncatedHintText = styled(HintText)`
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-`;
-
-const MonospaceHint = styled(HintText)`
-    margin-top: 8px;
-    font-family: var(--vscode-editor-font-family);
-    font-size: 11px;
-    word-break: break-all;
-`;
-
-const NoticeBox = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 12px 14px;
-    margin-top: 12px;
-    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-    border-radius: 4px;
-    background-color: var(--vscode-editorWidget-background);
-`;
-
-const NoticeTitle = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--vscode-foreground);
-    font-size: 13px;
-    font-weight: 500;
-`;
-
-// Shared by the clickable template picker and the read-only status rows.
-const cardBox = `
-    width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-    display: flex;
-    gap: 16px;
-    padding: 16px;
-    color: var(--vscode-foreground);
-    border-radius: 8px;
-`;
-
-const StatusRow = styled.div`
-    ${cardBox}
-    align-items: flex-start;
-    border: 1px solid var(--vscode-panel-border);
-`;
-
 const TemplatePicker = styled.div`
     align-self: stretch;
     width: 100%;
@@ -157,243 +95,17 @@ const TemplatePicker = styled.div`
     box-sizing: border-box;
 `;
 
-const TemplatePickerButton = styled.button<{ selected: boolean }>`
+// The unfilled slot. Dashed to read as "nothing here yet" against the config card's solid border,
+// and deliberately not clickable itself: the button is the only interactive element, so the affordance
+// is unmistakable and there is no button nested inside a button.
+const EmptyTemplateSlot = styled.div`
     ${cardBox}
     align-items: center;
-    text-align: left;
-    font-family: inherit;
-    border: 1px solid ${(props: { selected: boolean }) => props.selected ? 'var(--vscode-button-background)' : 'var(--vscode-panel-border)'};
-    background-color: ${(props: { selected: boolean }) => props.selected ? 'color-mix(in srgb, var(--vscode-button-background) 5%, transparent)' : 'transparent'};
-    cursor: pointer;
-    transition: all 0.2s ease;
-
-    &:hover, &:focus-visible {
-        border-color: var(--vscode-button-background);
-        background-color: ${(props: { selected: boolean }) => props.selected ? 'color-mix(in srgb, var(--vscode-button-background) 7%, transparent)' : 'color-mix(in srgb, var(--vscode-button-background) 5%, transparent)'};
-        outline: none;
-    }
-`;
-
-// Rounded icon tile; 36px on the picker row, 32px on the catalog cards.
-const SelectableIcon = styled.div<{ selected: boolean; size?: number }>`
-    display: grid;
-    flex: 0 0 auto;
-    place-items: center;
-    width: ${(props: { size?: number }) => props.size ?? 36}px;
-    height: ${(props: { size?: number }) => props.size ?? 36}px;
-    border-radius: 8px;
-    color: ${(props: { selected: boolean }) => props.selected ? ThemeColors.ON_PRIMARY : ThemeColors.ON_SURFACE_VARIANT};
-    background: ${(props: { selected: boolean }) => props.selected ? ThemeColors.PRIMARY : ThemeColors.SURFACE_CONTAINER};
-`;
-
-const GrowingContent = styled.div`
-    min-width: 0;
-    flex: 1;
-`;
-
-const TitleRow = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    font-weight: 600;
-`;
-
-const TemplatePickerAction = styled.span`
-    color: var(--vscode-button-background);
-    font-size: 13px;
-    font-weight: 500;
-`;
-
-const Badge = styled.span`
-    display: inline-flex;
-    align-items: center;
-    padding: 3px 8px;
-    color: ${ThemeColors.ON_SURFACE_VARIANT};
-    border-radius: 4px;
-    background: ${ThemeColors.SURFACE_CONTAINER};
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.3;
-    white-space: nowrap;
-`;
-
-const TemplateConfigDivider = styled.div`
-    width: 100%;
-    height: 1px;
-    margin-top: 16px;
-    background: var(--vscode-input-border, var(--vscode-panel-border));
-`;
-
-const ModalControls = styled.div`
-    padding: 16px 20px;
-    border-bottom: 1px solid ${ThemeColors.OUTLINE_VARIANT};
-`;
-
-const TemplateSearch = styled(SearchBox)`
-    width: 100%;
-`;
-
-const TemplateFilters = styled.div`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 12px;
-`;
-
-const TemplateFilter = styled.button<{ active: boolean }>`
-    height: 28px;
-    padding: 0 12px;
-    color: ${(props: { active: boolean }) => props.active ? ThemeColors.ON_PRIMARY : ThemeColors.ON_SURFACE_VARIANT};
-    border: 1px solid ${(props: { active: boolean }) => props.active ? ThemeColors.PRIMARY : ThemeColors.OUTLINE_VARIANT};
-    border-radius: 4px;
-    background: ${(props: { active: boolean }) => props.active ? ThemeColors.PRIMARY : 'transparent'};
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: ${(props: { active: boolean }) => props.active ? 600 : 400};
-    cursor: pointer;
-
-    &:hover {
-        color: ${(props: { active: boolean }) => props.active ? ThemeColors.ON_PRIMARY : ThemeColors.ON_SURFACE};
-        border-color: ${(props: { active: boolean }) => props.active ? ThemeColors.PRIMARY : ThemeColors.OUTLINE};
-        background: ${(props: { active: boolean }) => props.active ? ThemeColors.PRIMARY : ThemeColors.SURFACE_CONTAINER};
-    }
-`;
-
-const TemplateResultsGrid = styled.div`
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
-
-    @media (max-width: 700px) {
-        grid-template-columns: 1fr;
-    }
+    border: 1px dashed var(--vscode-panel-border);
+    background-color: transparent;
 `;
 
-const TemplateOption = styled.button<{ selected: boolean }>`
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 12px;
-    text-align: left;
-    font-family: inherit;
-    color: ${ThemeColors.ON_SURFACE};
-    background: ${(props: { selected: boolean }) => props.selected
-        ? ThemeColors.PRIMARY_CONTAINER
-        : ThemeColors.SURFACE_DIM};
-    border: 1px solid ${(props: { selected: boolean }) => props.selected ? ThemeColors.PRIMARY : ThemeColors.OUTLINE_VARIANT};
-    border-radius: 8px;
-    cursor: pointer;
-
-    &:hover, &:focus-visible {
-        border-color: ${ThemeColors.PRIMARY};
-        background: ${ThemeColors.PRIMARY_CONTAINER};
-        outline: none;
-    }
-`;
-
-const TemplateOptionHeading = styled(TitleRow)`
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 14px;
-`;
-
-const TemplateTags = styled.div`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
-`;
-
-const TemplateOptionDescription = styled(HintText)`
-    margin-top: 10px;
-    color: ${ThemeColors.ON_SURFACE_VARIANT};
-    line-height: 1.45;
-`;
-
-const EmptyTemplates = styled.div`
-    display: grid;
-    min-height: 240px;
-    place-items: center;
-    color: ${ThemeColors.ON_SURFACE_VARIANT};
-    text-align: center;
-`;
-
-type TemplateFilterKind = 'all' | 'rule-based' | 'llm-as-judge' | 'uses-evalset' | 'no-evalset';
-
-const getTemplateKind = (template: AvailableNode): string => {
-    const kind = String(template.codedata.data?.kind || 'RULE_BASED').toUpperCase();
-    if (kind.includes('LLM')) {
-        return 'LLM-as-Judge';
-    }
-    if (kind.includes('RULE')) {
-        return 'Rule-based';
-    }
-    return kind.replace(/_/g, '-');
-};
-
-const templateNeedsEvalset = (template?: AvailableNode): boolean =>
-    String(template?.codedata.data?.needsEvalset) === 'true';
-
-const AI_AGENT_TYPE = 'ai:Agent';
-
-// Stamp the built-in ai:Agent coordinates that the shared enrichAgentField helper reads, so an agent
-// parameter renders as the connection-select editor (dropdown of existing agents + expression fallback).
-const withAgentConnectionData = (property: FlowProperty): FlowProperty => {
-    const isAgent = property.types?.some(type => type.ballerinaType?.includes(AI_AGENT_TYPE));
-    if (!isAgent || (property.codedata?.data as any)?.agent) {
-        return property;
-    }
-    return {
-        ...property,
-        codedata: {
-            ...(property.codedata || {}),
-            data: {
-                ...((property.codedata?.data as any) || {}),
-                agent: { node: 'AGENT', org: 'ballerina', packageName: 'ai', module: 'ai', object: 'Agent' }
-            }
-        }
-    } as FlowProperty;
-};
-
-const CONVERSATION_THREAD_TYPE = 'ConversationThread';
-
-type DataSourceParam = { paramName: string; kind: 'union' | 'strict' };
-
-const findDataSourceParam = (node: FlowNode): DataSourceParam | undefined => {
-    for (const [key, property] of Object.entries(node.properties || {})) {
-        const templateProperty = property as FlowProperty;
-        const data = templateProperty.codedata?.data as { dataSourceParam?: boolean; dataSourceKind?: string } | undefined;
-        const paramName = templateProperty.codedata?.originalName || key;
-        if (data?.dataSourceParam) {
-            return { paramName, kind: data.dataSourceKind === 'union' ? 'union' : 'strict' };
-        }
-        // Nodes read from source carry no tag, so infer from the parameter type.
-        const types = (templateProperty.types || []).map(type => String(type.ballerinaType || ''));
-        if (types.some(type => type.includes(CONVERSATION_THREAD_TYPE))) {
-            return { paramName, kind: types.some(type => type.includes('|')) ? 'union' : 'strict' };
-        }
-    }
-    return undefined;
-};
-
-const propertyType = (property?: FlowProperty): string =>
-    String(property?.types?.find(type => type.ballerinaType)?.ballerinaType || '');
-
-// Most judges share targetAgent / judgeModel / thresholds, so keep values whose name and type both match.
-const carryOverArguments = (next: FlowNode, previous?: FlowNode): FlowNode => {
-    if (!previous?.properties || !next.properties) {
-        return next;
-    }
-    const properties = Object.fromEntries(Object.entries(next.properties).map(([key, property]) => {
-        const target = property as FlowProperty;
-        const source = (previous.properties as Record<string, FlowProperty>)[key];
-        const carry = source && !target.hidden && !source.hidden
-            && propertyType(source) === propertyType(target) && source.value;
-        return [key, carry ? { ...target, value: source.value } : property];
-    }));
-    return { ...next, properties } as FlowNode;
-};
 
 type EvalTemplatePayload = NonNullable<AddOrUpdateTestFunctionRequest['evalTemplate']>;
 
@@ -403,7 +115,7 @@ const flattenFlowNodes = (nodes: FlowNode[] = []): FlowNode[] =>
     nodes.flatMap(node => [node, ...(node.branches || []).flatMap(branch => flattenFlowNodes(branch.children))]);
 
 const isBaseField = (field: FormField): boolean =>
-    !field.key.startsWith('template_') && field.key !== 'evalQueries';
+    !isTemplateField(field) && field.key !== QUERIES_FIELD_KEY;
 
 const readConfigField = (testFunction: TestFunction | undefined, originalName: string): any =>
     testFunction?.annotations?.find(annotation => annotation.name === 'Config')?.fields
@@ -412,56 +124,6 @@ const readConfigField = (testFunction: TestFunction | undefined, originalName: s
 // dataProviderMode is synthetic (never in source); the server reports the data provider's shape instead.
 const resolveEditMode = (testFunction?: TestFunction): string =>
     String(readConfigField(testFunction, 'dataProviderMode') || '') === 'evalSet' ? 'evalSet' : 'function';
-
-const buildQueriesField = (value: string[] = []): FormField => ({
-    key: 'evalQueries',
-    label: 'Queries',
-    type: 'TEXT_SET',
-    optional: false,
-    editable: true,
-    enabled: true,
-    advanced: false,
-    hidden: true,
-    documentation: 'Each query runs as a separate test case; Minimum Pass Rate applies across them.',
-    value,
-    types: [{ fieldType: 'TEXT_SET', selected: false }]
-} as FormField);
-
-const TEMPLATE_ICON_RULES: Array<[RegExp, string]> = [
-    [/safe|safety|moderat|prohibit|harm/, 'shield'],
-    [/latency|perform|speed|duration|time/, 'watch'],
-    [/token|budget|cost/, 'dashboard'],
-    [/iteration|step|path|efficien/, 'milestone'],
-    [/tool|trajector/, 'tools'],
-    [/exact|contains|match|semantic|similar/, 'target'],
-    [/coheren|reason|logic|flow/, 'graph'],
-    [/ground|context|relevan|accura|factual|correct/, 'verified'],
-    [/clarity|concise|tone|helpful|readab/, 'sparkle'],
-    [/complete|coverage|instruction|follow|checklist/, 'checklist'],
-];
-
-const getTemplateIcon = (template?: AvailableNode): string => {
-    const text = `${template?.metadata.label || ''} ${String(template?.codedata.data?.kind || '')}`.toLowerCase();
-    for (const [pattern, icon] of TEMPLATE_ICON_RULES) {
-        if (pattern.test(text)) {
-            return icon;
-        }
-    }
-    return 'beaker';
-};
-
-const matchesTemplateFilter = (template: AvailableNode, filter: TemplateFilterKind): boolean => {
-    if (filter === 'all') {
-        return true;
-    }
-    if (filter === 'uses-evalset') {
-        return templateNeedsEvalset(template);
-    }
-    if (filter === 'no-evalset') {
-        return !templateNeedsEvalset(template);
-    }
-    return getTemplateKind(template).toLowerCase() === filter;
-};
 
 interface TestFunctionDefProps {
     projectPath: string;
@@ -485,11 +147,11 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const [evalTemplates, setEvalTemplates] = useState<AvailableNode[]>([]);
     const [selectedTemplate, setSelectedTemplate] = useState<AvailableNode>();
     const [templateNode, setTemplateNode] = useState<FlowNode>();
-    const [showTemplatePicker, setShowTemplatePicker] = useState(false);
-    const [templateQuery, setTemplateQuery] = useState('');
-    const [templateFilter, setTemplateFilter] = useState<TemplateFilterKind>('all');
+    // The catalog dialog is for choosing a template only; its arguments are configured inline.
+    const [showTemplateCatalog, setShowTemplateCatalog] = useState(false);
+    const [isSelectingTemplate, setIsSelectingTemplate] = useState(false);
     const [templateLoadError, setTemplateLoadError] = useState<string>();
-    const [dataSourceMode, setDataSourceMode] = useState<'evalset' | 'queries'>('evalset');
+    const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('evalset');
     const [evalQueries, setEvalQueries] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const bootstrapRunRef = useRef(0);
@@ -516,50 +178,45 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             // Creating requires a template; editing an unrecognised one may still change base settings.
             return serviceType !== 'UPDATE_TEST';
         }
-        if (!dataSourceParam) {
-            return false;
-        }
-        return dataSourceMode === 'evalset'
-            ? !selectedEvalsetFile
-            : !evalQueries.some(query => query?.trim());
+        // The template's own required fields and diagnostics are gated by the shared Form, since they
+        // are registered against it. Only the data-source rules are ours.
+        return !isDataSourceSatisfied({
+            dataSourceParam, dataSourceMode, evalSetFile: selectedEvalsetFile, queries: evalQueries
+        });
     }, [dataProviderMode, selectedEvalsetFile, selectedTemplate, dataSourceParam, dataSourceMode,
         evalQueries, serviceType]);
 
+    // Template arguments and the data-source fields are rendered by the modal, so they stay in the
+    // field list (which keeps them registered with the shared form) but never render inline.
     const applyFieldVisibility = (fields: FormField[], mode: string,
         dsParam = dataSourceParam, dsMode = dataSourceMode, options = evalsetOptions): FormField[] => {
         return fields.map(field => {
-            if (field.key.startsWith('template_')) {
-                return { ...field, hidden: mode !== 'template' };
+            if (isTemplateField(field) || field.key === QUERIES_FIELD_KEY) {
+                return { ...field, hidden: true };
             }
             if (field.key === 'dataProvider') {
                 return { ...field, hidden: mode !== 'function' };
             }
-            if (field.key === 'evalSetFile') {
-                const hasValue = !!field.value;
-                const templateEvalset = mode === 'template' && !!dsParam && dsMode === 'evalset';
-                const hidden = (mode !== 'evalSet' && !templateEvalset)
-                    || (options.length === 0 && !hasValue);
+            if (field.key === EVALSET_FIELD_KEY) {
+                // Inline only for the non-template evalset path; in template mode the modal renders it.
+                const hidden = mode !== 'evalSet' || (options.length === 0 && !selectedEvalsetFile);
                 return { ...field, hidden };
-            }
-            if (field.key === 'evalQueries') {
-                return { ...field, hidden: !(mode === 'template' && dsParam?.kind === 'union' && dsMode === 'queries') };
             }
             return field;
         });
     };
 
     const handleFieldChange = (fieldKey: string, value: any) => {
-        if (fieldKey === 'evalSetFile') {
+        if (fieldKey === EVALSET_FIELD_KEY) {
             setSelectedEvalsetFile(value || '');
         }
-        if (fieldKey === 'evalQueries') {
+        if (fieldKey === QUERIES_FIELD_KEY) {
             setEvalQueries(Array.isArray(value) ? value : []);
         }
     };
 
-    const handleDataSourceModeChange = (mode: 'evalset' | 'queries') => {
+    const handleDataSourceModeChange = (mode: DataSourceMode) => {
         setDataSourceMode(mode);
-        setFormFields(prev => applyFieldVisibility(prev, 'template', dataSourceParam, mode));
     };
 
     const updateFieldVisibility = (mode: string) => {
@@ -581,19 +238,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         bootstrap();
     }, [functionName]);
 
-    useEffect(() => {
-        if (!showTemplatePicker) {
-            return;
-        }
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                setShowTemplatePicker(false);
-            }
-        };
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [showTemplatePicker]);
-
     const loadEvalTemplates = async (): Promise<AvailableNode[]> => {
         try {
             const res = await rpcClient.getBIDiagramRpcClient().search({ filePath, searchKind: 'EVAL_TEMPLATE' });
@@ -611,6 +255,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     };
 
     const selectEvalTemplate = async (template: AvailableNode) => {
+        setIsSelectingTemplate(true);
         try {
             const res = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
                 filePath,
@@ -630,26 +275,20 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                 setEvalQueries([]);
             }
             setEditShape(isEditing ? 'template' : undefined);
-            setShowTemplatePicker(false);
             setTemplateLoadError(undefined);
             setDataProviderMode('template');
             setFormFields(current => applyFieldVisibility(
                 assembleTemplateFields(current, node, dsParam, mode === 'queries' ? evalQueries : []),
                 'template', dsParam, mode));
+            // Close only once the node is loaded, so the inline card never renders half-built.
+            setShowTemplateCatalog(false);
         } catch (error) {
             console.error('Failed to load evaluation template form:', error);
             setTemplateLoadError('Unable to load the selected template. Please try again.');
+        } finally {
+            setIsSelectingTemplate(false);
         }
     };
-
-    const filteredTemplates = useMemo(() => {
-        const query = templateQuery.trim().toLowerCase();
-        return evalTemplates.filter(template => {
-            const text = [template.metadata.label, template.metadata.description, getTemplateKind(template)]
-                .join(' ').toLowerCase();
-            return matchesTemplateFilter(template, templateFilter) && (!query || text.includes(query));
-        });
-    }, [evalTemplates, templateFilter, templateQuery]);
 
     // One bootstrap so evalsets, the template catalog and the function model can't race each other.
     const bootstrap = async () => {
@@ -761,7 +400,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         }
 
         let formFields = generateFormFields(res.function, options);
-        setSelectedEvalsetFile(String(formFields.find(f => f.key === 'evalSetFile')?.value || ''));
+        setSelectedEvalsetFile(String(formFields.find(f => f.key === EVALSET_FIELD_KEY)?.value || ''));
 
         if (isTemplate && detected.node) {
             formFields = assembleTemplateFields(formFields, detected.node, dsParam, queries);
@@ -1052,13 +691,14 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         return baseField;
     }
 
-    // Base evaluation fields, then the queries list next to the evalset select, then the template arguments.
+    // Base evaluation fields, then the queries list next to the evalset select, then the template
+    // arguments. All of the appended ones are hidden by applyFieldVisibility and rendered by the modal.
     const assembleTemplateFields = (base: FormField[], node: FlowNode,
         dsParam?: DataSourceParam, queries: string[] = []): FormField[] => {
         const baseFields = base.filter(isBaseField);
         let fields = baseFields;
         if (dsParam) {
-            const index = baseFields.findIndex(field => field.key === 'evalSetFile');
+            const index = baseFields.findIndex(field => field.key === EVALSET_FIELD_KEY);
             const queriesField = buildQueriesField(queries);
             fields = index >= 0
                 ? [...baseFields.slice(0, index + 1), queriesField, ...baseFields.slice(index + 1)]
@@ -1066,20 +706,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         }
         return [...fields, ...generateTemplateFields(node, dsParam?.paramName)];
     };
-
-    // The data-source parameter is driven by the Test input section, so it never gets its own field.
-    const generateTemplateFields = (node: FlowNode, dsParamName?: string): FormField[] =>
-        Object.entries(node.properties || {})
-            .filter(([key, property]) => {
-                const templateProperty = property as FlowProperty;
-                return !templateProperty.hidden
-                    && (templateProperty.codedata?.originalName || key) !== dsParamName;
-            })
-            .map(([key, property]) => ({
-                ...convertNodePropertyToFormField(key, withAgentConnectionData(property as FlowProperty)),
-                key: `template_${key}`,
-                advanced: false
-            }));
 
     const fillFunctionModel = (formValues: FormValues, formImports: FormImports): TestFunction => {
         let tmpTestFunction = testFunction;
@@ -1157,7 +783,9 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                     if (field.originalName == 'evalSetFile') {
                         if (formValues['dataProviderMode'] === 'evalSet' ||
                             (formValues['dataProviderMode'] === 'template' && templateNeedsEvalset(selectedTemplate))) {
-                            field.value = formValues['evalSetFile'] || "";
+                            // In template mode the select lives in the modal, so fall back to the mirrored
+                            // state for a save where the modal was never opened.
+                            field.value = String(formValues[EVALSET_FIELD_KEY] || selectedEvalsetFile || "");
                         }
                         // Preserve existing evalSetFile value when in function mode
                     }
@@ -1413,10 +1041,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
 
     const handleCardSelectorChange = (value: string) => {
         if (value !== 'template') {
-            setSelectedTemplate(undefined);
-            setTemplateNode(undefined);
-            setShowTemplatePicker(false);
-            setFormFields(fields => fields.filter(isBaseField));
+            clearTemplateSelection();
         }
         const mode = value === 'template' ? 'template' : 'function';
         setDataProviderMode(mode);
@@ -1428,6 +1053,19 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         setDataProviderMode(mode);
         updateFieldVisibility(mode);
     };
+
+    const clearTemplateSelection = () => {
+        setSelectedTemplate(undefined);
+        setTemplateNode(undefined);
+        setShowTemplateCatalog(false);
+        setFormFields(fields => fields.filter(isBaseField));
+    };
+
+    // The template arguments, rendered by the inline config card. They stay in formFields as hidden so
+    // the shared form seeds and submits their values; the card renders un-hidden clones.
+    const templateFields = useMemo(
+        () => formFields.filter(isTemplateField).map(field => ({ ...field, hidden: false })),
+        [formFields]);
 
     // Show upgrade message if version is not supported
     if (isVersionSupported === false) {
@@ -1532,66 +1170,60 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                             )}
                                             {dataProviderMode === 'template' && editShape !== 'unresolvable' && (
                                                 <TemplatePicker>
-                                                    {isEditing && (
-                                                        <SectionLabel style={{ marginBottom: '8px' }}>
-                                                            Evaluation template
-                                                        </SectionLabel>
+                                                    <SectionLabel style={{ marginBottom: '8px' }}>
+                                                        Evaluation template
+                                                    </SectionLabel>
+                                                    {selectedTemplate && templateNode ? (
+                                                        <TemplateConfigCard
+                                                            template={selectedTemplate}
+                                                            templateFields={templateFields}
+                                                            dataSourceParam={dataSourceParam}
+                                                            dataSourceMode={dataSourceMode}
+                                                            onDataSourceModeChange={handleDataSourceModeChange}
+                                                            evalsetField={formFields.find(field => field.key === EVALSET_FIELD_KEY)}
+                                                            queriesField={formFields.find(field => field.key === QUERIES_FIELD_KEY)}
+                                                            hasEvalsets={evalsetOptions.length > 0}
+                                                            selectedEvalsetFile={selectedEvalsetFile}
+                                                            onChangeTemplate={() => setShowTemplateCatalog(true)}
+                                                        />
+                                                    ) : (
+                                                        <EmptyTemplateSlot>
+                                                            <GrowingContent>
+                                                                <TitleRow>No template selected</TitleRow>
+                                                                <HintText>
+                                                                    {templateLoadError
+                                                                        || (evalTemplates.length > 0
+                                                                            ? `Choose from ${evalTemplates.length} rule-based and LLM-as-judge checks`
+                                                                            : 'Choose from the rule-based and LLM-as-judge checks')}
+                                                                </HintText>
+                                                            </GrowingContent>
+                                                            <Button appearance="primary" onClick={() => setShowTemplateCatalog(true)}
+                                                                aria-haspopup="dialog">
+                                                                <Codicon name="search" iconSx={{ fontSize: 14 }}
+                                                                    sx={{ height: 14, marginRight: 6 }} />
+                                                                Browse Templates
+                                                            </Button>
+                                                        </EmptyTemplateSlot>
                                                     )}
-                                                    <TemplatePickerButton type="button" selected={Boolean(selectedTemplate)}
-                                                        onClick={() => setShowTemplatePicker(true)}
-                                                        aria-haspopup="dialog" aria-expanded={showTemplatePicker}>
-                                                        <SelectableIcon selected={Boolean(selectedTemplate)}>
-                                                            <Codicon name={selectedTemplate ? getTemplateIcon(selectedTemplate) : 'list-selection'}
-                                                                sx={{ display: 'flex', height: 'auto', width: 'auto', cursor: 'pointer' }}
-                                                                iconSx={{ fontSize: '20px', lineHeight: 1, display: 'block', WebkitTextStroke: '0.4px currentColor' }} />
-                                                        </SelectableIcon>
-                                                        <GrowingContent>
-                                                            <TitleRow>
-                                                                {selectedTemplate?.metadata.label || 'Select an evaluation template'}
-                                                                {selectedTemplate && <Badge>{getTemplateKind(selectedTemplate)}</Badge>}
-                                                            </TitleRow>
-                                                            <TruncatedHintText>
-                                                                {selectedTemplate?.metadata.description
-                                                                    || 'Browse rule-based and LLM-as-judge checks'}
-                                                            </TruncatedHintText>
-                                                        </GrowingContent>
-                                                        <TemplatePickerAction>{selectedTemplate ? 'Change' : 'Browse'}</TemplatePickerAction>
-                                                        <Codicon name="chevron-down" />
-                                                    </TemplatePickerButton>
                                                     {editShape === 'template-with-custom' && (
                                                         <HintText>
                                                             This evaluation also contains custom code. Saving updates only the{' '}
                                                             <code>ai_evals:{detectedSymbol}(…)</code> call.
                                                         </HintText>
                                                     )}
-                                                    {selectedTemplate && templateNode && <TemplateConfigDivider />}
                                                 </TemplatePicker>
                                             )}
-                                            {dataProviderMode === 'template' && selectedTemplate && templateNode
-                                                && dataSourceParam && editShape !== 'unresolvable' && (
-                                                    <FormSection>
-                                                        <SectionLabel>Test input</SectionLabel>
-                                                        {dataSourceParam.kind === 'union' ? (
-                                                            <>
-                                                                <HintText>How should test input be provided?</HintText>
-                                                                <RadioButtonGroup
-                                                                    orientation="horizontal"
-                                                                    value={dataSourceMode}
-                                                                    options={[
-                                                                        { id: 'ds-evalset', value: 'evalset', content: 'From an evalset' },
-                                                                        { id: 'ds-queries', value: 'queries', content: 'Enter queries manually' }
-                                                                    ]}
-                                                                    onChange={(e) => handleDataSourceModeChange(
-                                                                        e.target.value === 'queries' ? 'queries' : 'evalset')}
-                                                                />
-                                                            </>
-                                                        ) : (
-                                                            <HintText>This template evaluates against an evalset.</HintText>
-                                                        )}
-                                                    </FormSection>
-                                                )}
-                                            {((dataProviderMode === 'evalSet')
-                                                || (dataProviderMode === 'template' && dataSourceParam && dataSourceMode === 'evalset'))
+                                            {showTemplateCatalog && (
+                                                <TemplateModal
+                                                    templates={evalTemplates}
+                                                    templateLoadError={templateLoadError}
+                                                    selectedTemplate={selectedTemplate}
+                                                    isSelecting={isSelectingTemplate}
+                                                    onSelectTemplate={selectEvalTemplate}
+                                                    onClose={() => setShowTemplateCatalog(false)}
+                                                />
+                                            )}
+                                            {dataProviderMode === 'evalSet'
                                                 && evalsetOptions.length === 0
                                                 && !selectedEvalsetFile && (
                                                     <NoticeBox>
@@ -1619,82 +1251,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                     </FormContainer>
                 </Container>
             </ViewContent>
-            {showTemplatePicker && (
-                <>
-                    <PopupOverlay sx={{ background: `${ThemeColors.SURFACE_CONTAINER}`, opacity: `0.5` }}
-                        onClose={() => setShowTemplatePicker(false)} />
-                    <PopupContainer role="dialog" aria-modal="true" aria-labelledby="evaluation-template-dialog-title">
-                        <PopupHeader>
-                            <HeaderTitleContainer>
-                                <PopupTitle variant="h2" id="evaluation-template-dialog-title">
-                                    Browse Evaluation Templates
-                                </PopupTitle>
-                                <PopupSubtitle variant="body3">
-                                    {filteredTemplates.length} of {evalTemplates.length} templates
-                                </PopupSubtitle>
-                            </HeaderTitleContainer>
-                            <CloseButton appearance="icon" onClick={() => setShowTemplatePicker(false)}
-                                aria-label="Close template browser">
-                                <Codicon name="close" />
-                            </CloseButton>
-                        </PopupHeader>
-                        <ModalControls>
-                            <TemplateSearch
-                                value={templateQuery}
-                                placeholder="Search by name, type, or behavior"
-                                onChange={setTemplateQuery}
-                                size={60}
-                                autoFocus
-                            />
-                            <TemplateFilters>
-                                {([
-                                    ['all', 'All'],
-                                    ['rule-based', 'Rule-based'],
-                                    ['llm-as-judge', 'LLM-as-Judge'],
-                                    ['uses-evalset', 'Evalset required'],
-                                    ['no-evalset', 'Evalset or queries']
-                                ] as Array<[TemplateFilterKind, string]>).map(([filter, label]) => (
-                                    <TemplateFilter key={filter} type="button" active={templateFilter === filter}
-                                        onClick={() => setTemplateFilter(filter)}>{label}</TemplateFilter>
-                                ))}
-                            </TemplateFilters>
-                        </ModalControls>
-                        <PopupContent>
-                            {templateLoadError ? (
-                                <EmptyTemplates>{templateLoadError}</EmptyTemplates>
-                            ) : filteredTemplates.length === 0 ? (
-                                <EmptyTemplates>No templates match the current search and filters.</EmptyTemplates>
-                            ) : (
-                                <TemplateResultsGrid>
-                                    {filteredTemplates.map(template => (
-                                        <TemplateOption key={template.codedata.symbol} type="button"
-                                            selected={selectedTemplate?.codedata.symbol === template.codedata.symbol}
-                                            onClick={() => selectEvalTemplate(template)}>
-                                            <SelectableIcon size={32}
-                                                selected={selectedTemplate?.codedata.symbol === template.codedata.symbol}>
-                                                <Codicon name={getTemplateIcon(template)}
-                                                    sx={{ display: 'flex', height: 'auto', width: 'auto', cursor: 'pointer' }}
-                                                    iconSx={{ fontSize: '18px', lineHeight: 1, display: 'block', WebkitTextStroke: '0.4px currentColor' }} />
-                                            </SelectableIcon>
-                                            <GrowingContent>
-                                                <TemplateOptionHeading>
-                                                    <span>{template.metadata.label}</span>
-                                                    {selectedTemplate?.codedata.symbol === template.codedata.symbol && <Codicon name="check" />}
-                                                </TemplateOptionHeading>
-                                                <TemplateTags>
-                                                    <Badge>{getTemplateKind(template)}</Badge>
-                                                    <Badge>{templateNeedsEvalset(template) ? 'Evalset required' : 'Evalset or queries'}</Badge>
-                                                </TemplateTags>
-                                                <TemplateOptionDescription>{template.metadata.description}</TemplateOptionDescription>
-                                            </GrowingContent>
-                                        </TemplateOption>
-                                    ))}
-                                </TemplateResultsGrid>
-                            )}
-                        </PopupContent>
-                    </PopupContainer>
-                </>
-            )}
         </View>
     );
 }

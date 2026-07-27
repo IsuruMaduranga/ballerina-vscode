@@ -1,0 +1,143 @@
+/**
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import styled from "@emotion/styled";
+import { Codicon, LinkButton, RadioButtonGroup, ThemeColors } from "@wso2/ui-toolkit";
+import { FieldFactory, FormField } from "@wso2/ballerina-side-panel";
+import { AvailableNode } from "@wso2/ballerina-core";
+import { Badge, HintText, SectionLabel, TemplateIconTile, TitleRow } from "./styles";
+import { DataSourceMode, DataSourceParam, getTemplateIcon, getTemplateKind } from "./templateUtils";
+
+// One bordered object: the template identity is the header, its arguments are the body. The internal
+// rule is the seam between header and body of a single card, not a divider between two things.
+const Card = styled.div`
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    background-color: ${ThemeColors.SURFACE_DIM};
+`;
+
+const Header = styled.div`
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+`;
+
+const HeaderContent = styled.div`
+    flex: 1;
+    min-width: 0;
+`;
+
+const Body = styled.div`
+    padding: 4px 16px 20px;
+`;
+
+const FieldRow = styled.div`
+    margin-top: 16px;
+`;
+
+interface TemplateConfigCardProps {
+    template: AvailableNode;
+    /** Un-hidden clones of the template_* fields, rendered through the shared form's context */
+    templateFields: FormField[];
+    dataSourceParam?: DataSourceParam;
+    dataSourceMode: DataSourceMode;
+    onDataSourceModeChange: (mode: DataSourceMode) => void;
+    evalsetField?: FormField;
+    queriesField?: FormField;
+    hasEvalsets: boolean;
+    selectedEvalsetFile: string;
+    onChangeTemplate: () => void;
+}
+
+export function TemplateConfigCard(props: TemplateConfigCardProps) {
+    const {
+        template, templateFields, dataSourceParam, dataSourceMode, onDataSourceModeChange,
+        evalsetField, queriesField, hasEvalsets, selectedEvalsetFile, onChangeTemplate
+    } = props;
+
+    const dataSourceField = dataSourceMode === 'queries' ? queriesField : evalsetField;
+    const fields = [
+        ...(dataSourceParam && dataSourceField ? [dataSourceField] : []),
+        ...templateFields
+    ];
+
+    return (
+        <Card>
+            <Header>
+                <TemplateIconTile>
+                    <Codicon name={getTemplateIcon(template)}
+                        sx={{ display: 'flex', height: 'auto', width: 'auto' }}
+                        iconSx={{ fontSize: '20px', lineHeight: 1, display: 'block', WebkitTextStroke: '0.4px currentColor' }} />
+                </TemplateIconTile>
+                <HeaderContent>
+                    <TitleRow>
+                        {template.metadata.label}
+                        <Badge>{getTemplateKind(template)}</Badge>
+                    </TitleRow>
+                    <HintText>{template.metadata.description}</HintText>
+                </HeaderContent>
+                <LinkButton onClick={onChangeTemplate} sx={{ fontSize: 12, padding: 8, gap: 4 }}>
+                    Change Template
+                </LinkButton>
+            </Header>
+            <Body>
+                {dataSourceParam && (
+                    <FieldRow>
+                        <SectionLabel>Test input</SectionLabel>
+                        {dataSourceParam.kind === 'union' ? (
+                            <>
+                                <HintText>How should test input be provided?</HintText>
+                                <RadioButtonGroup
+                                    orientation="horizontal"
+                                    value={dataSourceMode}
+                                    options={[
+                                        { id: 'ds-evalset', value: 'evalset', content: 'From an evalset' },
+                                        { id: 'ds-queries', value: 'queries', content: 'Enter queries manually' }
+                                    ]}
+                                    onChange={(e) => onDataSourceModeChange(
+                                        e.target.value === 'queries' ? 'queries' : 'evalset')}
+                                />
+                            </>
+                        ) : (
+                            <HintText>This template evaluates against an evalset.</HintText>
+                        )}
+                        {dataSourceMode === 'evalset' && !hasEvalsets && !selectedEvalsetFile && (
+                            <HintText>
+                                No evalsets found in this project. Export traces from a conversation with an
+                                agent, or switch to entering queries manually.
+                            </HintText>
+                        )}
+                    </FieldRow>
+                )}
+
+                {/* The originals stay hidden in formFields so the shared form seeds and submits their
+                    values; these clones are what the user actually edits. */}
+                {fields.map(field => (
+                    <FieldRow key={field.key}>
+                        <FieldFactory field={{ ...field, hidden: false }} />
+                    </FieldRow>
+                ))}
+            </Body>
+        </Card>
+    );
+}
