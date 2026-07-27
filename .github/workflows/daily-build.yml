@@ -101,11 +101,8 @@ jobs:
         with:
           version: 2201.13.4
 
-      - name: Cache Ballerina dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: packages/ballerina-language-server/build/ballerina_dependencies
-          key: ${{ runner.os }}-ballerina-${{ matrix.branch }}-${{ hashFiles('packages/ballerina-language-server/build-config/ballerina_dependencies/**') }}
+      # No dependency cache here: this job runs `pack -x check` (no tests), so it never provisions
+      # build/ballerina_dependencies. Nothing to cache.
 
       - name: Pack with Gradle
         env:
