@@ -133,6 +133,8 @@ jobs:
           # makes every entry except the first start with ' ' and never match.
           skip-dirs: 'common/temp,submodules,packages/ballerina-language-server/**/src/test/resources,packages/ballerina-language-server/**/src/test/data,packages/ballerina-language-server/**/build/resources/test'
           ignore-unfixed: true
+          # All entries must stay plain-format: the action refuses to mix YAML
+          # and plain ignore files, and the submodule's file is plain.
           trivyignores: .trivyignore,submodules/wso2-vscode-extensions/.trivyignore
 
   ExtTest_Ballerina:
