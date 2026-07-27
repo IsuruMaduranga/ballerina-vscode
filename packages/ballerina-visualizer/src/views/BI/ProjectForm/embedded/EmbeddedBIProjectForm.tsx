@@ -26,18 +26,21 @@ import { CloudContextProvider } from "./integrator-form/providers";
 import { BIProjectForm } from "./integrator-form";
 import { ProjectCreationView } from "./integrator-form/ProjectCreationView";
 import { LibraryCreationView } from "./integrator-form/LibraryCreationView";
+import { CreateProjectChooser } from "./integrator-form/CreateProjectChooser";
 import { EmbeddedWsRpc, createCompositeClient, WsCoords } from "./wsRpc";
 import { BiWsClient } from "../../wsManager/WsClient";
 import { BiWsClientProvider } from "../../wsManager/WsClientContext";
 import { CreateIntegrationWizard } from "../../CreateIntegrationWizard";
 
 /**
- * Which BI creation form to render. `integration` is the primary
- * "Create New Integration" form (rendered inside the host's CreationView chrome);
- * `project` and `library` are the welcome "More Actions" flows, which carry their
- * own page chrome and a Back button driven by `onBack`.
+ * Which BI creation form to render. `create` is the unified entry point (project
+ * chooser → integration wizard / library form) and the primary mode going
+ * forward. `integration` is the standalone 3-step wizard (rendered inside the
+ * host's CreationView chrome); `project` and `library` are the legacy welcome
+ * "More Actions" flows, which carry their own page chrome and a Back button
+ * driven by `onBack`.
  */
-export type EmbeddedFormMode = "integration" | "project" | "library";
+export type EmbeddedFormMode = "create" | "integration" | "project" | "library";
 
 export interface EmbeddedBIProjectFormProps {
     /** The embedding host's client. Used for the WS bootstrap and cloud reads. */
@@ -92,15 +95,18 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
                     return;
                 }
 
-                if (mode === "integration") {
-                    // Probe the 3-step wizard handshake first; an older extension
-                    // without the handler rejects (or times out) → legacy form.
+                // Both the standalone wizard (`integration`) and the unified entry
+                // (`create`, which can route to the wizard) need the 3-step wizard
+                // client. Probe the handshake first; an older extension without the
+                // handler rejects (or times out) → legacy form / no wizard route.
+                if (mode === "integration" || mode === "create") {
                     wizardClient = new BiWsClient({
                         mode: "websocket",
                         wsServer: coords.host,
                         wsPort: coords.port,
                         token: coords.token,
                     });
+                    let wizardOk = false;
                     try {
                         const capabilities = await Promise.race([
                             wizardClient.getWizardCapabilities(),
@@ -111,20 +117,29 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
                         if (!cancelled && capabilities?.threeStepWizard) {
                             setBiWsClient(wizardClient);
                             setWizardSupport("supported");
-                            return;
+                            wizardOk = true;
                         }
                     } catch (probeError) {
                         console.warn(">>> Create Integration wizard unavailable, using the legacy form.", probeError);
                     }
-                    wizardClient.dispose();
-                    wizardClient = undefined;
-                    if (cancelled) {
+                    if (!wizardOk) {
+                        wizardClient.dispose();
+                        wizardClient = undefined;
+                        if (cancelled) {
+                            return;
+                        }
+                        setWizardSupport("unsupported");
+                    }
+                    // The standalone wizard needs no composite client — done once the
+                    // probe succeeds. `create` mode also needs the composite (for the
+                    // chooser screen + library form), so it always falls through.
+                    if (mode === "integration" && wizardOk) {
                         return;
                     }
-                    setWizardSupport("unsupported");
                 }
 
-                // Legacy stack (project/library modes and the integration fallback).
+                // Legacy/composite stack (project/library modes, the integration
+                // fallback, and the `create` chooser + its library route).
                 wsRpc = new EmbeddedWsRpc(coords);
                 if (cancelled) {
                     // Unmounted while the bootstrap was in flight — dispose the socket we
@@ -164,6 +179,44 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
             <BiWsClientProvider wsClient={biWsClient} onBack={onBack}>
                 <CreateIntegrationWizard showHeader={false} />
             </BiWsClientProvider>
+        );
+    }
+
+    // The unified Create flow needs both clients: the composite (chooser screen +
+    // library route) and the wizard client (integration route). Wait for both.
+    if (mode === "create") {
+        if (wizardSupport === "unsupported") {
+            // The bundle and extension ship together, so this only happens on a
+            // host/extension version skew — the welcome should have gated it out.
+            return (
+                <div style={stateContainerStyle}>
+                    <Typography variant="h4">Update required</Typography>
+                    <Typography variant="body2">
+                        Creating a project requires a newer version of the Ballerina extension.
+                    </Typography>
+                </div>
+            );
+        }
+        if (wizardSupport === "probing" || !rpcClient || !biWsClient) {
+            return (
+                <div style={stateContainerStyle}>
+                    <ProgressIndicator />
+                    <Typography variant="body2">Connecting to the integration service…</Typography>
+                </div>
+            );
+        }
+        return (
+            <WsClientProvider wsClient={rpcClient}>
+                <QueryClientProvider client={queryClient}>
+                    <CloudContextProvider>
+                        <CreateProjectChooser
+                            biWsClient={biWsClient}
+                            ballerinaUnavailable={ballerinaUnavailable}
+                            onBack={onBack}
+                        />
+                    </CloudContextProvider>
+                </QueryClientProvider>
+            </WsClientProvider>
         );
     }
 

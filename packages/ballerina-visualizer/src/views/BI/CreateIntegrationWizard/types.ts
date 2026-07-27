@@ -16,8 +16,25 @@
  * under the License.
  */
 
-/** The wizard's three steps: Basic Info, Integration Type, Configure. */
-export type WizardStep = 0 | 1 | 2;
+/** The wizard's two steps: Integration Type (with the name field), then Configure. */
+export type WizardStep = 0 | 1;
+
+/**
+ * The project a new integration/library is being created into, resolved by the
+ * unified Create chooser (screen 1) and handed to the wizard / library form.
+ * In the always-workspace model the artifact is always a package inside a
+ * workspace: `workspacePath` is that workspace's folder (and becomes the form's
+ * `baseDir`), and `isNewProject` decides whether the workspace is scaffolded
+ * fresh or the package is added into an existing one.
+ */
+export interface ProjectContext {
+    /** True when a brand-new project (workspace) is being created for this artifact. */
+    isNewProject: boolean;
+    /** The workspace folder — the artifact package is created inside it. */
+    workspacePath: string;
+    /** Display name (title) for the workspace when `isNewProject` is true. */
+    workspaceName?: string;
+}
 
 /** Step-1 form state. */
 export interface BasicInfo {

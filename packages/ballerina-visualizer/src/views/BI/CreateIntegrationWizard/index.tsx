@@ -28,10 +28,10 @@ import {
 } from "@wso2/ballerina-core";
 import { useBiWsContext } from "../wsManager/WsClientContext";
 import { HeaderRow, HeaderSubtitle, HeaderText, IconButton } from "../ImportIntegration/styles";
-import { BackButtonSlot, StepBody, StepScrollArea, WizardPage, WizardTopBar } from "./styles";
+import { BackButtonSlot, StepBody, StepPinnedHeader, StepScrollArea, StepSectionLabel, WizardPage, WizardTopBar } from "./styles";
 import { joinPath, sanitizePackageName, splitPath, validateComponentName } from "../ProjectForm/utils";
 import { ArtifactCard } from "./artifactCatalog";
-import { BasicInfo, ScaffoldState, WizardStep } from "./types";
+import { BasicInfo, ProjectContext, ScaffoldState, WizardStep } from "./types";
 import { useRealtimeProjectPathValidation } from "./hooks/useRealtimeProjectPathValidation";
 import { BasicInfoStep } from "./steps/BasicInfoStep";
 import { IntegrationTypeStep } from "./steps/IntegrationTypeStep";
@@ -47,7 +47,7 @@ const ErrorBanner = styled.div`
     font-size: 13px;
 `;
 
-const WIZARD_STEPS = ["Basic Info", "Integration Type", "Configure"];
+const WIZARD_STEPS = ["Basics", "Configure"];
 const DEFAULT_INTEGRATION_NAME = "Untitled";
 const REQUIRED_PATH_MESSAGE = "Path is required";
 const INVALID_PATH_MESSAGE = "Please select a valid directory";
@@ -57,6 +57,25 @@ const DIRECTORY_EXISTS_MESSAGE = "A directory with this name already exists at t
 interface CreateIntegrationWizardProps {
     /** Hide the page header when the embedding host renders its own chrome. */
     showHeader?: boolean;
+    /**
+     * The project the integration is created into, resolved by the unified Create
+     * chooser. When provided, the path is seeded from `workspacePath` (rather than
+     * the open folder / default creation path) and the artifact is created inside
+     * that workspace — freshly scaffolded when `isNewProject`.
+     */
+    projectContext?: ProjectContext;
+    /**
+     * Returns to the chooser (screen 1). When provided, the top-bar back arrow is
+     * shown on step 0 too and invokes this instead of decrementing the step.
+     */
+    onBackToChooser?: () => void;
+    /**
+     * Renders the wizard to fill a bounded parent (the unified Create shell)
+     * instead of the standalone viewport. When true, the self-height-locking
+     * layout effect is skipped — the shell already bounds the height, so the
+     * pinned-stepper / scrolling-step-body flex layout works directly.
+     */
+    embedded?: boolean;
 }
 
 /**
@@ -68,7 +87,7 @@ interface CreateIntegrationWizardProps {
  * configured artifact persisted as a pending entry the extension generates
  * post-reload. Skipping at any step creates an empty integration.
  */
-export function CreateIntegrationWizard({ showHeader = true }: CreateIntegrationWizardProps) {
+export function CreateIntegrationWizard({ showHeader = true, projectContext, onBackToChooser, embedded = false }: CreateIntegrationWizardProps) {
     const { wsClient, onBack } = useBiWsContext();
 
     const [step, setStep] = useState<WizardStep>(0);
@@ -104,6 +123,14 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
         // growing the page) and lock the document from scrolling as a guarantee.
         // Once the host is bounded, pure CSS flex (WizardPage → StepBody →
         // StepScrollArea) pins the stepper/footer and scrolls only the middle.
+        // Embedded in the Create shell: the parent already provides a definite,
+        // bounded height, so the flex chain (WizardPage → StepBody → StepScrollArea)
+        // scrolls on its own — the viewport height-locking below is not needed and
+        // would fight the shell's layout.
+        if (embedded) {
+            return;
+        }
+
         const root = rootRef.current;
         if (!root) {
             return;
@@ -188,7 +215,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
             target.style.flex = prevFlex;
             target.style.overflow = prevOverflow;
         };
-    }, [showHeader]);
+    }, [showHeader, embedded]);
 
     const effectiveName = basicInfo.integrationName.trim() || DEFAULT_INTEGRATION_NAME;
     const packageName = sanitizePackageName(effectiveName) || "untitled";
@@ -240,10 +267,15 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
             return base;
         };
 
-        wsClient
-            .getWorkspaceRoot()
-            .then(async (res: { path: string }) => {
-                const seedPath = res.path || (await wsClient.getDefaultCreationPath()).path;
+        // When the chooser resolved a project, the integration lives inside that
+        // workspace folder — seed the path from it directly. Otherwise fall back to
+        // the open folder / default creation path (standalone wizard entry).
+        const seedBaseDir = projectContext?.workspacePath
+            ? Promise.resolve(projectContext.workspacePath)
+            : wsClient.getWorkspaceRoot().then(async (res: { path: string }) => res.path || (await wsClient.getDefaultCreationPath()).path);
+
+        seedBaseDir
+            .then(async (seedPath: string) => {
                 const directoryName = await resolveDefaultDirectoryName(seedPath);
                 setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: seedPath, directoryName }));
             })
@@ -253,7 +285,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
             .getTriggerModels({ query: "" })
             .then((res) => setTriggers(res))
             .catch((error: unknown) => console.error(">>> Error fetching trigger models", error));
-    }, [wsClient]);
+    }, [wsClient, projectContext?.workspacePath]);
 
     useEffect(() => {
         // Leaving the wizard discards the temp staging package (best-effort;
@@ -369,24 +401,11 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
         return !nameValidation;
     };
 
-    const handleContinueFromBasicInfo = async () => {
-        if (!basicInfo.integrationName.trim()) {
-            setNameError("Integration name is required");
-            return;
-        }
-        if (!validateBasicInfo()) {
-            return;
-        }
-        if (!(await validatePathForSubmit())) {
-            return;
-        }
-        setStep(1);
-    };
-
     /**
-     * Ensures the throwaway staging package (for step-3 model fetching) exists.
-     * It is name/path agnostic, so it is created once and reused for the rest of
-     * the session — back-navigation and name changes need no re-scaffold.
+     * Ensures the throwaway staging package (for the Configure step's model
+     * fetching) exists. It is name/path agnostic, so it is created once and reused
+     * for the rest of the session — back-navigation and name changes need no
+     * re-scaffold.
      */
     const ensureScaffold = async () => {
         if (scaffold.status === "ready" || scaffold.status === "creating") {
@@ -403,20 +422,33 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
         }
     };
 
-    const handleContinueFromArtifactType = () => {
-        if (!selection) {
+    /** Step 1 → 2: the name and artifact type are captured together on the first
+     *  step, so validate the name (and, when standalone, the path) and require a
+     *  selection before advancing to Configure. */
+    const handleContinueToConfigure = async () => {
+        if (!basicInfo.integrationName.trim()) {
+            setNameError("Integration name is required");
             return;
         }
-        setStep(2);
+        if (!validateBasicInfo() || !selection) {
+            return;
+        }
+        // Embedded in the Create flow the project (location) was already validated
+        // by the chooser; only the standalone wizard owns and re-validates the path.
+        if (!embedded && !(await validatePathForSubmit())) {
+            return;
+        }
+        setStep(1);
         void ensureScaffold();
     };
 
-    /** Final submit — with an artifact after step 3, without one on any skip. The
-     *  real project is created fresh at the final path here (and only here), so
-     *  the path must always be validated first. */
+    /** Final submit — with an artifact after Configure, without one on any skip.
+     *  The real project is created fresh at the final path here (and only here);
+     *  the standalone wizard re-validates the path (the embedded flow trusts the
+     *  chooser's validation). */
     const handleCreateIntegration = async (artifact?: PendingIntegrationArtifactPayload) => {
         setSubmitError(null);
-        if (!(await validatePathForSubmit())) {
+        if (!embedded && !(await validatePathForSubmit())) {
             return;
         }
         setIsSubmitting(true);
@@ -427,6 +459,8 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                     packageName,
                     projectPath: basicInfo.baseDir.trim(),
                     directoryName: effectiveDirectoryName,
+                    newProject: projectContext?.isNewProject,
+                    workspaceName: projectContext?.workspaceName,
                 },
                 artifact,
             });
@@ -441,7 +475,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
     };
 
     return (
-        <WizardPage ref={rootRef}>
+        <WizardPage ref={rootRef} embedded={embedded}>
             {showHeader && (
                 <HeaderRow>
                     <IconButton type="button" onClick={onBack} title="Go back">
@@ -461,13 +495,13 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                 </HeaderRow>
             )}
             <WizardTopBar>
-                {step > 0 && (
+                {(step > 0 || onBackToChooser) && (
                     <BackButtonSlot>
                         <IconButton
                             type="button"
-                            onClick={() => setStep((step - 1) as WizardStep)}
+                            onClick={() => (step > 0 ? setStep((step - 1) as WizardStep) : onBackToChooser?.())}
                             disabled={isSubmitting}
-                            title="Previous step"
+                            title={step > 0 ? "Previous step" : "Back"}
                         >
                             <Icon
                                 name="arrow-left"
@@ -481,8 +515,8 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                 <Stepper alignment="center" steps={WIZARD_STEPS} currentStep={step} />
             </WizardTopBar>
             <StepBody>
-                <StepScrollArea>
-                    {step === 0 && (
+                {step === 0 && (
+                    <StepPinnedHeader>
                         <BasicInfoStep
                             integrationName={basicInfo.integrationName}
                             fullPath={fullPath}
@@ -492,9 +526,13 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                             onNameChange={handleNameChange}
                             onPathChange={handlePathChange}
                             onBrowse={handleBrowse}
+                            hidePath={embedded}
                         />
-                    )}
-                    {step === 1 && (
+                        <StepSectionLabel>Select the type of integration to build</StepSectionLabel>
+                    </StepPinnedHeader>
+                )}
+                <StepScrollArea>
+                    {step === 0 && (
                         <IntegrationTypeStep
                             triggers={triggers}
                             selection={selection}
@@ -506,7 +544,7 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                             }}
                         />
                     )}
-                    {step === 2 && selection && (
+                    {step === 1 && selection && (
                         <ConfigureStep
                             wsClient={wsClient}
                             selection={selection}
@@ -522,21 +560,11 @@ export function CreateIntegrationWizard({ showHeader = true }: CreateIntegration
                 {step === 0 && (
                     <WizardFooter
                         primaryLabel="Continue"
-                        onPrimary={handleContinueFromBasicInfo}
-                        primaryDisabled={isSubmitting || !!nameError || !!pathError}
+                        onPrimary={handleContinueToConfigure}
+                        primaryDisabled={isSubmitting || !!nameError || (!embedded && !!pathError) || !selection}
                         skipLabel="Create Empty Integration"
                         onSkip={() => handleCreateIntegration()}
-                        skipDisabled={isSubmitting || !!nameError || !!pathError}
-                    />
-                )}
-                {step === 1 && (
-                    <WizardFooter
-                        primaryLabel="Continue"
-                        onPrimary={handleContinueFromArtifactType}
-                        primaryDisabled={isSubmitting || !selection}
-                        skipLabel="Create Empty Integration"
-                        onSkip={() => handleCreateIntegration()}
-                        skipDisabled={isSubmitting}
+                        skipDisabled={isSubmitting || !!nameError || (!embedded && !!pathError)}
                     />
                 )}
             </StepBody>

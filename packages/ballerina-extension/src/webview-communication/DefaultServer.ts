@@ -37,7 +37,7 @@ import { LangClientRpcManager } from "../rpc-managers/lang-client/rpc-manager";
 import { MigrateIntegrationRpcManager } from "../rpc-managers/migrate-integration/rpc-manager";
 import { ServiceDesignerRpcManager } from "../rpc-managers/service-designer/rpc-manager";
 import { BiDiagramRpcManager } from "../rpc-managers/bi-diagram/rpc-manager";
-import { createBIProject, getDefaultCreationPath, validateProjectPath } from "../utils/bi";
+import { createBIProject, getDefaultCreationPath, getExistingProjectInfo, validateProjectPath } from "../utils/bi";
 import { writeBallerinaFileDidOpenTemp } from "../utils/modification";
 import { onMigratedProjectEvent, onMigrationToolLogEvent, onMigrationToolStateEvent } from "../features/ai/migration/migrationEvents";
 import {
@@ -253,6 +253,7 @@ export class DefaultServer {
         this.register("validateProjectPath", (p) =>
             validateProjectPath(p.projectPath, p.projectName, p.createDirectory, p.createAsWorkspace, p.directoryName, p.allowExistingDirectory),
         );
+        this.register("getExistingProjectInfo", (p) => getExistingProjectInfo(p.projectPath));
         this.register("selectFileOrDirPath", (p) => common.selectFileOrDirPath(p));
         this.register("selectFileOrFolderPath", () => common.selectFileOrFolderPath());
         this.register("getWorkspaceRoot", () => common.getWorkspaceRoot());

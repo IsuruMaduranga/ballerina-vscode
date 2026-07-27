@@ -78,11 +78,27 @@ interface LibraryFormData {
     version: string;
 }
 
-export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?: () => void; ballerinaUnavailable?: boolean }) {
+/**
+ * The project the library is created into, resolved by the unified Create chooser.
+ * In the always-workspace model the library is always a package inside a
+ * workspace: `workspacePath` is that workspace's folder, and `isNewProject`
+ * decides whether it is scaffolded fresh or the package added into an existing one.
+ */
+interface LibraryProjectContext {
+    isNewProject: boolean;
+    workspacePath: string;
+    workspaceName?: string;
+}
+
+export function LibraryCreationView({ onBack, ballerinaUnavailable, projectContext, embedded }: { onBack?: () => void; ballerinaUnavailable?: boolean; projectContext?: LibraryProjectContext; embedded?: boolean }) {
     const { wsClient } = useVisualizerContext();
     const { authState } = useCloudContext();
     const organizations = (authState?.userInfo?.organizations as Array<{ id?: any; handle: string; name: string }> | undefined);
-    const { path: workspacePath, isReady: workspaceReady } = useWorkspaceRoot();
+    const { path: openWorkspacePath, isReady: openWorkspaceReady } = useWorkspaceRoot();
+    // When the chooser resolved a project, seed the path from that workspace folder
+    // (ready immediately); otherwise fall back to the currently open workspace.
+    const workspacePath = projectContext?.workspacePath ?? openWorkspacePath;
+    const workspaceReady = projectContext ? true : openWorkspaceReady;
     const firstFieldRef = useRef<HTMLInputElement>(null);
     const orgNameInitialized = useRef(false);
     const defaultPathInitialized = useRef(false);
@@ -337,6 +353,8 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
                 orgHandle: orgHandle,
                 version: formData.version || undefined,
                 isLibrary: true,
+                newProject: projectContext?.isNewProject,
+                workspaceName: projectContext?.workspaceName,
             });
         } catch (error) {
             setPathError("An error occurred during validation");
@@ -345,32 +363,9 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
         }
     };
 
-    return (
-        <PageBackdrop>
-            <PageContainer>
-
-                <FormPanel>
-                    <FormPanelHeader>
-                        <HeaderRow>
-                            <BackButton type="button" onClick={() => onBack?.()} title="Go back">
-                                <Icon
-                                    name="arrow-left"
-                                    isCodicon
-                                    sx={{ width: "16px", height: "16px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                                    iconSx={{ color: "var(--vscode-foreground)", fontSize: "16px", lineHeight: 1 }}
-                                />
-                            </BackButton>
-                            <HeaderText>
-                                <HeaderTitle variant="h2">Create Library</HeaderTitle>
-                                <HeaderSubtitle>
-                                    Build reusable components and utilities to share across projects.
-                                </HeaderSubtitle>
-                            </HeaderText>
-                        </HeaderRow>
-                    </FormPanelHeader>
-                    <FormBody>
-                        <FormContent>
-                            <FieldGroup>
+    const content = (
+        <>
+            <FieldGroup>
                                 <TextField
                                     ref={firstFieldRef}
                                     onTextChange={handleLibraryName}
@@ -452,7 +447,39 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable }: { onBack?:
                                     </Button>
                                 </span>
                             </FormFooter>
-                        </FormContent>
+        </>
+    );
+
+    // Embedded in the unified Create shell: render content only; the shell owns the
+    // backdrop, panel, header, and scrolling body.
+    if (embedded) {
+        return content;
+    }
+
+    return (
+        <PageBackdrop>
+            <PageContainer>
+                <FormPanel>
+                    <FormPanelHeader>
+                        <HeaderRow>
+                            <BackButton type="button" onClick={() => onBack?.()} title="Go back">
+                                <Icon
+                                    name="arrow-left"
+                                    isCodicon
+                                    sx={{ width: "16px", height: "16px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                    iconSx={{ color: "var(--vscode-foreground)", fontSize: "16px", lineHeight: 1 }}
+                                />
+                            </BackButton>
+                            <HeaderText>
+                                <HeaderTitle variant="h2">Create Library</HeaderTitle>
+                                <HeaderSubtitle>
+                                    Build reusable components and utilities to share across projects.
+                                </HeaderSubtitle>
+                            </HeaderText>
+                        </HeaderRow>
+                    </FormPanelHeader>
+                    <FormBody>
+                        <FormContent>{content}</FormContent>
                     </FormBody>
                 </FormPanel>
             </PageContainer>

@@ -35,6 +35,7 @@ export interface ProjectRequest {
     version?: string;
     isLibrary?: boolean;
     projectHandle?: string;
+    newProject?: boolean;
 }
 
 export interface AddProjectToWorkspaceRequest {

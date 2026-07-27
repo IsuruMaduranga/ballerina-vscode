@@ -22,14 +22,27 @@ import styled from "@emotion/styled";
  *  scroll host — see the height-locking effect in the wizard root. A flex
  *  column so the stepper and footer stay pinned while only the step content
  *  between them scrolls. The embedding chrome provides any outer framing. */
-export const WizardPage = styled.div`
+export const WizardPage = styled.div<{ embedded?: boolean }>`
     height: 100%;
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 0 32px;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    padding: 0 32px;
+    ${({ embedded }: { embedded?: boolean }) =>
+        embedded
+            ? `
+        /* Fill the bounded Create shell. A flex item with auto side margins
+           shrinks to its content width — which made the panel width jump as the
+           card grid changed and collapsed the category rail below its threshold
+           when a sparse type (e.g. Workflow) was selected. Filling 100% keeps the
+           width stable regardless of the selected type. */
+        width: 100%;
+        min-width: 0;
+    `
+            : `
+        max-width: 900px;
+        margin: 0 auto;
+    `}
 `;
 
 /** Row above the step content: step-back icon pinned left, stepper centered. */
@@ -61,6 +74,20 @@ export const StepBody = styled.div`
     flex-direction: column;
 `;
 
+/** Pinned block above the scroll area (e.g. the integration name + the type
+ *  section label) so only the content below it scrolls. */
+export const StepPinnedHeader = styled.div`
+    flex: 0 0 auto;
+`;
+
+/** Section label introducing the scrolling content below the pinned fields. */
+export const StepSectionLabel = styled.div`
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    margin-bottom: 12px;
+`;
+
 /** The single scrolling region: step content (e.g. the artifact grid) scrolls
  *  here while the stepper above and the footer below stay put. */
 export const StepScrollArea = styled.div`
@@ -68,4 +95,8 @@ export const StepScrollArea = styled.div`
     min-height: 0;
     overflow-y: auto;
     padding-right: 4px;
+    /* Reserve the scrollbar gutter so the content width doesn't shift (and the
+       category rail doesn't reflow) when the vertical scrollbar toggles between
+       types with more or fewer cards. */
+    scrollbar-gutter: stable;
 `;

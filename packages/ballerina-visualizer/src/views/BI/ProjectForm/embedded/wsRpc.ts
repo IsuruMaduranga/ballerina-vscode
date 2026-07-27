@@ -35,6 +35,7 @@ export interface WsCoords {
 const PROJECT_ACTIONS = new Set([
     "createBIProject",
     "validateProjectPath",
+    "getExistingProjectInfo",
     "selectFileOrDirPath",
     "getWorkspaceRoot",
     "getDefaultOrgName",

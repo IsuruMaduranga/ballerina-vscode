@@ -51,6 +51,9 @@ interface BasicInfoStepProps {
      *  parent directory + directory name. */
     onPathChange: (value: string) => void;
     onBrowse: () => Promise<void>;
+    /** Hide the path field — the location is fixed by the chosen project (the
+     *  integration is created inside it), so only the name is asked for. */
+    hidePath?: boolean;
 }
 
 /**
@@ -68,6 +71,7 @@ export function BasicInfoStep({
     onNameChange,
     onPathChange,
     onBrowse,
+    hidePath = false,
 }: BasicInfoStepProps) {
     const nameFieldRef = useRef<HTMLInputElement>(null);
 
@@ -116,24 +120,26 @@ export function BasicInfoStep({
                     errorMsg={nameError || ""}
                 />
             </FieldGroup>
-            <FieldGroup>
-                <DirectorySelector
-                    id="integration-folder-selector"
-                    label="Select Path"
-                    placeholder="Enter path or browse to select a folder..."
-                    selectedPath={fullPath}
-                    required={true}
-                    onSelect={onBrowse}
-                    onChange={onPathChange}
-                    errorMsg={pathError || undefined}
-                />
-                {existingWorkspace && !pathError && (
-                    <InfoNote>
-                        <Codicon name="info" sx={{ marginTop: "1px" }} />
-                        <span>This is an integrator project. Your new integration will be added to it.</span>
-                    </InfoNote>
-                )}
-            </FieldGroup>
+            {!hidePath && (
+                <FieldGroup>
+                    <DirectorySelector
+                        id="integration-folder-selector"
+                        label="Select Path"
+                        placeholder="Enter path or browse to select a folder..."
+                        selectedPath={fullPath}
+                        required={true}
+                        onSelect={onBrowse}
+                        onChange={onPathChange}
+                        errorMsg={pathError || undefined}
+                    />
+                    {existingWorkspace && !pathError && (
+                        <InfoNote>
+                            <Codicon name="info" sx={{ marginTop: "1px" }} />
+                            <span>This is an integrator project. Your new integration will be added to it.</span>
+                        </InfoNote>
+                    )}
+                </FieldGroup>
+            )}
         </>
     );
 }

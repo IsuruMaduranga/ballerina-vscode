@@ -151,7 +151,10 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
         try {
             await window.withProgress(
                 { location: ProgressLocation.Notification, title: `Setting up your ${label}...` },
-                () => generatePendingArtifact(payload, stored.projectRoot)
+                // Standalone: land on the package overview (the package's home). Added
+                // into a workspace: stay on the project (workspace) overview the
+                // window already opened on — don't drill into the package.
+                () => generatePendingArtifact(payload, stored.projectRoot, opensStoredPackage)
             );
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -197,8 +200,17 @@ function consumePendingArtifactPayload(projectRoot: string): PendingIntegrationA
  * files are targeted inside `projectRoot` — the newly created package — which is
  * the context's projectPath for a standalone package and a child package path
  * when added into an existing workspace (where the context has no projectPath).
+ *
+ * `landOnPackageOverview` controls the final navigation: true for a standalone
+ * package (land on its overview); false when added into a workspace, so the
+ * window stays on the project (workspace) overview it opened on rather than
+ * auto-switching into the new package.
  */
-async function generatePendingArtifact(payload: PendingIntegrationArtifactPayload, projectRoot: string): Promise<void> {
+async function generatePendingArtifact(
+    payload: PendingIntegrationArtifactPayload,
+    projectRoot: string,
+    landOnPackageOverview: boolean
+): Promise<void> {
     switch (payload.kind) {
         case "SERVICE": {
             if (!payload.serviceInitModel) {
@@ -211,7 +223,9 @@ async function generatePendingArtifact(payload: PendingIntegrationArtifactPayloa
                 projectPath: projectRoot,
                 serviceInitModel: payload.serviceInitModel,
             });
-            openPackageOverview(projectRoot);
+            if (landOnPackageOverview) {
+                openPackageOverview(projectRoot);
+            }
             return;
         }
         case "AUTOMATION":
@@ -226,7 +240,9 @@ async function generatePendingArtifact(payload: PendingIntegrationArtifactPayloa
                 flowNode: payload.flowNode,
                 isFunctionNodeUpdate: true,
             });
-            openPackageOverview(projectRoot);
+            if (landOnPackageOverview) {
+                openPackageOverview(projectRoot);
+            }
             return;
         }
         case "AI_CHAT_AGENT": {

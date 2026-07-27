@@ -277,6 +277,19 @@ export const RadioInput = styled.input`
     }
 `;
 
+/** Rounded icon badge shown between the radio dot and the option text. */
+export const RadioIcon = styled.div`
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--vscode-focusBorder) 14%, transparent);
+    color: var(--vscode-foreground);
+`;
+
 export const RadioContent = styled.div`
     display: flex;
     flex-direction: column;
