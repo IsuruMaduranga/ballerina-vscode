@@ -257,7 +257,7 @@ export function FunctionForm(props: FunctionFormProps) {
             nodeKind = 'WORKFLOW';
             formType.current = 'Durable Workflow';
             setTitleSubtitle('Build durable, long-running workflow processes');
-            setFormSubtitle('Define a workflow process with a strongly typed input payload');
+            setFormSubtitle('Define a static workflow logic');
         } else if (isActivity) {
             nodeKind = 'ACTIVITY';
             formType.current = 'Workflow Activity';
@@ -286,6 +286,12 @@ export function FunctionForm(props: FunctionFormProps) {
                 formType.current = "Automation";
                 const automationFields = fields.filter(field => field.key !== "functionName" && field.key !== "type");
                 fields = automationFields;
+            }
+
+            // The workflow creation form only asks for the name and input type; the description is
+            // extra information that is not needed to define the workflow, so drop that field.
+            if (isWorkflow && !functionName) {
+                fields = fields.filter(field => field.key !== "functionNameDescription");
             }
 
             const annotations = functionNode?.properties?.annotations?.value;
