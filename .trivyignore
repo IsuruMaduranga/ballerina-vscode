@@ -6,6 +6,10 @@
 # must instead be bumped via globalOverrides in
 # common/config/rush/pnpm-config.json. Keep entries in sync with the
 # submodule's submodules/wso2-vscode-extensions/.trivyignore.
+#
+# If a fix exists but is unusable for one specific package version (e.g. the
+# only fixed release is an incompatible major), add a purl-scoped, expiring
+# entry to .trivyignore.yaml instead of a blanket CVE line here.
 
 # cors-anywhere@0.4.4 — direct devDependency (local CORS proxy used in dev
 # only, never built or shipped). SSRF is inherent to the tool and no fix has

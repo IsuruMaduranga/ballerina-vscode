@@ -1,0 +1,26 @@
+# Scoped trivy ignores — for findings that DO have an upstream fix version,
+# but where that fix is unusable for the specific package version in question
+# (e.g. the fix only exists in a major line that is not a drop-in replacement).
+#
+# Blanket "no fix released at all" entries belong in the plain `.trivyignore`
+# instead. Every entry here must be scoped by `purls` and carry an
+# `expired_at` so the finding resurfaces once upstream backports the fix.
+
+vulnerabilities:
+  # brace-expansion is only pulled in by minimatch. minimatch 3.x/5.x/9.x
+  # consume it as a CommonJS default export (`require('brace-expansion')(...)`),
+  # which brace-expansion 5.x removed in favour of a named `expand` export, so
+  # forcing those lines to 5.0.8 breaks every minimatch below v10 at runtime.
+  # 1.1.16 and 2.1.2 are the latest published releases of their lines and the
+  # fix has not been backported to them.
+  # The 5.x line IS bumped to 5.0.8 via globalOverrides in
+  # common/config/rush/pnpm-config.json, so it is deliberately not listed here.
+  - id: CVE-2026-14257
+    purls:
+      - "pkg:npm/brace-expansion@1.1.16"
+      - "pkg:npm/brace-expansion@2.1.2"
+    statement: >-
+      Denial of service via unbounded expansion length. Fixed only in
+      brace-expansion 5.0.8; no 1.x/2.x backport exists and 5.x is not
+      API-compatible with the minimatch versions that depend on these lines.
+    expired_at: 2026-10-31
