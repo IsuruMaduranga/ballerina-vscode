@@ -91,9 +91,8 @@ export const validateProjectName = (name: string): string | null => {
     if (!/^[a-zA-Z0-9 _-]+$/.test(name)) {
         return "Project name cannot contain special characters";
     }
-    const letterCount = (name.match(/[a-zA-Z]/g) || []).length;
-    if (letterCount < 3) {
-        return "Project name must contain at least three letters";
+    if (name.length < 3) {
+        return "Project name must be at least 3 characters";
     }
     return null;
 };
