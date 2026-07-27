@@ -73,55 +73,109 @@ runs:
         CURL_API=(curl -sS --connect-timeout 15 --max-time 60)
         CURL_UPLOAD=(curl -sS --connect-timeout 15 --max-time 900)
 
-        # Rolling tag (e.g. nightly): delete the previous release + git tag so
-        # the tag always points at the newest build.
+        # On the rolling path (e.g. nightly) the release is REUSED rather than
+        # deleted and recreated. Nothing is destroyed until the replacement
+        # artifact is uploaded and verified, so a failed run always leaves the
+        # previous nightly downloadable. That matters because the whole point of
+        # a fixed tag is a URL that keeps working; deleting first would take
+        # 'releases/download/<tag>/...' offline until the next successful build.
+        existingId=""
+        existingAssets="[]"
         if [ "${ROLLING}" = "true" ]; then
-          existingId=$("${CURL_API[@]}" -H "Authorization:token ${GH_TOKEN}" \
+          existing=$("${CURL_API[@]}" -H "Authorization:token ${GH_TOKEN}" \
             -H "Accept: application/vnd.github.v3+json" \
-            "${API}/releases/tags/${TAG}" | jq -r '.id // empty')
-          if [ -n "${existingId}" ]; then
-            echo "Deleting existing release ${existingId} for tag ${TAG}"
-            "${CURL_API[@]}" -X DELETE -H "Authorization:token ${GH_TOKEN}" \
-              "${API}/releases/${existingId}"
-          fi
-          # Remove the git tag ref too (ignore if it doesn't exist).
-          "${CURL_API[@]}" -X DELETE -H "Authorization:token ${GH_TOKEN}" \
-            "${API}/git/refs/tags/${TAG}" || true
+            "${API}/releases/tags/${TAG}")
+          existingId=$(echo "${existing}" | jq -r '.id // empty')
+          existingAssets=$(echo "${existing}" | jq -c '.assets // []')
         fi
 
-        createResponse=$("${CURL_API[@]}" -X POST \
-          -H "Accept: application/vnd.github.v3+json" \
-          -H "Authorization:token ${GH_TOKEN}" \
-          "${API}/releases" \
-          -d "$(jq -n \
-            --arg tag "${TAG}" \
-            --arg name "${RELEASE_NAME}" \
-            --arg commit "${GITHUB_SHA}" \
-            '{tag_name: $tag, target_commitish: $commit, draft: false, name: $name, prerelease: true}')")
-        id=$(echo "${createResponse}" | jq -r '.id // empty')
-        if [ -z "${id}" ]; then
-          echo "Failed to create release:" >&2
-          echo "${createResponse}" >&2
-          exit 1
+        if [ -n "${existingId}" ]; then
+          echo "Reusing existing release ${existingId} for tag ${TAG}"
+          id="${existingId}"
+        else
+          createResponse=$("${CURL_API[@]}" -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization:token ${GH_TOKEN}" \
+            "${API}/releases" \
+            -d "$(jq -n \
+              --arg tag "${TAG}" \
+              --arg name "${RELEASE_NAME}" \
+              --arg commit "${GITHUB_SHA}" \
+              '{tag_name: $tag, target_commitish: $commit, draft: false, name: $name, prerelease: true}')")
+          id=$(echo "${createResponse}" | jq -r '.id // empty')
+          if [ -z "${id}" ]; then
+            echo "Failed to create release:" >&2
+            echo "${createResponse}" >&2
+            exit 1
+          fi
+        fi
+
+        # Asset names must be unique within a release, and a nightly VSIX has the
+        # same filename every run — so the replacement is uploaded under a temp
+        # name and renamed only after the old one is gone. Clear any temp asset
+        # left behind by a previously failed run, or this upload would 422.
+        staleId=$(echo "${existingAssets}" | jq -r --arg n "${VSIX}.new" \
+          '.[] | select(.name == $n) | .id' | head -n 1)
+        if [ -n "${staleId}" ]; then
+          echo "Removing stale temp asset ${staleId} (${VSIX}.new)"
+          "${CURL_API[@]}" -X DELETE -H "Authorization:token ${GH_TOKEN}" \
+            "${API}/releases/assets/${staleId}"
         fi
 
         # curl exits 0 on a non-2xx HTTP response, so 'set -e' alone would let a
-        # rejected upload (auth, size limit, rate limit) pass as success. That is
-        # especially bad on the rolling path: the previous nightly has already
-        # been deleted above, so an unchecked failure would leave an assetless
-        # 'nightly' release and a notification linking to a 404.
+        # rejected upload (auth, size limit, rate limit) pass as success, leaving
+        # a release whose artifact silently never arrived.
         uploadResponse=$("${CURL_UPLOAD[@]}" -X POST \
           -H "Authorization:token ${GH_TOKEN}" \
           -H "Content-Type:application/octet-stream" \
           --data-binary "@${VSIX}" \
-          "https://uploads.github.com/repos/${REPO}/releases/${id}/assets?name=${VSIX}")
+          "https://uploads.github.com/repos/${REPO}/releases/${id}/assets?name=${VSIX}.new")
         assetId=$(echo "${uploadResponse}" | jq -r '.id // empty')
         if [ -z "${assetId}" ]; then
           echo "Failed to upload ${VSIX} to release ${id}:" >&2
           echo "${uploadResponse}" >&2
           exit 1
         fi
+
+        # The new artifact is safely uploaded — only now retire the old one.
+        oldId=$(echo "${existingAssets}" | jq -r --arg n "${VSIX}" \
+          '.[] | select(.name == $n) | .id' | head -n 1)
+        if [ -n "${oldId}" ]; then
+          echo "Deleting superseded asset ${oldId} (${VSIX})"
+          "${CURL_API[@]}" -X DELETE -H "Authorization:token ${GH_TOKEN}" \
+            "${API}/releases/assets/${oldId}"
+        fi
+
+        renameResponse=$("${CURL_API[@]}" -X PATCH \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization:token ${GH_TOKEN}" \
+          "${API}/releases/assets/${assetId}" \
+          -d "$(jq -n --arg name "${VSIX}" '{name: $name}')")
+        if [ -z "$(echo "${renameResponse}" | jq -r '.id // empty')" ]; then
+          echo "Failed to rename asset ${assetId} to ${VSIX}:" >&2
+          echo "${renameResponse}" >&2
+          exit 1
+        fi
         echo "Uploaded ${VSIX} as asset ${assetId}"
+
+        # Refresh the reused release's title, and move the tag to this commit so
+        # the rolling tag tracks the newest build. Both happen after a verified
+        # upload, so tag and artifact never disagree on a failed run.
+        if [ -n "${existingId}" ]; then
+          "${CURL_API[@]}" -X PATCH \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization:token ${GH_TOKEN}" \
+            "${API}/releases/${id}" \
+            -d "$(jq -n --arg name "${RELEASE_NAME}" \
+              '{name: $name, draft: false, prerelease: true}')" > /dev/null
+          "${CURL_API[@]}" -X PATCH \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization:token ${GH_TOKEN}" \
+            "${API}/git/refs/tags/${TAG}" \
+            -d "$(jq -n --arg sha "${GITHUB_SHA}" \
+              '{sha: $sha, force: true}')" > /dev/null
+          echo "Moved tag ${TAG} to ${GITHUB_SHA}"
+        fi
 
     - name: "Release Notification"
       shell: bash

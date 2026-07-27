@@ -270,9 +270,20 @@ jobs:
       # Marketplace, so instead of the isPreRelease timestamp suffix they get a
       # '-SNAPSHOT' version (5.13.0-SNAPSHOT). It is valid semver so vsce
       # accepts it, and it makes a nightly VSIX unmistakable next to a release
-      # build of the same version. The bundled LS is built from source
-      # (lsSource defaults to 'local'), so it always matches the extension
-      # version regardless of this.
+      # build of the same version.
+      #
+      # isPreRelease: false is deliberate and does more than drop the timestamp.
+      # It is also exported into the rush build env (actions/build/action.yml),
+      # where common-libs/scripts/package-vsix.js turns it into
+      # 'vsce package --pre-release'. Nightlies are therefore packaged WITHOUT
+      # that flag, on purpose: the flag marks the VSIX as a pre-release build,
+      # which moves whoever installs it onto the Marketplace pre-release channel
+      # for future updates. A nightly is unvetted main, not an opt-in supported
+      # channel, so it should not silently enroll testers in one.
+      #
+      # The bundled LS is built from source (lsSource defaults to 'local'), so
+      # it always matches the extension version, and isPreRelease has no effect
+      # on LS resolution here (that path is gated on lsSource == 'download').
       isPreRelease: false
       snapshot: true
 
