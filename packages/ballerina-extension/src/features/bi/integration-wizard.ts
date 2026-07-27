@@ -27,6 +27,7 @@ import {
 } from "@wso2/ballerina-core";
 import { createBIComponent, createBIProjectPure, openInVSCode } from "../../utils/bi";
 import { schedulePendingArtifact } from "./pending-artifact";
+import { extension } from "../../BalExtensionContext";
 
 /** Bumped whenever the wizard wire contract changes in a way remote hosts must detect. */
 const WIZARD_CAPABILITIES_VERSION = 1;
@@ -137,5 +138,9 @@ export async function cleanupAbandonedScaffolds(): Promise<void> {
 
 /** Version-skew handshake for embedded hosts (see `WizardCapabilitiesResponse`). */
 export function getWizardCapabilities(): WizardCapabilitiesResponse {
-    return { threeStepWizard: true, version: WIZARD_CAPABILITIES_VERSION };
+    return {
+        threeStepWizard: true,
+        version: WIZARD_CAPABILITIES_VERSION,
+        isWorkspaceSupported: extension.ballerinaExtInstance.isWorkspaceSupported,
+    };
 }

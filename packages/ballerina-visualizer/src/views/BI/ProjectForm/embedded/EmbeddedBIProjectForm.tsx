@@ -27,6 +27,7 @@ import { BIProjectForm } from "./integrator-form";
 import { ProjectCreationView } from "./integrator-form/ProjectCreationView";
 import { LibraryCreationView } from "./integrator-form/LibraryCreationView";
 import { CreateProjectChooser } from "./integrator-form/CreateProjectChooser";
+import { StandaloneCreateChooser } from "./integrator-form/StandaloneCreateChooser";
 import { CreateFlowShell } from "./integrator-form/shared/CreateFlowShell";
 import { EmbeddedWsRpc, createCompositeClient, WsCoords } from "./wsRpc";
 import { BiWsClient } from "../../wsManager/WsClient";
@@ -84,6 +85,9 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
     const [biWsClient, setBiWsClient] = useState<BiWsClient | null>(null);
     const [wizardSupport, setWizardSupport] = useState<WizardSupport>("probing");
     const [error, setError] = useState<string | null>(null);
+    // Defaults to true so the `integration`/`library`/`project` modes (which never
+    // probe this) never accidentally fall back; only `create` mode reads it.
+    const [workspaceSupported, setWorkspaceSupported] = useState(true);
 
     useEffect(() => {
         let cancelled = false;
@@ -118,6 +122,7 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
                         if (!cancelled && capabilities?.threeStepWizard) {
                             setBiWsClient(wizardClient);
                             setWizardSupport("supported");
+                            setWorkspaceSupported(capabilities.isWorkspaceSupported);
                             wizardOk = true;
                         }
                     } catch (probeError) {
@@ -208,11 +213,19 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
             <WsClientProvider wsClient={rpcClient}>
                 <QueryClientProvider client={queryClient}>
                     <CloudContextProvider>
-                        <CreateProjectChooser
-                            biWsClient={biWsClient}
-                            ballerinaUnavailable={ballerinaUnavailable}
-                            onBack={onBack}
-                        />
+                        {workspaceSupported ? (
+                            <CreateProjectChooser
+                                biWsClient={biWsClient}
+                                ballerinaUnavailable={ballerinaUnavailable}
+                                onBack={onBack}
+                            />
+                        ) : (
+                            <StandaloneCreateChooser
+                                biWsClient={biWsClient}
+                                ballerinaUnavailable={ballerinaUnavailable}
+                                onBack={onBack}
+                            />
+                        )}
                     </CloudContextProvider>
                 </QueryClientProvider>
             </WsClientProvider>

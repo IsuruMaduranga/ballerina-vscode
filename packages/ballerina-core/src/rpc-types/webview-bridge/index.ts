@@ -195,6 +195,10 @@ export interface CreateIntegrationRequest {
 export interface WizardCapabilitiesResponse {
     threeStepWizard: boolean;
     version: number;
+    /** Whether the connected Ballerina distribution supports projects/workspaces
+     *  (2201.13.0+). When false, the unified Create flow must fall back to
+     *  standalone integration/library creation instead of the project chooser. */
+    isWorkspaceSupported: boolean;
 }
 
 /** Resolves the file the wizard's step-3 artifact form should target. */
