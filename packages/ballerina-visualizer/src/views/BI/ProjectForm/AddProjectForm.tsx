@@ -17,21 +17,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Icon, Typography } from "@wso2/ui-toolkit";
+import { Button, Typography } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
-import {
-    PageWrapper,
-    FormContainer,
-    TitleContainer,
-    ScrollableContent,
-    ButtonWrapper,
-    IconButton,
-} from "./styles";
 import { AddProjectFormFields } from "./AddProjectFormFields";
 import { AddProjectFormData } from "./types";
 import { isFormValidAddProject, joinPath, sanitizeOrgHandle, sanitizePackageName, splitPath } from "./utils";
 import { useRealtimeProjectPathValidation } from "../CreateIntegrationWizard/hooks/useRealtimeProjectPathValidation";
 import { ValidateProjectFormErrorField } from "@wso2/ballerina-core";
+import { CreateIntegrationWizard } from "../CreateIntegrationWizard";
+import { ProjectContext } from "../CreateIntegrationWizard/types";
+import { BiWsClientProvider } from "../wsManager/WsClientContext";
+import { CreateFlowShell } from "./embedded/integrator-form/shared/CreateFlowShell";
+import { FormFooter } from "./embedded/integrator-form/shared/FormPageLayout";
 export function AddProjectForm() {
     const { rpcClient } = useRpcContext();
     const [formData, setFormData] = useState<AddProjectFormData>({
@@ -44,6 +41,9 @@ export function AddProjectForm() {
     });
     const [isInProject, setIsInProject] = useState<boolean>(false);
     const [addNewAfterConvert, setAddNewAfterConvert] = useState<boolean>(false);
+    // "chooser" = pick project + starting point; "integration" = the full Create
+    // Integration wizard mounted in place (library stays inline on the chooser).
+    const [screen, setScreen] = useState<"chooser" | "integration">("chooser");
     const [targetPath, setTargetPath] = useState<string>("");
     // Convert flow: the destination is user-selectable. `convertBaseDir` is the
     // parent location (defaults to the current integration's parent) and the
@@ -60,6 +60,11 @@ export function AddProjectForm() {
     const resourceTypeLabel = formData.isLibrary ? "Library" : "Integration";
     const isConvert = !isInProject;
     const isConvertAndAdd = isConvert && addNewAfterConvert;
+    // Whether a starting point (integration/library) is being added (vs a plain convert).
+    const isAddingComponent = isInProject || addNewAfterConvert;
+    // Integration is created through the full wizard (next screen), matching the
+    // initial Create experience; a library is configured inline and submitted here.
+    const routeToWizard = isAddingComponent && !formData.isLibrary;
 
     // The name-derived default for the destination folder segment.
     const autoConvertDirName = formData.projectHandle?.trim()
@@ -148,6 +153,50 @@ export function AddProjectForm() {
         }
     };
 
+    // The project the wizard adds the new integration into: the existing workspace
+    // when adding from within a project, or a brand-new workspace created by
+    // converting the current standalone integration (the wizard performs the
+    // convert-and-add on submit).
+    const integrationProjectContext: ProjectContext = isInProject
+        ? { isNewProject: false, workspacePath: targetPath }
+        : {
+            isNewProject: true,
+            workspacePath: convertFullPath,
+            workspaceName: formData.workspaceName?.trim() || undefined,
+            convertToWorkspace: true,
+        };
+
+    // Convert-flow "Next" is disabled until the project name + a valid location are set;
+    // the add-from-workspace flow has no project fields, so it is always enabled.
+    const nextDisabled =
+        isLoading ||
+        (isConvert &&
+            (!formData.workspaceName?.trim() ||
+                !convertBaseDir.trim() ||
+                !effectiveConvertDirName ||
+                !!convertPathError ||
+                !!projectNameValidationError));
+
+    /** Chooser → integration wizard. In the convert flow the project name + location
+     *  are captured (and validated) here first; the wizard then owns naming and
+     *  configuring the integration and performs the convert-and-add on submit. */
+    const handleNext = () => {
+        if (isConvert) {
+            if (!formData.workspaceName?.trim()) {
+                setProjectNameValidationError("Project name is required");
+                return;
+            }
+            if (!convertBaseDir.trim() || !effectiveConvertDirName) {
+                setConvertPathError("Please select a location for your project");
+                return;
+            }
+            if (convertPathError) {
+                return;
+            }
+        }
+        setScreen("integration");
+    };
+
     const handleAddProject = async () => {
         setIsLoading(true);
         setPathValidationError(null);
@@ -228,51 +277,65 @@ export function AddProjectForm() {
         rpcClient.getVisualizerRpcClient().goBack();
     };
 
+    if (screen === "integration") {
+        return (
+            <CreateFlowShell
+                title="New Integration"
+                subtitle={isInProject ? undefined : `In project ${formData.workspaceName?.trim() || "your new project"}`}
+                onBack={() => setScreen("chooser")}
+                bodyFill
+                fill
+            >
+                <BiWsClientProvider onBack={() => setScreen("chooser")}>
+                    <CreateIntegrationWizard embedded showHeader={false} projectContext={integrationProjectContext} />
+                </BiWsClientProvider>
+            </CreateFlowShell>
+        );
+    }
+
+    const chooserTitle = isInProject
+        ? `Add New ${resourceTypeLabel}`
+        : isConvertAndAdd
+            ? `Convert to Project & Add New ${resourceTypeLabel}`
+            : "Convert to Project";
+    const chooserSubtitle = isInProject
+        ? "Add an integration or library to your project."
+        : "Organize your current integration inside a project.";
+
     return (
-        <PageWrapper>
-            <FormContainer>
-                <TitleContainer>
-                    <IconButton onClick={goBack}>
-                        <Icon name="bi-arrow-back" iconSx={{ color: "var(--vscode-foreground)" }} />
-                    </IconButton>
-                    <Typography variant="h2">
-                        {isInProject
-                            ? `Add New ${resourceTypeLabel}`
-                            : isConvertAndAdd
-                                ? `Convert to Project & Add New ${resourceTypeLabel}`
-                                : "Convert to Project"}
+        <CreateFlowShell title={chooserTitle} subtitle={chooserSubtitle} onBack={goBack} fill>
+            <AddProjectFormFields
+                formData={formData}
+                onFormDataChange={handleFormDataChange}
+                isInProject={isInProject}
+                addNewAfterConvert={addNewAfterConvert}
+                onAddNewAfterConvertChange={setAddNewAfterConvert}
+                packageNameValidationError={packageNameValidationError || undefined}
+                projectNameValidationError={projectNameValidationError || undefined}
+                convertPath={convertFullPath}
+                onConvertPathChange={handleConvertPathChange}
+                onConvertPathSelect={handleConvertPathSelect}
+                convertPathError={convertPathError || undefined}
+            />
+
+            <FormFooter>
+                {isInProject && pathValidationError && (
+                    <Typography
+                        variant="body2"
+                        sx={{
+                            color: "var(--vscode-errorForeground)",
+                            marginRight: "16px",
+                            flex: 1,
+                        }}
+                    >
+                        {pathValidationError}
                     </Typography>
-                </TitleContainer>
-
-                <ScrollableContent>
-                    <AddProjectFormFields
-                        formData={formData}
-                        onFormDataChange={handleFormDataChange}
-                        isInProject={isInProject}
-                        addNewAfterConvert={addNewAfterConvert}
-                        onAddNewAfterConvertChange={setAddNewAfterConvert}
-                        packageNameValidationError={packageNameValidationError || undefined}
-                        projectNameValidationError={projectNameValidationError || undefined}
-                        convertPath={convertFullPath}
-                        onConvertPathChange={handleConvertPathChange}
-                        onConvertPathSelect={handleConvertPathSelect}
-                        convertPathError={convertPathError || undefined}
-                    />
-                </ScrollableContent>
-
-                <ButtonWrapper>
-                    {isInProject && pathValidationError && (
-                        <Typography 
-                            variant="body2" 
-                            sx={{ 
-                                color: "var(--vscode-errorForeground)", 
-                                marginRight: "16px",
-                                flex: 1
-                            }}
-                        >
-                            {pathValidationError}
-                        </Typography>
-                    )}
+                )}
+                {routeToWizard ? (
+                    <Button disabled={nextDisabled} onClick={handleNext} appearance="primary">
+                        Next
+                    </Button>
+                ) : (
                     <Button
                         disabled={!isFormValidAddProject(formData, isInProject, addNewAfterConvert) || isLoading || (isConvert && !!convertPathError)}
                         onClick={handleAddProject}
@@ -294,8 +357,8 @@ export function AddProjectForm() {
                                     : "Convert to Project"
                         )}
                     </Button>
-                </ButtonWrapper>
-            </FormContainer>
-        </PageWrapper>
+                )}
+            </FormFooter>
+        </CreateFlowShell>
     );
 }

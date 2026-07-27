@@ -108,6 +108,7 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
         createDirectory: true,
         newProject: params.project.newProject,
         workspaceName: params.project.workspaceName,
+        convertToWorkspace: params.project.convertToWorkspace,
     };
     const { packageRoot, openRoot } = await createBIComponent(projectRequest);
 

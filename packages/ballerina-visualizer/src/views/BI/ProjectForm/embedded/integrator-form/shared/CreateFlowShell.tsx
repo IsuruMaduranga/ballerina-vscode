@@ -37,14 +37,14 @@ import {
  * body can own its own scroll — letting every screen (chooser, wizard, library)
  * live inside one consistent, bounded frame.
  */
-const ShellBackdrop = styled.div`
-    height: 100vh;
+const ShellBackdrop = styled.div<{ fill?: boolean }>`
+    height: ${(props: { fill?: boolean }) => (props.fill ? "100%" : "100vh")};
     overflow: hidden;
     padding: 28px 30px 24px;
     box-sizing: border-box;
     background:
-        radial-gradient(circle at 90% 0%, color-mix(in srgb, var(--wso2-brand-accent) 10%, transparent) 0%, transparent 34%),
-        radial-gradient(circle at 10% 100%, color-mix(in srgb, var(--wso2-brand-primary) 8%, transparent) 0%, transparent 40%),
+        radial-gradient(circle at 90% 0%, color-mix(in srgb, var(--wso2-brand-accent, transparent) 10%, transparent) 0%, transparent 34%),
+        radial-gradient(circle at 10% 100%, color-mix(in srgb, var(--wso2-brand-primary, transparent) 8%, transparent) 0%, transparent 40%),
         var(--vscode-editor-background);
 `;
 
@@ -78,6 +78,12 @@ export interface CreateFlowShellProps {
      * width-constrained, centered content (used by the chooser and library form).
      */
     bodyFill?: boolean;
+    /**
+     * Fills the parent's height (100%) instead of the viewport (100vh). Used when
+     * the shell is mounted inside a bounded native visualizer view rather than as
+     * the top-level welcome webview, so it doesn't overflow its wrapper.
+     */
+    fill?: boolean;
     children: ReactNode;
 }
 
@@ -87,9 +93,9 @@ export interface CreateFlowShellProps {
  * subtitle), so moving between the project chooser, the integration wizard, and
  * the library form feels like one continuous flow rather than separate forms.
  */
-export function CreateFlowShell({ title, subtitle, onBack, bodyFill, children }: CreateFlowShellProps) {
+export function CreateFlowShell({ title, subtitle, onBack, bodyFill, fill, children }: CreateFlowShellProps) {
     return (
-        <ShellBackdrop>
+        <ShellBackdrop fill={fill}>
             <ShellContainer>
                 <FormPanel>
                     <FormPanelHeader>

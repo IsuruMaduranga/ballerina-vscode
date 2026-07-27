@@ -86,6 +86,41 @@ export function resolveBiBridgeBootstrap(): WebviewTransportBootstrap {
 }
 
 /**
+ * Returns the VS Code webview API, reusing the single instance shared across this
+ * page rather than calling `acquireVsCodeApi()` again.
+ *
+ * The API can only be acquired ONCE per webview. In the native visualizer the main
+ * RPC client (via ballerina-core's `vscode` singleton) has already acquired it and
+ * cached it on `globalThis.__ballerinaVsCodeApi`; the giga-bridge transport would
+ * otherwise call the raw `acquireVsCodeApi()` a second time and throw
+ * "An instance of the VS Code API has already been acquired", blocking proxy mode.
+ * We hand the transport this resolver so it reuses the shared handle (and populates
+ * it if we happen to be first), keeping the singleton mutually compatible.
+ */
+function resolveSharedVsCodeApi(): unknown {
+    const g = globalThis as {
+        __ballerinaVsCodeApi?: unknown;
+        acquireVsCodeApi?: () => unknown;
+    };
+    if (g.__ballerinaVsCodeApi) {
+        return g.__ballerinaVsCodeApi;
+    }
+    if (typeof g.acquireVsCodeApi === "function") {
+        try {
+            const api = g.acquireVsCodeApi();
+            if (api) {
+                g.__ballerinaVsCodeApi = api;
+            }
+            return api;
+        } catch {
+            // Already acquired elsewhere without sharing — nothing more we can do.
+            return undefined;
+        }
+    }
+    return undefined;
+}
+
+/**
  * The migrated-forms WS manager client. One flat client over the shared
  * giga-bridge transport, mirroring the integrator's `WsClient`: project-creation
  * + import-migration request/notify methods plus the streaming subscriptions the
@@ -107,6 +142,9 @@ export class BiWsClient {
             mode: bootstrap.mode,
             server: bootstrap.wsServer,
             port: bootstrap.wsPort,
+            // Reuse the already-acquired VS Code API instead of re-acquiring (which
+            // throws in the native visualizer, where the main RPC client owns it).
+            acquireVsCodeApi: resolveSharedVsCodeApi as () => any,
         });
         this.transport.subscribe(
             (message) => this.handleIncomingMessage(message),

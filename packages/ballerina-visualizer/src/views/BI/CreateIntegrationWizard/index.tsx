@@ -487,6 +487,7 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
                     directoryName: effectiveDirectoryName,
                     newProject: projectContext?.isNewProject,
                     workspaceName: projectContext?.workspaceName,
+                    convertToWorkspace: projectContext?.convertToWorkspace,
                 },
                 artifact,
             });

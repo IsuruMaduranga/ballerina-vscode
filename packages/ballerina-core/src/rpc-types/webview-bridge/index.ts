@@ -150,7 +150,7 @@ export interface IntegrationProjectParams {
     projectPath: string;
     /** Editable folder name (last path segment), decoupled from the package name. */
     directoryName: string;
-a    /**
+    /**
      * When true, `projectPath` is a brand-new Ballerina workspace root: the
      * workspace is scaffolded there and the integration package created inside it
      * (always-workspace model of the unified Create flow). When false/absent, the
@@ -159,6 +159,15 @@ a    /**
     newProject?: boolean;
     /** Display name (title) for the new workspace when `newProject` is true. */
     workspaceName?: string;
+    /**
+     * When true, the currently open standalone integration is converted into a new
+     * workspace at `projectPath` (the existing package is moved inside it) before
+     * the new integration package is created — used by the "Convert to Project &
+     * add a new integration" flow so it goes through the same wizard as the initial
+     * Create experience. Implies a new workspace, so `projectPath` must not already
+     * be a project.
+     */
+    convertToWorkspace?: boolean;
 }
 
 /**

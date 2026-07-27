@@ -34,6 +34,13 @@ export interface ProjectContext {
     workspacePath: string;
     /** Display name (title) for the workspace when `isNewProject` is true. */
     workspaceName?: string;
+    /**
+     * When true, the currently open standalone integration is converted into a new
+     * workspace at `workspacePath` (the existing package is moved inside it) before
+     * this artifact is added — used by the "Convert to Project & add a new
+     * integration" flow so it runs through this same wizard.
+     */
+    convertToWorkspace?: boolean;
 }
 
 /** Step-1 form state. */

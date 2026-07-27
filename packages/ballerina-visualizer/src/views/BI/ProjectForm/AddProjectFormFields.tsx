@@ -257,18 +257,27 @@ export function AddProjectFormFields({
                         onChange={(isLibrary) => onFormDataChange({ isLibrary })}
                     />
 
-                    <FieldGroup>
-                        <TextField
-                            onTextChange={handleIntegrationName}
-                            value={formData.integrationName}
-                            label={`${resourceTypeLabel} Name`}
-                            placeholder={`Enter a ${resourceTypeLabelLower} name`}
-                            autoFocus={isInProject}
-                            onFocus={(e) => (e.target as HTMLInputElement).select()}
-                            required={true}
-                            errorMsg={integrationNameError || ""}
-                        />
-                    </FieldGroup>
+                    {/* An integration is named and configured in the dedicated wizard
+                        (the next step), matching the initial Create experience — so only
+                        the library collects its name/package details inline here. */}
+                    {formData.isLibrary ? (
+                        <FieldGroup>
+                            <TextField
+                                onTextChange={handleIntegrationName}
+                                value={formData.integrationName}
+                                label={`${resourceTypeLabel} Name`}
+                                placeholder={`Enter a ${resourceTypeLabelLower} name`}
+                                autoFocus={isInProject}
+                                onFocus={(e) => (e.target as HTMLInputElement).select()}
+                                required={true}
+                                errorMsg={integrationNameError || ""}
+                            />
+                        </FieldGroup>
+                    ) : (
+                        <Description>
+                            You'll name and configure your integration in the next step.
+                        </Description>
+                    )}
 
                     {/* Package configuration is only relevant for a library (a publishable
                         package); an integration derives these automatically. */}

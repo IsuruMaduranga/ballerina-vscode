@@ -42,7 +42,7 @@ import { ModulePart, STKindChecker } from "@wso2/syntax-tree";
 import { URI } from "vscode-uri";
 import { debug } from "./logger";
 import { parse } from "@iarna/toml";
-import { getProjectTomlValues, isLibraryProject, VALIDATOR_PACKAGE_NAME } from "./config";
+import { getProjectTomlValues, VALIDATOR_PACKAGE_NAME } from "./config";
 import { extension } from "../BalExtensionContext";
 import { scheduleMigrationEnhancement, writeEnhanceToml } from "../features/ai/migration/orchestrator";
 import { runBackgroundTerminalCommand } from "./runCommand";
@@ -827,6 +827,58 @@ async function addComponentToExistingWorkspace(
 }
 
 /**
+ * Converts the currently open standalone integration into a new workspace at
+ * `projectRequest.projectPath` and creates the requested new integration package
+ * inside it. The existing package is moved into the new workspace folder (matching
+ * {@link convertProjectToWorkspace}), the workspace `Ballerina.toml` is written
+ * listing both packages, then the new configured package is scaffolded and
+ * registered. Used by the "Convert to Project & add a new integration" flow so it
+ * goes through the same wizard (and pending-artifact reload) as the initial Create
+ * experience. Returns the new package root (for pending-artifact scheduling) and
+ * the workspace root (to open).
+ */
+async function convertAndAddComponent(projectRequest: ProjectRequest): Promise<{ packageRoot: string; openRoot: string }> {
+    const currentProjectPath = StateMachine.context().projectPath;
+    if (!currentProjectPath) {
+        throw new Error('No integration is open to convert into a project.');
+    }
+
+    const workspaceRoot = projectRequest.projectPath;
+
+    // The current integration is moved into the new project directory, so the
+    // destination cannot be the integration itself or a directory inside it.
+    const normalizedNew = path.resolve(workspaceRoot);
+    const normalizedCurrent = path.resolve(currentProjectPath);
+    if (normalizedNew === normalizedCurrent || normalizedNew.startsWith(normalizedCurrent + path.sep)) {
+        throw new Error('The project location cannot be inside the integration being converted. Please choose a different location.');
+    }
+
+    // Never clobber an existing project: converting always creates a fresh workspace.
+    const existing = classifyBallerinaProject(workspaceRoot);
+    if (existing === 'workspace' || existing === 'package') {
+        throw new Error('A project already exists at the selected location');
+    }
+
+    // Create the workspace folder and move the current integration inside it.
+    fs.mkdirSync(workspaceRoot, { recursive: true });
+    const existingProjectDirName = path.basename(currentProjectPath);
+    const movedProjectPath = path.join(workspaceRoot, existingProjectDirName);
+    fs.renameSync(currentProjectPath, movedProjectPath);
+
+    // Write the workspace toml (listing the moved package) and editor settings.
+    createWorkspaceToml(workspaceRoot, projectRequest.workspaceName ?? path.basename(workspaceRoot), existingProjectDirName);
+    createVSCodeSettings(workspaceRoot);
+
+    // Scaffold the new configured integration package inside the workspace and
+    // register it in the workspace toml (collision-resolved against the moved one).
+    const base = projectRequest.directoryName?.trim() || sanitizeName(projectRequest.packageName);
+    const packageFolder = resolveAvailablePackageFolder(workspaceRoot, base);
+    const { packageRoot } = await addComponentToExistingWorkspace(workspaceRoot, packageFolder, projectRequest);
+
+    return { packageRoot, openRoot: workspaceRoot };
+}
+
+/**
  * Scaffolds a brand-new Ballerina workspace at `projectRequest.projectPath` and
  * creates the requested integration/library package inside it. Used by the
  * unified Create flow's always-workspace model: a fresh project (workspace) is
@@ -878,6 +930,9 @@ packages = []
  * root).
  */
 export async function createBIComponent(projectRequest: ProjectRequest): Promise<{ packageRoot: string; openRoot: string }> {
+    if (projectRequest.convertToWorkspace) {
+        return convertAndAddComponent(projectRequest);
+    }
     if (projectRequest.newProject) {
         return createComponentInNewWorkspace(projectRequest);
     }
