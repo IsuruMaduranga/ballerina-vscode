@@ -104,10 +104,8 @@ jobs:
       - name: Cache Ballerina dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: /home/runner/.ballerina/repositories/
-          key: ${{ runner.os }}-ballerina-${{ matrix.branch }}-${{ hashFiles('**/gradle.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-ballerina-${{ matrix.branch }}-
+          path: packages/ballerina-language-server/build/ballerina_dependencies
+          key: ${{ runner.os }}-ballerina-${{ matrix.branch }}-${{ hashFiles('packages/ballerina-language-server/build-config/ballerina_dependencies/**') }}
 
       - name: Pack with Gradle
         env:
@@ -197,10 +195,8 @@ jobs:
       - name: Cache Ballerina dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: C:\Users\runneradmin\.ballerina\repositories\
-          key: ${{ runner.os }}-ballerina-${{ matrix.branch }}-${{ hashFiles('**/gradle.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-ballerina-${{ matrix.branch }}-
+          path: packages/ballerina-language-server/build/ballerina_dependencies
+          key: ${{ runner.os }}-ballerina-${{ matrix.branch }}-${{ hashFiles('packages/ballerina-language-server/build-config/ballerina_dependencies/**') }}
 
       - name: Build with Gradle
         shell: cmd

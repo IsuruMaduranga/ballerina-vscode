@@ -394,6 +394,15 @@ public class PackageUtil {
             String version = FORCE_OFFLINE
                     ? cachedVersion(moduleInfo.org(), moduleInfo.packageName())
                     : RemoteCentral.getInstance().latestPackageVersion(moduleInfo.org(), moduleInfo.packageName());
+            // Under FORCE_OFFLINE a null version means the package was never provisioned into the build-owned
+            // cache. Fail loudly (matching the FORCE_OFFLINE contract above) so a missing lock entry is
+            // self-diagnosing, rather than silently degrading into an empty model downstream.
+            if (FORCE_OFFLINE && version == null) {
+                throw new IllegalStateException(String.format(
+                        "Package '%s/%s' is not provisioned in the offline test cache. Add it to "
+                                + "build-config/ballerina_dependencies (Ballerina.toml) and regenerate Dependencies.toml.",
+                        moduleInfo.org(), moduleInfo.packageName()));
+            }
             return new ModuleInfo(moduleInfo.org(), moduleInfo.packageName(), moduleInfo.moduleName(), version);
         }
         return moduleInfo;
