@@ -16,11 +16,11 @@
  * under the License.
  */
 
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { AgentRunStatus, AgentRunState, ChatNotify, agentRunStatusChanged, SHARED_COMMANDS } from '@wso2/ballerina-core';
 import { RPCLayer } from '../../../RPCLayer';
 import { VisualizerWebview } from '../../../views/visualizer/webview';
+import { describeToolCall } from './toolLabels';
 
 /** How long a terminal (completed/error) status stays visible before resetting to idle. */
 const TERMINAL_STATE_RESET_MS = 20000;
@@ -223,53 +223,6 @@ class AgentStatusManager {
             clearTimeout(this.resetTimer);
             this.resetTimer = undefined;
         }
-    }
-}
-
-function describeToolCall(toolName: string, toolInput?: any): string {
-    const file = typeof toolInput?.file_path === 'string' ? path.basename(toolInput.file_path) : undefined;
-    switch (toolName) {
-        case 'file_write':
-        case 'file_edit':
-        case 'file_batch_edit':
-            return file ? `Editing ${file}` : 'Editing files';
-        case 'file_read':
-            return file ? `Reading ${file}` : 'Reading files';
-        case 'getCompilationErrors':
-            return 'Checking for errors';
-        case 'runTests':
-            return 'Running tests';
-        case 'runBallerinaPackage':
-            return 'Running the integration';
-        case 'getServiceLogs':
-            return 'Reading service logs';
-        case 'stopBallerinaService':
-            return 'Stopping a service';
-        case 'hurlRunnerTool':
-            return 'Testing HTTP endpoints';
-        case 'LibrarySearchTool':
-        case 'LibraryGetTool':
-            return 'Looking up libraries';
-        case 'ConnectorGeneratorTool':
-            return 'Generating a connector';
-        case 'ConfigCollector':
-            return 'Managing configuration';
-        case 'Clarify':
-            return 'Preparing a question';
-        case 'TaskWrite':
-            return 'Planning tasks';
-        case 'web_search':
-            return 'Searching the web';
-        case 'web_fetch':
-            return 'Reading a web page';
-        case 'invoke_skill':
-            return 'Loading a skill';
-        default:
-            if (toolName.startsWith('mcp__')) {
-                const parts = toolName.split('__');
-                return `Using ${parts[2] ?? toolName}`;
-            }
-            return `Running ${toolName}`;
     }
 }
 
