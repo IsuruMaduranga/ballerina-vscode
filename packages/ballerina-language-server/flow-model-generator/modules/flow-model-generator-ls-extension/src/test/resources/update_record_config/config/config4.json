@@ -4,7 +4,7 @@
     "org": "ballerina",
     "module": "http",
     "packageName": "http",
-    "version": "2.16.4"
+    "version": "2.16.6"
   },
   "typeConstraint": "ClientAuthConfig",
   "expr": "{tokenUrl: \"http://localhost:9090/token\", clientId: \"my-client-id\", clientSecret: \"secret\"}",
@@ -41,7 +41,7 @@
           "name": "CredentialsConfig",
           "orgName": "ballerina",
           "moduleName": "http",
-          "version": "2.16.4"
+          "version": "2.16.6"
         },
         "defaultable": false,
         "isRestType": false,
@@ -69,7 +69,7 @@
           "name": "BearerTokenConfig",
           "orgName": "ballerina",
           "moduleName": "http",
-          "version": "2.16.4"
+          "version": "2.16.6"
         },
         "defaultable": false,
         "isRestType": false,
@@ -439,7 +439,7 @@
           "name": "JwtIssuerConfig",
           "orgName": "ballerina",
           "moduleName": "http",
-          "version": "2.16.4"
+          "version": "2.16.6"
         },
         "defaultable": false,
         "isRestType": false,
@@ -1503,7 +1503,7 @@
           "name": "OAuth2ClientCredentialsGrantConfig",
           "orgName": "ballerina",
           "moduleName": "http",
-          "version": "2.16.4"
+          "version": "2.16.6"
         },
         "defaultable": false,
         "isRestType": false,
@@ -2730,7 +2730,7 @@
           "name": "OAuth2PasswordGrantConfig",
           "orgName": "ballerina",
           "moduleName": "http",
-          "version": "2.16.4"
+          "version": "2.16.6"
         },
         "defaultable": false,
         "isRestType": false,
@@ -3810,7 +3810,7 @@
           "name": "OAuth2RefreshTokenGrantConfig",
           "orgName": "ballerina",
           "moduleName": "http",
-          "version": "2.16.4"
+          "version": "2.16.6"
         },
         "defaultable": false,
         "isRestType": false,
@@ -4890,7 +4890,7 @@
           "name": "OAuth2JwtBearerGrantConfig",
           "orgName": "ballerina",
           "moduleName": "http",
-          "version": "2.16.4"
+          "version": "2.16.6"
         },
         "defaultable": false,
         "isRestType": false,

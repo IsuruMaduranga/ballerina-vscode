@@ -3,7 +3,7 @@
   "typeMembers": [
     {
       "type": "HttpServiceConfig",
-      "packageInfo": "ballerina:http:2.16.4",
+      "packageInfo": "ballerina:http:2.16.6",
       "kind": "RECORD_TYPE",
       "selected": true
     }
@@ -55,7 +55,7 @@
                 "name": "Compression",
                 "orgName": "ballerina",
                 "moduleName": "http",
-                "version": "2.16.4"
+                "version": "2.16.6"
               },
               "defaultable": true,
               "documentation": "The status of compression",
@@ -87,7 +87,7 @@
             "name": "CompressionConfig",
             "orgName": "ballerina",
             "moduleName": "http",
-            "version": "2.16.4"
+            "version": "2.16.6"
           },
           "defaultable": true,
           "documentation": "The status of compression",
@@ -125,7 +125,7 @@
             "name": "Chunking",
             "orgName": "ballerina",
             "moduleName": "http",
-            "version": "2.16.4"
+            "version": "2.16.6"
           },
           "defaultable": true,
           "documentation": "Configures the chunking behaviour for the service",
@@ -226,7 +226,7 @@
             "name": "CorsConfig",
             "orgName": "ballerina",
             "moduleName": "http",
-            "version": "2.16.4"
+            "version": "2.16.6"
           },
           "defaultable": true,
           "documentation": "The cross origin resource sharing configurations for the service",
@@ -248,7 +248,7 @@
                       "name": "FileUserStoreConfig",
                       "orgName": "ballerina",
                       "moduleName": "http",
-                      "version": "2.16.4"
+                      "version": "2.16.6"
                     },
                     "defaultable": false,
                     "documentation": "",
@@ -296,7 +296,7 @@
                   "name": "FileUserStoreConfigWithScopes",
                   "orgName": "ballerina",
                   "moduleName": "http",
-                  "version": "2.16.4"
+                  "version": "2.16.6"
                 },
                 "defaultable": false,
                 "isRestType": false,
@@ -564,7 +564,7 @@
                       "name": "LdapUserStoreConfig",
                       "orgName": "ballerina",
                       "moduleName": "http",
-                      "version": "2.16.4"
+                      "version": "2.16.6"
                     },
                     "defaultable": false,
                     "documentation": "",
@@ -612,7 +612,7 @@
                   "name": "LdapUserStoreConfigWithScopes",
                   "orgName": "ballerina",
                   "moduleName": "http",
-                  "version": "2.16.4"
+                  "version": "2.16.6"
                 },
                 "defaultable": false,
                 "isRestType": false,
@@ -1434,7 +1434,7 @@
                       "name": "JwtValidatorConfig",
                       "orgName": "ballerina",
                       "moduleName": "http",
-                      "version": "2.16.4"
+                      "version": "2.16.6"
                     },
                     "defaultable": false,
                     "documentation": "",
@@ -1482,7 +1482,7 @@
                   "name": "JwtValidatorConfigWithScopes",
                   "orgName": "ballerina",
                   "moduleName": "http",
-                  "version": "2.16.4"
+                  "version": "2.16.6"
                 },
                 "defaultable": false,
                 "isRestType": false,
@@ -2546,7 +2546,7 @@
                       "name": "OAuth2IntrospectionConfig",
                       "orgName": "ballerina",
                       "moduleName": "http",
-                      "version": "2.16.4"
+                      "version": "2.16.6"
                     },
                     "defaultable": false,
                     "documentation": "",
@@ -2594,7 +2594,7 @@
                   "name": "OAuth2IntrospectionConfigWithScopes",
                   "orgName": "ballerina",
                   "moduleName": "http",
-                  "version": "2.16.4"
+                  "version": "2.16.6"
                 },
                 "defaultable": false,
                 "isRestType": false,
@@ -2608,7 +2608,7 @@
               "name": "ListenerAuthConfig",
               "orgName": "ballerina",
               "moduleName": "http",
-              "version": "2.16.4"
+              "version": "2.16.6"
             },
             "defaultable": false,
             "isRestType": false,
@@ -2667,7 +2667,7 @@
         },
         {
           "name": "serviceType",
-          "typeName": "typedesc<ballerina/http:2.16.4:ServiceContract>",
+          "typeName": "typedesc<ballerina/http:2.16.6:ServiceContract>",
           "optional": true,
           "defaultable": false,
           "documentation": "The service object type which defines the service contract. This is auto-generated at compile-time",
