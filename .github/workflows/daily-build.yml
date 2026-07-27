@@ -266,11 +266,15 @@ jobs:
       ballerina: true
       runFastTests: true
       runBalE2ETests: true
-      # Daily builds ship only to a rolling GitHub `nightly` release (never the
-      # Marketplace), so they use the plain package.json version — no timestamp
-      # suffix. The bundled LS is built from source (lsSource defaults to
-      # 'local'), so it always matches the extension version regardless of this.
+      # Daily builds ship only to a rolling GitHub `nightly` release, never the
+      # Marketplace, so instead of the isPreRelease timestamp suffix they get a
+      # '-SNAPSHOT' version (5.13.0-SNAPSHOT). It is valid semver so vsce
+      # accepts it, and it makes a nightly VSIX unmistakable next to a release
+      # build of the same version. The bundled LS is built from source
+      # (lsSource defaults to 'local'), so it always matches the extension
+      # version regardless of this.
       isPreRelease: false
+      snapshot: true
 
   # ─────────────────────────────────────────────────────────────────────────
   # Daily pre-release — publish the extension VSIX as a GitHub pre-release

@@ -31,9 +31,13 @@ runs:
       id: vsix
       run: |
         file=$(ls ${{ inputs.name }}-[0-9]*.[0-9]*.[0-9]*.vsix)
-        fileName=${file##*-}
-        version=${fileName%.*}
         extension=${{ inputs.name }}
+        # Strip the '<name>-' prefix and the '.vsix' suffix rather than cutting
+        # at the last '-': a nightly version carries a '-SNAPSHOT' prerelease id
+        # (ballerina-5.13.0-SNAPSHOT.vsix), which a trailing-dash cut would
+        # reduce to just "SNAPSHOT".
+        version=${file#${extension}-}
+        version=${version%.vsix}
         extensionName="$(echo "$extension" | sed 's/.*/\u&/')"
         # A non-empty `tag` input selects the rolling release (e.g. nightly);
         # otherwise fall back to a unique per-version tag.
