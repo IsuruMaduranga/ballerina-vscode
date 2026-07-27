@@ -67,23 +67,29 @@ runs:
         set -euo pipefail
         API="https://api.github.com/repos/${REPO}"
 
+        # Bounded timeouts so a hung GitHub API call can't stall the job until
+        # the job-level timeout. The metadata calls are small; the asset upload
+        # ships a ~100MB VSIX, so it gets a much larger budget.
+        CURL_API=(curl -sS --connect-timeout 15 --max-time 60)
+        CURL_UPLOAD=(curl -sS --connect-timeout 15 --max-time 900)
+
         # Rolling tag (e.g. nightly): delete the previous release + git tag so
         # the tag always points at the newest build.
         if [ "${ROLLING}" = "true" ]; then
-          existingId=$(curl -sS -H "Authorization:token ${GH_TOKEN}" \
+          existingId=$("${CURL_API[@]}" -H "Authorization:token ${GH_TOKEN}" \
             -H "Accept: application/vnd.github.v3+json" \
             "${API}/releases/tags/${TAG}" | jq -r '.id // empty')
           if [ -n "${existingId}" ]; then
             echo "Deleting existing release ${existingId} for tag ${TAG}"
-            curl -sS -X DELETE -H "Authorization:token ${GH_TOKEN}" \
+            "${CURL_API[@]}" -X DELETE -H "Authorization:token ${GH_TOKEN}" \
               "${API}/releases/${existingId}"
           fi
           # Remove the git tag ref too (ignore if it doesn't exist).
-          curl -sS -X DELETE -H "Authorization:token ${GH_TOKEN}" \
+          "${CURL_API[@]}" -X DELETE -H "Authorization:token ${GH_TOKEN}" \
             "${API}/git/refs/tags/${TAG}" || true
         fi
 
-        createResponse=$(curl -sS -X POST \
+        createResponse=$("${CURL_API[@]}" -X POST \
           -H "Accept: application/vnd.github.v3+json" \
           -H "Authorization:token ${GH_TOKEN}" \
           "${API}/releases" \
@@ -99,11 +105,23 @@ runs:
           exit 1
         fi
 
-        curl -sS -X POST \
+        # curl exits 0 on a non-2xx HTTP response, so 'set -e' alone would let a
+        # rejected upload (auth, size limit, rate limit) pass as success. That is
+        # especially bad on the rolling path: the previous nightly has already
+        # been deleted above, so an unchecked failure would leave an assetless
+        # 'nightly' release and a notification linking to a 404.
+        uploadResponse=$("${CURL_UPLOAD[@]}" -X POST \
           -H "Authorization:token ${GH_TOKEN}" \
           -H "Content-Type:application/octet-stream" \
           --data-binary "@${VSIX}" \
-          "https://uploads.github.com/repos/${REPO}/releases/${id}/assets?name=${VSIX}"
+          "https://uploads.github.com/repos/${REPO}/releases/${id}/assets?name=${VSIX}")
+        assetId=$(echo "${uploadResponse}" | jq -r '.id // empty')
+        if [ -z "${assetId}" ]; then
+          echo "Failed to upload ${VSIX} to release ${id}:" >&2
+          echo "${uploadResponse}" >&2
+          exit 1
+        fi
+        echo "Uploaded ${VSIX} as asset ${assetId}"
 
     - name: "Release Notification"
       shell: bash
