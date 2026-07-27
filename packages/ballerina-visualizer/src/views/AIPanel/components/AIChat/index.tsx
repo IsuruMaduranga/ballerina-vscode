@@ -696,6 +696,14 @@ const AIChat: React.FC = () => {
             // Widget will reappear with accurate data on the next agent turn.
             setContextUsage(null);
             setHasActiveReview(false);
+            // History is trimmed to the checkpoint — re-derive so the reverted turn's chips drop.
+            try {
+                const suggestions = await rpcClient.getAiPanelRpcClient().getLatestFollowupSuggestions();
+                setFollowupSuggestions(suggestions ?? []);
+            } catch (error) {
+                console.error('[AIChat] Failed to refresh follow-up suggestions after restore:', error);
+                setFollowupSuggestions([]);
+            }
         } catch (error) {
             console.error("Failed to restore checkpoint:", error);
         } finally {
