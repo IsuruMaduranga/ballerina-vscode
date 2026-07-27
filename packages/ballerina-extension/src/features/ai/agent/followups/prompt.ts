@@ -22,11 +22,19 @@ import { ANCHOR_ACTIONS } from "./anchors";
 /** How the turn these suggestions belong to ended. */
 export type FollowupSituation = "completed" | "aborted";
 
+/** One message from an earlier turn, as context for the suggestions. */
+export interface RecentExchange {
+    role: "user" | "assistant";
+    text: string;
+}
+
 export interface FollowupPromptInput {
     /** The user's last message that produced the response. */
     userQuery: string;
     /** The assistant's final response text for the completed turn. */
     assistantResponse: string;
+    /** Trimmed transcript of the preceding turns, oldest first, for conversation context. */
+    earlierExchanges?: RecentExchange[];
     /** The generation mode the turn ran in. */
     mode?: string;
     /** How the turn ended; defaults to a normally completed turn. */
@@ -54,6 +62,7 @@ Output:
 - Each suggestion has a "label" (imperative chip text, max ~4 words, e.g. "Add tests") and a "prompt" (a natural first-person message the user would send, e.g. "Add tests for the order service").
 - The "prompt" is spoken by the user, so it is always an instruction and never a question. Never ask the user anything in it, and never carry over a question the Copilot asked.
 - Base every suggestion on what actually happened in this exchange — be specific, never generic filler.
+- Earlier turns, when provided, are background only: use them to understand what has already been built and to avoid repeating it. Suggest next steps for the latest exchange, not for the earlier ones.
 - No duplicates; each must offer a distinct next step.
 - Only include actions that genuinely make sense; one or two strong suggestions beat three padded ones.`;
 
@@ -70,9 +79,16 @@ ${SHARED_RULES}${aborted ? "" : COMPLETED_ONLY_RULE}`;
 }
 
 export function buildFollowupMessages(input: FollowupPromptInput): ModelMessage[] {
-    const { userQuery, assistantResponse, mode, situation = "completed" } = input;
+    const { userQuery, assistantResponse, earlierExchanges, mode, situation = "completed" } = input;
     const responseTag = situation === "aborted" ? "assistant_response_interrupted" : "assistant_response";
-    const userContent = `${mode ? `Mode: ${mode}\n\n` : ""}<user_message>
+    const historyBlock = earlierExchanges?.length
+        ? `<earlier_in_this_conversation>
+${earlierExchanges.map((m) => `${m.role === "user" ? "User message" : "Assistant response"}: ${m.text}`).join("\n\n")}
+</earlier_in_this_conversation>
+
+`
+        : "";
+    const userContent = `${mode ? `Mode: ${mode}\n\n` : ""}${historyBlock}<user_message>
 ${userQuery}
 </user_message>
 

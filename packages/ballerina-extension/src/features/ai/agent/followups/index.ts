@@ -22,7 +22,7 @@ import { workspace } from "vscode";
 import { chatStateStorage } from "../../../../views/ai-panel/chatStateStorage";
 import { CopilotEventHandler } from "../../utils/events";
 import { ANTHROPIC_HAIKU, getAnthropicClient } from "../../utils/ai-client";
-import { buildFollowupMessages, FollowupPromptInput, FollowupSituation } from "./prompt";
+import { buildFollowupMessages, FollowupPromptInput, FollowupSituation, RecentExchange } from "./prompt";
 import { followupSuggestionsSchema, GeneratedFollowupSuggestion } from "./schema";
 
 export { FollowupSituation } from "./prompt";
@@ -31,6 +31,10 @@ const TIMEOUT_MS = 8_000;
 
 /** Below this much partial output an aborted turn gets the Continue chip only, with no model call. */
 const MIN_CHARS_FOR_ABORT = 200;
+
+/** How many earlier turns are passed as context, and how much of each message. */
+const HISTORY_TURNS = 3;
+const MAX_HISTORY_TEXT_CHARS = 1_500;
 
 /** Offered whenever a turn is stopped part-way. */
 const CONTINUE_SUGGESTION: FollowupSuggestion = {
@@ -92,6 +96,7 @@ export function startFollowupSuggestions(turn: FollowupTurn): boolean {
                 ? await generateSuggestions({
                     userQuery,
                     assistantResponse: assistantText,
+                    earlierExchanges: getRecentExchanges(projectRootPath, threadId, messageId),
                     mode: isPlanMode ? "Plan" : "Edit",
                     situation,
                 }, abortSignal)
@@ -192,4 +197,27 @@ function extractAssistantText(messages: any[]): string {
         }
     }
     return parts.join("\n").trim();
+}
+
+/**
+ * Trimmed transcript of the turns before this one, oldest first. Read from the stored generations
+ * rather than the LLM history: `userPrompt` is the bare question, so the codebase block that the
+ * LLM copy carries never has to be stripped back out. Tool calls and results are skipped —
+ * suggestions only need the narrative, and tool payloads would dwarf it.
+ */
+function getRecentExchanges(projectRootPath: string, threadId: string, currentGenerationId: string): RecentExchange[] {
+    // Read the thread directly: getGenerations() would create and persist an empty thread if this
+    // one is no longer in memory, which has cost real chat history before.
+    const generations = chatStateStorage.getWorkspaceState(projectRootPath)?.threads.get(threadId)?.generations ?? [];
+    const transcript: RecentExchange[] = [];
+    for (const generation of generations.filter(g => g.id !== currentGenerationId).slice(-HISTORY_TURNS)) {
+        if (generation.userPrompt) {
+            transcript.push({ role: "user", text: generation.userPrompt.slice(0, MAX_HISTORY_TEXT_CHARS) });
+        }
+        const assistantText = extractAssistantText(generation.modelMessages);
+        if (assistantText) {
+            transcript.push({ role: "assistant", text: assistantText.slice(0, MAX_HISTORY_TEXT_CHARS) });
+        }
+    }
+    return transcript;
 }
