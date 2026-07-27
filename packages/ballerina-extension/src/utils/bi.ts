@@ -1123,6 +1123,18 @@ async function createProjectInWorkspace(params: AddProjectToWorkspaceRequest, wo
     return await createBIProjectPure(projectRequest);
 }
 
+/**
+ * Whether `projectRoot` is already one of the currently open workspace folders.
+ * Exported so callers can choose a live, in-place refresh instead of routing
+ * through `openInVSCode` (which reloads the whole window in this case).
+ */
+export function isAlreadyOpenFolder(projectRoot: string): boolean {
+    const resolvedRoot = path.resolve(projectRoot);
+    return (workspace.workspaceFolders ?? []).some(
+        (folder) => path.resolve(folder.uri.fsPath) === resolvedRoot
+    );
+}
+
 export function openInVSCode(projectRoot: string) {
     const resolvedRoot = path.resolve(projectRoot);
 
@@ -1131,10 +1143,10 @@ export function openInVSCode(projectRoot: string) {
     // the Create Integration wizard) would hang. This happens when the project is
     // created in place inside a directory that is already open. In that case reload
     // the window so the extension re-initialises the folder as a Ballerina project.
-    const alreadyOpen = (workspace.workspaceFolders ?? []).some(
-        (folder) => path.resolve(folder.uri.fsPath) === resolvedRoot
-    );
-    if (alreadyOpen) {
+    // Callers adding a component into a workspace that is ALREADY open should
+    // prefer `isAlreadyOpenFolder` + a live in-place refresh instead of calling
+    // this at all — see `createIntegration` in integration-wizard.ts.
+    if (isAlreadyOpenFolder(resolvedRoot)) {
         commands.executeCommand('workbench.action.reloadWindow');
         return;
     }

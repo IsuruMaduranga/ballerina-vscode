@@ -21,13 +21,15 @@ import * as os from "os";
 import * as path from "path";
 import {
     CreateIntegrationRequest,
+    isSamePath,
     ProjectRequest,
     ScaffoldIntegrationProjectResponse,
     WizardCapabilitiesResponse,
 } from "@wso2/ballerina-core";
-import { createBIComponent, createBIProjectPure, openInVSCode } from "../../utils/bi";
-import { schedulePendingArtifact } from "./pending-artifact";
+import { createBIComponent, createBIProjectPure, isAlreadyOpenFolder, openInVSCode } from "../../utils/bi";
+import { generateArtifactInPlace, schedulePendingArtifact } from "./pending-artifact";
 import { extension } from "../../BalExtensionContext";
+import { StateMachine } from "../../stateMachine";
 
 /** Bumped whenever the wizard wire contract changes in a way remote hosts must detect. */
 const WIZARD_CAPABILITIES_VERSION = 1;
@@ -91,14 +93,20 @@ export async function scaffoldIntegrationProject(): Promise<ScaffoldIntegrationP
 /**
  * Final submit of the Create Integration wizard: creates the real package FRESH
  * at the user's chosen path (the only point at which that path is ever touched),
- * persists the configured first artifact (generated post-reload by
- * `checkAndRunPendingArtifact`), discards the temp staging package, and opens the
- * project — the single terminal window reload of the whole flow.
+ * persists the configured first artifact, discards the temp staging package, and
+ * opens the project.
  *
  * When the chosen path resolves inside an existing Ballerina workspace, the
- * integration is added into that project (registered in the workspace toml) and
- * the workspace — not the new package — is opened. The pending artifact is still
- * scheduled against the new package root so it is generated there post-reload.
+ * integration is added into that project (registered in the workspace toml)
+ * instead of the new package being opened on its own. Two sub-cases:
+ *  - The workspace is ALREADY open in this window (the common in-project "Add
+ *    Integration" case) — no folder switch is needed, so the artifact is
+ *    generated LIVE, in the current session (`generateArtifactInPlace`), with no
+ *    window reload at all. This matches the library-add flow, which has never
+ *    needed a reload either.
+ *  - The workspace is a DIFFERENT, not-currently-open project — opening it is a
+ *    genuine folder switch, so the first artifact is scheduled and generated
+ *    post-reload by `checkAndRunPendingArtifact`, as before.
  */
 export async function createIntegration(params: CreateIntegrationRequest): Promise<void> {
     const projectRequest: ProjectRequest = {
@@ -112,11 +120,27 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
         convertToWorkspace: params.project.convertToWorkspace,
     };
     const { packageRoot, openRoot } = await createBIComponent(projectRequest);
+    cleanupStaging();
+
+    // Live, no-reload path only when `openRoot` is a workspace the extension has
+    // ALREADY activated (not merely a folder VS Code happens to have open — a
+    // brand-new/just-converted workspace at the same path would be open in VS
+    // Code too, but the extension hasn't recognized/activated it yet and still
+    // needs the reload below to do so).
+    const addedIntoActiveWorkspace = isAlreadyOpenFolder(openRoot) && isSamePath(StateMachine.context().workspacePath, openRoot);
+
+    if (addedIntoActiveWorkspace) {
+        if (params.artifact) {
+            await generateArtifactInPlace(packageRoot, openRoot, params.artifact);
+        } else {
+            StateMachine.refreshProjectInfo();
+        }
+        return;
+    }
 
     if (params.artifact) {
         await schedulePendingArtifact(packageRoot, params.artifact);
     }
-    cleanupStaging();
     openInVSCode(openRoot);
 }
 

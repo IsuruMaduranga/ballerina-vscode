@@ -190,6 +190,47 @@ function consumePendingArtifactPayload(projectRoot: string): PendingIntegrationA
 }
 
 /**
+ * Generates a configured first artifact for a package that was just added into a
+ * workspace that is ALREADY open in this window (no folder switch, no reload —
+ * see `createIntegration` in integration-wizard.ts). Unlike `checkAndRunPendingArtifact`,
+ * this runs entirely in the current session: there is no globalState pointer and no
+ * reliance on the `extensionReady` transition.
+ */
+export async function generateArtifactInPlace(
+    packageRoot: string,
+    workspaceRoot: string,
+    payload: PendingIntegrationArtifactPayload
+): Promise<void> {
+    const label = ARTIFACT_KIND_LABELS[payload.kind];
+    if (!label || payload.version !== 1) {
+        console.error(`[IntegrationWizard] Unsupported artifact payload for in-place generation:`, payload);
+        return;
+    }
+
+    try {
+        await window.withProgress(
+            { location: ProgressLocation.Notification, title: `Setting up your ${label}...` },
+            async () => {
+                // Land on the workspace overview afterwards (not the package's own
+                // overview) — matches the "stay on Project Overview" decision for the
+                // reload path, and mirrors the library-add flow's live refresh below.
+                await generatePendingArtifact(payload, packageRoot, false);
+
+                const projectInfo = await StateMachine.langClient().getProjectInfo({ projectPath: workspaceRoot });
+                StateMachine.updateProjectInfo(projectInfo);
+            }
+        );
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[IntegrationWizard] Failed to generate ${payload.kind} artifact in place:`, error);
+        window.showErrorMessage(
+            `Couldn't create the ${label}: ${message}. ` +
+            `Your integration was created; you can add the artifact from the Artifacts panel.`
+        );
+    }
+}
+
+/**
  * Runs the kind-specific generation and navigates to the produced artifact. All
  * files are targeted inside `projectRoot` — the newly created package — which is
  * the context's projectPath for a standalone package and a child package path
