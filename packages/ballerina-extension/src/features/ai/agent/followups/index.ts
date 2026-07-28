@@ -122,14 +122,16 @@ export function startFollowupSuggestions(turn: FollowupTurn): boolean {
             if (suggestions.length === 0 || (!interrupted && abortSignal.aborted)) {
                 return;
             }
-            // The webview shows whatever arrives, and it cannot tell that the user switched
-            // threads while this was generating — so these chips would land on the wrong thread.
-            if (chatStateStorage.getActiveThread(projectRootPath)?.id !== threadId) {
-                console.log(`[Followups] Dropped for ${messageId} — thread is no longer active`);
+            chatStateStorage.updateGeneration(projectRootPath, threadId, messageId, { followupSuggestions: suggestions });
+
+            // The webview shows whatever arrives and cannot tell the thread has since changed, so
+            // skip the emit and let the switch back read these off the generation instead.
+            const activeThreadId = chatStateStorage.getActiveThread(projectRootPath)?.id;
+            if (activeThreadId !== threadId) {
+                console.log(`[Followups] Stored for ${messageId} without showing — thread ${threadId} is not active (now ${activeThreadId ?? "none"})`);
                 return;
             }
 
-            chatStateStorage.updateGeneration(projectRootPath, threadId, messageId, { followupSuggestions: suggestions });
             eventHandler({ type: "followup_suggestions", messageId, suggestions });
             console.log(`[Followups] Emitted for ${messageId}: ${suggestions.map(s => s.label).join(", ")}`);
         } catch (error) {
