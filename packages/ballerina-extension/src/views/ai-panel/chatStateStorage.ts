@@ -38,6 +38,15 @@ import {
     PersistedCodeContext,
 } from '@wso2/copilot-utilities/chat-persistence';
 
+const THREAD_NAME_MAX_LENGTH = 60;
+const UNNAMED_THREAD_NAME = 'New Chat';
+
+/** The label auto-naming would give this thread — its first prompt, or the unnamed sentinel. */
+function deriveThreadName(thread: ChatThread): string {
+    const firstPrompt = thread.generations[0]?.userPrompt?.slice(0, THREAD_NAME_MAX_LENGTH).trim();
+    return firstPrompt || UNNAMED_THREAD_NAME;
+}
+
 /**
  * Resolve a stable workspace identity for persistence hashing.
  *
@@ -523,7 +532,7 @@ export class ChatStateStorage {
         const newThreadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const newThread: ChatThread = {
             id: newThreadId,
-            name: 'New Chat',
+            name: UNNAMED_THREAD_NAME,
             generations: [],
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -573,6 +582,23 @@ export class ChatStateStorage {
         workspace.activeThreadId = threadId;
         this.flushWorkspaceMetadata(projectRootPath);
         console.log(`[ChatStateStorage] Switched to thread: ${threadId} in workspace: ${projectRootPath}`);
+    }
+
+    /**
+     * Renames a thread. A blank name falls back to what auto-naming would have produced,
+     * so a cleared field never persists as an empty label. Does not touch updatedAt —
+     * renaming is not activity and would otherwise reshuffle the date grouping.
+     */
+    renameThread(projectRootPath: string, threadId: string, name: string): void {
+        const workspace = this.initializeWorkspace(projectRootPath);
+        const thread = workspace.threads.get(threadId);
+        if (!thread) {
+            console.warn(`[ChatStateStorage] Thread not found for rename: ${threadId}`);
+            return;
+        }
+        const trimmed = name.trim().slice(0, THREAD_NAME_MAX_LENGTH);
+        thread.name = trimmed || deriveThreadName(thread);
+        this.flushThread(projectRootPath, threadId);
     }
 
     /**
@@ -652,8 +678,8 @@ export class ChatStateStorage {
         };
 
         // Auto-name thread from first user message
-        if (thread.name === 'New Chat' && thread.generations.length === 0) {
-            const trimmedName = userPrompt.slice(0, 60).trim();
+        if (thread.name === UNNAMED_THREAD_NAME && thread.generations.length === 0) {
+            const trimmedName = userPrompt.slice(0, THREAD_NAME_MAX_LENGTH).trim();
             if (trimmedName) { thread.name = trimmedName; }
         }
 

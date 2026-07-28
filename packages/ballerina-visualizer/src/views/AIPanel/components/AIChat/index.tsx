@@ -2246,6 +2246,11 @@ const AIChat: React.FC = () => {
         loadThreads();
     }
 
+    async function handleRenameThread(threadId: string, name: string): Promise<void> {
+        await rpcClient.getAiPanelRpcClient().renameThread({ threadId, name });
+        loadThreads();
+    }
+
     const handleToggleAutoApprove = () => {
         const newValue = !isAutoApproveEnabled;
         setIsAutoApproveEnabled(newValue);
@@ -2522,6 +2527,7 @@ const AIChat: React.FC = () => {
                                         onNewChat={handleClearChat}
                                         onSwitch={handleSwitchThread}
                                         onDelete={handleDeleteThread}
+                                        onRename={handleRenameThread}
                                         onClose={() => setHistoryOpen(false)}
                                     />
                                 )}

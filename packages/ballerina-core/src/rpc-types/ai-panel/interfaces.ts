@@ -562,6 +562,11 @@ export interface DeleteThreadRequest {
     threadId: string;
 }
 
+export interface RenameThreadRequest {
+    threadId: string;
+    name: string;
+}
+
 // TODO(auto-memory): temporarily disabled for this release — restore once the memory feature is refined.
 // export interface ClearMemoryRequest {
 //     scope: 'workspace' | 'all';

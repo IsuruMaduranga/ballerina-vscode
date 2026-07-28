@@ -83,6 +83,7 @@ import {
     ThreadSummary,
     SwitchThreadRequest,
     DeleteThreadRequest,
+    RenameThreadRequest,
     HasPendingReviewRequest,
     CreateManagedConnectionRequest,
     CreateManagedConnectionResponse,
@@ -848,6 +849,10 @@ User reverted the last made changes. The files have been restored to the state b
         const projectRootPath = resolveProjectRootPath();
         if (refuseWhileRunning(projectRootPath, 'deleteThread')) { return; }
         await chatStateStorage.deleteThread(projectRootPath, params.threadId);
+    }
+
+    async renameThread(params: RenameThreadRequest): Promise<void> {
+        chatStateStorage.renameThread(resolveProjectRootPath(), params.threadId, params.name);
     }
 
     // TODO(auto-memory): memory management temporarily disabled for this release — restore once the memory feature is refined.

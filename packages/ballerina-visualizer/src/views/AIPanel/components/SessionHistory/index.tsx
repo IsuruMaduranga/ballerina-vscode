@@ -147,7 +147,7 @@ const SessionItem = styled.div<{ isActive: boolean; isReadOnly: boolean }>(
                 ? "var(--vscode-list-activeSelectionBackground)"
                 : isReadOnly ? "transparent" : "var(--vscode-list-hoverBackground)",
         },
-        "&:hover .delete-btn, &:focus-within .delete-btn": { opacity: 1 },
+        "&:hover .row-actions, &:focus-within .row-actions": { opacity: 1 },
         "&:focus-visible": { outline: "1px solid var(--vscode-focusBorder)" },
     })
 );
@@ -212,23 +212,46 @@ const SessionMeta = styled.span`
     flex-shrink: 0;
 `;
 
-const DeleteBtn = styled.button`
-    opacity: 0;
-    width: 20px;
-    height: 20px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    color: var(--vscode-icon-foreground);
+const RenameInput = styled.input`
+    flex: 1;
+    min-width: 0;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-focusBorder);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-size: 12px;
+    font-family: var(--vscode-font-family);
+    outline: none;
+`;
+
+const RowActions = styled.div`
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    border-radius: 3px;
+    gap: 2px;
     flex-shrink: 0;
+    opacity: 0;
     transition: opacity 0.1s;
-    &:hover, &:focus-visible { color: var(--vscode-errorForeground); background: var(--vscode-toolbar-hoverBackground); opacity: 1; }
 `;
+
+const RowIconButton = styled.button<{ isDanger?: boolean }>(({ isDanger }: { isDanger?: boolean }) => ({
+    width: "20px",
+    height: "20px",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    padding: 0,
+    color: "var(--vscode-icon-foreground)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "3px",
+    flexShrink: 0,
+    "&:hover, &:focus-visible": {
+        color: isDanger ? "var(--vscode-errorForeground)" : "var(--vscode-foreground)",
+        background: "var(--vscode-toolbar-hoverBackground)",
+    },
+}));
 
 const NewChatRow = styled.button`
     display: flex;
@@ -256,6 +279,7 @@ export interface SessionHistoryDropdownProps {
     onNewChat: () => void;
     onSwitch: (threadId: string) => void;
     onDelete: (threadId: string) => void;
+    onRename: (threadId: string, name: string) => void;
     onClose: () => void;
 }
 
@@ -265,21 +289,26 @@ export function SessionHistoryDropdown({
     onNewChat,
     onSwitch,
     onDelete,
+    onRename,
     onClose,
 }: SessionHistoryDropdownProps): JSX.Element {
     const [search, setSearch] = useState("");
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+    const [renaming, setRenaming] = useState<{ threadId: string; name: string } | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         inputRef.current?.focus();
+    }, []);
+
+    useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key !== 'Escape') { return; }
-            if (confirmDelete) { setConfirmDelete(null); } else { onClose(); }
+            if (confirmDelete) { setConfirmDelete(null); } else if (renaming) { setRenaming(null); } else { onClose(); }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [onClose, confirmDelete]);
+    }, [onClose, confirmDelete, renaming]);
 
     const filtered = search.trim()
         ? threads.filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
@@ -307,6 +336,15 @@ export function SessionHistoryDropdown({
         onClose();
     };
 
+    const commitRename = () => {
+        if (!renaming) { return; }
+        const { threadId, name } = renaming;
+        setRenaming(null);
+        const current = threads.find(t => t.id === threadId)?.name;
+        if (name.trim() && name.trim() === current?.trim()) { return; }
+        onRename(threadId, name);
+    };
+
     return (
         <>
             <Overlay onClick={onClose} />
@@ -330,18 +368,20 @@ export function SessionHistoryDropdown({
                             <GroupLabel>{group.label}</GroupLabel>
                             {group.items.map(thread => {
                                 const isConfirming = confirmDelete === thread.id;
+                                const isRenaming = renaming?.threadId === thread.id;
+                                const isBusy = isConfirming || isRenaming;
                                 return (
                                     <SessionItem
                                         key={thread.id}
                                         // Selection background would wreck the action buttons' contrast.
                                         isActive={thread.isActive && !isConfirming}
-                                        isReadOnly={readOnly || isConfirming}
+                                        isReadOnly={readOnly || isBusy}
                                         role="button"
-                                        tabIndex={readOnly || isConfirming ? -1 : 0}
+                                        tabIndex={readOnly || isBusy ? -1 : 0}
                                         aria-disabled={readOnly}
-                                        onClick={() => { if (!isConfirming) { handleSwitch(thread.id); } }}
+                                        onClick={() => { if (!isBusy) { handleSwitch(thread.id); } }}
                                         onKeyDown={(e) => {
-                                            if (isConfirming) { return; }
+                                            if (isBusy) { return; }
                                             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitch(thread.id); }
                                         }}
                                     >
@@ -355,21 +395,43 @@ export function SessionHistoryDropdown({
                                         ) : (
                                             <>
                                                 <ActiveDot isActive={thread.isActive} />
-                                                <SessionName title={thread.name}>{thread.name}</SessionName>
+                                                {isRenaming ? (
+                                                    <RenameInput
+                                                        autoFocus
+                                                        value={renaming.name}
+                                                        onChange={e => setRenaming({ threadId: thread.id, name: e.target.value })}
+                                                        onBlur={commitRename}
+                                                        onClick={e => e.stopPropagation()}
+                                                        onKeyDown={e => {
+                                                            e.stopPropagation();
+                                                            if (e.key === 'Enter') { commitRename(); }
+                                                            if (e.key === 'Escape') { setRenaming(null); }
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <SessionName title={thread.name}>{thread.name}</SessionName>
+                                                )}
                                                 <SessionMeta title={promptCountLabel(thread.turnCount)}>
                                                     {formatMeta(thread)}
                                                 </SessionMeta>
-                                                {!readOnly && (
-                                                    <DeleteBtn
-                                                        className="delete-btn"
-                                                        onClick={e => { e.stopPropagation(); setConfirmDelete(thread.id); }}
-                                                        // Keep keyboard activation from also bubbling to SessionItem's
-                                                        // onKeyDown, which would switch threads instead.
-                                                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); } }}
-                                                        title="Delete session"
-                                                    >
-                                                        <Codicon name="trash" sx={{ fontSize: "12px" }} />
-                                                    </DeleteBtn>
+                                                {!readOnly && !isRenaming && (
+                                                    <RowActions className="row-actions">
+                                                        <RowIconButton
+                                                            onClick={e => { e.stopPropagation(); setRenaming({ threadId: thread.id, name: thread.name }); }}
+                                                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); } }}
+                                                            title="Rename session"
+                                                        >
+                                                            <Codicon name="edit" sx={{ fontSize: "12px" }} />
+                                                        </RowIconButton>
+                                                        <RowIconButton
+                                                            isDanger
+                                                            onClick={e => { e.stopPropagation(); setConfirmDelete(thread.id); }}
+                                                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); } }}
+                                                            title="Delete session"
+                                                        >
+                                                            <Codicon name="trash" sx={{ fontSize: "12px" }} />
+                                                        </RowIconButton>
+                                                    </RowActions>
                                                 )}
                                             </>
                                         )}

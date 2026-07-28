@@ -171,6 +171,8 @@ import {
     SwitchThreadRequest,
     deleteThread,
     DeleteThreadRequest,
+    renameThread,
+    RenameThreadRequest,
     ThreadSummary,
     // TODO(auto-memory): temporarily disabled for this release.
     // clearMemory,
@@ -528,6 +530,10 @@ export class AiPanelRpcClient implements AIPanelAPI {
 
     deleteThread(params: DeleteThreadRequest): Promise<void> {
         return this._messenger.sendRequest(deleteThread, HOST_EXTENSION, params);
+    }
+
+    renameThread(params: RenameThreadRequest): Promise<void> {
+        return this._messenger.sendRequest(renameThread, HOST_EXTENSION, params);
     }
 
     // TODO(auto-memory): temporarily disabled for this release.

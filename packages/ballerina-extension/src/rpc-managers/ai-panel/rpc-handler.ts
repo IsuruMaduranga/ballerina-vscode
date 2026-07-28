@@ -148,6 +148,8 @@ import {
     SwitchThreadRequest,
     deleteThread,
     DeleteThreadRequest,
+    renameThread,
+    RenameThreadRequest,
     // TODO(auto-memory): temporarily disabled for this release.
     // clearMemory,
     // ClearMemoryRequest,
@@ -256,6 +258,7 @@ export function registerAiPanelRpcHandlers(messenger: Messenger) {
     messenger.onRequest(listThreads, () => rpcManger.listThreads());
     messenger.onRequest(switchThread, (args: SwitchThreadRequest) => rpcManger.switchThread(args));
     messenger.onRequest(deleteThread, (args: DeleteThreadRequest) => rpcManger.deleteThread(args));
+    messenger.onRequest(renameThread, (args: RenameThreadRequest) => rpcManger.renameThread(args));
     // TODO(auto-memory): temporarily disabled for this release.
     // messenger.onRequest(clearMemory, (args: ClearMemoryRequest) => rpcManger.clearMemory(args));
     // messenger.onNotification(openMemoryFiles, (args: OpenMemoryRequest) => rpcManger.openMemoryFiles(args));

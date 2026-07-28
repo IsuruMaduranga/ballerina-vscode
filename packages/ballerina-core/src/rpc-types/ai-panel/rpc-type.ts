@@ -82,6 +82,7 @@ import {
     ThreadSummary,
     SwitchThreadRequest,
     DeleteThreadRequest,
+    RenameThreadRequest,
     // TODO(auto-memory): temporarily disabled for this release.
     // ClearMemoryRequest,
     // OpenMemoryRequest,
@@ -181,6 +182,7 @@ export const agentsMdFileInfoChanged: NotificationType<AgentsMdFileInfoDTO> = { 
 export const listThreads: RequestType<void, ThreadSummary[]> = { method: `${_preFix}/listThreads` };
 export const switchThread: RequestType<SwitchThreadRequest, void> = { method: `${_preFix}/switchThread` };
 export const deleteThread: RequestType<DeleteThreadRequest, void> = { method: `${_preFix}/deleteThread` };
+export const renameThread: RequestType<RenameThreadRequest, void> = { method: `${_preFix}/renameThread` };
 // TODO(auto-memory): temporarily disabled for this release.
 // export const clearMemory: RequestType<ClearMemoryRequest, void> = { method: `${_preFix}/clearMemory` };
 // export const openMemoryFiles: NotificationType<OpenMemoryRequest> = { method: `${_preFix}/openMemoryFiles` };
