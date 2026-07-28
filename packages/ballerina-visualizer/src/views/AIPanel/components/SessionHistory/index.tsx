@@ -129,23 +129,36 @@ const EmptyState = styled.div`
     font-size: 11px;
 `;
 
-const SessionItem = styled.div<{ isActive: boolean }>(({ isActive }: { isActive: boolean }) => ({
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    padding: "4px",
-    borderRadius: "3px",
-    cursor: "pointer",
-    position: "relative" as const,
-    background: isActive ? "var(--vscode-list-activeSelectionBackground)" : "transparent",
-    color: isActive ? "var(--vscode-list-activeSelectionForeground)" : "inherit",
-    outline: "none",
-    "&:hover": {
-        background: isActive ? "var(--vscode-list-activeSelectionBackground)" : "var(--vscode-list-hoverBackground)",
-    },
-    "&:hover .delete-btn, &:focus-within .delete-btn": { opacity: 1 },
-    "&:focus-visible": { outline: "1px solid var(--vscode-focusBorder)" },
-}));
+const SessionItem = styled.div<{ isActive: boolean; isReadOnly: boolean }>(
+    ({ isActive, isReadOnly }: { isActive: boolean; isReadOnly: boolean }) => ({
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "4px",
+        borderRadius: "3px",
+        cursor: isReadOnly ? "default" : "pointer",
+        position: "relative" as const,
+        background: isActive ? "var(--vscode-list-activeSelectionBackground)" : "transparent",
+        color: isActive ? "var(--vscode-list-activeSelectionForeground)" : "inherit",
+        outline: "none",
+        "&:hover": {
+            background: isActive
+                ? "var(--vscode-list-activeSelectionBackground)"
+                : isReadOnly ? "transparent" : "var(--vscode-list-hoverBackground)",
+        },
+        "&:hover .delete-btn, &:focus-within .delete-btn": { opacity: 1 },
+        "&:focus-visible": { outline: "1px solid var(--vscode-focusBorder)" },
+    })
+);
+
+const ReadOnlyHint = styled.div`
+    padding: 6px 8px;
+    border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    text-align: center;
+    flex-shrink: 0;
+`;
 
 const ActiveDot = styled.div<{ isActive: boolean }>(({ isActive }: { isActive: boolean }) => ({
     width: "6px",
@@ -210,6 +223,8 @@ const NewChatRow = styled.button`
 
 export interface SessionHistoryDropdownProps {
     threads: ThreadSummary[];
+    /** A turn owns its session until it finishes, so the list is browsable but not actionable. */
+    readOnly?: boolean;
     onNewChat: () => void;
     onSwitch: (threadId: string) => void;
     onDelete: (threadId: string) => void;
@@ -218,6 +233,7 @@ export interface SessionHistoryDropdownProps {
 
 export function SessionHistoryDropdown({
     threads,
+    readOnly = false,
     onNewChat,
     onSwitch,
     onDelete,
@@ -242,6 +258,7 @@ export function SessionHistoryDropdown({
     const groups = groupByDate(filtered);
 
     const handleSwitch = (threadId: string) => {
+        if (readOnly) { return; }
         onSwitch(threadId);
         onClose();
     };
@@ -252,6 +269,7 @@ export function SessionHistoryDropdown({
     };
 
     const handleNewChat = () => {
+        if (readOnly) { return; }
         onNewChat();
         onClose();
     };
@@ -281,8 +299,10 @@ export function SessionHistoryDropdown({
                                 <SessionItem
                                     key={thread.id}
                                     isActive={thread.isActive}
+                                    isReadOnly={readOnly}
                                     role="button"
-                                    tabIndex={0}
+                                    tabIndex={readOnly ? -1 : 0}
+                                    aria-disabled={readOnly}
                                     onClick={() => handleSwitch(thread.id)}
                                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitch(thread.id); } }}
                                 >
@@ -291,27 +311,33 @@ export function SessionHistoryDropdown({
                                     <SessionMeta title={promptCountLabel(thread.turnCount)}>
                                         {formatMeta(thread)}
                                     </SessionMeta>
-                                    <DeleteBtn
-                                        className="delete-btn"
-                                        onClick={e => handleDelete(e, thread.id)}
-                                        // Keep keyboard activation of delete from also bubbling to
-                                        // SessionItem's onKeyDown, which would switch threads. The native
-                                        // button still activates (delete) on Enter/Space itself.
-                                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); } }}
-                                        title="Delete session"
-                                    >
-                                        <Codicon name="trash" sx={{ fontSize: "12px" }} />
-                                    </DeleteBtn>
+                                    {!readOnly && (
+                                        <DeleteBtn
+                                            className="delete-btn"
+                                            onClick={e => handleDelete(e, thread.id)}
+                                            // Keep keyboard activation of delete from also bubbling to
+                                            // SessionItem's onKeyDown, which would switch threads. The native
+                                            // button still activates (delete) on Enter/Space itself.
+                                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); } }}
+                                            title="Delete session"
+                                        >
+                                            <Codicon name="trash" sx={{ fontSize: "12px" }} />
+                                        </DeleteBtn>
+                                    )}
                                 </SessionItem>
                             ))}
                         </div>
                     ))}
                 </SessionList>
 
-                <NewChatRow onClick={handleNewChat}>
-                    <Codicon name="add" sx={{ fontSize: "13px" }} />
-                    New Chat
-                </NewChatRow>
+                {readOnly ? (
+                    <ReadOnlyHint>Finish or stop the current response to switch sessions.</ReadOnlyHint>
+                ) : (
+                    <NewChatRow onClick={handleNewChat}>
+                        <Codicon name="add" sx={{ fontSize: "13px" }} />
+                        New Chat
+                    </NewChatRow>
+                )}
             </DropdownContainer>
         </>
     );

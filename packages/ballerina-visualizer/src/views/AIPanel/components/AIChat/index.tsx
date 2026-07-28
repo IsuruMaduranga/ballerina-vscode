@@ -2511,7 +2511,6 @@ const AIChat: React.FC = () => {
                                     appearance="icon"
                                     onClick={() => { loadThreads(); setHistoryOpen(v => !v); }}
                                     tooltip="Chat sessions"
-                                    disabled={isLoading}
                                 >
                                     <Codicon name="history" sx={{ fontSize: "16px", marginRight: 6 }} />
                                     Chats
@@ -2519,6 +2518,7 @@ const AIChat: React.FC = () => {
                                 {historyOpen && (
                                     <SessionHistoryDropdown
                                         threads={threads}
+                                        readOnly={isLoading}
                                         onNewChat={handleClearChat}
                                         onSwitch={handleSwitchThread}
                                         onDelete={handleDeleteThread}
