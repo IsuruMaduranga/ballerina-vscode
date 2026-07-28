@@ -26,6 +26,7 @@ import {
     Command,
     TemplateId,
     ChatNotify,
+    FollowupSuggestion,
     DocumentationGeneratorIntermediaryState,
     OperationType,
     DocGenerationRequest,
@@ -53,6 +54,7 @@ import { getToolCallDisplay } from "../AgentStreamView/toolDisplay";
 import { ConnectorGeneratorSegment } from "../ConnectorGeneratorSegment";
 import { ConfigurationCollectorSegment } from "../ConfigurationCollectorSegment";
 import CheckpointSeparator from "../CheckpointSeparator";
+import FollowupSuggestions from "../FollowupSuggestions";
 import { Attachment, AttachmentStatus, SkillEnableStage, SkillEntry, TaskApprovalRequest } from "@wso2/ballerina-core";
 import type { ClarifyEvent, ConfigurationCollectionEvent, ConnectorGenerationNotification } from "@wso2/ballerina-core";
 
@@ -328,6 +330,11 @@ const AIChat: React.FC = () => {
     };
 
     const [isLoading, setIsLoading] = useState(false);
+    // onChatNotify is re-registered each render, so stale closures fire too — suggestion
+    // staleness has to be judged against a ref, not the captured isLoading value.
+    const isLoadingRef = useRef(false);
+    isLoadingRef.current = isLoading;
+    const [followupSuggestions, setFollowupSuggestions] = useState<FollowupSuggestion[]>([]);
     const [isCompacting, setIsCompacting] = useState(false);
     // Tools currently in flight, oldest first, for the composer's loading
     // indicator. This is a list rather than a single slot because a step can run
@@ -656,6 +663,17 @@ const AIChat: React.FC = () => {
         rpcClient.getAiPanelRpcClient().getMcpToolsEnabled().then(setMcpToolsEnabled).catch(() => {});
     }, []);
 
+    /** Re-derives chips for whichever turn is now last (after a restore or a thread change). */
+    const refreshFollowupSuggestions = async () => {
+        try {
+            const suggestions = await rpcClient.getAiPanelRpcClient().getLatestFollowupSuggestions();
+            setFollowupSuggestions(suggestions ?? []);
+        } catch (error) {
+            console.error('[AIChat] Failed to refresh follow-up suggestions:', error);
+            setFollowupSuggestions([]);
+        }
+    };
+
     const handleCheckpointRestore = async (checkpointId: string) => {
         // Guard against concurrent restores — the separator UI also disables
         // itself, but this is defensive in case the handler is called directly.
@@ -693,6 +711,8 @@ const AIChat: React.FC = () => {
             // Widget will reappear with accurate data on the next agent turn.
             setContextUsage(null);
             setHasActiveReview(false);
+            // History is trimmed to the checkpoint — re-derive so the reverted turn's chips drop.
+            await refreshFollowupSuggestions();
         } catch (error) {
             console.error("Failed to restore checkpoint:", error);
         } finally {
@@ -976,6 +996,16 @@ const AIChat: React.FC = () => {
                 }
                 liveGateClosedRef.current = false;
                 reconnectSettledResolveRef.current?.();
+            }
+            // Follow-up chips arrive via a live notification, so a webview reload would
+            // otherwise lose them — re-derive from the latest generation, like review state.
+            try {
+                const suggestions = await rpcClient.getAiPanelRpcClient().getLatestFollowupSuggestions();
+                if (suggestions?.length > 0) {
+                    setFollowupSuggestions(suggestions);
+                }
+            } catch (error) {
+                console.error('[AIChat] Failed to restore follow-up suggestions:', error);
             }
         };
 
@@ -1551,6 +1581,14 @@ const AIChat: React.FC = () => {
                 }
             }
 
+        } else if (type === "followup_suggestions") {
+            console.log(`[Followups] Received: ${response.suggestions.map(s => s.label).join(', ')}`);
+            // Chips only ever describe a finished turn, so anything arriving mid-turn is stale.
+            if (isLoadingRef.current) {
+                return;
+            }
+            setFollowupSuggestions(response.suggestions);
+
         } else if (type === "error") {
             console.log("Received error signal");
             const errorContent = response.content;
@@ -1701,7 +1739,7 @@ const AIChat: React.FC = () => {
             const t = setTimeout(() => scrollToEnd("auto"), 120);
             return () => clearTimeout(t);
         }
-    }, [messages, hasActiveReview, isLoading, isCodeLoading]);
+    }, [messages, hasActiveReview, isLoading, isCodeLoading, followupSuggestions]);
 
     async function handleSendQuery(content: {
         input: Input[];
@@ -1805,6 +1843,7 @@ const AIChat: React.FC = () => {
         setCurrentGeneratingPromptIndex(otherMessages.length);
         setIsPromptExecutedInCurrentWindow(true);
         setFeedbackGiven(null);
+        setFollowupSuggestions([]);
 
         if (content.input.length === 0) {
             return;
@@ -2151,6 +2190,7 @@ const AIChat: React.FC = () => {
         setMessages([]);
         setApprovalRequest(null);
         setContextUsage(null);
+        setFollowupSuggestions([]);
         await rpcClient.getAiPanelRpcClient().clearChat();
         loadThreads();
     }
@@ -2185,6 +2225,7 @@ const AIChat: React.FC = () => {
         setRestoringCheckpointId(null);
         setApprovalRequest(null);
         setContextUsage(null);
+        await refreshFollowupSuggestions();
         loadThreads();
     }
 
@@ -2202,6 +2243,7 @@ const AIChat: React.FC = () => {
         setRestoringCheckpointId(null);
         setApprovalRequest(null);
         setContextUsage(null);
+        await refreshFollowupSuggestions();
         loadThreads();
     }
 
@@ -2533,7 +2575,6 @@ const AIChat: React.FC = () => {
                             // Note: Cannot use useMemo here as it's inside map() callback
                             // The stateless regex implementation in splitContent() ensures no corruption during streaming
                             const segmentedContent = splitContent(message.content);
-                            const hasReviewActions = isLatestAssistantMessage && hasActiveReview;
                             return (
                                 <ChatMessage key={index}>
                                     {/* Checkpoint separator before user messages */}
@@ -2810,12 +2851,25 @@ const AIChat: React.FC = () => {
                                             }
                                         })}
                                     </MessageBody>
-                                    {/* Show feedback bar only for the latest assistant message and when loading is complete, but not if review actions are present */}
-                                    {isAssistantMessage && isLatestAssistantMessage && !isLoading && !isCodeLoading && !hasReviewActions && (
+                                    {/* Show feedback bar for the latest assistant message once loading is complete */}
+                                    {isAssistantMessage && isLatestAssistantMessage && !isLoading && !isCodeLoading && (
                                         <FeedbackBar
                                             messageIndex={index}
                                             onFeedback={handleFeedback}
                                             currentFeedback={feedbackGiven}
+                                        />
+                                    )}
+                                    {/* Hidden while over quota: the input is disabled, so a chip would prefill something unsendable. */}
+                                    {isAssistantMessage && isLatestAssistantMessage && !isLoading && !isCodeLoading && !isUsageExceeded && followupSuggestions.length > 0 && (
+                                        <FollowupSuggestions
+                                            suggestions={followupSuggestions}
+                                            onPick={(suggestion) => {
+                                                aiChatInputRef.current?.setInputContent({
+                                                    type: "text",
+                                                    text: suggestion.prompt,
+                                                    planMode: agentMode === AgentMode.Plan,
+                                                });
+                                            }}
                                         />
                                     )}
                                 </ChatMessage>

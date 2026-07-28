@@ -49,6 +49,7 @@ import {
     UsageResponse,
     QuotaRequestParams,
     QuotaRequestResult,
+    FollowupSuggestion,
     WebToolApprovalRequest,
     CompactConversationRequest,
     CompactConversationResponse,
@@ -868,6 +869,12 @@ User reverted the last made changes. The files have been restored to the state b
             // re-surface only still-pending prompts during replay and skip resolved ones.
             pendingRequestIds: approvalManager.getPendingRequestIds(),
         };
+    }
+
+    async getLatestFollowupSuggestions(): Promise<FollowupSuggestion[]> {
+        const projectRootPath = resolveProjectRootPath();
+        const generations = chatStateStorage.getGenerations(projectRootPath, getActiveThreadId(projectRootPath));
+        return generations[generations.length - 1]?.followupSuggestions ?? [];
     }
 
     async compactConversation(_params: CompactConversationRequest): Promise<CompactConversationResponse> {

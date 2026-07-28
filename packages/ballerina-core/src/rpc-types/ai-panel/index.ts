@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { LoginMethod } from "../../state-machine-types";
+import { LoginMethod, FollowupSuggestion } from "../../state-machine-types";
 import {
     TestGenerationMentions,
     RequirementSpecification,
@@ -147,6 +147,7 @@ export interface AIPanelAPI {
     getActiveTempDir: () => Promise<string>;
     hasPendingReview: (params: HasPendingReviewRequest) => Promise<boolean>;
     getRunStatus: (params: GetRunStatusRequest) => Promise<GetRunStatusResponse>;
+    getLatestFollowupSuggestions: () => Promise<FollowupSuggestion[]>;
     getUsage: () => Promise<UsageResponse | undefined>;
     requestQuota: (params: QuotaRequestParams) => Promise<QuotaRequestResult>;
     openFileDiff: (params: OpenFileDiffRequest) => void;

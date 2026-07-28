@@ -374,7 +374,24 @@ export type ChatNotify = (
     | CompactionDisabledEvent
     | ConfigChangeEvent
     | MigrationProgressEvent
+    | FollowupSuggestionsEvent
 ) & ChatNotifyMeta;
+
+/** A single clickable follow-up suggestion shown after a completed turn. */
+export interface FollowupSuggestion {
+    /** Short imperative chip text (what the user sees). */
+    label: string;
+    /** The message sent to Copilot when the chip is clicked. */
+    prompt: string;
+}
+
+/** Post-turn follow-up suggestions for a specific assistant message. */
+export interface FollowupSuggestionsEvent {
+    type: "followup_suggestions";
+    /** The assistant message these suggestions belong to. */
+    messageId: string;
+    suggestions: FollowupSuggestion[];
+}
 
 /** Structured progress event emitted by the migration orchestrator at each stage boundary. */
 export interface MigrationProgressEvent {
@@ -864,6 +881,8 @@ export interface Generation {
     fileAttachments?: FileAttatchment[];
     /** Code context for this generation */
     codeContext?: CodeContext;
+    /** Post-turn follow-up suggestions; runtime-only, not persisted across a restart */
+    followupSuggestions?: FollowupSuggestion[];
     /** Generation metadata */
     metadata: GenerationMetadata;
 }

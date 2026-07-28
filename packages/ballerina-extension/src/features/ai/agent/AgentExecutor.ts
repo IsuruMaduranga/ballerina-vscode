@@ -21,9 +21,10 @@ import { Command, GenerateAgentCodeRequest, ProjectSource, ExecutionContext, Sem
 import { StateMachine } from '../../../stateMachine';
 import { ModelMessage, stepCountIs, streamText, TextStreamPart } from 'ai';
 import { getAnthropicClient, getProviderCacheControl, addCacheControlToMessages, ANTHROPIC_SONNET_4 } from '../utils/ai-client';
-import { populateHistoryForAgent, getErrorMessage, buildChatError } from '../utils/ai-utils';
+import { populateHistoryForAgent, getErrorMessage, getErrorCode, buildChatError } from '../utils/ai-utils';
 import { sendAgentDidOpenForFreshProjects } from '../utils/project/ls-schema-notifications';
 import { getSystemPrompt, getUserPrompt } from './prompts';
+import { FollowupSituation, startFollowupSuggestions } from './followups';
 import { prepareAgentsMdForTurn } from './agents-md';
 // TODO(auto-memory): temporarily disabled for this release.
 // import { executeAutoDream, isMemoryEnabled } from '../memory/autoDream';
@@ -218,6 +219,9 @@ async function determineAffectedPackages(
 export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
     /** Tracks in-flight tool-call start times keyed by toolCallId for duration logging. */
     private readonly _pendingToolCalls = new Map<string, number>();
+
+    /** A turn can reach both the finish and abort paths; suggestions must be scheduled once. */
+    private _followupsScheduled = false;
 
     constructor(config: AICommandConfig<GenerateAgentCodeRequest>) {
         super(config);
@@ -632,6 +636,11 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                         );
                     }
 
+                    // Only meaningful once the turn produced something to pivot away from.
+                    if (partialLLMMessages.length > 0) {
+                        this.maybeScheduleFollowups(streamContext, partialLLMMessages, 'aborted');
+                    }
+
                     // Note: Abort event is sent by base class handleExecutionError()
                 }
 
@@ -819,6 +828,11 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             });
             updateAndSaveChat(context.messageId, Command.Agent, context.eventHandler);
         }
+
+        // A quota failure gets a Continue chip with no model call — the webview keeps it hidden
+        // until the limit resets, so the user can pick the work back up then.
+        const situation: FollowupSituation = getErrorCode(error) === 'usage_limit' ? 'usage_limit' : 'error';
+        this.maybeScheduleFollowups(context, messagesToSave, situation, getErrorMessage(error));
     }
 
     /**
@@ -915,12 +929,41 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         // Emit UI events
         await this.emitReviewActions(context);
 
+        // Follow-up suggestions — best-effort, non-blocking.
+        this.maybeScheduleFollowups(context, assistantMessages, 'completed');
+
         // TODO(auto-memory): auto-dream consolidation temporarily disabled for this release.
         // // autoDream consolidation — skipped on compaction turns (no real user activity)
         // const workspacePath = context.ctx.workspacePath || context.ctx.projectPath || '';
         // if (workspacePath && !context.wasCompactionTurn) {
         //     executeAutoDream({ workspacePath });
         // }
+    }
+
+    /** Hands the finished turn to the follow-up suggestion flow; at most once per turn. */
+    private maybeScheduleFollowups(
+        context: StreamContext,
+        assistantMessages: any[],
+        situation: FollowupSituation,
+        errorMessage?: string
+    ): void {
+        // Migration and evals drive this executor with their own handlers and no chat storage —
+        // suggestions there would burn a call and leak chips into the wrong panel.
+        if (this._followupsScheduled || !this.config.chatStorage?.enabled) {
+            return;
+        }
+        this._followupsScheduled = startFollowupSuggestions({
+            situation,
+            messageId: context.messageId,
+            projectRootPath: context.ctx.workspacePath || context.ctx.projectPath || '',
+            threadId: this.config.chatStorage.threadId,
+            assistantMessages,
+            userQuery: this.config.params.usecase ?? '',
+            isPlanMode: this.config.params.isPlanMode,
+            abortSignal: this.config.abortController.signal,
+            errorMessage,
+            eventHandler: this.config.eventHandler,
+        });
     }
 
     /**

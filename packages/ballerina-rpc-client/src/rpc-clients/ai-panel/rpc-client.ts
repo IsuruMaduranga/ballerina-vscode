@@ -83,6 +83,8 @@ import {
     GetRunStatusRequest,
     GetRunStatusResponse,
     HasPendingReviewRequest,
+    getLatestFollowupSuggestions,
+    FollowupSuggestion,
     getCheckpoints,
     getDefaultPrompt,
     isScaffoldEnvActive,
@@ -361,6 +363,10 @@ export class AiPanelRpcClient implements AIPanelAPI {
 
     getRunStatus(params: GetRunStatusRequest): Promise<GetRunStatusResponse> {
         return this._messenger.sendRequest(getRunStatus, HOST_EXTENSION, params);
+    }
+
+    getLatestFollowupSuggestions(): Promise<FollowupSuggestion[]> {
+        return this._messenger.sendRequest(getLatestFollowupSuggestions, HOST_EXTENSION);
     }
 
     getUsage(): Promise<UsageResponse | undefined> {
