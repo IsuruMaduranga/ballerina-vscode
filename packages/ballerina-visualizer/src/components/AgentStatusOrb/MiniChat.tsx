@@ -140,7 +140,8 @@ type UnmodelledNotifyType =
     | "compaction_start"
     | "compaction_end"
     | "config_change"
-    | "migration_progress";
+    | "migration_progress"
+    | "followup_suggestions";
 
 /** Friendly one-line label for a tool call (mirrors the status-bar phrasing). */
 function describeTool(toolName: string, toolInput: any): string {
