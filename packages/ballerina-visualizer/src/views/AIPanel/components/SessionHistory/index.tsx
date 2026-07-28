@@ -320,10 +320,16 @@ export function SessionHistoryDropdown({
     const [search, setSearch] = useState("");
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
     const [renaming, setRenaming] = useState<{ threadId: string; name: string } | null>(null);
+    const [now, setNow] = useState(() => Date.now());
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         inputRef.current?.focus();
+    }, []);
+
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 60_000);
+        return () => clearInterval(id);
     }, []);
 
     useEffect(() => {
@@ -339,7 +345,6 @@ export function SessionHistoryDropdown({
         ? threads.filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
         : threads;
 
-    const now = Date.now();
     const groups = groupByDate(filtered, now);
 
     const handleSwitch = (threadId: string) => {
