@@ -155,6 +155,24 @@ const EmptyState = styled.div`
     font-size: 11px;
 `;
 
+const LoadingState = styled(EmptyState)`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+
+    .codicon-modifier-spin {
+        animation: codicon-spin 1.2s steps(30) infinite;
+    }
+    @keyframes codicon-spin {
+        100% { transform: rotate(360deg); }
+    }
+`;
+
+const ErrorState = styled(EmptyState)`
+    color: var(--vscode-errorForeground);
+`;
+
 const SessionItem = styled.div<{ isActive: boolean; isReadOnly: boolean }>(
     ({ isActive, isReadOnly }: { isActive: boolean; isReadOnly: boolean }) => ({
         display: "flex",
@@ -303,6 +321,8 @@ const NewChatRow = styled.button`
 
 export interface SessionHistoryDropdownProps {
     threads: ThreadSummary[];
+    loading?: boolean;
+    error?: string | null;
     readOnly?: boolean;
     onNewChat: () => void;
     onSwitch: (threadId: string) => void;
@@ -313,6 +333,8 @@ export interface SessionHistoryDropdownProps {
 
 export function SessionHistoryDropdown({
     threads,
+    loading = false,
+    error = null,
     readOnly = false,
     onNewChat,
     onSwitch,
@@ -325,6 +347,8 @@ export function SessionHistoryDropdown({
     const [renaming, setRenaming] = useState<{ threadId: string; name: string } | null>(null);
     const [now, setNow] = useState(() => Date.now());
     const inputRef = useRef<HTMLInputElement>(null);
+    // Enter, Escape and blur can all reach the rename handlers for the same edit.
+    const renameSettledRef = useRef(false);
 
     useEffect(() => {
         inputRef.current?.focus();
@@ -338,7 +362,7 @@ export function SessionHistoryDropdown({
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key !== 'Escape') { return; }
-            if (confirmDelete) { setConfirmDelete(null); } else if (renaming) { setRenaming(null); } else { onClose(); }
+            if (confirmDelete) { setConfirmDelete(null); } else if (renaming) { cancelRename(); } else { onClose(); }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
@@ -370,8 +394,19 @@ export function SessionHistoryDropdown({
         onClose();
     };
 
+    const startRename = (threadId: string, name: string) => {
+        renameSettledRef.current = false;
+        setRenaming({ threadId, name });
+    };
+
+    const cancelRename = () => {
+        renameSettledRef.current = true;
+        setRenaming(null);
+    };
+
     const commitRename = () => {
-        if (!renaming) { return; }
+        if (!renaming || renameSettledRef.current) { return; }
+        renameSettledRef.current = true;
         const { threadId, name } = renaming;
         setRenaming(null);
         const current = threads.find(t => t.id === threadId)?.name;
@@ -394,7 +429,15 @@ export function SessionHistoryDropdown({
                 </SearchRow>
 
                 <SessionList>
-                    {groups.length === 0 && (
+                    {error && <ErrorState>{error}</ErrorState>}
+                    {/* Only when there is nothing to show yet — a refresh must not blank the list. */}
+                    {loading && threads.length === 0 && !error && (
+                        <LoadingState>
+                            <span className="codicon codicon-loading codicon-modifier-spin" />
+                            Loading sessions...
+                        </LoadingState>
+                    )}
+                    {!loading && !error && groups.length === 0 && (
                         <EmptyState>{search.trim() ? "No matching sessions" : "No sessions yet"}</EmptyState>
                     )}
                     {groups.map(group => (
@@ -439,7 +482,7 @@ export function SessionHistoryDropdown({
                                                         onKeyDown={e => {
                                                             e.stopPropagation();
                                                             if (e.key === 'Enter') { commitRename(); }
-                                                            if (e.key === 'Escape') { setRenaming(null); }
+                                                            if (e.key === 'Escape') { cancelRename(); }
                                                         }}
                                                     />
                                                 ) : (
@@ -454,7 +497,7 @@ export function SessionHistoryDropdown({
                                                 {!readOnly && !isRenaming && (
                                                     <RowActions className="row-actions">
                                                         <RowIconButton
-                                                            onClick={e => { e.stopPropagation(); setRenaming({ threadId: thread.id, name: thread.name }); }}
+                                                            onClick={e => { e.stopPropagation(); startRename(thread.id, thread.name); }}
                                                             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); } }}
                                                             title="Rename session"
                                                         >

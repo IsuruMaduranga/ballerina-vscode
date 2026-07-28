@@ -378,6 +378,8 @@ const AIChat: React.FC = () => {
     const [hasActiveReview, setHasActiveReview] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [threads, setThreads] = useState<ThreadSummary[]>([]);
+    const [threadsLoading, setThreadsLoading] = useState(false);
+    const [threadsError, setThreadsError] = useState<string | null>(null);
 
     const [approvalRequest, setApprovalRequest] = useState<TaskApprovalRequest | null>(null);
     const [approvalOverlay, setApprovalOverlay] = useState<ApprovalOverlayState>({ show: false });
@@ -2195,11 +2197,16 @@ const AIChat: React.FC = () => {
     }
 
     async function loadThreads(): Promise<void> {
+        setThreadsLoading(true);
+        setThreadsError(null);
         try {
             const list = await rpcClient.getAiPanelRpcClient().listThreads();
             setThreads(list);
-        } catch {
-            // Non-critical — session history unavailable
+        } catch (error) {
+            console.error('[AIChat] Failed to load chat sessions:', error);
+            setThreadsError("Couldn't load sessions. Close and reopen to retry.");
+        } finally {
+            setThreadsLoading(false);
         }
     }
 
@@ -2514,7 +2521,7 @@ const AIChat: React.FC = () => {
                             <div style={{ position: "relative" }}>
                                 <Button
                                     appearance="icon"
-                                    onClick={() => { loadThreads(); setHistoryOpen(v => !v); }}
+                                    onClick={() => { void loadThreads(); setHistoryOpen(v => !v); }}
                                     tooltip="Chat sessions"
                                 >
                                     <Codicon name="history" sx={{ fontSize: "16px", marginRight: 6 }} />
@@ -2523,6 +2530,8 @@ const AIChat: React.FC = () => {
                                 {historyOpen && (
                                     <SessionHistoryDropdown
                                         threads={threads}
+                                        loading={threadsLoading}
+                                        error={threadsError}
                                         readOnly={isLoading}
                                         onNewChat={handleClearChat}
                                         onSwitch={handleSwitchThread}
