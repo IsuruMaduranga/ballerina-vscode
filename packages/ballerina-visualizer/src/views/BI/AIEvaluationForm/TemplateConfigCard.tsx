@@ -84,7 +84,7 @@ export function TemplateConfigCard(props: TemplateConfigCardProps) {
     return (
         <Card>
             <Header>
-                <TemplateIconTile>
+                <TemplateIconTile selected>
                     <Codicon name={getTemplateIcon(template)}
                         sx={{ display: 'flex', height: 'auto', width: 'auto' }}
                         iconSx={{ fontSize: '20px', lineHeight: 1, display: 'block', WebkitTextStroke: '0.4px currentColor' }} />

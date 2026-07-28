@@ -199,7 +199,7 @@ export function TemplateModal(props: TemplateModalProps) {
                                 return (
                                     <TemplateOption key={template.codedata.symbol} type="button"
                                         selected={isSelected} onClick={() => handleSelect(template)}>
-                                        <TemplateIconTile size={32}>
+                                        <TemplateIconTile size={32} selected={isSelected}>
                                             <Codicon name={getTemplateIcon(template)}
                                                 sx={{ display: 'flex', height: 'auto', width: 'auto', cursor: 'pointer' }}
                                                 iconSx={{ fontSize: '18px', lineHeight: 1, display: 'block', WebkitTextStroke: '0.4px currentColor' }} />

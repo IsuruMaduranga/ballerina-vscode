@@ -66,29 +66,20 @@ export const StatusRow = styled.div`
     border: 1px solid var(--vscode-panel-border);
 `;
 
-// The template identity tile, always in the accent colour. Uses the same VS Code tokens as
-// CardSelector's selected IconWrapper so the eval form's accents stay in one family.
-export const TemplateIconTile = styled.div<{ size?: number }>`
+export const TemplateIconTile = styled.div<{ selected?: boolean; size?: number }>`
     display: grid;
     flex: 0 0 auto;
     place-items: center;
     width: ${(props: { size?: number }) => props.size ?? 36}px;
     height: ${(props: { size?: number }) => props.size ?? 36}px;
     border-radius: 8px;
-    color: var(--vscode-button-foreground);
-    background: var(--vscode-button-background);
-`;
-
-// Neutral tile, still used by the custom / unresolvable status rows.
-export const SelectableIcon = styled.div<{ selected: boolean; size?: number }>`
-    display: grid;
-    flex: 0 0 auto;
-    place-items: center;
-    width: ${(props: { size?: number }) => props.size ?? 36}px;
-    height: ${(props: { size?: number }) => props.size ?? 36}px;
-    border-radius: 8px;
-    color: ${(props: { selected: boolean }) => props.selected ? ThemeColors.ON_PRIMARY : ThemeColors.ON_SURFACE_VARIANT};
-    background: ${(props: { selected: boolean }) => props.selected ? ThemeColors.PRIMARY : ThemeColors.SURFACE_CONTAINER};
+    color: ${(props: { selected?: boolean }) => props.selected
+        ? 'var(--vscode-button-foreground)'
+        : 'var(--vscode-descriptionForeground)'};
+    background: ${(props: { selected?: boolean }) => props.selected
+        ? 'var(--vscode-button-background)'
+        : 'var(--vscode-editor-inactiveSelectionBackground)'};
+    transition: background-color 0.15s ease, color 0.15s ease;
 `;
 
 export const GrowingContent = styled.div`

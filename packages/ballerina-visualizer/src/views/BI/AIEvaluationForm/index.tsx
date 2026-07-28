@@ -35,7 +35,7 @@ import { TemplateModal } from "./TemplateModal";
 import { TemplateConfigCard } from "./TemplateConfigCard";
 import {
     FormSection, GrowingContent, HintText, MonospaceHint, NoticeBox, NoticeTitle, SectionLabel,
-    SelectableIcon, StatusRow, TitleRow, cardBox
+    StatusRow, TemplateIconTile, TitleRow, cardBox
 } from "./styles";
 import {
     DataSourceMode, DataSourceParam, EVALSET_FIELD_KEY, QUERIES_FIELD_KEY, buildQueriesField,
@@ -1157,9 +1157,9 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                             )}
                                             {isEditing && editShape === 'unresolvable' && (
                                                 <StatusRow>
-                                                    <SelectableIcon selected={false}>
+                                                    <TemplateIconTile>
                                                         <Icon name="bi-error" sx={{ fontSize: "20px", width: "20px", height: "20px" }} />
-                                                    </SelectableIcon>
+                                                    </TemplateIconTile>
                                                     <GrowingContent>
                                                         <TitleRow>
                                                             Built from template <code>{detectedSymbol}</code>
@@ -1176,9 +1176,9 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                             )}
                                             {isEditing && (editShape === 'custom' || editShape === 'ambiguous') && (
                                                 <StatusRow>
-                                                    <SelectableIcon selected={false}>
+                                                    <TemplateIconTile>
                                                         <Icon name="bi-config" sx={{ fontSize: "20px", width: "20px", height: "20px" }} />
-                                                    </SelectableIcon>
+                                                    </TemplateIconTile>
                                                     <GrowingContent>
                                                         <TitleRow>Custom evaluation</TitleRow>
                                                         <HintText>
