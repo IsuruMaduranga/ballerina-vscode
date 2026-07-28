@@ -131,7 +131,7 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
 
     if (addedIntoActiveWorkspace) {
         if (params.artifact) {
-            await generateArtifactInPlace(packageRoot, openRoot, params.artifact);
+            await generateArtifactInPlace(packageRoot, params.artifact);
         } else {
             StateMachine.refreshProjectInfo();
         }

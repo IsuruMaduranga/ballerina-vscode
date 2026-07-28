@@ -198,7 +198,6 @@ function consumePendingArtifactPayload(projectRoot: string): PendingIntegrationA
  */
 export async function generateArtifactInPlace(
     packageRoot: string,
-    workspaceRoot: string,
     payload: PendingIntegrationArtifactPayload
 ): Promise<void> {
     const label = ARTIFACT_KIND_LABELS[payload.kind];
@@ -210,16 +209,9 @@ export async function generateArtifactInPlace(
     try {
         await window.withProgress(
             { location: ProgressLocation.Notification, title: `Setting up your ${label}...` },
-            async () => {
-                // Land on the workspace overview afterwards (not the package's own
-                // overview) — matches the "stay on Project Overview" decision for the
-                // reload path, and mirrors the library-add flow's live refresh below.
-                await generatePendingArtifact(payload, packageRoot, false);
-
-                const projectInfo = await StateMachine.langClient().getProjectInfo({ projectPath: workspaceRoot });
-                StateMachine.updateProjectInfo(projectInfo);
-            }
+            () => generatePendingArtifact(payload, packageRoot, false)
         );
+        StateMachine.refreshProjectInfo();
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[IntegrationWizard] Failed to generate ${payload.kind} artifact in place:`, error);
