@@ -28,7 +28,7 @@ import {
     validateProjectName,
 } from "./utils";
 import { useRealtimeProjectPathValidation } from "./useRealtimeProjectPathValidation";
-import { FieldGroup } from "./styles";
+import { FieldGroup, ProjectSectionContainer } from "./styles";
 import { DEFAULT_PROJECT_NAME } from "./types";
 import { CreateFlowShell } from "./shared/CreateFlowShell";
 import { FormFooter } from "./shared/FormPageLayout";
@@ -40,16 +40,6 @@ import { ProjectContext } from "../../../CreateIntegrationWizard/types";
 import { BiWsClient } from "../../../wsManager/WsClient";
 import { BiWsClientProvider } from "../../../wsManager/WsClientContext";
 
-const InfoNote = styled.div`
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
-    margin-top: 6px;
-    font-size: 12px;
-    line-height: 1.4;
-    color: var(--vscode-descriptionForeground);
-`;
-
 /** A group of related fields, separated by generous whitespace rather than a
  *  hard divider so the form reads as a couple of calm sections. */
 const Section = styled.section`
@@ -57,6 +47,93 @@ const Section = styled.section`
         margin-top: 32px;
     }
 `;
+
+/** The bordered box around Project name + Location.
+ *
+ *  Extends the shared `ProjectSectionContainer` for the sole purpose of
+ *  neutralizing its `:focus-within` border recolor. Each field inside already
+ *  draws its own focus ring, so recoloring the whole card on focus is redundant
+ *  and actively misleading at this size: the entire group reads as active (or,
+ *  worse, as validating) instead of indicating which field has focus, and the
+ *  card-wide blue competes with the real focus indicator.
+ *
+ *  Scoped here on purpose rather than removed from the shared component, which
+ *  keeps its current behavior for `ProjectFormFields`. Emotion composes an
+ *  extended styled-component into a single class (base declarations first, then
+ *  these), so this same-specificity rule reliably wins on source order.
+ *  The shared `transition: border-color` is left in place but is now inert. */
+const ProjectGroupContainer = styled(ProjectSectionContainer)`
+    &:focus-within {
+        border-color: var(--vscode-panel-border);
+    }
+`;
+
+/** Padded interior of the bordered project group. `ProjectSectionContainer`
+ *  intentionally carries no padding of its own (its children in
+ *  `ProjectFormFields` each supply theirs), so the fields need this wrapper.
+ *  The trailing `FieldGroup`'s bottom margin is zeroed out so the status
+ *  footer's top border sits flush under the fields instead of floating below a
+ *  dangling 20px gap. */
+const ProjectGroupFields = styled.div`
+    padding: 12px;
+
+    & > *:last-child {
+        margin-bottom: 0;
+    }
+`;
+
+/** Live, derived status of the project group: do the current Project name +
+ *  Location resolve to a brand-new project, or to one that already exists?
+ *
+ *  Deliberately NOT styled like the `Note` callout in `styles/form.styles.ts`
+ *  — the starting-point section immediately below uses `Note` for a static tip,
+ *  and two identical quote-blocks stacked together would flatten a live status
+ *  into background noise. So: no left accent bar and no `textBlockQuote`
+ *  background. Instead it reads as a status bar physically attached to the
+ *  fields it derives from — a full-width tinted strip sealed to the bottom of
+ *  the container by a single top border, the same idiom as `SkipOptionRow`.
+ *  Kept in neutral foreground colors: this is informational, never a warning. */
+const ProjectStatusStrip = styled.div`
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-sideBar-background);
+    border-top: 1px solid var(--vscode-panel-border);
+`;
+
+/** The scannable half of the status ("New project" / "Existing project"),
+ *  lifted above the trailing detail clause so the key distinction registers at
+ *  a glance without resorting to a louder color. */
+const ProjectStatusLead = styled.span`
+    color: var(--vscode-foreground);
+    font-weight: 500;
+`;
+
+/** Sizing for the status icon: boxed to the 12px/1.4 line height of the strip
+ *  so it optically centers on the first line, and non-interactive (the shared
+ *  `Icon` container defaults to `cursor: pointer`). */
+const STATUS_ICON_SX = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "16px",
+    height: "17px",
+    flexShrink: 0,
+    cursor: "default",
+} as const;
+
+/** Nudged down from the codicon default of 16px to sit comfortably beside 12px text. */
+const STATUS_ICON_GLYPH_SX = { fontSize: "14px" } as const;
+
+/** Frame budget for the Project name preselect retry (~0.5s at 60fps). Only a
+ *  backstop: the field is normally ready within a frame or two, and this just
+ *  guarantees a mount that never satisfies the readiness check still ends up
+ *  focused instead of retrying forever. */
+const PRESELECT_MAX_FRAMES = 30;
 
 /** Which screen of the Create flow is showing. */
 type Screen = "chooser" | "integration" | "library";
@@ -99,6 +176,9 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
     const [projectNameError, setProjectNameError] = useState<string | null>(null);
     const [pathError, setPathError] = useState<string | null>(null);
     const [existingWorkspace, setExistingWorkspace] = useState(false);
+    /** Bumped whenever the pre-filled Project name is replaced programmatically, to
+     *  re-run the preselect below. */
+    const [preselectRequestId, setPreselectRequestId] = useState(0);
 
     const debouncedSetProjectNameError = useMemo(
         () => debounce((error: string) => setProjectNameError(error), 300),
@@ -134,6 +214,9 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
                 if (info?.isProject && info.name && !projectNameTouchedRef.current) {
                     setProjectName(info.name);
                     dirCoupling.setDirTouched(true);
+                    // This swap lands after the initial preselect has already run and
+                    // silently collapses its selection, so ask for another one.
+                    setPreselectRequestId((id) => id + 1);
                 }
             } catch (error) {
                 console.error("Failed to fetch default path:", error);
@@ -142,14 +225,70 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
         return () => { mounted = false; };
     }, [wsClient]);
 
+    // Focus the Project name field on every arrival at the chooser screen (initial
+    // mount, and Back from the integration/library screens), selecting its whole
+    // value so the pre-filled name can be overtyped immediately.
+    //
+    // Two things defeat a bare `setTimeout(0)` + `select()` here:
+    //
+    //  1. The seed effect above resolves asynchronously and, when the Default
+    //     project already exists, replaces the name with the real one from its
+    //     Ballerina.toml. Pushing a new value into the web component re-assigns the
+    //     inner <input>'s value, which collapses the selection to the caret — so on
+    //     exactly that path a select that already succeeded is silently undone a
+    //     moment later. `preselectRequestId` re-runs this effect for the new value.
+    //  2. `TextField` renders the `vscode-text-field` web component, so the real
+    //     <input> lives in its shadow root and may not be attached — or may not yet
+    //     hold the value — on the first macrotask. Selecting then is a silent no-op,
+    //     hence the bounded per-frame retry until it is genuinely ready.
+    //
+    // The guards keep this from ever fighting the user: the value is only selected
+    // while it is still the programmatic one (`projectNameTouchedRef`), and focus is
+    // never pulled out of wherever the user has already put it — notably the
+    // Location field, which they may be mid-edit in when the seed effect resolves.
     useEffect(() => {
         if (screen !== "chooser") return;
-        setTimeout(() => {
-            const inner = (firstFieldRef.current as any)?.shadowRoot?.querySelector("input") as HTMLInputElement | null;
-            inner?.focus();
-            inner?.select();
-        }, 0);
-    }, [screen]);
+
+        let frameId = 0;
+        let framesWaited = 0;
+
+        const focusFirstField = () => {
+            const host = firstFieldRef.current;
+            // The toolkit forwards its ref to the web component, not to the <input>.
+            // The element does expose `focus()`/`select()` publicly (FAST enables
+            // `delegatesFocus` and proxies `select()` to its inner control), but both
+            // bottom out in the very control we have to wait for anyway — and it is
+            // the only readiness signal the toolkit offers — so once we hold it, act
+            // on it directly rather than through two indirections.
+            const inner = host?.shadowRoot?.querySelector("input") ?? null;
+            // Re-read each frame: the user may start typing during the retry window.
+            const shouldSelect = !projectNameTouchedRef.current;
+            const valuePending = shouldSelect && !!inner && inner.value.length === 0;
+
+            if ((!inner || valuePending) && framesWaited < PRESELECT_MAX_FRAMES) {
+                framesWaited++;
+                frameId = requestAnimationFrame(focusFirstField);
+                return;
+            }
+            if (!inner) return;
+
+            const activeElement = document.activeElement;
+            const focusIsElsewhere =
+                !!activeElement &&
+                activeElement !== document.body &&
+                activeElement !== document.documentElement &&
+                activeElement !== host;
+            if (focusIsElsewhere) return;
+
+            inner.focus();
+            if (shouldSelect) {
+                inner.select();
+            }
+        };
+
+        frameId = requestAnimationFrame(focusFirstField);
+        return () => cancelAnimationFrame(frameId);
+    }, [screen, preselectRequestId]);
 
     useEffect(() => {
         const error = validateProjectName(projectName);
@@ -270,40 +409,56 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
             onBack={onBack}
         >
             <Section>
-                <FieldGroup>
-                    <TextField
-                        ref={firstFieldRef}
-                        onTextChange={handleNameChange}
-                        value={projectName}
-                        label="Project name"
-                        placeholder="Enter a project name"
-                        required={true}
-                        errorMsg={projectNameError || ""}
-                    />
-                </FieldGroup>
+                {/* Both fields live inside one bordered box so the status footer below
+                    reads as derived from the pair, not from whichever field it happens
+                    to sit nearest. */}
+                <ProjectGroupContainer>
+                    <ProjectGroupFields>
+                        <FieldGroup>
+                            <TextField
+                                ref={firstFieldRef}
+                                onTextChange={handleNameChange}
+                                value={projectName}
+                                label="Project name"
+                                placeholder="Enter a project name"
+                                required={true}
+                                errorMsg={projectNameError || ""}
+                            />
+                        </FieldGroup>
 
-                <FieldGroup>
-                    <DirectorySelector
-                        id="project-location-selector"
-                        label="Location"
-                        placeholder="Browse to select a location..."
-                        selectedPath={resolvedPath}
-                        required={true}
-                        onSelect={handlePathSelection}
-                        onChange={handlePathChange}
-                        errorMsg={pathError || undefined}
-                    />
+                        <FieldGroup>
+                            <DirectorySelector
+                                id="project-location-selector"
+                                label="Location"
+                                placeholder="Browse to select a location..."
+                                selectedPath={resolvedPath}
+                                required={true}
+                                onSelect={handlePathSelection}
+                                onChange={handlePathChange}
+                                errorMsg={pathError || undefined}
+                            />
+                        </FieldGroup>
+                    </ProjectGroupFields>
+
                     {!pathError && resolvedPath && (
-                        <InfoNote>
-                            <Icon name="info" isCodicon sx={{ marginTop: "1px" }} />
+                        <ProjectStatusStrip>
+                            <Icon
+                                name={existingWorkspace ? "check" : "new-folder"}
+                                isCodicon
+                                sx={STATUS_ICON_SX}
+                                iconSx={STATUS_ICON_GLYPH_SX}
+                            />
                             <span>
+                                <ProjectStatusLead>
+                                    {existingWorkspace ? "Existing project" : "New project"}
+                                </ProjectStatusLead>
                                 {existingWorkspace
-                                    ? <>This is an existing project. Your new {startingPointNoun} will be added here.</>
-                                    : <>A new project will be created at this location.</>}
+                                    ? <> · your new {startingPointNoun} will be added here</>
+                                    : <> · will be created here</>}
                             </span>
-                        </InfoNote>
+                        </ProjectStatusStrip>
                     )}
-                </FieldGroup>
+                </ProjectGroupContainer>
             </Section>
 
             <Section>
