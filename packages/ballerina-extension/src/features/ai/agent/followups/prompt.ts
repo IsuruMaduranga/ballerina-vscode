@@ -20,7 +20,7 @@ import { ModelMessage } from "ai";
 import { ANCHOR_ACTIONS } from "./anchors";
 
 /** How the turn these suggestions belong to ended. */
-export type FollowupSituation = "completed" | "aborted";
+export type FollowupSituation = "completed" | "aborted" | "error";
 
 /** One message from an earlier turn, as context for the suggestions. */
 export interface RecentExchange {
@@ -39,6 +39,8 @@ export interface FollowupPromptInput {
     mode?: string;
     /** How the turn ended; defaults to a normally completed turn. */
     situation?: FollowupSituation;
+    /** What went wrong, when the turn failed. */
+    errorMessage?: string;
 }
 
 const anchorGuidance = ANCHOR_ACTIONS.map((a) => `- ${a.label}: ${a.description}`).join("\n");
@@ -53,6 +55,10 @@ If none fit, suggest a next step that clearly follows from the last exchange.`;
 const ABORTED_FRAMING = `The Copilot builds integrations for the user. The user stopped it part-way, so the response below is cut short and the work is unfinished. Propose up to 2 short, specific ways the user might take the work in a DIFFERENT direction from where it stopped. Each is shown as a clickable chip; clicking one sends its prompt to the Copilot as the user's next message.
 
 A separate "Continue" action is already offered to the user, so never suggest continuing, resuming, finishing, or completing the interrupted work — that is covered. People usually stop the Copilot because it was heading somewhere they did not want, so suggest plausible course corrections based on what it had started doing.`;
+
+const ERROR_FRAMING = `The Copilot builds integrations for the user. This turn FAILED part-way, so the work is unfinished and whatever it was doing did not complete. The failure reason is given below. Propose up to 2 short, specific things the user can do about it.
+
+Base the suggestions on the failure: if it looks like something the user can resolve or work around, suggest that; if the work was simply interrupted, suggest getting it finished. Never pretend the work succeeded, and never ask the user to debug the product itself.`;
 
 const SHARED_RULES = `Scope — only suggest things the Copilot can actually do: build, change, explain, run, or test the user's integration, or connect it to other systems or services. Never suggest anything else, because it will be refused — in particular, no deploying to a container or cloud platform, and no infrastructure, CI/CD, or cloud-provider setup.
 
@@ -70,17 +76,22 @@ const COMPLETED_ONLY_RULE = `
 - Never suggest something the Copilot already did in its response.`;
 
 function buildSystemPrompt(situation: FollowupSituation): string {
-    const aborted = situation === "aborted";
+    const framing = situation === "aborted" ? ABORTED_FRAMING
+        : situation === "error" ? ERROR_FRAMING
+        : COMPLETED_FRAMING;
     return `You help users of the WSO2 Integrator Copilot decide what to do next.
 
-${aborted ? ABORTED_FRAMING : COMPLETED_FRAMING}
+${framing}
 
-${SHARED_RULES}${aborted ? "" : COMPLETED_ONLY_RULE}`;
+${SHARED_RULES}${situation === "completed" ? COMPLETED_ONLY_RULE : ""}`;
 }
 
 export function buildFollowupMessages(input: FollowupPromptInput): ModelMessage[] {
-    const { userQuery, assistantResponse, earlierExchanges, mode, situation = "completed" } = input;
-    const responseTag = situation === "aborted" ? "assistant_response_interrupted" : "assistant_response";
+    const { userQuery, assistantResponse, earlierExchanges, mode, situation = "completed", errorMessage } = input;
+    const responseTag = situation === "completed" ? "assistant_response" : "assistant_response_interrupted";
+    const errorBlock = situation === "error" && errorMessage
+        ? `\n<failure_reason>\n${errorMessage}\n</failure_reason>\n`
+        : "";
     const historyBlock = earlierExchanges?.length
         ? `<earlier_in_this_conversation>
 ${earlierExchanges.map((m) => `${m.role === "user" ? "User message" : "Assistant response"}: ${m.text}`).join("\n\n")}
@@ -95,7 +106,7 @@ ${userQuery}
 <${responseTag}>
 ${assistantResponse}
 </${responseTag}>
-
+${errorBlock}
 Suggest the user's likely next actions.`;
 
     return [

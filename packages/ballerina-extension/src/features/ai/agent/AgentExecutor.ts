@@ -21,7 +21,7 @@ import { Command, GenerateAgentCodeRequest, ProjectSource, ExecutionContext, Sem
 import { StateMachine } from '../../../stateMachine';
 import { ModelMessage, stepCountIs, streamText, TextStreamPart } from 'ai';
 import { getAnthropicClient, getProviderCacheControl, addCacheControlToMessages, ANTHROPIC_SONNET_4 } from '../utils/ai-client';
-import { populateHistoryForAgent, getErrorMessage, buildChatError } from '../utils/ai-utils';
+import { populateHistoryForAgent, getErrorMessage, getErrorCode, buildChatError } from '../utils/ai-utils';
 import { sendAgentDidOpenForFreshProjects } from '../utils/project/ls-schema-notifications';
 import { getSystemPrompt, getUserPrompt } from './prompts';
 import { FollowupSituation, startFollowupSuggestions } from './followups';
@@ -828,6 +828,11 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             });
             updateAndSaveChat(context.messageId, Command.Agent, context.eventHandler);
         }
+
+        // The quota banner owns that failure, and retrying under an exhausted quota just fails again.
+        if (getErrorCode(error) !== 'usage_limit') {
+            this.maybeScheduleFollowups(context, messagesToSave, 'error', getErrorMessage(error));
+        }
     }
 
     /**
@@ -936,7 +941,12 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
     }
 
     /** Hands the finished turn to the follow-up suggestion flow; at most once per turn. */
-    private maybeScheduleFollowups(context: StreamContext, assistantMessages: any[], situation: FollowupSituation): void {
+    private maybeScheduleFollowups(
+        context: StreamContext,
+        assistantMessages: any[],
+        situation: FollowupSituation,
+        errorMessage?: string
+    ): void {
         // Migration and evals drive this executor with their own handlers and no chat storage —
         // suggestions there would burn a call and leak chips into the wrong panel.
         if (this._followupsScheduled || !this.config.chatStorage?.enabled) {
@@ -951,6 +961,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             userQuery: this.config.params.usecase ?? '',
             isPlanMode: this.config.params.isPlanMode,
             abortSignal: this.config.abortController.signal,
+            errorMessage,
             eventHandler: this.config.eventHandler,
         });
     }

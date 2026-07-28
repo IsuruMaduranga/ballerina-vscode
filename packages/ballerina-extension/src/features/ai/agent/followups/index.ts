@@ -29,8 +29,8 @@ export { FollowupSituation } from "./prompt";
 
 const TIMEOUT_MS = 8_000;
 
-/** Below this much partial output an aborted turn gets the Continue chip only, with no model call. */
-const MIN_CHARS_FOR_ABORT = 200;
+/** Below this much partial output an interrupted turn gets its fixed chip only, with no model call. */
+const MIN_CHARS_FOR_INTERRUPTED = 200;
 
 /** How many earlier turns are passed as context, and how much of each message. */
 const HISTORY_TURNS = 3;
@@ -40,6 +40,12 @@ const MAX_HISTORY_TEXT_CHARS = 1_500;
 const CONTINUE_SUGGESTION: FollowupSuggestion = {
     label: "Continue",
     prompt: "Redo the step you were interrupted on and carry on.",
+};
+
+/** Offered on failure, so there is something to act on even when generation fails too. */
+const RETRY_SUGGESTION: FollowupSuggestion = {
+    label: "Try again",
+    prompt: "Try that again.",
 };
 
 export interface FollowupTurn {
@@ -52,8 +58,10 @@ export interface FollowupTurn {
     assistantMessages: any[];
     userQuery: string;
     isPlanMode: boolean;
-    /** The turn's signal — already tripped on the aborted path. */
+    /** The turn's signal — already tripped on the interrupted paths. */
     abortSignal: AbortSignal;
+    /** What went wrong, when the turn failed. */
+    errorMessage?: string;
     eventHandler: CopilotEventHandler;
 }
 
@@ -66,7 +74,7 @@ export interface FollowupTurn {
  * @returns whether generation started, so the caller can avoid running twice for one turn.
  */
 export function startFollowupSuggestions(turn: FollowupTurn): boolean {
-    const { situation, messageId, projectRootPath, threadId, assistantMessages, userQuery, isPlanMode, abortSignal, eventHandler } = turn;
+    const { situation, messageId, projectRootPath, threadId, assistantMessages, userQuery, isPlanMode, abortSignal, errorMessage, eventHandler } = turn;
 
     if (process.env.AI_TEST_ENV) {
         return false;
@@ -76,18 +84,21 @@ export function startFollowupSuggestions(turn: FollowupTurn): boolean {
     }
 
     const aborted = situation === "aborted";
-    // On the aborted path the turn's signal is already tripped, so it can neither gate nor be reused.
-    if (!aborted && abortSignal.aborted) {
+    // The turn's signal is tripped on stop, and moments after a failure — so on those paths it
+    // can neither gate the work nor be reused for the call.
+    const interrupted = situation !== "completed";
+    if (!interrupted && abortSignal.aborted) {
         return false;
     }
 
     const assistantText = extractAssistantText(assistantMessages);
-    if (!aborted && !assistantText) {
+    if (!assistantText && !interrupted) {
         return false;
     }
 
-    // Users abort constantly; only pay for a model call when there is enough to pivot from.
-    const worthGenerating = !aborted || assistantText.length >= MIN_CHARS_FOR_ABORT;
+    // Nothing produced means nothing to pivot on — a failure that early is almost always
+    // infrastructure, where the fixed chip is the only honest suggestion.
+    const worthGenerating = !interrupted || assistantText.length >= MIN_CHARS_FOR_INTERRUPTED;
     console.log(`[Followups] Scheduling for ${messageId} (situation=${situation})`);
 
     void (async () => {
@@ -99,11 +110,13 @@ export function startFollowupSuggestions(turn: FollowupTurn): boolean {
                     earlierExchanges: getRecentExchanges(projectRootPath, threadId, messageId),
                     mode: isPlanMode ? "Plan" : "Edit",
                     situation,
+                    errorMessage,
                 }, abortSignal)
                 : [];
 
-            const suggestions = aborted ? [CONTINUE_SUGGESTION, ...generated] : generated;
-            if (suggestions.length === 0 || (!aborted && abortSignal.aborted)) {
+            const fixed = aborted ? [CONTINUE_SUGGESTION] : situation === "error" ? [RETRY_SUGGESTION] : [];
+            const suggestions = [...fixed, ...generated];
+            if (suggestions.length === 0 || (!interrupted && abortSignal.aborted)) {
                 return;
             }
             // The webview shows whatever arrives, and it cannot tell that the user switched
@@ -135,7 +148,7 @@ async function generateSuggestions(
     if (!input.assistantResponse?.trim()) {
         return [];
     }
-    const aborted = input.situation === "aborted";
+    const interrupted = input.situation !== "completed";
     try {
         const { object } = await generateObject({
             model: await getAnthropicClient(ANTHROPIC_HAIKU),
@@ -143,11 +156,11 @@ async function generateSuggestions(
             temperature: 0.3,
             messages: buildFollowupMessages(input),
             schema: followupSuggestionsSchema,
-            // A stopped turn's signal is already tripped, so fall back to a plain timeout.
-            abortSignal: aborted ? AbortSignal.timeout(TIMEOUT_MS) : turnSignal,
+            // The turn's signal is tripped on the interrupted paths, so fall back to a timeout.
+            abortSignal: interrupted ? AbortSignal.timeout(TIMEOUT_MS) : turnSignal,
         });
-        // Leave room for the Continue chip that an aborted turn prepends.
-        return sanitize(object.suggestions, aborted ? 2 : 3, input.situation);
+        // Leave room for the fixed chip that an interrupted turn prepends.
+        return sanitize(object.suggestions, interrupted ? 2 : 3, input.situation);
     } catch (error) {
         console.warn("[Followups] Suggestion generation failed:", error);
         return [];
@@ -168,8 +181,11 @@ function sanitize(
         if (!label || !prompt) {
             continue;
         }
-        // The aborted flow offers its own Continue chip, so drop model-generated near-duplicates.
+        // Both interrupted flows prepend their own chip, so drop model-generated near-duplicates.
         if (situation === "aborted" && /^(continue|resume|finish|complete)\b/i.test(label)) {
+            continue;
+        }
+        if (situation === "error" && /^(retry|try again)\b/i.test(label)) {
             continue;
         }
         const key = label.toLowerCase();
