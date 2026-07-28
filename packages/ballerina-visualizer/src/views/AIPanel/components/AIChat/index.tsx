@@ -56,7 +56,7 @@ import CheckpointSeparator from "../CheckpointSeparator";
 import { Attachment, AttachmentStatus, SkillEnableStage, SkillEntry, TaskApprovalRequest } from "@wso2/ballerina-core";
 import type { ClarifyEvent, ConfigurationCollectionEvent, ConnectorGenerationNotification } from "@wso2/ballerina-core";
 
-import { AIChatView, Header, HeaderButtons, ChatMessage, TurnGroup, AuthProviderChip, UsageBadge, ApprovalOverlay, OverlayMessage, OverlayCloseButton } from "../../styles";
+import { AIChatView, Header, HeaderButtons, ChatMessage, TurnGroup, AuthProviderChip, UsageBadge, UsageRefreshButton, ApprovalOverlay, OverlayMessage, OverlayCloseButton } from "../../styles";
 import { SessionHistoryDropdown } from "../SessionHistory";
 import ReferenceDropdown from "../ReferenceDropdown";
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react";
@@ -581,7 +581,7 @@ const AIChat: React.FC = () => {
         return parts.length > 0 ? parts.join(' ') : 'less than a minute';
     };
 
-    const fetchUsage = async () => {
+    const fetchUsage = async (clearOnError = true) => {
         try {
             const result = await rpcClient.getAiPanelRpcClient().getUsage();
             if (result) {
@@ -593,9 +593,23 @@ const AIChat: React.FC = () => {
             }
         } catch (e) {
             console.error("Failed to fetch usage:", e);
-            // Reset on error to avoid permanently blocking the user on transient failures
-            setUsage(null);
-            setIsUsageExceeded(false);
+            // Clear only on the automatic path, so a transient failure can't block the user.
+            if (clearOnError) {
+                setUsage(null);
+                setIsUsageExceeded(false);
+            }
+        }
+    };
+
+    const [recheckingUsage, setRecheckingUsage] = useState(false);
+
+    /** Nothing else re-checks while the limit is up — the input is disabled, so no turn runs. */
+    const handleRecheckUsage = async (): Promise<void> => {
+        setRecheckingUsage(true);
+        try {
+            await fetchUsage(false);
+        } finally {
+            setRecheckingUsage(false);
         }
     };
 
@@ -2433,6 +2447,18 @@ const AIChat: React.FC = () => {
                                 ) : (
                                     <Tooltip content={`Resets in ${formatResetsInExact(usage.resetsIn)}`}>
                                         <UsageBadge>{isUsageExceeded ? "100%" : `${Math.round(100 - usage.remainingUsagePercentage)}%`}</UsageBadge>
+                                    </Tooltip>
+                                )}
+                                {isUsageExceeded && (
+                                    <Tooltip content="Check usage again">
+                                        <UsageRefreshButton
+                                            type="button"
+                                            onClick={() => { void handleRecheckUsage(); }}
+                                            disabled={recheckingUsage}
+                                            aria-label="Check usage again"
+                                        >
+                                            <span className={`codicon codicon-refresh${recheckingUsage ? " codicon-modifier-spin" : ""}`} style={{ fontSize: 12 }} />
+                                        </UsageRefreshButton>
                                     </Tooltip>
                                 )}
                             </AuthProviderChip>
