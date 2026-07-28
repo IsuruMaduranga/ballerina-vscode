@@ -41,19 +41,20 @@ interface WizardFooterProps {
     skipDisabled?: boolean;
 }
 
-/** The wizard's per-step action row: … [Primary] [Create Empty Integration]. */
+/** The wizard's per-step action row: … [Create Empty Integration] [Primary].
+ *  The primary action sits last so it lands at the right edge of the form. */
 export function WizardFooter(props: WizardFooterProps) {
     const { primaryLabel, onPrimary, primaryDisabled, skipLabel, onSkip, skipDisabled } = props;
     return (
         <FooterBar>
-            {primaryLabel && onPrimary && (
-                <Button appearance="primary" onClick={onPrimary} disabled={primaryDisabled}>
-                    {primaryLabel}
-                </Button>
-            )}
             {skipLabel && onSkip && (
                 <Button appearance="secondary" onClick={onSkip} disabled={skipDisabled}>
                     {skipLabel}
+                </Button>
+            )}
+            {primaryLabel && onPrimary && (
+                <Button appearance="primary" onClick={onPrimary} disabled={primaryDisabled}>
+                    {primaryLabel}
                 </Button>
             )}
         </FooterBar>
