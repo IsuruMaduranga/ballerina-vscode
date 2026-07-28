@@ -55,23 +55,25 @@ function groupByDate(threads: ThreadSummary[]): { label: string; items: ThreadSu
 const Overlay = styled.div`
     position: fixed;
     inset: 0;
-    z-index: 200;
+    z-index: 999;
 `;
 
 const DropdownContainer = styled.div`
     position: absolute;
-    top: 40px;
+    top: calc(100% + 6px);
     right: 0;
-    width: 320px;
+    width: 300px;
     max-height: 420px;
-    background: var(--vscode-editor-background);
-    border: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-editorHoverWidget-background);
+    border: 1px solid var(--vscode-editorHoverWidget-border);
     border-radius: 4px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    color: var(--vscode-editorHoverWidget-foreground);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    z-index: 201;
+    z-index: 1000;
+    font-size: 12px;
     font-family: var(--vscode-font-family);
 `;
 
@@ -79,8 +81,8 @@ const SearchRow = styled.div`
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--vscode-panel-border);
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
     flex-shrink: 0;
 `;
 
@@ -98,27 +100,35 @@ const SearchInput = styled.input`
 const SessionList = styled.div`
     flex: 1;
     overflow-y: auto;
-    padding: 4px 0;
+    padding: 4px;
 `;
 
 const GroupLabel = styled.div`
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.5px;
     color: var(--vscode-descriptionForeground);
-    padding: 8px 12px 4px;
+    padding: 6px 4px 2px;
+`;
+
+const EmptyState = styled.div`
+    padding: 16px 8px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
 `;
 
 const SessionItem = styled.div<{ isActive: boolean }>(({ isActive }: { isActive: boolean }) => ({
     display: "flex",
     alignItems: "center",
     gap: "8px",
-    padding: "6px 12px",
+    padding: "4px",
+    borderRadius: "3px",
     cursor: "pointer",
     position: "relative" as const,
     background: isActive ? "var(--vscode-list-activeSelectionBackground)" : "transparent",
-    color: isActive ? "var(--vscode-list-activeSelectionForeground)" : "var(--vscode-foreground)",
+    color: isActive ? "var(--vscode-list-activeSelectionForeground)" : "inherit",
     outline: "none",
     "&:hover": {
         background: isActive ? "var(--vscode-list-activeSelectionBackground)" : "var(--vscode-list-hoverBackground)",
@@ -131,7 +141,7 @@ const ActiveDot = styled.div<{ isActive: boolean }>(({ isActive }: { isActive: b
     width: "6px",
     height: "6px",
     borderRadius: "50%",
-    background: isActive ? "var(--vscode-button-background)" : "var(--vscode-descriptionForeground)",
+    background: isActive ? "var(--vscode-charts-blue, #007acc)" : "var(--vscode-descriptionForeground)",
     flexShrink: 0,
     opacity: isActive ? 1 : 0.5,
 }));
@@ -145,35 +155,38 @@ const SessionName = styled.span`
 `;
 
 const SessionTime = styled.span`
-    font-size: 11px;
+    font-size: 10px;
     color: var(--vscode-descriptionForeground);
     flex-shrink: 0;
 `;
 
 const DeleteBtn = styled.button`
     opacity: 0;
+    width: 20px;
+    height: 20px;
     background: transparent;
     border: none;
     cursor: pointer;
-    padding: 2px 4px;
-    color: var(--vscode-descriptionForeground);
-    display: flex;
+    padding: 0;
+    color: var(--vscode-icon-foreground);
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
     border-radius: 3px;
     flex-shrink: 0;
     transition: opacity 0.1s;
-    &:hover, &:focus-visible { color: var(--vscode-errorForeground); background: var(--vscode-list-hoverBackground); opacity: 1; }
+    &:hover, &:focus-visible { color: var(--vscode-errorForeground); background: var(--vscode-toolbar-hoverBackground); opacity: 1; }
 `;
 
 const NewChatRow = styled.button`
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+    gap: 6px;
+    padding: 6px 8px;
     border: none;
-    border-top: 1px solid var(--vscode-panel-border);
+    border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
     background: transparent;
-    color: var(--vscode-button-foreground, var(--vscode-foreground));
+    color: inherit;
     font-size: 12px;
     font-family: var(--vscode-font-family);
     cursor: pointer;
@@ -249,7 +262,7 @@ export function SessionHistoryDropdown({
 
                 <SessionList>
                     {groups.length === 0 && (
-                        <GroupLabel style={{ fontWeight: 400, textTransform: "none" }}>No sessions found</GroupLabel>
+                        <EmptyState>{search.trim() ? "No matching sessions" : "No sessions yet"}</EmptyState>
                     )}
                     {groups.map(group => (
                         <div key={group.label}>
