@@ -581,7 +581,7 @@ const AIChat: React.FC = () => {
         return parts.length > 0 ? parts.join(' ') : 'less than a minute';
     };
 
-    const fetchUsage = async () => {
+    const fetchUsage = async (clearOnError = true) => {
         try {
             const result = await rpcClient.getAiPanelRpcClient().getUsage();
             if (result) {
@@ -593,9 +593,23 @@ const AIChat: React.FC = () => {
             }
         } catch (e) {
             console.error("Failed to fetch usage:", e);
-            // Reset on error to avoid permanently blocking the user on transient failures
-            setUsage(null);
-            setIsUsageExceeded(false);
+            // Clear only on the automatic path, so a transient failure can't block the user.
+            if (clearOnError) {
+                setUsage(null);
+                setIsUsageExceeded(false);
+            }
+        }
+    };
+
+    const [recheckingUsage, setRecheckingUsage] = useState(false);
+
+    /** Nothing else re-checks while the limit is up — the input is disabled, so no turn runs. */
+    const handleRecheckUsage = async (): Promise<void> => {
+        setRecheckingUsage(true);
+        try {
+            await fetchUsage(false);
+        } finally {
+            setRecheckingUsage(false);
         }
     };
 
@@ -2434,6 +2448,16 @@ const AIChat: React.FC = () => {
                                     <Tooltip content={`Resets in ${formatResetsInExact(usage.resetsIn)}`}>
                                         <UsageBadge>{isUsageExceeded ? "100%" : `${Math.round(100 - usage.remainingUsagePercentage)}%`}</UsageBadge>
                                     </Tooltip>
+                                )}
+                                {isUsageExceeded && (
+                                    <Button
+                                        appearance="icon"
+                                        onClick={() => { void handleRecheckUsage(); }}
+                                        tooltip="Check usage again"
+                                        disabled={recheckingUsage}
+                                    >
+                                        <span className={`codicon codicon-refresh${recheckingUsage ? " codicon-modifier-spin" : ""}`} style={{ fontSize: 12 }} />
+                                    </Button>
                                 )}
                             </AuthProviderChip>
                         )}
