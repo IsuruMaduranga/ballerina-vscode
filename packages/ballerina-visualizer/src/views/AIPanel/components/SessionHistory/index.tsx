@@ -24,17 +24,44 @@ import { DangerActionButton, SecondaryActionButton } from "../../styles";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatRelativeTime(ts: number): string {
-    const diffMs = Date.now() - ts;
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHr = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffSec < 60) { return "Just now"; }
-    if (diffMin < 60) { return `${diffMin}m`; }
-    if (diffHr < 24) { return `${diffHr}h`; }
-    if (diffDay < 7) { return `${diffDay}d`; }
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const RECENT_WINDOW_DAYS = 7;
+const GROUP_ORDER = ["TODAY", "YESTERDAY", "PAST WEEK", "OLDER"] as const;
+
+type GroupLabelText = typeof GROUP_ORDER[number];
+
+function startOfDay(ts: number): number {
+    const date = new Date(ts);
+    date.setHours(0, 0, 0, 0);
+    return date.getTime();
+}
+
+/**
+ * Whole calendar days between two instants. Both the row label and the group heading derive from
+ * this, so they can never disagree the way elapsed-time and calendar-day views of "yesterday" did.
+ * Rounded because a DST boundary makes a local day 23 or 25 hours long.
+ */
+function calendarDaysAgo(ts: number, now: number): number {
+    return Math.round((startOfDay(now) - startOfDay(ts)) / MS_PER_DAY);
+}
+
+function formatRelativeTime(ts: number, now: number): string {
+    const daysAgo = calendarDaysAgo(ts, now);
+    if (daysAgo <= 0) {
+        const diffMin = Math.floor((now - ts) / 60_000);
+        if (diffMin < 1) { return "Just now"; }
+        if (diffMin < 60) { return `${diffMin}m`; }
+        return `${Math.floor(diffMin / 60)}h`;
+    }
+    if (daysAgo < RECENT_WINDOW_DAYS) { return `${daysAgo}d`; }
     return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function groupLabelFor(ts: number, now: number): GroupLabelText {
+    const daysAgo = calendarDaysAgo(ts, now);
+    if (daysAgo <= 0) { return "TODAY"; }
+    if (daysAgo === 1) { return "YESTERDAY"; }
+    return daysAgo < RECENT_WINDOW_DAYS ? "PAST WEEK" : "OLDER";
 }
 
 function promptCountLabel(turnCount: number): string | undefined {
@@ -42,22 +69,20 @@ function promptCountLabel(turnCount: number): string | undefined {
     return `${turnCount} prompt${turnCount === 1 ? "" : "s"}`;
 }
 
-function formatMeta(thread: ThreadSummary): string {
-    const time = formatRelativeTime(thread.updatedAt);
+function formatMeta(thread: ThreadSummary, now: number): string {
+    const time = formatRelativeTime(thread.updatedAt, now);
     return thread.turnCount > 0 ? `${thread.turnCount} · ${time}` : time;
 }
 
-function groupByDate(threads: ThreadSummary[]): { label: string; items: ThreadSummary[] }[] {
-    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-    const startOfWeek = new Date(startOfToday); startOfWeek.setDate(startOfWeek.getDate() - 6);
-    const groups: Record<string, ThreadSummary[]> = { TODAY: [], "PAST WEEK": [], OLDER: [] };
-    for (const t of threads) {
-        if (t.updatedAt >= startOfToday.getTime()) { groups.TODAY.push(t); }
-        else if (t.updatedAt >= startOfWeek.getTime()) { groups["PAST WEEK"].push(t); }
-        else { groups.OLDER.push(t); }
+function groupByDate(threads: ThreadSummary[], now: number): { label: string; items: ThreadSummary[] }[] {
+    const groups: Record<GroupLabelText, ThreadSummary[]> = {
+        TODAY: [], YESTERDAY: [], "PAST WEEK": [], OLDER: [],
+    };
+    for (const thread of threads) {
+        groups[groupLabelFor(thread.updatedAt, now)].push(thread);
     }
-    return (["TODAY", "PAST WEEK", "OLDER"] as const)
-        .filter(k => groups[k].length > 0)
+    return GROUP_ORDER
+        .filter(label => groups[label].length > 0)
         .map(label => ({ label, items: groups[label] }));
 }
 
@@ -314,7 +339,8 @@ export function SessionHistoryDropdown({
         ? threads.filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
         : threads;
 
-    const groups = groupByDate(filtered);
+    const now = Date.now();
+    const groups = groupByDate(filtered, now);
 
     const handleSwitch = (threadId: string) => {
         if (readOnly) { return; }
@@ -412,7 +438,7 @@ export function SessionHistoryDropdown({
                                                     <SessionName title={thread.name}>{thread.name}</SessionName>
                                                 )}
                                                 <SessionMeta title={promptCountLabel(thread.turnCount)}>
-                                                    {formatMeta(thread)}
+                                                    {formatMeta(thread, now)}
                                                 </SessionMeta>
                                                 {!readOnly && !isRenaming && (
                                                     <RowActions className="row-actions">
