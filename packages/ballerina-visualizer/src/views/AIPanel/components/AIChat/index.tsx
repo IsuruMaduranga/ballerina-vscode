@@ -378,7 +378,6 @@ const AIChat: React.FC = () => {
     const [hasActiveReview, setHasActiveReview] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [threads, setThreads] = useState<ThreadSummary[]>([]);
-    const newChatAnchorRef = useRef<HTMLDivElement>(null);
 
     const [approvalRequest, setApprovalRequest] = useState<TaskApprovalRequest | null>(null);
     const [approvalOverlay, setApprovalOverlay] = useState<ApprovalOverlayState>({ show: false });
@@ -2506,20 +2505,16 @@ const AIChat: React.FC = () => {
                             </AuthProviderChip>
                         )}
                         <HeaderButtons>
-                            {/* Single button — click opens session history dropdown. New chat is created from within the dropdown. */}
-                            <div ref={newChatAnchorRef} style={{ position: "relative" }}>
+                            {/* New chat is created from a row inside the dropdown, not from this button. */}
+                            <div style={{ position: "relative" }}>
                                 <Button
                                     appearance="icon"
                                     onClick={() => { loadThreads(); setHistoryOpen(v => !v); }}
                                     tooltip="Chat sessions"
                                     disabled={isLoading}
                                 >
-                                    <Icon name="NewChat" sx={{ fontSize: "16px", marginRight: 4 }} iconSx={{ position: "relative", top: "2px" }} />
-                                    New Chat
-                                    <Codicon
-                                        name={historyOpen ? "chevron-up" : "chevron-down"}
-                                        sx={{ fontSize: "10px", marginLeft: 4, position: "relative", top: "1px" }}
-                                    />
+                                    <Codicon name="history" sx={{ fontSize: "16px", marginRight: 6 }} />
+                                    Chats
                                 </Button>
                                 {historyOpen && (
                                     <SessionHistoryDropdown
