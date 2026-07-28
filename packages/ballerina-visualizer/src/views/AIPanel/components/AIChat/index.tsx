@@ -56,7 +56,7 @@ import CheckpointSeparator from "../CheckpointSeparator";
 import { Attachment, AttachmentStatus, SkillEnableStage, SkillEntry, TaskApprovalRequest } from "@wso2/ballerina-core";
 import type { ClarifyEvent, ConfigurationCollectionEvent, ConnectorGenerationNotification } from "@wso2/ballerina-core";
 
-import { AIChatView, Header, HeaderButtons, ChatMessage, TurnGroup, AuthProviderChip, UsageBadge, ApprovalOverlay, OverlayMessage, OverlayCloseButton } from "../../styles";
+import { AIChatView, Header, HeaderButtons, ChatMessage, TurnGroup, AuthProviderChip, UsageBadge, UsageRefreshButton, ApprovalOverlay, OverlayMessage, OverlayCloseButton } from "../../styles";
 import { SessionHistoryDropdown } from "../SessionHistory";
 import ReferenceDropdown from "../ReferenceDropdown";
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react";
@@ -2450,14 +2450,16 @@ const AIChat: React.FC = () => {
                                     </Tooltip>
                                 )}
                                 {isUsageExceeded && (
-                                    <Button
-                                        appearance="icon"
-                                        onClick={() => { void handleRecheckUsage(); }}
-                                        tooltip="Check usage again"
-                                        disabled={recheckingUsage}
-                                    >
-                                        <span className={`codicon codicon-refresh${recheckingUsage ? " codicon-modifier-spin" : ""}`} style={{ fontSize: 12 }} />
-                                    </Button>
+                                    <Tooltip content="Check usage again">
+                                        <UsageRefreshButton
+                                            type="button"
+                                            onClick={() => { void handleRecheckUsage(); }}
+                                            disabled={recheckingUsage}
+                                            aria-label="Check usage again"
+                                        >
+                                            <span className={`codicon codicon-refresh${recheckingUsage ? " codicon-modifier-spin" : ""}`} style={{ fontSize: 12 }} />
+                                        </UsageRefreshButton>
+                                    </Tooltip>
                                 )}
                             </AuthProviderChip>
                         )}
