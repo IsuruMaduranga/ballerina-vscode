@@ -541,7 +541,7 @@ export class ChatStateStorage {
      */
     listThreadsSummary(projectRootPath: string): Array<{
         id: string; name: string; isActive: boolean;
-        createdAt: number; updatedAt: number; messageCount: number;
+        createdAt: number; updatedAt: number; turnCount: number;
     }> {
         const workspace = this.initializeWorkspace(projectRootPath);
         const summaries = [];
@@ -552,7 +552,7 @@ export class ChatStateStorage {
                 isActive: id === workspace.activeThreadId,
                 createdAt: thread.createdAt,
                 updatedAt: thread.updatedAt,
-                messageCount: thread.generations.length,
+                turnCount: thread.generations.length,
             });
         }
         // Newest first

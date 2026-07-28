@@ -36,6 +36,16 @@ function formatRelativeTime(ts: number): string {
     return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function promptCountLabel(turnCount: number): string | undefined {
+    if (turnCount === 0) { return undefined; }
+    return `${turnCount} prompt${turnCount === 1 ? "" : "s"}`;
+}
+
+function formatMeta(thread: ThreadSummary): string {
+    const time = formatRelativeTime(thread.updatedAt);
+    return thread.turnCount > 0 ? `${thread.turnCount} · ${time}` : time;
+}
+
 function groupByDate(threads: ThreadSummary[]): { label: string; items: ThreadSummary[] }[] {
     const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
     const startOfWeek = new Date(startOfToday); startOfWeek.setDate(startOfWeek.getDate() - 6);
@@ -154,7 +164,7 @@ const SessionName = styled.span`
     text-overflow: ellipsis;
 `;
 
-const SessionTime = styled.span`
+const SessionMeta = styled.span`
     font-size: 10px;
     color: var(--vscode-descriptionForeground);
     flex-shrink: 0;
@@ -278,7 +288,9 @@ export function SessionHistoryDropdown({
                                 >
                                     <ActiveDot isActive={thread.isActive} />
                                     <SessionName title={thread.name}>{thread.name}</SessionName>
-                                    <SessionTime>{formatRelativeTime(thread.updatedAt)}</SessionTime>
+                                    <SessionMeta title={promptCountLabel(thread.turnCount)}>
+                                        {formatMeta(thread)}
+                                    </SessionMeta>
                                     <DeleteBtn
                                         className="delete-btn"
                                         onClick={e => handleDelete(e, thread.id)}

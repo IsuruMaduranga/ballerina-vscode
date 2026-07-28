@@ -551,7 +551,7 @@ export interface ThreadSummary {
     isActive: boolean;
     createdAt: number;
     updatedAt: number;
-    messageCount: number;
+    turnCount: number;
 }
 
 export interface SwitchThreadRequest {
