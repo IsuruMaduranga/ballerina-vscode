@@ -850,7 +850,7 @@ export class ChatStateStorage {
 
     /**
      * Get chat history for LLM (model messages only)
-     * Includes ALL generations (generating, done, accepted)
+     * Includes generations in every status, reverted ones as well
      * @param projectRootPath Workspace identifier
      * @param threadId Thread identifier
      * @returns Array of model messages for LLM context
