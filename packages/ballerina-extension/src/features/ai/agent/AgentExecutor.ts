@@ -829,10 +829,10 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             updateAndSaveChat(context.messageId, Command.Agent, context.eventHandler);
         }
 
-        // The quota banner owns that failure, and retrying under an exhausted quota just fails again.
-        if (getErrorCode(error) !== 'usage_limit') {
-            this.maybeScheduleFollowups(context, messagesToSave, 'error', getErrorMessage(error));
-        }
+        // A quota failure gets a Continue chip with no model call — the webview keeps it hidden
+        // until the limit resets, so the user can pick the work back up then.
+        const situation: FollowupSituation = getErrorCode(error) === 'usage_limit' ? 'usage_limit' : 'error';
+        this.maybeScheduleFollowups(context, messagesToSave, situation, getErrorMessage(error));
     }
 
     /**

@@ -98,7 +98,8 @@ export function startFollowupSuggestions(turn: FollowupTurn): boolean {
 
     // Nothing produced means nothing to pivot on — a failure that early is almost always
     // infrastructure, where the fixed chip is the only honest suggestion.
-    const worthGenerating = !interrupted || assistantText.length >= MIN_CHARS_FOR_INTERRUPTED;
+    const worthGenerating = situation !== "usage_limit"
+        && (!interrupted || assistantText.length >= MIN_CHARS_FOR_INTERRUPTED);
     console.log(`[Followups] Scheduling for ${messageId} (situation=${situation})`);
 
     void (async () => {
@@ -114,7 +115,9 @@ export function startFollowupSuggestions(turn: FollowupTurn): boolean {
                 }, abortSignal)
                 : [];
 
-            const fixed = aborted ? [CONTINUE_SUGGESTION] : situation === "error" ? [RETRY_SUGGESTION] : [];
+            const fixed = aborted || situation === "usage_limit" ? [CONTINUE_SUGGESTION]
+                : situation === "error" ? [RETRY_SUGGESTION]
+                : [];
             const suggestions = [...fixed, ...generated];
             if (suggestions.length === 0 || (!interrupted && abortSignal.aborted)) {
                 return;

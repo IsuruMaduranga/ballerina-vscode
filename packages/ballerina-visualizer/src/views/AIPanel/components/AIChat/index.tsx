@@ -2859,7 +2859,8 @@ const AIChat: React.FC = () => {
                                             currentFeedback={feedbackGiven}
                                         />
                                     )}
-                                    {isAssistantMessage && isLatestAssistantMessage && !isLoading && !isCodeLoading && followupSuggestions.length > 0 && (
+                                    {/* Hidden while over quota: the input is disabled, so a chip would prefill something unsendable. */}
+                                    {isAssistantMessage && isLatestAssistantMessage && !isLoading && !isCodeLoading && !isUsageExceeded && followupSuggestions.length > 0 && (
                                         <FollowupSuggestions
                                             suggestions={followupSuggestions}
                                             onPick={(suggestion) => {

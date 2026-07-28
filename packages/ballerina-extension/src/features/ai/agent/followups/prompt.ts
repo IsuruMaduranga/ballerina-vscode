@@ -20,7 +20,7 @@ import { ModelMessage } from "ai";
 import { ANCHOR_ACTIONS } from "./anchors";
 
 /** How the turn these suggestions belong to ended. */
-export type FollowupSituation = "completed" | "aborted" | "error";
+export type FollowupSituation = "completed" | "aborted" | "error" | "usage_limit";
 
 /** One message from an earlier turn, as context for the suggestions. */
 export interface RecentExchange {
