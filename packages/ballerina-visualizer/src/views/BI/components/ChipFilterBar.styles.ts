@@ -16,6 +16,7 @@
  * under the License.
  */
 import styled from "@emotion/styled";
+import { ThemeColors } from "@wso2/ui-toolkit";
 
 // Shared "category chips + compact search" building blocks, used by both the
 // Add-Artifact component list panel and the Create wizard's Integration Type
@@ -53,28 +54,27 @@ export const SearchSlot = styled.div`
     width: 220px;
 `;
 
-export const Chip = styled.button<{ active?: boolean; accent: string }>`
+export const Chip = styled.button<{ active?: boolean }>`
     display: inline-flex;
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
     padding: 5px 12px;
     border-radius: 999px;
-    /* Category-colored, matching the Project Overview type labels; the active
-       (filter) chip gets a stronger tint + weight. */
-    border: 1px solid ${(props: { active?: boolean; accent: string }) =>
-        `color-mix(in srgb, ${props.accent} ${props.active ? "55%" : "24%"}, transparent)`};
-    background-color: ${(props: { active?: boolean; accent: string }) =>
-        `color-mix(in srgb, ${props.accent} ${props.active ? "22%" : "12%"}, transparent)`};
-    color: ${(props: { accent: string }) => props.accent};
+    /* One neutral accent for every chip — the active (filter) chip gets the
+       primary color; others stay muted, matching the selected-card styling
+       used elsewhere in the wizard. */
+    border: 1px solid ${(props: { active?: boolean }) => (props.active ? ThemeColors.PRIMARY : ThemeColors.OUTLINE_VARIANT)};
+    background-color: ${(props: { active?: boolean }) => (props.active ? ThemeColors.PRIMARY_CONTAINER : "transparent")};
+    color: ${(props: { active?: boolean }) => (props.active ? ThemeColors.PRIMARY : ThemeColors.ON_SURFACE)};
     font-size: 12px;
     font-weight: ${(props: { active?: boolean }) => (props.active ? 600 : 500)};
     white-space: nowrap;
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease;
     &:hover {
-        background-color: ${(props: { active?: boolean; accent: string }) =>
-            `color-mix(in srgb, ${props.accent} ${props.active ? "22%" : "18%"}, transparent)`};
+        background-color: ${(props: { active?: boolean }) => (props.active ? ThemeColors.PRIMARY_CONTAINER : ThemeColors.SURFACE_DIM)};
+        border-color: ${ThemeColors.PRIMARY};
     }
     &:focus-visible {
         outline: 1px solid var(--vscode-focusBorder);

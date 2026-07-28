@@ -62,8 +62,6 @@ export interface ArtifactCategory {
     shortTitle?: string;
     /** Codicon name shown beside the rail label. */
     icon?: string;
-    /** Accent color (a VS Code theme CSS var) used to tint the category chip. */
-    color?: string;
     /** Static cards and/or dynamic trigger markers, in display order. */
     cards: (ArtifactCard | DynamicCardSource)[];
 }
@@ -187,7 +185,6 @@ export const ARTIFACT_CATEGORIES: ArtifactCategory[] = [
         title: "Automation",
         shortTitle: "Automation",
         icon: "sync",
-        color: "var(--vscode-charts-blue)",
         description: "Create an automation that can be invoked periodically or manually.",
         cards: [AUTOMATION_CARD],
     },
@@ -196,7 +193,6 @@ export const ARTIFACT_CATEGORIES: ArtifactCategory[] = [
         title: "Workflow",
         shortTitle: "Workflow",
         icon: "type-hierarchy",
-        color: "var(--vscode-charts-yellow)",
         description: "Create a workflow integration.",
         cards: [WORKFLOW_CARD],
     },
@@ -205,7 +201,6 @@ export const ARTIFACT_CATEGORIES: ArtifactCategory[] = [
         title: "AI Integration",
         shortTitle: "AI",
         icon: "hubot",
-        color: "var(--vscode-terminal-ansiBlue)",
         description: "Create an integration that connects your system with AI capabilities.",
         cards: [AI_CHAT_AGENT_CARD, "dynamic:mcp"],
     },
@@ -214,7 +209,6 @@ export const ARTIFACT_CATEGORIES: ArtifactCategory[] = [
         title: "Integration as API",
         shortTitle: "API",
         icon: "globe",
-        color: "var(--vscode-charts-green)",
         description: "Create an integration that can be exposed as an API in the specified protocol.",
         cards: [...INTEGRATION_API_CARDS],
     },
@@ -223,7 +217,6 @@ export const ARTIFACT_CATEGORIES: ArtifactCategory[] = [
         title: "Event Integration",
         shortTitle: "Event",
         icon: "broadcast",
-        color: "var(--vscode-charts-orange)",
         description: "Create an integration that can be triggered by an event.",
         cards: ["dynamic:event"],
     },
@@ -232,7 +225,6 @@ export const ARTIFACT_CATEGORIES: ArtifactCategory[] = [
         title: "File Integration",
         shortTitle: "File",
         icon: "files",
-        color: "var(--vscode-charts-purple)",
         description: "Create an integration that can be triggered by the availability of files in a location.",
         cards: ["dynamic:file"],
     },

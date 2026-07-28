@@ -446,13 +446,6 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
         return ARTIFACT_CATEGORIES.find((item) => item.key === key)?.icon;
     };
 
-    /** Category accent color for the chips — "All" is neutral; the rest mirror the
-     *  Project Overview type-label colors defined on each category. */
-    const railColor = (key: string): string =>
-        key === ALL_KEY
-            ? "var(--vscode-foreground)"
-            : ARTIFACT_CATEGORIES.find((item) => item.key === key)?.color ?? "var(--vscode-foreground)";
-
     return (
         <StepRoot ref={ref}>
             {useSingleColumn ? (
@@ -467,7 +460,6 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
                                         role="tab"
                                         aria-selected={activeCategoryKey === key}
                                         active={activeCategoryKey === key}
-                                        accent={railColor(key)}
                                         onClick={() => setActiveCategoryKey(key)}
                                     >
                                         {railLabel(key)}

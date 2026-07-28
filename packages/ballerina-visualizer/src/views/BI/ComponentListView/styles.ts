@@ -17,7 +17,7 @@
  */
 import styled from "@emotion/styled";
 import { Typography, ThemeColors } from "@wso2/ui-toolkit";
-import { Chip, ChipRow, FilterBarBase, SearchSlot } from "../components/ChipFilterBar.styles";
+import { Chip, ChipRow, FilterBarBase, SearchSlot as SearchSlotBase } from "../components/ChipFilterBar.styles";
 
 export const LoadingContainer = styled.div`
     display: flex;
@@ -50,7 +50,34 @@ export const FilterBar = styled(FilterBarBase)`
     padding: 8px 16px 12px;
 `;
 
-export { Chip, ChipRow, SearchSlot };
+// Wider than the wizard's chip bar — this screen has more room to spare.
+export const SearchSlot = styled(SearchSlotBase)`
+    width: 420px;
+`;
+
+export { Chip, ChipRow };
+
+export const EmptyState = styled.div`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 48px 0;
+    color: ${ThemeColors.ON_SURFACE_VARIANT};
+    font-size: 13px;
+`;
+
+export const ClearSearchButton = styled.button`
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--vscode-textLink-foreground);
+    font-size: 13px;
+    cursor: pointer;
+    &:hover {
+        text-decoration: underline;
+    }
+`;
 
 export const PanelViewMore = styled.div<{ disabled?: boolean }>`
     display: flex;

@@ -16,13 +16,13 @@
  * under the License.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SearchBox, View, ViewContent } from "@wso2/ui-toolkit";
 import { isSamePath, SCOPE, TriggerModelsResponse } from "@wso2/ballerina-core";
 
 import { TitleBar } from "../../../components/TitleBar";
 import { TopNavigationBar } from "../../../components/TopNavigationBar";
-import { AddPanel, Chip, ChipRow, Container, FilterBar, SearchSlot } from "./styles";
+import { AddPanel, Chip, ChipRow, ClearSearchButton, Container, EmptyState, FilterBar, SearchSlot } from "./styles";
 import { AutomationPanel } from "./AutomationPanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 import { EventIntegrationPanel } from "./EventIntegrationPanel";
@@ -40,17 +40,16 @@ interface ComponentListViewProps {
 
 const ALL_CATEGORY = "all";
 
-/** Category chips shown above the artifact panels — labels + accent colors kept
- *  in sync with the Project Overview type labels and the Create wizard chips. */
-const CATEGORY_CHIPS: { key: string; label: string; color: string }[] = [
-    { key: ALL_CATEGORY, label: "All", color: "var(--vscode-foreground)" },
-    { key: "automation", label: "Automation", color: "var(--vscode-charts-blue)" },
-    { key: "workflow", label: "Workflow", color: "var(--vscode-charts-yellow)" },
-    { key: "ai", label: "AI", color: "var(--vscode-terminal-ansiBlue)" },
-    { key: "api", label: "API", color: "var(--vscode-charts-green)" },
-    { key: "event", label: "Event", color: "var(--vscode-charts-orange)" },
-    { key: "file", label: "File", color: "var(--vscode-charts-purple)" },
-    { key: "other", label: "Other", color: "var(--vscode-foreground)" },
+/** Category chips shown above the artifact panels. */
+const CATEGORY_CHIPS: { key: string; label: string }[] = [
+    { key: ALL_CATEGORY, label: "All" },
+    { key: "automation", label: "Automation" },
+    { key: "workflow", label: "Workflow" },
+    { key: "ai", label: "AI" },
+    { key: "api", label: "API" },
+    { key: "event", label: "Event" },
+    { key: "file", label: "File" },
+    { key: "other", label: "Other" },
 ];
 
 export function ComponentListView(props: ComponentListViewProps) {
@@ -62,6 +61,8 @@ export function ComponentListView(props: ComponentListViewProps) {
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
     const [activeCategory, setActiveCategory] = useState<string>(ALL_CATEGORY);
     const [searchQuery, setSearchQuery] = useState<string>("");
+    const addPanelRef = useRef<HTMLDivElement>(null);
+    const [noResults, setNoResults] = useState(false);
 
     useEffect(() => {
         getTriggers();
@@ -93,6 +94,13 @@ export function ComponentListView(props: ComponentListViewProps) {
         }
     };
 
+    // Each panel below self-hides when nothing in it matches the search, so
+    // rather than duplicating that per-panel matching logic here, just check
+    // whether anything actually rendered into the panel container.
+    useLayoutEffect(() => {
+        setNoResults(!!addPanelRef.current && addPanelRef.current.childElementCount === 0);
+    });
+
     const title = isLibrary ? "Library Artifacts" : "Artifacts";
     const subtitle = isLibrary
         ? "Add reusable artifacts to your library"
@@ -118,7 +126,6 @@ export function ComponentListView(props: ComponentListViewProps) {
                                     role="tab"
                                     aria-selected={activeCategory === chip.key}
                                     active={activeCategory === chip.key}
-                                    accent={chip.color}
                                     onClick={() => setActiveCategory(chip.key)}
                                 >
                                     {chip.label}
@@ -135,7 +142,7 @@ export function ComponentListView(props: ComponentListViewProps) {
                             />
                         </SearchSlot>
                     </FilterBar>
-                    <AddPanel>
+                    <AddPanel ref={addPanelRef}>
                         {!isLibrary && (
                             <>
                                 {showCategory("automation") && <AutomationPanel scope={scope} searchQuery={q} />}
@@ -150,6 +157,12 @@ export function ComponentListView(props: ComponentListViewProps) {
                             <OtherArtifactsPanel isNPSupported={isNPSupported} isLibrary={isLibrary} searchQuery={q} />
                         )}
                     </AddPanel>
+                    {noResults && q.trim() && (
+                        <EmptyState>
+                            <span>No artifacts match &ldquo;{q.trim()}&rdquo;.</span>
+                            <ClearSearchButton onClick={() => setSearchQuery("")}>Clear search</ClearSearchButton>
+                        </EmptyState>
+                    )}
                 </Container>
             </ViewContent>
         </View>
