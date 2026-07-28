@@ -289,6 +289,10 @@ export class DefaultServer {
             await waitForLangClientReady();
             return this.resolveWizardFormTarget(p);
         });
+        this.register("getExpressionDiagnostics", async (p) => {
+            await waitForLangClientReady();
+            return biDiagram.getExpressionDiagnostics(p);
+        });
         this.register("scaffoldIntegrationProject", async () => {
             await waitForLangClientReady();
             return scaffoldIntegrationProject();

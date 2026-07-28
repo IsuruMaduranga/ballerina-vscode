@@ -25,10 +25,12 @@ import { BiWsClient } from "../../wsManager/WsClient";
  *
  * The wizard renders the shared `ArtifactForm` in collect-only mode BEFORE a
  * project is open, where the real vscode-messenger rpcClient does not exist.
- * ArtifactForm's value-critical calls (completions, diagnostics, signature help,
- * visible types) are stubbed with correct-shaped empty results so expression
- * fields degrade gracefully (no autocomplete) instead of crashing. Model-fetch
- * calls that the wizard genuinely needs go over the WS bridge.
+ * Model-fetch calls the wizard genuinely needs — and expression DIAGNOSTICS, which
+ * must catch an invalid value before submit rather than at generation time — go
+ * over the WS bridge, resolved against the throwaway staging package. The
+ * convenience calls (completions, signature help, visible types) are stubbed with
+ * correct-shaped empty results, so expression fields degrade to a plain validated
+ * textbox (no autocomplete) instead of crashing.
  *
  * Upgrading any stub to a real LS-backed handler only requires routing it to a
  * new bridge action here — this adapter is the single seam.
@@ -61,7 +63,7 @@ function createWizardRpcAdapter(wsClient: BiWsClient): BallerinaRpcClient {
     const biDiagramRpcClient = withFallback("BIDiagram", {
         getExpressionCompletions: async () => [] as any,
         getDataMapperCompletions: async () => [] as any,
-        getExpressionDiagnostics: async () => ({ diagnostics: [] as any[] }),
+        getExpressionDiagnostics: (params: any) => wsClient.getExpressionDiagnostics(params),
         getSignatureHelp: async () => ({ signatures: [] as any[], activeSignature: 0, activeParameter: 0 }),
         getVisibleTypes: async () => [] as any,
         getExpressionTokens: async () => [] as number[],

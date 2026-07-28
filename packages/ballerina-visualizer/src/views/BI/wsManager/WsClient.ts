@@ -24,6 +24,8 @@ import {
     ChatNotify,
     CreateIntegrationRequest,
     DownloadProgress,
+    ExpressionDiagnosticsRequest,
+    ExpressionDiagnosticsResponse,
     GetMigrationToolsResponse,
     ImportIntegrationResponse,
     ImportIntegrationRPCRequest,
@@ -206,6 +208,15 @@ export class BiWsClient {
 
     public getWizardFormTarget(params: WizardFormTargetRequest): Promise<WizardFormTargetResponse> {
         return this.request("getWizardFormTarget", params);
+    }
+
+    /**
+     * Validation for the Configure step's expression fields, resolved against the
+     * throwaway staging package. The request is file-scoped, so it works before the
+     * real project exists
+     */
+    public getExpressionDiagnostics(params: ExpressionDiagnosticsRequest): Promise<ExpressionDiagnosticsResponse> {
+        return this.request("getExpressionDiagnostics", params);
     }
 
     public scaffoldIntegrationProject(): Promise<ScaffoldIntegrationProjectResponse> {
