@@ -135,10 +135,13 @@ const stateMachine = createMachine<MachineContext>(
                             // Fetch updated project info from language server
                             const projectInfo = await context.langClient.getProjectInfo({ projectPath });
 
-                            // Update context with new project info
+                            // Update context with new project info. `silent` is carried
+                            // through so a caller that has already navigated somewhere
+                            // deliberate isn't bounced to the workspace overview below.
                             stateService.send({
                                 type: 'UPDATE_PROJECT_INFO',
-                                projectInfo
+                                projectInfo,
+                                silent: event.silent
                             });
                         } catch (error) {
                             console.error("Error refreshing project info:", error);
@@ -874,8 +877,8 @@ export const StateMachine = {
             stateService.send({ type: "UPDATE_PROJECT_ROOT_AND_INFO", projectPath, projectInfo });
         });
     },
-    refreshProjectInfo: () => {
-        stateService.send({ type: 'REFRESH_PROJECT_INFO' });
+    refreshProjectInfo: (options?: { silent?: boolean }) => {
+        stateService.send({ type: 'REFRESH_PROJECT_INFO', silent: options?.silent });
     },
     updateProjectInfo: (projectInfo: ProjectInfo, options?: { silent?: boolean }) => {
         stateService.send({ type: 'UPDATE_PROJECT_INFO', projectInfo, silent: options?.silent });

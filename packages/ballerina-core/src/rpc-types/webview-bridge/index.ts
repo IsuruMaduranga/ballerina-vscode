@@ -118,7 +118,7 @@ export interface SignInResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Create Integration wizard (3-step) wire contract — shared between the
+// Create Integration wizard (2-step) wire contract — shared between the
 // `ballerina-visualizer` wizard (`BiWsClient`) and the extension server
 // (`DefaultServer` → `features/bi/integration-wizard.ts`).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -188,6 +188,22 @@ export interface CreateIntegrationRequest {
     project: IntegrationProjectParams;
     /** Configured first artifact; absent for an empty integration. */
     artifact?: PendingIntegrationArtifactPayload;
+}
+
+/**
+ * Final-submit request of the wizard when it runs against an ALREADY-created
+ * package (the "continue where you left off" flow for an empty integration).
+ *
+ * No package is created here — only the configured artifact is generated into
+ * the existing package, in the current session, so the user never leaves the
+ * package overview they started from.
+ */
+export interface AddIntegrationArtifactRequest {
+    /** Root of the existing package the artifact is generated into. */
+    packageRoot: string;
+    /** Configured artifact; unlike `CreateIntegrationRequest` this is required —
+     *  there is nothing to do without it, the package already exists. */
+    artifact: PendingIntegrationArtifactPayload;
 }
 
 /** Version-skew handshake: embedded hosts call this first and fall back to the

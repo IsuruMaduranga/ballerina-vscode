@@ -47,6 +47,7 @@ import {
 import { writeBallerinaFileDidOpenTemp } from "../utils/modification";
 import { onMigratedProjectEvent, onMigrationToolLogEvent, onMigrationToolStateEvent } from "../features/ai/migration/migrationEvents";
 import {
+    addIntegrationArtifact,
     cancelIntegrationWizard,
     cleanupAbandonedScaffolds,
     createIntegration,
@@ -300,6 +301,10 @@ export class DefaultServer {
         this.register("createIntegration", async (p) => {
             await waitForLangClientReady();
             return createIntegration(p);
+        });
+        this.register("addIntegrationArtifact", async (p) => {
+            await waitForLangClientReady();
+            return addIntegrationArtifact(p);
         });
         this.register("cancelIntegrationWizard", () => cancelIntegrationWizard());
         this.register("cleanupAbandonedIntegrationScaffolds", () => cleanupAbandonedScaffolds());

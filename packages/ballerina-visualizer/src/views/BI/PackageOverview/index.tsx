@@ -45,6 +45,10 @@ import { TitleBar } from "../../../components/TitleBar";
 import { PublishToCentralButton } from "./PublishToCentralButton";
 import { LibraryOverview } from "./LibraryOverview";
 
+/** Only reachable from an empty integration, and it pulls in the whole wizard +
+ *  artifact form tree — so keep it out of the overview's own chunk. */
+const LazyAddIntegrationPanel = React.lazy(() => import("./AddIntegrationPanel"));
+
 const SpinnerContainer = styled.div`
     display: flex;
     justify-content: center;
@@ -819,6 +823,9 @@ export function PackageOverview(props: PackageOverviewProps) {
     const [isInProject, setIsInProject] = useState(false);
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
     const [isNPSupported, setIsNPSupported] = useState<boolean>(false);
+    // Shows the Create Integration wizard in place of the overview, for an empty
+    // integration whose owner skipped it at creation time.
+    const [showAddIntegration, setShowAddIntegration] = useState<boolean>(false);
     const fetchContext = useCallback(() => {
         rpcClient
             .getBIDiagramRpcClient()
@@ -910,6 +917,11 @@ export function PackageOverview(props: PackageOverviewProps) {
         setProjectStructure(prev => prev ? { ...prev, projectTitle: newTitle } : prev);
     }, [projectPath, rpcClient]);
 
+    // Returns to the overview. After a successful add the artifact was generated in
+    // the current session, so the backend's notifyCurrentWebview → fetchContext
+    // refresh is what turns the empty state into the component diagram.
+    const closeAddIntegration = useCallback(() => setShowAddIntegration(false), []);
+
     function isEmptyIntegration(): boolean {
         // Filter out connections that start with underscore
         const validConnections = projectStructure.directoryMap[DIRECTORY_MAP.CONNECTION]?.filter(
@@ -932,6 +944,27 @@ export function PackageOverview(props: PackageOverviewProps) {
             <SpinnerContainer>
                 <ProgressRing color={ThemeColors.PRIMARY} />
             </SpinnerContainer>
+        );
+    }
+
+    // Rendered in place of the overview (not on top of it) so the wizard gets the
+    // definite height its pinned-stepper layout needs. This component stays mounted
+    // throughout, so dismissing the wizard restores the overview instantly.
+    if (showAddIntegration) {
+        return (
+            <React.Suspense
+                fallback={
+                    <SpinnerContainer>
+                        <ProgressRing color={ThemeColors.PRIMARY} />
+                    </SpinnerContainer>
+                }
+            >
+                <LazyAddIntegrationPanel
+                    packageRoot={projectPath}
+                    integrationName={integrationTitle}
+                    onClose={closeAddIntegration}
+                />
+            </React.Suspense>
         );
     }
 
@@ -1179,8 +1212,11 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 Start by adding artifacts or use AI to generate your integration structure
                                             </Typography>
                                             <ButtonContainer>
-                                                <Button appearance="primary" onClick={handleAddConstruct}>
-                                                    <Codicon name="add" sx={{ marginRight: 8 }} /> Add Artifact
+                                                {/* An empty integration means the creation wizard was
+                                                    skipped — offer it again here rather than the raw
+                                                    artifact list, so the guided flow can be resumed. */}
+                                                <Button appearance="primary" onClick={() => setShowAddIntegration(true)}>
+                                                    <Codicon name="add" sx={{ marginRight: 8 }} /> Add Integration
                                                 </Button>
                                                 <Button appearance="secondary" onClick={handleGenerate}>
                                                     <Icon name="bi-ai-chat" sx={{ marginRight: 4 }} iconSx={{ position: "relative", top: "2px" }} /> Generate with AI

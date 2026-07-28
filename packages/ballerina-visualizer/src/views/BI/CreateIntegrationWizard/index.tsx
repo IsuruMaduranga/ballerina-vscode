@@ -82,6 +82,18 @@ interface CreateIntegrationWizardProps {
      * pinned-stepper / scrolling-step-body flex layout works directly.
      */
     embedded?: boolean;
+    /**
+     * Runs the wizard against an ALREADY-created package at this root, for a user
+     * who skipped the wizard and is now continuing from their empty integration's
+     * overview. The package exists and keeps its name, so step 1 collects only the
+     * artifact type (no name/path fields, no "Create Empty Integration" skip), and
+     * submit generates the artifact into this package instead of creating one.
+     * Mutually exclusive with `projectContext`.
+     */
+    existingPackagePath?: string;
+    /** Fired after the artifact was added to `existingPackagePath`, so the host can
+     *  dismiss the wizard and return to the view it was opened from. */
+    onArtifactAdded?: () => void;
 }
 
 /**
@@ -92,9 +104,23 @@ interface CreateIntegrationWizardProps {
  * the single `vscode.openFolder` reload happens only at final submit — with the
  * configured artifact persisted as a pending entry the extension generates
  * post-reload. Skipping at any step creates an empty integration.
+ *
+ * `existingPackagePath` switches it to the mirror-image case: the package was
+ * already created (the user skipped the wizard) and only the artifact is missing,
+ * so nothing is created and the artifact is generated in place.
  */
-export function CreateIntegrationWizard({ showHeader = true, projectContext, onBackToChooser, embedded = false }: CreateIntegrationWizardProps) {
+export function CreateIntegrationWizard({
+    showHeader = true,
+    projectContext,
+    onBackToChooser,
+    embedded = false,
+    existingPackagePath,
+    onArtifactAdded,
+}: CreateIntegrationWizardProps) {
     const { wsClient, onBack } = useBiWsContext();
+    // The package already exists and keeps its own name/location, so every
+    // name-, path- and creation-related concern of the wizard is inert.
+    const isExistingPackage = !!existingPackagePath;
 
     const [step, setStep] = useState<WizardStep>(0);
     const [basicInfo, setBasicInfo] = useState<BasicInfo>({
@@ -259,31 +285,35 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
         // When the chooser resolved a project, the integration lives inside that
         // workspace folder — seed the path from it directly. Otherwise fall back to
         // the open folder / default creation path (standalone wizard entry).
-        const seedBaseDir = projectContext?.workspacePath
-            ? Promise.resolve(projectContext.workspacePath)
-            : wsClient.getWorkspaceRoot().then(async (res: { path: string }) => res.path || (await wsClient.getDefaultCreationPath()).path);
+        // Adding into an existing package needs none of this: its name and location
+        // are already fixed, and no name is collected that could collide.
+        if (!isExistingPackage) {
+            const seedBaseDir = projectContext?.workspacePath
+                ? Promise.resolve(projectContext.workspacePath)
+                : wsClient.getWorkspaceRoot().then(async (res: { path: string }) => res.path || (await wsClient.getDefaultCreationPath()).path);
 
-        seedBaseDir
-            .then(async (seedPath: string) => {
-                // Fetch the project's existing folders + component titles once: used
-                // to pick a collision-free default AND to flag name collisions live.
-                let taken = emptyTakenNames();
-                try {
-                    taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: seedPath }));
-                } catch (error) {
-                    console.error(">>> Error fetching existing component names", error);
-                }
-                setTakenNames(taken);
-                const { name, directoryName } = resolveDefaultNameAndDirectory(DEFAULT_INTEGRATION_NAME, taken, sanitizePackageName);
-                setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: seedPath, integrationName: name, directoryName }));
-            })
-            .catch((error: unknown) => console.error(">>> Error seeding the creation path", error));
+            seedBaseDir
+                .then(async (seedPath: string) => {
+                    // Fetch the project's existing folders + component titles once: used
+                    // to pick a collision-free default AND to flag name collisions live.
+                    let taken = emptyTakenNames();
+                    try {
+                        taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: seedPath }));
+                    } catch (error) {
+                        console.error(">>> Error fetching existing component names", error);
+                    }
+                    setTakenNames(taken);
+                    const { name, directoryName } = resolveDefaultNameAndDirectory(DEFAULT_INTEGRATION_NAME, taken, sanitizePackageName);
+                    setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: seedPath, integrationName: name, directoryName }));
+                })
+                .catch((error: unknown) => console.error(">>> Error seeding the creation path", error));
+        }
 
         wsClient
             .getTriggerModels({ query: "" })
             .then((res) => setTriggers(res))
             .catch((error: unknown) => console.error(">>> Error fetching trigger models", error));
-    }, [wsClient, projectContext?.workspacePath]);
+    }, [wsClient, projectContext?.workspacePath, isExistingPackage]);
 
     useEffect(() => {
         // Leaving the wizard discards the temp staging package (best-effort;
@@ -305,9 +335,11 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
         // edited — so a "directory already exists" conflict surfaces live under
         // the path field. Gated on baseDir too so the default "Untitled" name
         // doesn't flash a "Path is required" error before seeding resolves.
+        // Never runs for an existing package: there is no path to validate.
         pathTouched:
-            basicInfo.pathTouched ||
-            (basicInfo.baseDir.trim().length > 0 && basicInfo.directoryName.trim().length > 0),
+            !isExistingPackage &&
+            (basicInfo.pathTouched ||
+                (basicInfo.baseDir.trim().length > 0 && basicInfo.directoryName.trim().length > 0)),
         requiredPathMessage: REQUIRED_PATH_MESSAGE,
         invalidPathMessage: INVALID_PATH_MESSAGE,
         onPathErrorChange: useCallback((error: string | null) => setPathError(error), []),
@@ -425,20 +457,47 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
      *  step, so validate the name (and, when standalone, the path) and require a
      *  selection before advancing to Configure. */
     const handleContinueToConfigure = async () => {
-        if (!basicInfo.integrationName.trim()) {
-            setNameError("Integration name is required");
+        if (!selection) {
             return;
         }
-        if (!validateBasicInfo() || !selection) {
-            return;
-        }
-        // Embedded in the Create flow the project (location) was already validated
-        // by the chooser; only the standalone wizard owns and re-validates the path.
-        if (!embedded && !(await validatePathForSubmit())) {
-            return;
+        // An existing package collects no name or path, so there is nothing to
+        // validate beyond the artifact selection.
+        if (!isExistingPackage) {
+            if (!basicInfo.integrationName.trim()) {
+                setNameError("Integration name is required");
+                return;
+            }
+            if (!validateBasicInfo()) {
+                return;
+            }
+            // Embedded in the Create flow the project (location) was already validated
+            // by the chooser; only the standalone wizard owns and re-validates the path.
+            if (!embedded && !(await validatePathForSubmit())) {
+                return;
+            }
         }
         setStep(1);
         void ensureScaffold();
+    };
+
+    /**
+     * Final submit for the existing-package mode: only the artifact is generated,
+     * into the package that is already open, so the host stays exactly where it is
+     * (no project creation, no window reload). The wizard keeps its submitting
+     * state until the host dismisses it.
+     */
+    const handleAddArtifactToExistingPackage = async (packageRoot: string, artifact: PendingIntegrationArtifactPayload) => {
+        setSubmitError(null);
+        setIsSubmitting(true);
+        try {
+            await wsClient.addIntegrationArtifact({ packageRoot, artifact });
+            onArtifactAdded?.();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(">>> Error adding the integration artifact", error);
+            setSubmitError(`Failed to add the integration: ${message}`);
+            setIsSubmitting(false);
+        }
     };
 
     /** Final submit — with an artifact after Configure, without one on any skip.
@@ -472,6 +531,16 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
             setSubmitError(`Failed to create the integration: ${message}`);
             setIsSubmitting(false);
         }
+    };
+
+    /** Routes the configured artifact to the mode's submit path: generate into the
+     *  existing package, or create the package and its first artifact together. */
+    const handleConfiguredArtifact = (artifact: PendingIntegrationArtifactPayload) => {
+        if (existingPackagePath) {
+            void handleAddArtifactToExistingPackage(existingPackagePath, artifact);
+            return;
+        }
+        void handleCreateIntegration(artifact);
     };
 
     return (
@@ -517,17 +586,21 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
             <StepBody>
                 {step === 0 && (
                     <StepPinnedHeader>
-                        <BasicInfoStep
-                            integrationName={basicInfo.integrationName}
-                            fullPath={fullPath}
-                            nameError={nameError}
-                            pathError={pathError}
-                            existingWorkspace={existingWorkspace}
-                            onNameChange={handleNameChange}
-                            onPathChange={handlePathChange}
-                            onBrowse={handleBrowse}
-                            hidePath={embedded}
-                        />
+                        {/* The existing package owns its name and location, so step 1
+                            asks only for the artifact type. */}
+                        {!isExistingPackage && (
+                            <BasicInfoStep
+                                integrationName={basicInfo.integrationName}
+                                fullPath={fullPath}
+                                nameError={nameError}
+                                pathError={pathError}
+                                existingWorkspace={existingWorkspace}
+                                onNameChange={handleNameChange}
+                                onPathChange={handlePathChange}
+                                onBrowse={handleBrowse}
+                                hidePath={embedded}
+                            />
+                        )}
                         <StepSectionLabel>Select the type of integration to build</StepSectionLabel>
                     </StepPinnedHeader>
                 )}
@@ -553,7 +626,7 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
                             isSubmitting={isSubmitting}
                             cachedServiceModel={serviceModelCache?.id === selection.id ? serviceModelCache.model : null}
                             onServiceModelLoaded={(model) => setServiceModelCache({ id: selection.id, model })}
-                            onSubmit={(artifact) => handleCreateIntegration(artifact)}
+                            onSubmit={handleConfiguredArtifact}
                         />
                     )}
                 </StepScrollArea>
@@ -563,7 +636,9 @@ export function CreateIntegrationWizard({ showHeader = true, projectContext, onB
                         primaryLabel="Continue"
                         onPrimary={handleContinueToConfigure}
                         primaryDisabled={isSubmitting || !!nameError || (!embedded && !!pathError) || !selection}
-                        skipLabel="Create Empty Integration"
+                        // The package already exists and is already empty, so there is
+                        // no empty integration left to create — only Continue applies.
+                        skipLabel={isExistingPackage ? undefined : "Create Empty Integration"}
                         onSkip={() => handleCreateIntegration()}
                         skipDisabled={isSubmitting || !!nameError || (!embedded && !!pathError)}
                     />

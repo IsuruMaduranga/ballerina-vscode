@@ -20,6 +20,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
+    AddIntegrationArtifactRequest,
     CreateIntegrationRequest,
     isSamePath,
     ProjectRequest,
@@ -142,6 +143,23 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
         await schedulePendingArtifact(packageRoot, params.artifact);
     }
     openInVSCode(openRoot);
+}
+
+/**
+ * Final submit of the wizard when it targets an EXISTING package — the "continue
+ * where you left off" flow offered on an empty integration's overview. The
+ * package is already on disk (and already open in this window), so nothing is
+ * created and no reload is needed: the temp staging package is discarded and the
+ * configured artifact is generated live, exactly like the in-project add path of
+ * {@link createIntegration}.
+ *
+ * Unlike that path, this one lands on the target package's own overview: the user
+ * started from that package's (empty) overview, so it is where they expect to come
+ * back to and see the artifact they just configured.
+ */
+export async function addIntegrationArtifact(params: AddIntegrationArtifactRequest): Promise<void> {
+    cleanupStaging();
+    await generateArtifactInPlace(params.packageRoot, params.artifact, true);
 }
 
 /**

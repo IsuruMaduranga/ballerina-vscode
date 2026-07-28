@@ -19,6 +19,7 @@
  */
 
 import {
+    AddIntegrationArtifactRequest,
     BINodeTemplateRequest,
     BINodeTemplateResponse,
     ChatNotify,
@@ -225,6 +226,12 @@ export class BiWsClient {
 
     public createIntegration(params: CreateIntegrationRequest): Promise<void> {
         return this.request("createIntegration", params);
+    }
+
+    /** Adds the configured artifact into an already-created package (no package
+     *  creation, no window reload) — the empty-integration "continue" flow. */
+    public addIntegrationArtifact(params: AddIntegrationArtifactRequest): Promise<void> {
+        return this.request("addIntegrationArtifact", params);
     }
 
     public cancelIntegrationWizard(): Promise<void> {

@@ -198,7 +198,8 @@ function consumePendingArtifactPayload(projectRoot: string): PendingIntegrationA
  */
 export async function generateArtifactInPlace(
     packageRoot: string,
-    payload: PendingIntegrationArtifactPayload
+    payload: PendingIntegrationArtifactPayload,
+    landOnPackageOverview = false
 ): Promise<void> {
     const label = ARTIFACT_KIND_LABELS[payload.kind];
     if (!label || payload.version !== 1) {
@@ -209,9 +210,13 @@ export async function generateArtifactInPlace(
     try {
         await window.withProgress(
             { location: ProgressLocation.Notification, title: `Setting up your ${label}...` },
-            () => generatePendingArtifact(payload, packageRoot, false)
+            () => generatePendingArtifact(payload, packageRoot, landOnPackageOverview)
         );
-        StateMachine.refreshProjectInfo();
+        // A non-silent refresh ends on the workspace overview (see UPDATE_PROJECT_INFO
+        // in stateMachine.ts) — right for the add-into-open-workspace path, but it
+        // would clobber the package overview just navigated to above, showing the
+        // workspace overview and then jumping. Refresh silently in that case.
+        StateMachine.refreshProjectInfo({ silent: landOnPackageOverview });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[IntegrationWizard] Failed to generate ${payload.kind} artifact in place:`, error);
