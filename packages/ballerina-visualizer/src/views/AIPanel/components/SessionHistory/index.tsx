@@ -20,6 +20,7 @@ import React, { useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
 import { ThreadSummary } from "@wso2/ballerina-core";
 import { Codicon } from "@wso2/ui-toolkit";
+import { DangerActionButton, SecondaryActionButton } from "../../styles";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -151,6 +152,34 @@ const SessionItem = styled.div<{ isActive: boolean; isReadOnly: boolean }>(
     })
 );
 
+const ActionButton = SecondaryActionButton;
+const DeleteButton = DangerActionButton;
+
+const ConfirmRow = styled.div`
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-font-family);
+`;
+
+const ConfirmText = styled.span`
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    strong { font-weight: 600; }
+`;
+
+const Spacer = styled.div`
+    flex: 1;
+`;
+
 const ReadOnlyHint = styled.div`
     padding: 6px 8px;
     border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
@@ -223,7 +252,6 @@ const NewChatRow = styled.button`
 
 export interface SessionHistoryDropdownProps {
     threads: ThreadSummary[];
-    /** A turn owns its session until it finishes, so the list is browsable but not actionable. */
     readOnly?: boolean;
     onNewChat: () => void;
     onSwitch: (threadId: string) => void;
@@ -240,16 +268,18 @@ export function SessionHistoryDropdown({
     onClose,
 }: SessionHistoryDropdownProps): JSX.Element {
     const [search, setSearch] = useState("");
+    const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         inputRef.current?.focus();
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') { onClose(); }
+            if (e.key !== 'Escape') { return; }
+            if (confirmDelete) { setConfirmDelete(null); } else { onClose(); }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [onClose]);
+    }, [onClose, confirmDelete]);
 
     const filtered = search.trim()
         ? threads.filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
@@ -263,9 +293,12 @@ export function SessionHistoryDropdown({
         onClose();
     };
 
-    const handleDelete = (e: React.MouseEvent, threadId: string) => {
-        e.stopPropagation();
-        onDelete(threadId);
+    const handleDelete = (threadId: string) => {
+        try {
+            onDelete(threadId);
+        } finally {
+            setConfirmDelete(null);
+        }
     };
 
     const handleNewChat = () => {
@@ -295,37 +328,54 @@ export function SessionHistoryDropdown({
                     {groups.map(group => (
                         <div key={group.label}>
                             <GroupLabel>{group.label}</GroupLabel>
-                            {group.items.map(thread => (
-                                <SessionItem
-                                    key={thread.id}
-                                    isActive={thread.isActive}
-                                    isReadOnly={readOnly}
-                                    role="button"
-                                    tabIndex={readOnly ? -1 : 0}
-                                    aria-disabled={readOnly}
-                                    onClick={() => handleSwitch(thread.id)}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitch(thread.id); } }}
-                                >
-                                    <ActiveDot isActive={thread.isActive} />
-                                    <SessionName title={thread.name}>{thread.name}</SessionName>
-                                    <SessionMeta title={promptCountLabel(thread.turnCount)}>
-                                        {formatMeta(thread)}
-                                    </SessionMeta>
-                                    {!readOnly && (
-                                        <DeleteBtn
-                                            className="delete-btn"
-                                            onClick={e => handleDelete(e, thread.id)}
-                                            // Keep keyboard activation of delete from also bubbling to
-                                            // SessionItem's onKeyDown, which would switch threads. The native
-                                            // button still activates (delete) on Enter/Space itself.
-                                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); } }}
-                                            title="Delete session"
-                                        >
-                                            <Codicon name="trash" sx={{ fontSize: "12px" }} />
-                                        </DeleteBtn>
-                                    )}
-                                </SessionItem>
-                            ))}
+                            {group.items.map(thread => {
+                                const isConfirming = confirmDelete === thread.id;
+                                return (
+                                    <SessionItem
+                                        key={thread.id}
+                                        // Selection background would wreck the action buttons' contrast.
+                                        isActive={thread.isActive && !isConfirming}
+                                        isReadOnly={readOnly || isConfirming}
+                                        role="button"
+                                        tabIndex={readOnly || isConfirming ? -1 : 0}
+                                        aria-disabled={readOnly}
+                                        onClick={() => { if (!isConfirming) { handleSwitch(thread.id); } }}
+                                        onKeyDown={(e) => {
+                                            if (isConfirming) { return; }
+                                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitch(thread.id); }
+                                        }}
+                                    >
+                                        {isConfirming ? (
+                                            <ConfirmRow>
+                                                <ConfirmText>Delete <strong>{thread.name}</strong>?</ConfirmText>
+                                                <Spacer />
+                                                <DeleteButton type="button" onClick={() => handleDelete(thread.id)}>Yes, delete</DeleteButton>
+                                                <ActionButton type="button" onClick={() => setConfirmDelete(null)}>Cancel</ActionButton>
+                                            </ConfirmRow>
+                                        ) : (
+                                            <>
+                                                <ActiveDot isActive={thread.isActive} />
+                                                <SessionName title={thread.name}>{thread.name}</SessionName>
+                                                <SessionMeta title={promptCountLabel(thread.turnCount)}>
+                                                    {formatMeta(thread)}
+                                                </SessionMeta>
+                                                {!readOnly && (
+                                                    <DeleteBtn
+                                                        className="delete-btn"
+                                                        onClick={e => { e.stopPropagation(); setConfirmDelete(thread.id); }}
+                                                        // Keep keyboard activation from also bubbling to SessionItem's
+                                                        // onKeyDown, which would switch threads instead.
+                                                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); } }}
+                                                        title="Delete session"
+                                                    >
+                                                        <Codicon name="trash" sx={{ fontSize: "12px" }} />
+                                                    </DeleteBtn>
+                                                )}
+                                            </>
+                                        )}
+                                    </SessionItem>
+                                );
+                            })}
                         </div>
                     ))}
                 </SessionList>
