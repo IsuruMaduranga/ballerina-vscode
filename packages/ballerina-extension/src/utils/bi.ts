@@ -776,8 +776,12 @@ export async function convertProjectToWorkspace(params: AddProjectToWorkspaceReq
     createWorkspaceToml(newDirectory, params.workspaceName, existingProjectDirName);
 
     if (params.addNewAfterConvert) {
-        addToWorkspaceToml(newDirectory, sanitizeName(params.packageName));
-        await createProjectInWorkspace(params, newDirectory);
+        // Resolved AFTER the move above and after `createWorkspaceToml`, so the
+        // existing integration's folder is already on disk and listed — the new
+        // package can never be scaffolded on top of the one just moved in.
+        const packageFolder = resolvePackageFolderInWorkspace(newDirectory, params);
+        addToWorkspaceToml(newDirectory, packageFolder);
+        await createProjectInWorkspace(params, newDirectory, packageFolder);
     }
 
     // create settings.json file
@@ -790,9 +794,10 @@ export async function convertProjectToWorkspace(params: AddProjectToWorkspaceReq
 
 export async function addProjectToExistingWorkspace(params: AddProjectToWorkspaceRequest): Promise<void> {
     const workspacePath = StateMachine.context().workspacePath;
-    addToWorkspaceToml(workspacePath, sanitizeName(params.packageName));
+    const packageFolder = resolvePackageFolderInWorkspace(workspacePath, params);
+    addToWorkspaceToml(workspacePath, packageFolder);
 
-    await createProjectInWorkspace(params, workspacePath);
+    await createProjectInWorkspace(params, workspacePath, packageFolder);
 }
 
 function createWorkspaceToml(workspacePath: string, projectTitle: string, packageName: string) {
@@ -1107,11 +1112,23 @@ function removePackageFromToml(tomlContent: string, packagePath: string): string
     }
 }
 
-async function createProjectInWorkspace(params: AddProjectToWorkspaceRequest, workspacePath: string): Promise<string> {
+/**
+ * Scaffolds the new integration/library package inside `workspacePath`.
+ *
+ * `packageFolder` is the on-disk folder name, resolved by the caller via
+ * {@link resolvePackageFolderInWorkspace} — it is deliberately independent of the
+ * Ballerina package name, matching how the integration wizard has always worked.
+ */
+async function createProjectInWorkspace(
+    params: AddProjectToWorkspaceRequest,
+    workspacePath: string,
+    packageFolder: string
+): Promise<string> {
     const projectRequest: ProjectRequest = {
         projectName: params.projectName,
         packageName: params.packageName,
         projectPath: workspacePath,
+        directoryName: packageFolder,
         createDirectory: true,
         orgName: params.orgName,
         orgHandle: params.orgHandle,
@@ -1121,6 +1138,22 @@ async function createProjectInWorkspace(params: AddProjectToWorkspaceRequest, wo
     };
 
     return await createBIProjectPure(projectRequest);
+}
+
+/**
+ * Resolves the folder the new package is created in, inside `workspaceRoot`.
+ *
+ * Prefers the caller-supplied `packageDirectoryName` (derived from the artifact's
+ * display name) and falls back to the sanitized package name for older callers that
+ * send none. Always passed through {@link resolveAvailablePackageFolder}: the
+ * scaffold creates its directory with `mkdir -p`, which silently succeeds on an
+ * existing folder and would write over a package already living there, so an
+ * unavailable name must be indexed rather than reused. The UI blocks a colliding
+ * name well before this point — this is the last line of defence.
+ */
+function resolvePackageFolderInWorkspace(workspaceRoot: string, params: AddProjectToWorkspaceRequest): string {
+    const base = params.packageDirectoryName?.trim() || sanitizeName(params.packageName);
+    return resolveAvailablePackageFolder(workspaceRoot, base);
 }
 
 /**

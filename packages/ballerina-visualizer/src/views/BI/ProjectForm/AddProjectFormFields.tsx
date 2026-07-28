@@ -16,10 +16,7 @@
  * under the License.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckBox, DirectorySelector, TextField } from "@wso2/ui-toolkit";
-import { useRpcContext } from "@wso2/ballerina-rpc-client";
-import { usePlatformExtContext } from "../../../providers/platform-ext-ctx-provider";
 import {
     Description,
     FieldGroup,
@@ -29,15 +26,9 @@ import {
     FormSectionCaption,
     InlineToggle,
 } from "./styles";
-import { ProjectTypeSelector, AdvancedConfigurationSection } from "./components";
+import { ProjectTypeSelector } from "./components";
 import { AddProjectFormData } from "./types";
-import {
-    sanitizePackageName,
-    sanitizeProjectHandle,
-    validateComponentName,
-    validatePackageName,
-    validateOrgName,
-} from "./utils";
+import { sanitizeProjectHandle } from "./utils";
 
 // Re-export for backwards compatibility
 export type { AddProjectFormData } from "./types";
@@ -48,7 +39,6 @@ export interface AddProjectFormFieldsProps {
     isInProject: boolean;
     addNewAfterConvert: boolean;
     onAddNewAfterConvertChange: (value: boolean) => void;
-    packageNameValidationError?: string;
     projectNameValidationError?: string;
     /** Full destination path (location + folder name) for the convert flow. */
     convertPath?: string;
@@ -57,41 +47,27 @@ export interface AddProjectFormFieldsProps {
     convertPathError?: string;
 }
 
+/**
+ * Screen 1 of the Add-to-project flow: the project itself (convert case only) and
+ * the starting point to add. Both starting points are named and configured on the
+ * following screen — the integration in the Create Integration wizard, the library
+ * in `AddLibraryFields` — so nothing artifact-specific is collected here.
+ */
 export function AddProjectFormFields({
     formData,
     onFormDataChange,
     isInProject,
     addNewAfterConvert,
     onAddNewAfterConvertChange,
-    packageNameValidationError,
     projectNameValidationError,
     convertPath,
     onConvertPathChange,
     onConvertPathSelect,
     convertPathError,
 }: AddProjectFormFieldsProps) {
-    const { rpcClient } = useRpcContext();
-    const { platformExtState } = usePlatformExtContext();
-    const isLoggedIn = !!platformExtState?.isLoggedIn;
-    const orgsSource = platformExtState?.userInfo?.organizations;
-    const organizations = useMemo(
-        () => isLoggedIn ? (orgsSource ?? []) : undefined,
-        [isLoggedIn, orgsSource]
-    );
-    const [packageNameTouched, setPackageNameTouched] = useState(false);
-    const isOrgTouched = useRef(false);
-    const [isPackageInfoExpanded, setIsPackageInfoExpanded] = useState(false);
-    const [integrationNameError, setIntegrationNameError] = useState<string | null>(null);
-    const [packageNameError, setPackageNameError] = useState<string | null>(null);
-    const [isOrgLocked, setIsOrgLocked] = useState(false);
-    const [isOrgDataLoaded, setIsOrgDataLoaded] = useState(false);
     const resourceTypeLabel = formData.isLibrary ? "Library" : "Integration";
     const resourceTypeLabelLower = resourceTypeLabel.toLowerCase();
     const showIntegrationFields = isInProject || addNewAfterConvert;
-    // Package-level configuration (name / org / version) is meaningful for a library —
-    // a reusable, publishable package — but not for an integration, whose package
-    // details are derived automatically. So the Advanced section is library-only.
-    const showAdvancedConfig = showIntegrationFields && formData.isLibrary;
 
     const handleProjectName = (value: string) => {
         // The project name also seeds the default destination folder name (via the
@@ -102,95 +78,6 @@ export function AddProjectFormFields({
             projectHandle: sanitizeProjectHandle(value, { trimTrailing: false }),
         });
     };
-
-    const handleIntegrationName = (value: string) => {
-        onFormDataChange({ integrationName: value });
-        // Auto-populate package name if user hasn't manually edited it
-        if (!packageNameTouched) {
-            onFormDataChange({ packageName: sanitizePackageName(value) });
-        }
-    };
-
-    useEffect(() => {
-        if (isOrgTouched.current) return;
-
-        const controller = new AbortController();
-
-        const pickOrg = (rpcOrg: string) => {
-            const match = organizations?.find((o) => o.handle === rpcOrg);
-            if (match) return match.handle;
-            if (organizations && organizations.length > 0) return organizations[0].handle;
-            return rpcOrg;
-        };
-
-        (async () => {
-            try {
-                const { orgName: rpcOrg, isLocked } = await rpcClient.getCommonRpcClient().getDefaultOrgName();
-                if (controller.signal.aborted) return;
-                if (isOrgTouched.current) {
-                    setIsOrgDataLoaded(true);
-                    return;
-                }
-
-                if (isInProject && isLocked) {
-                    setIsOrgLocked(true);
-                    setIsOrgDataLoaded(true);
-                    onFormDataChange({ orgName: rpcOrg });
-                    return;
-                }
-
-                setIsOrgLocked(false);
-                setIsOrgDataLoaded(true);
-                onFormDataChange({ orgName: pickOrg(rpcOrg) });
-            } catch (error) {
-                if (controller.signal.aborted) return;
-                if (isOrgTouched.current) {
-                    setIsOrgDataLoaded(true);
-                    return;
-                }
-
-                console.error("Failed to fetch default org name:", error);
-                setIsOrgLocked(false);
-                setIsOrgDataLoaded(true);
-
-                if (organizations && organizations.length > 0) {
-                    onFormDataChange({ orgName: organizations[0].handle });
-                }
-            }
-        })();
-
-        return () => {
-            controller.abort();
-        };
-    }, [isInProject, organizations, onFormDataChange, rpcClient]);
-
-    // Real-time validation for integration/library name
-    useEffect(() => {
-        const error = validateComponentName(formData.integrationName, formData.isLibrary);
-        setIntegrationNameError(error);
-    }, [formData.integrationName, formData.isLibrary]);
-
-    // Effect to trigger validation when requested by parent
-    useEffect(() => {
-        const error = validatePackageName(formData.packageName, formData.integrationName);
-        setPackageNameError(error);
-    }, [formData.packageName]);
-
-    // Computed inline — avoids a one-render lag from a useState/useEffect pair which would
-    // cause hasAdvancedConfigError to briefly read a stale error while orgName is updating.
-    const orgNameError = (!isOrgLocked && isOrgDataLoaded) ? validateOrgName(formData.orgName) : null;
-
-    const hasAdvancedConfigError = !!(
-        // Advanced configs only render (and matter) for a library package.
-        showAdvancedConfig && (packageNameError || packageNameValidationError || orgNameError)
-    );
-
-    // Auto-expand Advanced Configurations when any field inside it has an error
-    useEffect(() => {
-        if (hasAdvancedConfigError) {
-            setIsPackageInfoExpanded(true);
-        }
-    }, [hasAdvancedConfigError]);
 
     return (
         <>
@@ -257,57 +144,11 @@ export function AddProjectFormFields({
                         onChange={(isLibrary) => onFormDataChange({ isLibrary })}
                     />
 
-                    {/* An integration is named and configured in the dedicated wizard
-                        (the next step), matching the initial Create experience — so only
-                        the library collects its name/package details inline here. */}
-                    {formData.isLibrary ? (
-                        <FieldGroup>
-                            <TextField
-                                onTextChange={handleIntegrationName}
-                                value={formData.integrationName}
-                                label={`${resourceTypeLabel} Name`}
-                                placeholder={`Enter a ${resourceTypeLabelLower} name`}
-                                autoFocus={isInProject}
-                                onFocus={(e) => (e.target as HTMLInputElement).select()}
-                                required={true}
-                                errorMsg={integrationNameError || ""}
-                            />
-                        </FieldGroup>
-                    ) : (
-                        <Description>
-                            You'll name and configure your integration in the next step.
-                        </Description>
-                    )}
-
-                    {/* Package configuration is only relevant for a library (a publishable
-                        package); an integration derives these automatically. */}
-                    {showAdvancedConfig && (
-                        <AdvancedConfigurationSection
-                            isExpanded={isPackageInfoExpanded}
-                            onToggle={() => setIsPackageInfoExpanded(!isPackageInfoExpanded)}
-                            data={{
-                                packageName: formData.packageName,
-                                orgName: formData.orgName,
-                                version: formData.version,
-                            }}
-                            onChange={(data) => {
-                                onFormDataChange(data);
-                                if (data.packageName !== undefined) {
-                                    setPackageNameTouched(true);
-                                }
-                                if (data.orgName !== undefined) {
-                                    isOrgTouched.current = true;
-                                }
-                            }}
-                            isLibrary={formData.isLibrary}
-                            packageNameError={packageNameValidationError || packageNameError}
-                            orgNameError={orgNameError || undefined}
-                            organizations={organizations}
-                            hasError={hasAdvancedConfigError}
-                            isOrgLocked={isOrgLocked}
-                            showPackageFields={true}
-                        />
-                    )}
+                    {/* Both starting points are named and configured on the next screen,
+                        matching the initial Create experience. */}
+                    <Description>
+                        You'll name and configure your {resourceTypeLabelLower} in the next step.
+                    </Description>
                 </FormSection>
             )}
         </>

@@ -43,7 +43,14 @@ export interface AddProjectToWorkspaceRequest {
     projectName: string;
     packageName: string;
     path: string;
+    /** Folder name for the PROJECT (workspace) being created by the convert flow. */
     directoryName?: string;
+    /**
+     * Folder name for the new integration/library package inside the project,
+     * derived from its display name and independent of `packageName`. When omitted
+     * the folder falls back to the sanitized package name (legacy behaviour).
+     */
+    packageDirectoryName?: string;
     convertToWorkspace?: boolean;
     addNewAfterConvert?: boolean;
     workspaceName?: string;
