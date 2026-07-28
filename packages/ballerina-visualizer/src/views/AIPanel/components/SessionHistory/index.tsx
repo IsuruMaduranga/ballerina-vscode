@@ -214,11 +214,13 @@ const ReadOnlyHint = styled.div`
     flex-shrink: 0;
 `;
 
+// Selected rows sit on list-activeSelectionBackground, which is a saturated accent in many themes.
+// Anything on that row has to follow the row's own resolved foreground, or it disappears into it.
 const ActiveDot = styled.div<{ isActive: boolean }>(({ isActive }: { isActive: boolean }) => ({
     width: "6px",
     height: "6px",
     borderRadius: "50%",
-    background: isActive ? "var(--vscode-charts-blue, #007acc)" : "var(--vscode-descriptionForeground)",
+    background: isActive ? "currentColor" : "var(--vscode-descriptionForeground)",
     flexShrink: 0,
     opacity: isActive ? 1 : 0.5,
 }));
@@ -231,11 +233,12 @@ const SessionName = styled.span`
     text-overflow: ellipsis;
 `;
 
-const SessionMeta = styled.span`
-    font-size: 10px;
-    color: var(--vscode-descriptionForeground);
-    flex-shrink: 0;
-`;
+const SessionMeta = styled.span<{ isActive: boolean }>(({ isActive }: { isActive: boolean }) => ({
+    fontSize: "10px",
+    color: isActive ? "inherit" : "var(--vscode-descriptionForeground)",
+    opacity: isActive ? 0.85 : 1,
+    flexShrink: 0,
+}));
 
 const RenameInput = styled.input`
     flex: 1;
@@ -266,14 +269,14 @@ const RowIconButton = styled.button<{ isDanger?: boolean }>(({ isDanger }: { isD
     border: "none",
     cursor: "pointer",
     padding: 0,
-    color: "var(--vscode-icon-foreground)",
+    color: "inherit",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     borderRadius: "3px",
     flexShrink: 0,
     "&:hover, &:focus-visible": {
-        color: isDanger ? "var(--vscode-errorForeground)" : "var(--vscode-foreground)",
+        color: isDanger ? "var(--vscode-errorForeground)" : "inherit",
         background: "var(--vscode-toolbar-hoverBackground)",
     },
 }));
@@ -442,7 +445,10 @@ export function SessionHistoryDropdown({
                                                 ) : (
                                                     <SessionName title={thread.name}>{thread.name}</SessionName>
                                                 )}
-                                                <SessionMeta title={promptCountLabel(thread.turnCount)}>
+                                                <SessionMeta
+                                                    isActive={thread.isActive}
+                                                    title={promptCountLabel(thread.turnCount)}
+                                                >
                                                     {formatMeta(thread, now)}
                                                 </SessionMeta>
                                                 {!readOnly && !isRenaming && (
