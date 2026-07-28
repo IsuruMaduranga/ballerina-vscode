@@ -95,6 +95,15 @@ public class IdentifierDiagnosticsRequest extends DiagnosticsRequest {
         if (Property.GLOBAL_SCOPE.equals(scope)) {
             symbolStream = semanticModel.get().moduleSymbols().stream()
                     .filter(symbol -> symbol.kind() != SymbolKind.MODULE);
+        } else if (Property.DECLARATION_SCOPE.equals(scope)) {
+            // Unlike moduleSymbols(), visibleSymbols() also resolves the testable package.
+            Optional<Document> document = context.workspaceManager().document(context.filePath());
+            if (document.isEmpty()) {
+                return Set.of();
+            }
+            symbolStream = semanticModel.get()
+                    .visibleSymbols(document.get(), context.info().startLine()).parallelStream()
+                    .filter(symbol -> symbol.kind() != SymbolKind.MODULE);
         } else {
             Optional<Document> document = context.workspaceManager().document(context.filePath());
             if (document.isEmpty()) {

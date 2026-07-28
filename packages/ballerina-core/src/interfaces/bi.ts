@@ -543,7 +543,7 @@ export type Repeatable = "ONE_OR_MORE" | "ZERO_OR_ONE" | "ONE" | "ZERO_OR_MORE";
 
 export type Scope = "module" | "local" | "object";
 
-export type FieldScope = "Global" | "Local" | "Object";
+export type FieldScope = "Global" | "Local" | "Object" | "Declaration";
 
 export type NodeKind =
     | "ACTION_OR_EXPRESSION"

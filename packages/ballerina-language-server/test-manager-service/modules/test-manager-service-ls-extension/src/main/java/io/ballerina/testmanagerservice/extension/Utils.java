@@ -91,7 +91,7 @@ public class Utils {
 
         functionBuilder.metadata(new Metadata("Test Function", "Test Function"))
                 .codedata(new Codedata(functionDefinitionNode.lineRange()))
-                .functionName(TestFunction.functionName(functionDefinitionNode.functionName().text()))
+                .functionName(TestFunction.functionName(functionDefinitionNode.functionName()))
                 .parameters(TestFunction.parameters(functionDefinitionNode.functionSignature().parameters()))
                 .returnType(TestFunction.returnType(functionDefinitionNode.functionSignature().returnTypeDesc()));
 

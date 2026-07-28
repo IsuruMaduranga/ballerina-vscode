@@ -523,7 +523,12 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const generateFormFields = (testFunction: TestFunction, options = evalsetOptions): FormField[] => {
         const fields: FormField[] = [];
         if (testFunction.functionName) {
-            fields.push(generateFieldFromProperty('functionName', testFunction.functionName));
+            // Set here because getTestFunction reports a flat valueType, with no scope.
+            fields.push({
+                ...generateFieldFromProperty('functionName', testFunction.functionName),
+                type: 'IDENTIFIER',
+                types: [{ fieldType: 'IDENTIFIER', scope: 'Declaration', selected: true }]
+            });
         }
         if (testFunction.parameters) {
             fields.push({
@@ -686,6 +691,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             enabled: true,
             documentation: property.metadata.description,
             value: displayValue,
+            codedata: property.codedata,
             types: [{ fieldType: fieldType, selected: false }]
         };
 
