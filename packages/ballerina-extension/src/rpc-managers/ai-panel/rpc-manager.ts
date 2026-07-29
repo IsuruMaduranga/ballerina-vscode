@@ -124,7 +124,7 @@ import { BACKEND_URL } from "../../features/ai/utils";
 import { fetchWithAuth } from "../../features/ai/utils/ai-client";
 import { sendChatComponentNotification, sendSaveChatNotification, sendSkillEnableNotification } from "../../features/ai/utils/ai-utils";
 import { submitFeedback as submitFeedbackUtil } from "../../features/ai/utils/feedback";
-import { sendGenerationDiscardTelemetry, sendGenerationKeptTelemetry } from "../../features/ai/utils/generation-response";
+import { sendGenerationDiscardTelemetry } from "../../features/ai/utils/generation-response";
 import { getLLMDiagnosticArrayAsString } from "../../features/natural-programming/utils";
 import { enhancePrompt as enhancePromptService } from "../../features/ai/service/prompt-enhancement/promptEnhancement";
 import { StateMachine, updateView } from "../../stateMachine";
@@ -534,36 +534,6 @@ export class AiPanelRpcManager implements AIPanelAPI {
         const isWorkspace = context.projectInfo?.projectKind === 'WORKSPACE_PROJECT';
         console.log(`>>> isWorkspaceProject: ${isWorkspace}`);
         return isWorkspace;
-    }
-
-    async acceptChanges(): Promise<void> {
-        try {
-            const projectRootPath = resolveProjectRootPath();
-            const threadId = getActiveThreadId();
-
-            const doneGeneration = chatStateStorage.getDoneGeneration(projectRootPath, threadId);
-            if (!doneGeneration) {
-                console.warn("[Review Actions] No open generation found for accept");
-                return;
-            }
-
-            console.log(`[Review Actions] Accepting generation ${doneGeneration.id} with ${doneGeneration.reviewState.modifiedFiles.length} modified file(s)`);
-
-            // Its edits are already live in the workspace — accept just finalizes status.
-            chatStateStorage.finalizeLastGenerationIfDone(projectRootPath, threadId);
-            // The review is over: drop its cached nav state and stale restore Memento.
-            approvalViewManager.clearReviewData();
-            console.log(`[Review Actions] Accepted generation: ${doneGeneration.id}`);
-
-            sendGenerationKeptTelemetry(doneGeneration.id);
-
-            // Notify webview to update review component status and persist
-            sendChatComponentNotification("review", { status: "accepted" });
-            sendSaveChatNotification(Command.Agent, doneGeneration.id);
-        } catch (error) {
-            console.error("[Review Actions] Error accepting changes:", error);
-            throw error;
-        }
     }
 
     async declineChanges(): Promise<void> {

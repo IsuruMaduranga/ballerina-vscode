@@ -30,6 +30,9 @@ import { extension } from "../../../BalExtensionContext";
 import { getProjectMetrics } from "../../telemetry/common/project-metrics";
 import { getHashedProjectId } from "../../telemetry/common/project-id";
 import { runEventStore } from "../utils/run-event-store";
+import { approvalViewManager } from "../state/ApprovalViewManager";
+import { sendChatComponentNotification, sendSaveChatNotification } from "../utils/ai-utils";
+import { sendGenerationKeptTelemetry } from "../utils/generation-response";
 
 // ==================================
 // Agent Generation Functions
@@ -91,6 +94,26 @@ export function createExecutorConfig<TParams>(
 }
 
 /**
+ * Finalizes the thread's open generation and reports it. The reporting lives here rather than in
+ * `chatStateStorage`, which is storage and has no business sending notifications or telemetry.
+ *
+ * @returns true if a generation was finalized
+ */
+export function finalizeLastGeneration(projectRootPath: string, threadId: string): boolean {
+    const finalized = chatStateStorage.finalizeLastGenerationIfDone(projectRootPath, threadId);
+    if (!finalized) {
+        return false;
+    }
+
+    approvalViewManager.clearReviewData();
+    sendGenerationKeptTelemetry(finalized.id);
+    sendChatComponentNotification("review", { status: "accepted" });
+    sendSaveChatNotification(Command.Agent, finalized.id);
+    console.log(`[Agent] Accepted generation: ${finalized.id}`);
+    return true;
+}
+
+/**
  * Generates agent code based on user request
  * Handles plan mode configuration and review state management
  */
@@ -118,7 +141,7 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
         // Moving on to a new generation implicitly accepts a still-open previous one.
         // Nothing to clean up: edits already land directly in the real workspace, and there's
         // no separate temp copy anymore (see existingTempPath below).
-        chatStateStorage.finalizeLastGenerationIfDone(projectRootPath, threadId);
+        finalizeLastGeneration(projectRootPath, threadId);
 
         // Create config using factory function. existingTempPath makes the agent operate
         // directly on the real project root instead of AICommandExecutor creating a

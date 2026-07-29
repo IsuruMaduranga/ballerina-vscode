@@ -59,7 +59,6 @@ import {
     submitClarifyAnswer,
     cancelClarify,
     abortAIGeneration,
-    acceptChanges,
     addFilesToProject,
     approvePlan,
     approveTask,
@@ -297,10 +296,6 @@ export class AiPanelRpcClient implements AIPanelAPI {
 
     isWorkspaceProject(): Promise<boolean> {
         return this._messenger.sendRequest(isWorkspaceProject, HOST_EXTENSION);
-    }
-
-    acceptChanges(): Promise<void> {
-        return this._messenger.sendRequest(acceptChanges, HOST_EXTENSION);
     }
 
     declineChanges(): Promise<void> {
