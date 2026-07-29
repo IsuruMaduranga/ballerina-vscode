@@ -19,16 +19,18 @@
 import { FormField } from "@wso2/ballerina-side-panel";
 import { AvailableNode, FlowNode, Property as FlowProperty } from "@wso2/ballerina-core";
 import { convertNodePropertyToFormField } from "../../../utils/bi";
+import {
+    DataSourceMode, DataSourceParam, isDataSourceSatisfied, partitionTemplateFields
+} from "./templateFormUtils";
 
-const TEMPLATE_FIELD_PREFIX = 'template_';
+export { isDataSourceSatisfied, partitionTemplateFields } from "./templateFormUtils";
+export type { DataSourceMode, DataSourceParam } from "./templateFormUtils";
+
+export const TEMPLATE_FIELD_PREFIX = 'template_';
 export const QUERIES_FIELD_KEY = 'evalQueries';
 export const EVALSET_FIELD_KEY = 'evalSetFile';
 
 export type TemplateFilterKind = 'all' | 'rule-based' | 'llm-as-judge' | 'uses-evalset' | 'no-evalset';
-
-export type DataSourceMode = 'evalset' | 'queries';
-
-export type DataSourceParam = { paramName: string; kind: 'union' | 'strict' };
 
 export const getTemplateKind = (template: AvailableNode): string => {
     const kind = String(template.codedata.data?.kind || 'RULE_BASED').toUpperCase();
@@ -101,6 +103,18 @@ const withAgentConnectionData = (property: FlowProperty): FlowProperty => {
     } as FlowProperty;
 };
 
+// The agent under evaluation, used to name the evaluation after its subject. Derived from the argument
+// type, like every other role in this form.
+export const findAgentArgument = (node?: FlowNode): { key: string; value: string } | undefined => {
+    for (const [key, property] of Object.entries(node?.properties || {})) {
+        const templateProperty = property as FlowProperty;
+        if (templateProperty.types?.some(type => type.ballerinaType?.includes(AI_AGENT_TYPE))) {
+            return { key, value: String(templateProperty.value ?? '') };
+        }
+    }
+    return undefined;
+};
+
 const CONVERSATION_THREAD_TYPE = 'ConversationThread';
 
 export const findDataSourceParam = (node: FlowNode): DataSourceParam | undefined => {
@@ -167,22 +181,3 @@ export const generateTemplateFields = (node: FlowNode, dsParamName?: string): Fo
         }));
 
 export const isTemplateField = (field: FormField): boolean => field.key.startsWith(TEMPLATE_FIELD_PREFIX);
-
-/**
- * Gates Save on the test input being usable. The template's own required fields and diagnostics are
- * gated by the shared Form, since they are registered against it; this rule is not, because the
- * evalset / queries choice lives in component state rather than in a single form field.
- */
-export const isDataSourceSatisfied = (args: {
-    dataSourceParam?: DataSourceParam;
-    dataSourceMode: DataSourceMode;
-    evalSetFile: string;
-    queries: string[];
-}): boolean => {
-    if (!args.dataSourceParam) {
-        return true;
-    }
-    return args.dataSourceMode === 'evalset'
-        ? !!args.evalSetFile
-        : args.queries.some(query => query?.trim());
-};

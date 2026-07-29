@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Codicon, Icon, RadioButtonGroup, ThemeColors, Typography, View, ViewContent } from "@wso2/ui-toolkit";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Codicon, Icon, RadioButtonGroup, ThemeColors, Typography, View, ViewContent } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { FormField, FormImports, FormValues, Parameter } from "@wso2/ballerina-side-panel";
@@ -33,14 +33,17 @@ import { LoadingView } from "../../../components/LoadingView";
 import { RelativeLoader } from "../../../components/RelativeLoader";
 import { TemplateModal } from "./TemplateModal";
 import { TemplateConfigCard } from "./TemplateConfigCard";
+import { EvalsetFileControl } from "./EvalsetFileControl";
+import { resolveEvalsetPath } from "./evalsetUtils";
+import { suggestEvaluationName } from "./evaluationName";
 import {
-    FormSection, GrowingContent, HintText, MonospaceHint, NoticeBox, NoticeTitle, SectionLabel,
+    FormSection, GrowingContent, HintText, MonospaceHint, SectionLabel,
     StatusRow, TemplateIconTile, TitleRow, cardBox
 } from "./styles";
 import {
-    DataSourceMode, DataSourceParam, EVALSET_FIELD_KEY, QUERIES_FIELD_KEY, buildQueriesField,
-    carryOverArguments, findDataSourceParam, generateTemplateFields, isDataSourceSatisfied,
-    isTemplateField, templateNeedsEvalset
+    DataSourceMode, DataSourceParam, EVALSET_FIELD_KEY, QUERIES_FIELD_KEY, TEMPLATE_FIELD_PREFIX,
+    buildQueriesField, carryOverArguments, findAgentArgument, findDataSourceParam,
+    generateTemplateFields, isDataSourceSatisfied, isTemplateField, templateNeedsEvalset
 } from "./templateUtils";
 
 const FormContainer = styled.div`
@@ -94,6 +97,7 @@ const TemplatePicker = styled.div`
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
+    margin: 8px 0;
 `;
 
 const FormLoadingSlot = styled.div`
@@ -114,14 +118,56 @@ const LoadingSlot = styled.div`
     border-radius: 8px;
 `;
 
-const EmptyTemplateSlot = styled.div`
+const EmptyTemplateSlot = styled.button`
     ${cardBox}
     align-items: center;
-    gap: 12px;
-    border: 1px dashed var(--vscode-panel-border);
-    background-color: transparent;
+    justify-content: space-between;
+    min-height: 112px;
+    border: 1px solid var(--vscode-button-background);
+    background-color: color-mix(in srgb, var(--vscode-button-background) 5%, transparent);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+
+    &:hover {
+        background-color: color-mix(in srgb, var(--vscode-button-background) 10%, transparent);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--vscode-contrastActiveBorder);
+        outline-offset: 2px;
+    }
 `;
 
+// The evalset choice and its follow-up are one decision in Custom mode. Keep its controls together,
+// then leave a clearer boundary before the evaluation-wide settings that follow.
+const CustomEvalsetControls = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    padding-bottom: 16px;
+
+    > * {
+        margin-top: 0;
+    }
+`;
+
+const ChooseTemplateAction = styled.span`
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    color: var(--vscode-button-foreground);
+    border-radius: 4px;
+    background-color: var(--vscode-button-background);
+    font-size: 13px;
+    font-weight: 500;
+`;
+
+
+const NAME_FIELD_KEY = 'functionName';
 
 type EvalTemplatePayload = NonNullable<AddOrUpdateTestFunctionRequest['evalTemplate']>;
 
@@ -173,6 +219,9 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const bootstrapRunRef = useRef(0);
     const [editShape, setEditShape] = useState<EditShape>();
     const [detectedSymbol, setDetectedSymbol] = useState<string>();
+    const [takenNames, setTakenNames] = useState<string[]>([]);
+    const [agentValue, setAgentValue] = useState<string>('');
+    const [customName, setCustomName] = useState<string>();
     const isEditing = serviceType === 'UPDATE_TEST';
     const formTitle = isEditing ? 'Update AI Evaluation' : 'Create New AI Evaluation';
     const formSubtitle = isEditing
@@ -182,6 +231,36 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const dataSourceParam = useMemo(
         () => (templateNode ? findDataSourceParam(templateNode) : undefined),
         [templateNode]);
+    const isTemplateMode = dataProviderMode === 'template';
+    const agentArgument = useMemo(() => findAgentArgument(templateNode), [templateNode]);
+    const agentFieldKey = agentArgument && `${TEMPLATE_FIELD_PREFIX}${agentArgument.key}`;
+
+    // Editing never renames: the name is a test function that CI runs and test filters reference.
+    const suggestedName = useMemo(() => isEditing ? undefined : suggestEvaluationName({
+        template: isTemplateMode ? selectedTemplate : undefined,
+        hasAgent: Boolean(agentArgument),
+        agentValue,
+        evalSetFile: selectedEvalsetFile,
+        takenNames
+    }), [isEditing, isTemplateMode, selectedTemplate, agentArgument, agentValue, selectedEvalsetFile,
+        takenNames]);
+
+    const evalsetField = useMemo(
+        () => formFields.find(field => field.key === EVALSET_FIELD_KEY),
+        [formFields]);
+
+    // Typing takes the name over; emptying it hands it back to the suggestion. IdentifierField syncs
+    // `field.value` into the form, so driving the value here is all the tracking needs.
+    const handleNameChange = useCallback((next: string | boolean) => {
+        const name = String(next ?? '');
+        setCustomName(name.trim() === '' ? undefined : name);
+    }, []);
+
+    // Editing keeps whatever the function is already called; only creation derives a name.
+    const derivedName = isEditing ? undefined : customName ?? suggestedName;
+    const fields = useMemo(() => formFields.map(field => field.key === NAME_FIELD_KEY
+        ? { ...field, value: derivedName ?? field.value, onValueChange: handleNameChange }
+        : field), [formFields, derivedName, handleNameChange]);
 
     const isSaveDisabled = useMemo(() => {
         if (dataProviderMode === 'evalSet') {
@@ -202,20 +281,32 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     }, [dataProviderMode, selectedEvalsetFile, selectedTemplate, dataSourceParam, dataSourceMode,
         evalQueries, serviceType]);
 
+    // Fields the injected section renders itself stay hidden here, so the shared form still seeds and
+    // submits their values while the section decides where they appear. The name is the exception: it
+    // renders in the form's own footer slot, so it only needs hiding until there is something to name.
     const applyFieldVisibility = (fields: FormField[], mode: string,
-        options = evalsetOptions): FormField[] => {
+        hasTemplate = Boolean(selectedTemplate)): FormField[] => {
+        const isChoosingTemplate = !isEditing && mode === 'template' && !hasTemplate;
         return fields.map(field => {
-            if (isTemplateField(field) || field.key === QUERIES_FIELD_KEY) {
+            // Template selection is the first step in this guided flow. Hold the generic evaluation
+            // settings back until it supplies the context needed to configure them.
+            if (isChoosingTemplate) {
                 return { ...field, hidden: true };
+            }
+            if (isTemplateField(field) || field.key === QUERIES_FIELD_KEY
+                || field.key === EVALSET_FIELD_KEY) {
+                return { ...field, hidden: true };
+            }
+            if (field.key === NAME_FIELD_KEY) {
+                return { ...field, hidden: !isEditing && mode === 'template' && !hasTemplate };
             }
             if (field.key === 'dataProvider') {
                 return { ...field, hidden: mode !== 'function' };
             }
-            if (field.key === EVALSET_FIELD_KEY) {
-                const hidden = mode !== 'evalSet' || (options.length === 0 && !selectedEvalsetFile);
-                return { ...field, hidden };
-            }
-            return field;
+            // The template-first empty state hides the base settings. Restore them when a template
+            // is selected (or when the user switches to Custom); `params` is intentionally never
+            // exposed by this evaluation form.
+            return { ...field, hidden: field.key === 'params' };
         });
     };
 
@@ -225,6 +316,9 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         }
         if (fieldKey === QUERIES_FIELD_KEY) {
             setEvalQueries(Array.isArray(value) ? value : []);
+        }
+        if (fieldKey === agentFieldKey) {
+            setAgentValue(String(value ?? ''));
         }
     };
 
@@ -285,6 +379,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                 : 'evalset';
             setSelectedTemplate(template);
             setTemplateNode(node);
+            setAgentValue(findAgentArgument(node)?.value || '');
             setDataSourceMode(mode);
             if (mode !== 'queries') {
                 setEvalQueries([]);
@@ -294,7 +389,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             setDataProviderMode('template');
             setFormFields(current => applyFieldVisibility(
                 assembleTemplateFields(current, node, dsParam, mode === 'queries' ? evalQueries : []),
-                'template'));
+                'template', true));
         } catch (error) {
             console.error('Failed to load evaluation template form:', error);
             setTemplateLoadError('Unable to load the selected template. Please try again.');
@@ -309,7 +404,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         setIsLoading(true);
         try {
             const [options, templates] = await Promise.all([
-                loadEvalsets(), loadEvalTemplates(), updateTargetLineRange()]);
+                loadEvalsets(), loadEvalTemplates(), loadTakenNames(), updateTargetLineRange()]);
             if (bootstrapRunRef.current !== run) {
                 return;
             }
@@ -322,6 +417,19 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             if (bootstrapRunRef.current === run) {
                 setIsLoading(false);
             }
+        }
+    };
+
+    // Only so a generated name doesn't land on one that is already used. The identifier field's
+    // `redeclared symbol` diagnostic is still what actually enforces uniqueness, since discovery
+    // reports annotated tests rather than every declaration in the testable package.
+    const loadTakenNames = async () => {
+        try {
+            const res = await rpcClient.getTestManagerRpcClient().getTestFunctionNames({ projectPath });
+            setTakenNames(res.names.filter(name => name !== functionName));
+        } catch (error) {
+            console.error('Failed to load existing test function names:', error);
+            setTakenNames([]);
         }
     };
 
@@ -341,6 +449,27 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             setEvalsetsLoadError(true);
             return [];
         }
+    };
+
+    // Evalset options are relative to the current project. The VS Code command expects a Uri-like
+    // object with an absolute fsPath, as it does when invoked from the Test Explorer.
+    const openEvalset = useCallback(async (evalsetFile: string) => {
+        if (!evalsetFile) {
+            return;
+        }
+        const fsPath = resolveEvalsetPath(projectPath, evalsetFile);
+        await rpcClient.getCommonRpcClient().executeCommand({
+            commands: ['ballerina.openEvalsetViewer', { fsPath }]
+        });
+    }, [projectPath, rpcClient]);
+
+    // The Test Explorer command owns the creation prompt and writes the file. Reloading after it
+    // returns replaces the empty-state notice with the normal evalset selector.
+    const createEvalset = async () => {
+        await rpcClient.getCommonRpcClient().executeCommand({
+            commands: ['ballerina.createNewEvalset']
+        });
+        await loadEvalsets();
     };
 
     // The evaluator call is its own marker for "built from a template", and the flow model already
@@ -410,6 +539,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         if (isTemplate) {
             setSelectedTemplate(detected.template);
             setTemplateNode(detected.node);
+            setAgentValue(findAgentArgument(detected.node)?.value || '');
         }
 
         let formFields = generateFormFields(res.function, options);
@@ -419,7 +549,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             formFields = assembleTemplateFields(formFields, detected.node, dsParam, queries);
         }
 
-        setFormFields(applyFieldVisibility(formFields, mode, options));
+        setFormFields(applyFieldVisibility(formFields, mode));
     }
 
     const loadEmptyForm = (options = evalsetOptions) => {
@@ -431,7 +561,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         const mode = 'template';
         setDataProviderMode(mode);
 
-        formFields = applyFieldVisibility(formFields, mode, options);
+        formFields = applyFieldVisibility(formFields, mode);
         setFormFields(formFields);
     }
 
@@ -1076,6 +1206,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const clearTemplateSelection = () => {
         setSelectedTemplate(undefined);
         setTemplateNode(undefined);
+        setAgentValue('');
         setShowTemplateCatalog(false);
         setFormFields(fields => fields.filter(isBaseField));
     };
@@ -1123,10 +1254,16 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                         {!isLoading && targetLineRange && (
                             <ArtifactForm
                                 fileName={filePath}
-                                fields={formFields}
+                                fields={fields}
                                 targetLineRange={targetLineRange}
                                 onSubmit={onFormSubmit}
-                                preserveFieldOrder={true}
+                                // The name sits in the form's footer slot above Save, as it does on
+                                // every other artifact form, so it is reviewed rather than asked for.
+                                preserveFieldOrder={false}
+                                bottomFields={[NAME_FIELD_KEY]}
+                                // This is a guided creation flow, not a generic operation form. The shared
+                                // "no required parameters" summary is misleading until a template is chosen.
+                                hideInfoBanner
                                 onChange={handleFieldChange}
                                 isSaving={isSaving}
                                 disableSaveButton={isSaveDisabled}
@@ -1141,19 +1278,46 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                     onChange={handleCardSelectorChange}
                                                 />
                                             )}
-                                            {!isEditing && dataProviderMode !== 'template' && (
-                                                <FormSection>
-                                                    <RadioButtonGroup
-                                                        label="Use an evalset?"
-                                                        orientation="horizontal"
-                                                        value={customUsesEvalset ? 'evalSet' : 'none'}
-                                                        options={[
-                                                            { id: 'evalset-none', value: 'none', content: 'No evalset' },
-                                                            { id: 'evalset-use', value: 'evalSet', content: 'Use evalset' }
-                                                        ]}
-                                                        onChange={(e) => handleCustomEvalsetChange(e.target.value === 'evalSet')}
-                                                    />
-                                                </FormSection>
+                                            {!isEditing && !isTemplateMode && (
+                                                <CustomEvalsetControls>
+                                                    <FormSection>
+                                                        <RadioButtonGroup
+                                                            label="Use an evalset?"
+                                                            orientation="horizontal"
+                                                            value={customUsesEvalset ? 'evalSet' : 'none'}
+                                                            options={[
+                                                                { id: 'evalset-none', value: 'none', content: 'No evalset' },
+                                                                { id: 'evalset-use', value: 'evalSet', content: 'Use evalset' }
+                                                            ]}
+                                                            onChange={(e) => handleCustomEvalsetChange(e.target.value === 'evalSet')}
+                                                        />
+                                                    </FormSection>
+                                                    {/* Rendered here rather than as a plain field so the select stays
+                                                        with the question that asks for it. */}
+                                                    {customUsesEvalset && evalsetField && (
+                                                        <FormSection>
+                                                            <EvalsetFileControl
+                                                                field={evalsetField}
+                                                                hasEvalsets={evalsetOptions.length > 0}
+                                                                selectedEvalsetFile={selectedEvalsetFile}
+                                                                emptyState={{
+                                                                    icon: <Icon name={evalsetsLoadError ? "bi-error" : "bi-data-table"}
+                                                                        sx={{ fontSize: "16px", width: "16px", height: "16px" }} />,
+                                                                    title: evalsetsLoadError ? 'Failed to load evalsets' : 'No evalset files found',
+                                                                    description: evalsetsLoadError ? (
+                                                                        <>Could not load evalsets for this project. Try reopening this view, then select an evalset.</>
+                                                                    ) : (
+                                                                        <>Export traces from a conversation with an agent to create an evalset.
+                                                                            You can also create an empty evalset below, then add test threads in the evalset editor.</>
+                                                                    ),
+                                                                    canCreate: !evalsetsLoadError,
+                                                                }}
+                                                                onCreateEvalset={createEvalset}
+                                                                onOpenEvalset={openEvalset}
+                                                            />
+                                                        </FormSection>
+                                                    )}
+                                                </CustomEvalsetControls>
                                             )}
                                             {isEditing && editShape === 'unresolvable' && (
                                                 <StatusRow>
@@ -1189,10 +1353,10 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                     </GrowingContent>
                                                 </StatusRow>
                                             )}
-                                            {dataProviderMode === 'template' && editShape !== 'unresolvable' && (
+                                            {isTemplateMode && editShape !== 'unresolvable' && (
                                                 <TemplatePicker>
                                                     <SectionLabel style={{ marginBottom: '8px' }}>
-                                                        Evaluation template
+                                                        {selectedTemplate ? 'Evaluation template' : 'Choose an evaluation template'}
                                                     </SectionLabel>
                                                     {isSelectingTemplate ? (
                                                         <LoadingSlot>
@@ -1205,29 +1369,34 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                             dataSourceParam={dataSourceParam}
                                                             dataSourceMode={dataSourceMode}
                                                             onDataSourceModeChange={handleDataSourceModeChange}
-                                                            evalsetField={formFields.find(field => field.key === EVALSET_FIELD_KEY)}
+                                                            agentFieldKey={agentFieldKey}
+                                                            evalsetField={evalsetField}
                                                             queriesField={formFields.find(field => field.key === QUERIES_FIELD_KEY)}
                                                             hasEvalsets={evalsetOptions.length > 0}
                                                             selectedEvalsetFile={selectedEvalsetFile}
+                                                            onCreateEvalset={createEvalset}
+                                                            onOpenEvalset={openEvalset}
                                                             onChangeTemplate={() => setShowTemplateCatalog(true)}
                                                         />
                                                     ) : (
-                                                        <EmptyTemplateSlot>
+                                                        <EmptyTemplateSlot type="button"
+                                                            onClick={() => setShowTemplateCatalog(true)}
+                                                            aria-haspopup="dialog"
+                                                            aria-label="Choose an evaluation template">
                                                             <GrowingContent>
-                                                                <TitleRow>No template selected</TitleRow>
+                                                                <TitleRow>Choose a template to continue</TitleRow>
                                                                 <HintText>
                                                                     {templateLoadError
                                                                         || (evalTemplates.length > 0
-                                                                            ? `Choose from ${evalTemplates.length} rule-based and LLM-as-judge checks`
-                                                                            : 'Choose from the rule-based and LLM-as-judge checks')}
+                                                                            ? `Start with one of ${evalTemplates.length} rule-based and LLM-as-judge checks`
+                                                                            : 'Start with a rule-based or LLM-as-judge check')}
                                                                 </HintText>
                                                             </GrowingContent>
-                                                            <Button appearance="primary" onClick={() => setShowTemplateCatalog(true)}
-                                                                aria-haspopup="dialog">
+                                                            <ChooseTemplateAction>
                                                                 <Codicon name="search" iconSx={{ fontSize: 14 }}
                                                                     sx={{ height: 14, marginRight: 6 }} />
-                                                                Browse Templates
-                                                            </Button>
+                                                                Choose Template
+                                                            </ChooseTemplateAction>
                                                         </EmptyTemplateSlot>
                                                     )}
                                                     {/* The dialog is already gone by the time a fetch can
@@ -1256,27 +1425,8 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                     onClose={() => setShowTemplateCatalog(false)}
                                                 />
                                             )}
-                                            {dataProviderMode === 'evalSet'
-                                                && evalsetOptions.length === 0
-                                                && !selectedEvalsetFile && (
-                                                    <NoticeBox>
-                                                        <NoticeTitle>
-                                                            <Icon name={evalsetsLoadError ? "bi-error" : "bi-data-table"}
-                                                                sx={{ fontSize: "16px", width: "16px", height: "16px" }} />
-                                                            {evalsetsLoadError ? "Failed to load evalsets" : "No evalset files found"}
-                                                        </NoticeTitle>
-                                                        <HintText>
-                                                            {evalsetsLoadError ? (
-                                                                <>Could not load evalsets for this project. Try reopening this view, or switch to <strong>Standalone/Custom</strong> mode to define your evaluation logic from scratch.</>
-                                                            ) : (
-                                                                <>Evalsets are created by exporting traces from conversations with your agents.
-                                                                    Have a conversation with an agent and export the traces, or switch to <strong>Standalone/Custom</strong> mode to define your evaluation logic from scratch.</>
-                                                            )}
-                                                        </HintText>
-                                                    </NoticeBox>
-                                                )}
                                         </>,
-                                        index: 2
+                                        index: 0
                                     }
                                 ]}
                             />

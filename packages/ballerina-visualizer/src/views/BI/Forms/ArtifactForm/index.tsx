@@ -115,6 +115,8 @@ interface ArtifactFormProps {
     concertRequired?: boolean;
     description?: string;
     preserveFieldOrder?: boolean;
+    /** Keys rendered in the footer slot above Save. Requires `preserveFieldOrder` to be false. */
+    bottomFields?: string[];
     injectedComponents?: {
         component: ReactNode;
         index: number;
@@ -161,6 +163,7 @@ export function ArtifactForm(props: ArtifactFormProps) {
         concertRequired,
         description,
         preserveFieldOrder,
+        bottomFields,
         injectedComponents,
         changeOptionalFieldTitle,
         onChange,
@@ -1107,6 +1110,7 @@ export function ArtifactForm(props: ArtifactFormProps) {
                     infoLabel={description}
                     formImports={formImports}
                     preserveOrder={preserveFieldOrder}
+                    bottomFields={bottomFields}
                     injectedComponents={injectedComponents}
                     changeOptionalFieldTitle={changeOptionalFieldTitle}
                     serverValidationErrors={serverValidationErrors}
