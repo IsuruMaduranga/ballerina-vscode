@@ -237,7 +237,7 @@ const stateMachine = createMachine<MachineContext>(
             },
             renderInitialView: {
                 invoke: {
-                    src: 'openWebView',
+                    src: 'openInitialWebView',
                     onDone: {
                         target: "activateLS"
                     },
@@ -556,36 +556,16 @@ const stateMachine = createMachine<MachineContext>(
                 }
             });
         },
-        openWebView: (context, event) => {
-            // Get context values from the project storage so that we can restore the earlier state when user reopens vscode
-            return new Promise(async (resolve, reject) => {
-                try {
-                    if (!VisualizerWebview.currentPanel) {
-                        await closeOrphanWebviewTabs([VisualizerWebview.viewType]);
-                        extension.ballerinaExtInstance.setContext(extension.context);
-                        VisualizerWebview.currentPanel = new VisualizerWebview();
-                        RPCLayer._messenger.onNotification(webviewReady, () => {
-                            history = new History();
-                            undoRedoManager = new UndoRedoManager();
-                            const webview = VisualizerWebview.currentPanel?.getWebview();
-                            if (webview && (context.isBI || context.view === MACHINE_VIEW.BIWelcome)) {
-                                const biExtension = isInWI() || extensions.getExtension('wso2.ballerina-integrator');
-                                webview.iconPath = {
-                                    light: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-dark.svg' : 'ballerina.svg')),
-                                    dark: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-light.svg' : 'ballerina-inverse.svg'))
-                                };
-                            }
-                            resolve(true);
-                        });
-                    } else {
-                        VisualizerWebview.currentPanel!.getWebview()?.reveal();
-                        resolve(true);
-                    }
-                } catch (e) {
-                    reject(e);
-                }
-            });
-        },
+        // Opens the panel for a view activation: blocks until the webview is ready,
+        // because the states that follow push a view and rely on `stateChanged`
+        // notifications, which are dropped while the webview script is still loading.
+        openWebView: (context, event) => openVisualizerPanel(context, true),
+        // Opens the panel for the startup render: must NOT block on the webview
+        // being ready — it only needs the panel (and its loading screen) painted as
+        // early as possible, and gating language-server activation on the webview
+        // bundle would both delay startup and stall the machine outright if the
+        // webview never loads.
+        openInitialWebView: (context, event) => openVisualizerPanel(context, false),
         resolveMissingDependencies: (context, event) => {
             return new Promise(async (resolve, reject) => {
                 if (context?.projectPath) {
@@ -840,6 +820,60 @@ const stateMachine = createMachine<MachineContext>(
         }
     }
 });
+
+/**
+ * Resolves when the visualizer panel currently on screen has reported
+ * `webviewReady`. Reassigned every time a panel is created, so a caller that must
+ * not lose state notifications can await readiness even when the panel was
+ * created earlier by the startup render.
+ */
+let visualizerWebviewReady: Promise<void> = Promise.resolve();
+
+/**
+ * Ensures the visualizer panel exists, revealing it when one is already open.
+ *
+ * `waitForReady` decides whether the caller blocks until the webview's React app
+ * reports `webviewReady` — see the two service definitions that wrap this.
+ * Awaiting the shared `visualizerWebviewReady` (rather than only the readiness of
+ * a panel created by this very call) is what keeps the view-activation path safe
+ * now that the panel is usually created earlier, during startup.
+ */
+function openVisualizerPanel(context: MachineContext, waitForReady: boolean): Promise<boolean> {
+    return new Promise(async (resolve, reject) => {
+        try {
+            if (VisualizerWebview.currentPanel) {
+                VisualizerWebview.currentPanel.getWebview()?.reveal();
+            } else {
+                await closeOrphanWebviewTabs([VisualizerWebview.viewType]);
+                let markReady: () => void = () => { };
+                visualizerWebviewReady = new Promise<void>((ready) => { markReady = ready; });
+                VisualizerWebview.currentPanel = new VisualizerWebview();
+                RPCLayer._messenger.onNotification(webviewReady, () => {
+                    history = new History();
+                    undoRedoManager = new UndoRedoManager();
+                    const webview = VisualizerWebview.currentPanel?.getWebview();
+                    if (webview && (context.isBI || context.view === MACHINE_VIEW.BIWelcome)) {
+                        const biExtension = isInWI() || extensions.getExtension('wso2.ballerina-integrator');
+                        webview.iconPath = {
+                            light: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-dark.svg' : 'ballerina.svg')),
+                            dark: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-light.svg' : 'ballerina-inverse.svg'))
+                        };
+                    }
+                    markReady();
+                });
+            }
+            if (waitForReady) {
+                await visualizerWebviewReady;
+            }
+            resolve(true);
+        } catch (e) {
+            // Never silently: a failure here means no webview appears at all, which
+            // is exactly how the startup panel regressed unnoticed before.
+            console.error("Failed to open the visualizer webview panel.", e);
+            reject(e);
+        }
+    });
+}
 
 // Create a service to interpret the machine
 const stateService = interpret(stateMachine);

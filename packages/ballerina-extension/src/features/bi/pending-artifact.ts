@@ -21,100 +21,99 @@ import * as path from "path";
 import { ProgressLocation, window } from "vscode";
 import {
     EVENT_TYPE,
+    INTEGRATION_ARTIFACT_LABELS,
     isPathInside,
     isSamePath,
     MACHINE_VIEW,
-    PendingIntegrationArtifactKind,
     PendingIntegrationArtifactPayload,
 } from "@wso2/ballerina-core";
-import { extension } from "../../BalExtensionContext";
 import { openView, StateMachine } from "../../stateMachine";
 import { ServiceDesignerRpcManager } from "../../rpc-managers/service-designer/rpc-manager";
 import { BiDiagramRpcManager } from "../../rpc-managers/bi-diagram/rpc-manager";
-
-/** globalState key — only one pending wizard artifact is allowed at a time. */
-export const PENDING_INTEGRATION_ARTIFACT_KEY = "ballerina.pendingIntegrationArtifact";
-
-/** Milliseconds before a stale pending-artifact entry is discarded. */
-const PENDING_ARTIFACT_TTL_MS = 10 * 60 * 1000; // 10 minutes
+import {
+    clearPendingIntegrationPointer,
+    isPendingPointerFresh,
+    PendingIntegrationArtifactPointer,
+    readPendingIntegrationPointer,
+    writePendingIntegrationPointer,
+} from "./startup-progress";
 
 /** Payload file location inside the scaffolded project (target/ is gitignored by the scaffold). */
 const PENDING_ARTIFACT_RELATIVE_PATH = path.join("target", ".wizard-pending-artifact.json");
 
 /** Human-readable labels for progress and error messages, per artifact kind. */
-const ARTIFACT_KIND_LABELS: Record<PendingIntegrationArtifactKind, string> = {
-    SERVICE: "service",
-    AUTOMATION: "automation",
-    WORKFLOW: "workflow",
-    AI_CHAT_AGENT: "AI chat agent",
-};
-
-/**
- * Shape of the value stored in VS Code globalState before the terminal
- * `vscode.openFolder` reload. The pointer stays small; the filled model payload
- * lives in the project's `target/.wizard-pending-artifact.json`.
- */
-interface PendingIntegrationArtifactPointer {
-    projectRoot: string;
-    /** epoch ms — used to discard stale entries (> 10 min). */
-    timestamp: number;
-}
+const ARTIFACT_KIND_LABELS = INTEGRATION_ARTIFACT_LABELS;
 
 function pendingArtifactFilePath(projectRoot: string): string {
     return path.join(projectRoot, PENDING_ARTIFACT_RELATIVE_PATH);
 }
 
 /**
- * Persists the wizard's configured first artifact so it can be generated after
- * the window reload. Call this right before `openInVSCode(projectRoot)`.
+ * Records the create the wizard just performed so the reloaded window can finish
+ * it: generate the configured first artifact (when there is one) and land on the
+ * new integration. Call this right before `openInVSCode(projectRoot)`.
+ *
+ * The pointer is written even for an empty integration (no `payload`): it is also
+ * what lets the reloading window narrate "Creating <name>" on its startup screen
+ * and navigate to the result, instead of coming up on a bare loading screen.
  */
-export async function schedulePendingArtifact(
+export async function schedulePendingIntegration(
     projectRoot: string,
-    payload: PendingIntegrationArtifactPayload
+    integrationName: string,
+    payload?: PendingIntegrationArtifactPayload
 ): Promise<void> {
-    const payloadFile = pendingArtifactFilePath(projectRoot);
-    fs.mkdirSync(path.dirname(payloadFile), { recursive: true });
-    fs.writeFileSync(payloadFile, JSON.stringify(payload), "utf8");
+    if (payload) {
+        const payloadFile = pendingArtifactFilePath(projectRoot);
+        fs.mkdirSync(path.dirname(payloadFile), { recursive: true });
+        fs.writeFileSync(payloadFile, JSON.stringify(payload), "utf8");
+    }
 
-    const pointer: PendingIntegrationArtifactPointer = { projectRoot, timestamp: Date.now() };
-    await extension.context.globalState.update(PENDING_INTEGRATION_ARTIFACT_KEY, pointer);
-    console.log(`[IntegrationWizard] Scheduled pending ${payload.kind} artifact for project: ${projectRoot}`);
+    await writePendingIntegrationPointer({
+        projectRoot,
+        timestamp: Date.now(),
+        integrationName,
+        artifactKind: payload?.kind,
+    });
+    console.log(
+        `[IntegrationWizard] Scheduled pending ${payload?.kind ?? "empty"} integration for project: ${projectRoot}`
+    );
 }
 
 /**
- * Checks whether the Create Integration wizard scheduled a first artifact
- * before the last folder reload and, if so, generates it and navigates to it.
+ * Finishes a Create Integration wizard submit that spanned the last folder
+ * reload: generates the configured first artifact (when there was one) and lands
+ * on the new integration.
  *
  * Consume-immediately semantics: the globalState pointer and the payload file
  * are both cleared BEFORE any generation runs, so a failure can never loop.
  * Safe to call on every activation — a no-op when there is no pending entry.
  * Never throws.
+ *
+ * No progress notification is raised here: while this runs the visualizer is
+ * still showing the "Creating <name>" startup screen carried over from the
+ * wizard, so a toast on top of it would narrate the same wait twice. Only the
+ * failure path notifies.
  */
 export async function checkAndRunPendingArtifact(): Promise<void> {
     try {
-        const stored = extension.context.globalState.get<PendingIntegrationArtifactPointer>(
-            PENDING_INTEGRATION_ARTIFACT_KEY
-        );
+        const stored = readPendingIntegrationPointer();
         if (!stored) {
             return;
         }
 
         // Consume the pointer immediately to avoid re-running on later activations.
-        await extension.context.globalState.update(PENDING_INTEGRATION_ARTIFACT_KEY, undefined);
+        await clearPendingIntegrationPointer();
 
         const payload = consumePendingArtifactPayload(stored.projectRoot);
-        if (!payload) {
-            return;
-        }
 
         // Discard stale entries (e.g. the user opened an unrelated workspace later).
-        const age = Date.now() - stored.timestamp;
-        if (age > PENDING_ARTIFACT_TTL_MS) {
+        if (!isPendingPointerFresh(stored)) {
+            const age = Date.now() - stored.timestamp;
             console.log(`[IntegrationWizard] Discarding stale pending artifact (age: ${Math.round(age / 1000)}s)`);
             return;
         }
 
-        // The pending artifact only applies to the project it was scheduled for.
+        // The pending entry only applies to the project it was scheduled for.
         // It was created either as a standalone package (opened directly, so it is
         // the context's projectPath) or inside an existing Ballerina workspace (the
         // workspace root is opened and projectPath is undefined, so match by the
@@ -130,9 +129,17 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
             return;
         }
 
+        // An empty integration has no payload: there is nothing to generate, only
+        // the landing view below to open.
+        if (!payload) {
+            ensureLandedOnNewIntegration(stored, opensStoredPackage);
+            return;
+        }
+
         const label = ARTIFACT_KIND_LABELS[payload.kind];
         if (!label || payload.version !== 1) {
             console.error(`[IntegrationWizard] Unsupported pending artifact payload:`, payload);
+            ensureLandedOnNewIntegration(stored, opensStoredPackage);
             return;
         }
 
@@ -143,13 +150,10 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
             `addedIntoWorkspace=${addedIntoWorkspace}`
         );
         try {
-            await window.withProgress(
-                { location: ProgressLocation.Notification, title: `Setting up your ${label}...` },
-                // Standalone: land on the package overview (the package's home). Added
-                // into a workspace: stay on the project (workspace) overview the
-                // window already opened on — don't drill into the package.
-                () => generatePendingArtifact(payload, stored.projectRoot, opensStoredPackage)
-            );
+            // Standalone: land on the package overview (the package's home). Added
+            // into a workspace: don't drill into the package — the landing below
+            // puts the window on the workspace overview instead.
+            await generatePendingArtifact(payload, stored.projectRoot, opensStoredPackage);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error(`[IntegrationWizard] Failed to generate pending ${payload.kind} artifact:`, error);
@@ -158,22 +162,58 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
                 `Your integration was created; you can add the artifact from the Artifacts panel.`
             );
         }
+        // Whether generation navigated on its own (standalone lands on the package
+        // overview; the AI agent path opens its own wizard), deliberately did not
+        // (added into a workspace), or failed outright, the window must never be
+        // left sitting on the startup screen that was narrating the create.
+        ensureLandedOnNewIntegration(stored, opensStoredPackage);
     } catch (error) {
         console.error("[IntegrationWizard] Unexpected error while checking pending artifact:", error);
     }
 }
 
 /**
+ * Guarantees the window ends up on a real view after a wizard create, instead of
+ * sitting on the startup progress screen.
+ *
+ * Acts only when nothing has navigated yet — the machine still being in
+ * `extensionReady` means no view has been opened at all — so it stays a no-op on
+ * the paths that navigate themselves (standalone package overview, the AI agent
+ * wizard) and does the work on the ones that don't: an empty integration with
+ * nothing to generate, a package added into a workspace, or a failed generation.
+ */
+function ensureLandedOnNewIntegration(
+    pointer: PendingIntegrationArtifactPointer,
+    opensStoredPackage: boolean
+): void {
+    // Read the raw machine value rather than `StateMachine.state()`: the shared
+    // `MachineStateValue` type predates the startup states and does not include
+    // `extensionReady`, which is exactly the one being tested here.
+    if (StateMachine.service().getSnapshot().value !== "extensionReady") {
+        return;
+    }
+    if (opensStoredPackage) {
+        openPackageOverview(pointer.projectRoot);
+        return;
+    }
+    openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.WorkspaceOverview });
+}
+
+/**
  * Reads and immediately deletes the payload file (consume-before-generate).
- * Returns undefined when the file is missing or unreadable.
+ * Returns undefined when the file is missing (the normal case for an empty
+ * integration, which schedules a pointer but no payload) or unreadable.
  */
 function consumePendingArtifactPayload(projectRoot: string): PendingIntegrationArtifactPayload | undefined {
     const payloadFile = pendingArtifactFilePath(projectRoot);
+    if (!fs.existsSync(payloadFile)) {
+        return undefined;
+    }
     let raw: string;
     try {
         raw = fs.readFileSync(payloadFile, "utf8");
     } catch (error) {
-        console.warn(`[IntegrationWizard] No pending artifact payload at: ${payloadFile}`, error);
+        console.warn(`[IntegrationWizard] Could not read pending artifact payload at: ${payloadFile}`, error);
         return undefined;
     }
     try {

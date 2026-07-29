@@ -28,7 +28,7 @@ import {
     WizardCapabilitiesResponse,
 } from "@wso2/ballerina-core";
 import { createBIComponent, createBIProjectPure, isAlreadyOpenFolder, openInVSCode } from "../../utils/bi";
-import { generateArtifactInPlace, schedulePendingArtifact } from "./pending-artifact";
+import { generateArtifactInPlace, schedulePendingIntegration } from "./pending-artifact";
 import { extension } from "../../BalExtensionContext";
 import { StateMachine } from "../../stateMachine";
 
@@ -139,9 +139,10 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
         return;
     }
 
-    if (params.artifact) {
-        await schedulePendingArtifact(packageRoot, params.artifact);
-    }
+    // Scheduled for every create, artifact or not: besides carrying the artifact to
+    // generate, this is what tells the reloading window it is mid-create, so it can
+    // come up narrating "Creating <name>" and land on the new integration.
+    await schedulePendingIntegration(packageRoot, params.project.integrationName, params.artifact);
     openInVSCode(openRoot);
 }
 

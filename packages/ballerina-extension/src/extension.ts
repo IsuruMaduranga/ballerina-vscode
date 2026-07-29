@@ -131,6 +131,18 @@ function onBeforeInit(langClient: ExtendedLangClient) {
 
 export async function activate(context: ExtensionContext) {
     extension.context = context;
+    // The BallerinaExtension instance is created HERE, before the state machine
+    // starts, rather than lazily in `activateBallerina`. The machine's very first
+    // states render the visualizer's loading panel (`renderInitialView`), and
+    // building that panel reads this instance (`getComposerWebViewOptions` and
+    // friends resolve resource paths through `ballerinaExtInstance.context`).
+    // While it was created only in `activateBallerina` — which runs later, in the
+    // `activateLS` state — `openWebView` threw on `undefined` and the machine fell
+    // through to `activateLS` with the error swallowed, so no webview appeared
+    // until the language server, project info and project structure were all
+    // ready. The constructor is cheap (path setup + status bar item).
+    extension.ballerinaExtInstance = new BallerinaExtension();
+    extension.ballerinaExtInstance.setContext(context);
     // Init RPC Layer methods
     RPCLayer.init();
 
@@ -170,7 +182,10 @@ export async function activate(context: ExtensionContext) {
 }
 
 export async function activateBallerina(): Promise<BallerinaExtension> {
-    const ballerinaExtInstance = new BallerinaExtension();
+    // Normally created in `activate` (see the note there) so the initial visualizer
+    // panel can be rendered before the language server activates; construct one
+    // here only for entry points that reach this without going through `activate`.
+    const ballerinaExtInstance = extension.ballerinaExtInstance ?? new BallerinaExtension();
     extension.ballerinaExtInstance = ballerinaExtInstance;
     debug('Active the Ballerina VS Code extension.');
     try {

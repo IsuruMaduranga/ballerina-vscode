@@ -33,6 +33,24 @@ import { approvalViewManager } from "../../features/ai/state/ApprovalViewManager
 import { StateMachinePopup } from "../../stateMachinePopup";
 import { clearFormState } from "../../rpc-managers/bi-diagram/form-state";
 import { isInWI } from "../../utils/config";
+import { getStartupIntegrationProgress } from "../../features/bi/startup-progress";
+
+/** Escapes text interpolated into the startup screen's HTML (integration names are user input). */
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+/**
+ * Serializes a value for embedding in an inline `<script>`. `JSON.stringify` alone
+ * would let a `</script>` sequence inside a user-supplied string close the block.
+ */
+function toInlineJson(value: unknown): string {
+    return JSON.stringify(value ?? null).replace(/</g, "\\u003c");
+}
 
 export class VisualizerWebview {
     public static currentPanel: VisualizerWebview | undefined;
@@ -196,18 +214,33 @@ export class VisualizerWebview {
     private getWebviewContent(webView: Webview) {
         // Check if devant.editor extension is active
         const isDevantEditor = vscode.commands.executeCommand('getContext', 'devant.editor') !== undefined;
-        
+
         const biExtension = isInWI() || vscode.extensions.getExtension('wso2.ballerina-integrator');
+        // When this window was opened by a Create Integration wizard submit, this
+        // HTML is the first frame the user sees after the reload — so it continues
+        // the wizard's own "Creating <name>" screen instead of introducing a
+        // generic one. It is also handed to the React app (below) so the copy does
+        // not change when the app takes over the same screen.
+        const startupProgress = getStartupIntegrationProgress(
+            StateMachine.context().workspacePath || StateMachine.context().projectPath
+        );
+        const title = startupProgress
+            ? `Creating Your Integration: ${escapeHtml(startupProgress.integrationName)}`
+            : (biExtension ? VisualizerWebview.biTitle : VisualizerWebview.ballerinaTitle);
+        const subtitle = startupProgress
+            ? `Setting up your ${escapeHtml(startupProgress.artifactLabel ?? "integration")}`
+            : "Setting up your workspace and tools";
+        const statusLine = startupProgress ? "Opening workspace" : "Loading";
         const body = `<div class="container" id="webview-container">
                 <div class="loader-wrapper">
                     <div class="welcome-content">
                         <div class="logo-container">
                             <div class="loader"></div>
                         </div>
-                        <h1 class="welcome-title">${biExtension ? VisualizerWebview.biTitle : VisualizerWebview.ballerinaTitle}</h1>
-                        <p class="welcome-subtitle">Setting up your workspace and tools</p>
+                        <h1 class="welcome-title">${title}</h1>
+                        <p class="welcome-subtitle">${subtitle}</p>
                         <div class="loading-text">
-                            <span class="loading-dots">Loading</span>
+                            <span class="loading-dots">${statusLine}</span>
                         </div>
                     </div>
                 </div>
@@ -304,7 +337,12 @@ export class VisualizerWebview {
         const scripts = `
             // Flag to check if devant.editor is active
             window.isDevantEditor = ${isDevantEditor};
-            
+            // The create-in-progress this window was opened to finish, if any. Read
+            // synchronously by the React startup screen so it keeps showing the same
+            // "Creating <name>" copy as the static HTML above (and as the wizard did
+            // before the reload) rather than flipping to a generic loading message.
+            window.startupIntegration = ${toInlineJson(startupProgress)};
+
             function loadedScript() {
                 function renderDiagrams() {
                     visualizerWebview.renderWebview("visualizer", document.getElementById("webview-container"));

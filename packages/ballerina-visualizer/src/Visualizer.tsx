@@ -138,7 +138,9 @@ export function Visualizer({ mode }: { mode: string }) {
             message="A required webview chunk failed to load. Retry to reload the webview."
             onRetry={() => window.location.reload()}
         >
-            <Suspense fallback={<LanguageServerLoadingView />}>
+            {/* Chunk-loading fallback: keep narrating the create (when there is one)
+                rather than flipping to a generic message for the last moment of it. */}
+            <Suspense fallback={<LanguageServerLoadingView startupIntegration={readStartupIntegration()} />}>
                 {(() => {
                     switch (mode) {
                         case MODES.VISUALIZER:
@@ -164,18 +166,58 @@ export function Visualizer({ mode }: { mode: string }) {
     );
 };
 
+/**
+ * The create-in-progress this window was opened to finish, injected into the
+ * webview's HTML by the extension (see `VisualizerWebview.getWebviewContent`).
+ * Read synchronously, so the very first React render already has it.
+ */
+interface StartupIntegration {
+    integrationName: string;
+    /** e.g. "service" — absent for an empty integration. */
+    artifactLabel?: string;
+}
+
+type StartupIntegrationHost = { startupIntegration?: StartupIntegration | null };
+
+function readStartupIntegration(): StartupIntegration | undefined {
+    return (window as unknown as StartupIntegrationHost).startupIntegration ?? undefined;
+}
+
+/** Consumed once: see the effect in `VisualizerComponent`. */
+function clearStartupIntegration(): void {
+    (window as unknown as StartupIntegrationHost).startupIntegration = null;
+}
+
 const VisualizerComponent = React.memo(({ state }: { state: MachineStateValue }) => {
+    const isViewReady = typeof state === 'object' && 'viewActive' in state && state.viewActive === "viewReady";
+
+    // The startup narrative belongs to startup only. Once a view has been shown the
+    // create is over, so drop it — any later loading state is an ordinary one and
+    // must not claim the integration is still being created.
+    useEffect(() => {
+        if (isViewReady) {
+            clearStartupIntegration();
+        }
+    }, [isViewReady]);
+
     switch (true) {
-        case typeof state === 'object' && 'viewActive' in state && state.viewActive === "viewReady":
+        case isViewReady:
             return <MainPanel />;
         case typeof state === 'object' && 'viewActive' in state && state.viewActive === "resolveMissingDependencies":
             return <PullingDependenciesView />;
         default:
-            return <LanguageServerLoadingView />;
+            return <LanguageServerLoadingView startupIntegration={readStartupIntegration()} />;
     }
 });
 
-const LanguageServerLoadingView = () => {
+/**
+ * The pre-view loading screen. When this window is finishing a Create Integration
+ * wizard submit it continues that flow's "Creating <name>" screen — same layout
+ * and wording as both the wizard before the reload and the static HTML this app
+ * replaces — so the whole create reads as one progress screen rather than a
+ * sequence of unrelated waits.
+ */
+const LanguageServerLoadingView = ({ startupIntegration }: { startupIntegration?: StartupIntegration }) => {
     return (
         <div style={{
             backgroundColor: 'var(--vscode-editor-background)',
@@ -188,13 +230,17 @@ const LanguageServerLoadingView = () => {
             <LoadingContent>
                 <ProgressRing />
                 <LoadingTitle>
-                    Activating Language Server
+                    {startupIntegration
+                        ? `Creating ${startupIntegration.integrationName}`
+                        : "Activating Language Server"}
                 </LoadingTitle>
                 <LoadingSubtitle>
-                    Preparing your Ballerina development environment.
+                    {startupIntegration
+                        ? `Setting up your ${startupIntegration.artifactLabel ?? "integration"}.`
+                        : "Preparing your Ballerina development environment."}
                 </LoadingSubtitle>
                 <LoadingText>
-                    <span className="loading-dots">Initializing</span>
+                    <span className="loading-dots">{startupIntegration ? "Opening workspace" : "Initializing"}</span>
                 </LoadingText>
             </LoadingContent>
         </div>

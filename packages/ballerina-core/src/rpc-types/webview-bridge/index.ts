@@ -127,6 +127,19 @@ export interface SignInResult {
 export type PendingIntegrationArtifactKind = "SERVICE" | "AUTOMATION" | "WORKFLOW" | "AI_CHAT_AGENT";
 
 /**
+ * Human-readable labels per artifact kind, shared so the wizard's "Creating …"
+ * screen and the post-reload startup screen word the same artifact identically —
+ * the two are meant to read as one continuous progress screen across the
+ * `vscode.openFolder` reload, which any wording drift would give away.
+ */
+export const INTEGRATION_ARTIFACT_LABELS: Record<PendingIntegrationArtifactKind, string> = {
+    SERVICE: "service",
+    AUTOMATION: "automation",
+    WORKFLOW: "workflow",
+    AI_CHAT_AGENT: "AI chat agent",
+};
+
+/**
  * The filled artifact model persisted by the wizard right before the terminal
  * `vscode.openFolder` reload (at `<projectRoot>/target/.wizard-pending-artifact.json`)
  * and consumed post-reload by `checkAndRunPendingArtifact`.

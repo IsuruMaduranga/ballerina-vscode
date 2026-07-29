@@ -21,6 +21,7 @@ import styled from "@emotion/styled";
 import { Icon, ThemeColors, Typography } from "@wso2/ui-toolkit";
 import { Stepper } from "@wso2/ui-toolkit/lib/components/Stepper/Stepper";
 import {
+    INTEGRATION_ARTIFACT_LABELS,
     PendingIntegrationArtifactPayload,
     ServiceInitModel,
     TriggerModelsResponse,
@@ -45,6 +46,7 @@ import { BasicInfoStep } from "./steps/BasicInfoStep";
 import { IntegrationTypeStep } from "./steps/IntegrationTypeStep";
 import { ConfigureStep } from "./steps/ConfigureStep";
 import { WizardFooter } from "./components/WizardFooter";
+import { CreatingIntegrationView } from "./components/CreatingIntegrationView";
 
 const ErrorBanner = styled.div`
     margin-top: 16px;
@@ -143,6 +145,9 @@ export function CreateIntegrationWizard({
     const [serviceModelCache, setServiceModelCache] = useState<{ id: string; model: ServiceInitModel } | null>(null);
     const [scaffold, setScaffold] = useState<ScaffoldState>({ status: "idle" });
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // Artifact kind of the in-flight submit, so the progress screen can name it the
+    // same way the post-reload screen does. Null for an empty integration.
+    const [submittingKind, setSubmittingKind] = useState<PendingIntegrationArtifactPayload["kind"] | null>(null);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const scaffoldRef = useRef<ScaffoldState>(scaffold);
     scaffoldRef.current = scaffold;
@@ -488,6 +493,7 @@ export function CreateIntegrationWizard({
      */
     const handleAddArtifactToExistingPackage = async (packageRoot: string, artifact: PendingIntegrationArtifactPayload) => {
         setSubmitError(null);
+        setSubmittingKind(artifact.kind);
         setIsSubmitting(true);
         try {
             await wsClient.addIntegrationArtifact({ packageRoot, artifact });
@@ -509,6 +515,7 @@ export function CreateIntegrationWizard({
         if (!embedded && !(await validatePathForSubmit())) {
             return;
         }
+        setSubmittingKind(artifact?.kind ?? null);
         setIsSubmitting(true);
         try {
             await wsClient.createIntegration({
@@ -542,6 +549,29 @@ export function CreateIntegrationWizard({
         }
         void handleCreateIntegration(artifact);
     };
+
+    // Once the final submit is in flight there is nothing left to interact with —
+    // and on the create paths the window is about to reload — so the wizard is
+    // replaced by a dedicated progress screen instead of a frozen, disabled form.
+    // On the reload paths the extension's startup screen continues this exact
+    // layout and wording on the other side, so the reload reads as one screen that
+    // stays put rather than as three unrelated waits.
+    if (isSubmitting) {
+        const artifactLabel = submittingKind ? INTEGRATION_ARTIFACT_LABELS[submittingKind] : undefined;
+        return (
+            <WizardPage ref={rootRef} embedded={embedded}>
+                {isExistingPackage ? (
+                    <CreatingIntegrationView variant="add" artifactLabel={artifactLabel} />
+                ) : (
+                    <CreatingIntegrationView
+                        variant="create"
+                        integrationName={effectiveName}
+                        artifactLabel={artifactLabel}
+                    />
+                )}
+            </WizardPage>
+        );
+    }
 
     return (
         <WizardPage ref={rootRef} embedded={embedded}>
