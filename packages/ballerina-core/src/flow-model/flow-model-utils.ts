@@ -23,7 +23,7 @@ import { BaseVisitor } from "./BaseVisitor";
 
 const metaNodes = ["viewState", "position", "parent"];
 
-const EVAL_TEMPLATE_PACKAGE = "ai_evals";
+const EVAL_TEMPLATE_PACKAGE = "ai.eval";
 
 export function isEvalTemplateCall(node: FlowNode | undefined): boolean {
     return node?.codedata?.node === "FUNCTION_CALL" && node?.codedata?.packageName === EVAL_TEMPLATE_PACKAGE;

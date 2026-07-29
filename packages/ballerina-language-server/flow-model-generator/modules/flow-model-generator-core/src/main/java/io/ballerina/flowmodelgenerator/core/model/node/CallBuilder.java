@@ -92,7 +92,15 @@ public abstract class CallBuilder extends NodeBuilder {
 
         ModuleInfo targetModuleInfo = new ModuleInfo(codedata.org(), codedata.packageName(), codedata.module(),
                 codedata.version());
-        FunctionDataBuilder functionDataBuilder = createFunctionDataBuilder(context, targetModuleInfo);
+        FunctionDataBuilder functionDataBuilder = new FunctionDataBuilder()
+                .name(codedata.symbol())
+                .moduleInfo(targetModuleInfo)
+                .lsClientLogger(context.lsClientLogger())
+                .functionResultKind(getFunctionResultKind())
+                .project(PackageUtil.loadProject(context.workspaceManager(), context.filePath()))
+                .userModuleInfo(moduleInfo)
+                .workspaceManager(context.workspaceManager())
+                .filePath(context.filePath());
 
         NodeKind functionNodeKind = getFunctionNodeKind();
         if (functionNodeKind != NodeKind.FUNCTION_CALL && functionNodeKind != NodeKind.ACTIVITY_CALL) {
@@ -144,25 +152,6 @@ public abstract class CallBuilder extends NodeBuilder {
         if (functionData.returnError()) {
             properties().checkError(true);
         }
-    }
-
-    /**
-     * Creates the function-model builder used for a node-template request.
-     *
-     * <p>Specialized function-like nodes can override this to supply a package or semantic model that is not
-     * available through the default Central-backed resolver.</p>
-     */
-    protected FunctionDataBuilder createFunctionDataBuilder(TemplateContext context, ModuleInfo targetModuleInfo) {
-        Codedata codedata = context.codedata();
-        return new FunctionDataBuilder()
-                .name(codedata.symbol())
-                .moduleInfo(targetModuleInfo)
-                .lsClientLogger(context.lsClientLogger())
-                .functionResultKind(getFunctionResultKind())
-                .project(PackageUtil.loadProject(context.workspaceManager(), context.filePath()))
-                .userModuleInfo(moduleInfo)
-                .workspaceManager(context.workspaceManager())
-                .filePath(context.filePath());
     }
 
     /**

@@ -32,8 +32,9 @@ public class Constants {
     public static final String MODULE_AI = "ai";
     public static final String IMPORT_TEST_STMT = "import ballerina/test;";
     public static final String IMPORT_AI_STMT = "import ballerina/ai;";
-    public static final String MODULE_AI_EVALS = "ai_evals";
-    public static final String IMPORT_AI_EVALS_STMT = "import " + ORG_BALLERINA + "/" + MODULE_AI_EVALS + ";";
+    public static final String MODULE_AI_EVAL = "ai.eval";
+    public static final String AI_EVAL_PREFIX = "eval";
+    public static final String IMPORT_AI_EVAL_STMT = "import " + ORG_BALLERINA + "/" + MODULE_AI_EVAL + ";";
     public static final String FILED_TEMPLATE = "%s: %s";
 
     public static final String DATA_PROVIDER_MODE_FUNCTION = "function";

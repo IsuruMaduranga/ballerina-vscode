@@ -265,8 +265,8 @@ public class TestManagerService implements ExtendedLanguageServerService {
         if (symbol.isBlank()) {
             throw new IllegalArgumentException("An evaluation template function is required");
         }
-        if (!Utils.isAiEvalsModuleImportExists(modulePartNode)) {
-            edits.add(new TextEdit(Utils.toRange(lineRange.startLine()), Constants.IMPORT_AI_EVALS_STMT));
+        if (!Utils.isAiEvalModuleImportExists(modulePartNode)) {
+            edits.add(new TextEdit(Utils.toRange(lineRange.startLine()), Constants.IMPORT_AI_EVAL_STMT));
         }
 
         String boundArgument = null;

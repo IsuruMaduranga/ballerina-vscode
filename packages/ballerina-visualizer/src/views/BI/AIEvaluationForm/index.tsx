@@ -337,7 +337,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         } catch (error) {
             console.error('Failed to load evaluation templates:', error);
             setEvalTemplates([]);
-            setTemplateLoadError('Unable to load evaluation templates. Check that the local ai_evals package is installed.');
+            setTemplateLoadError('Unable to load evaluation templates. Check that the ballerina/ai.eval package is available.');
             return [];
         }
     };
@@ -1287,7 +1287,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                         </TitleRow>
                                                         <HintText>
                                                             Template details are unavailable, so its settings can't be edited here.
-                                                            Check that the local ai_evals package is installed and declared in Ballerina.toml.
+                                                            Check that the ballerina/ai.eval package is available and declared in Ballerina.toml.
                                                         </HintText>
                                                         {templateNode && (
                                                             <MonospaceHint>{templateNode.codedata?.sourceCode}</MonospaceHint>
@@ -1304,7 +1304,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                         <TitleRow>Custom evaluation</TitleRow>
                                                         <HintText>
                                                             {editShape === 'ambiguous'
-                                                                ? 'This evaluation calls more than one ai_evals function, so it can\'t be edited as a template.'
+                                                                ? 'This evaluation calls more than one ai.eval function, so it can\'t be edited as a template.'
                                                                 : 'The logic for this evaluation is written by hand.'}
                                                         </HintText>
                                                     </GrowingContent>
@@ -1368,7 +1368,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                                     {editShape === 'template-with-custom' && (
                                                         <HintText>
                                                             This evaluation also contains custom code. Saving updates only the{' '}
-                                                            <code>ai_evals:{detectedSymbol}(…)</code> call.
+                                                            <code>eval:{detectedSymbol}(…)</code> call.
                                                         </HintText>
                                                     )}
                                                 </TemplatePicker>

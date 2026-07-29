@@ -41,6 +41,7 @@ import java.util.Optional;
 public class EvalTemplateSearchCommand extends SearchCommand {
 
     private static final String TEMPLATE_ANNOTATION = "EvalTemplate";
+    private static final String TEMPLATE_PACKAGE = "ai.eval";
 
     public EvalTemplateSearchCommand(Project project, LineRange position, Map<String, String> queryMap) {
         super(project, position, queryMap);
@@ -63,16 +64,15 @@ public class EvalTemplateSearchCommand extends SearchCommand {
 
     private List<Item> templates(String filter) {
         Optional<Package> templatePackage = PackageUtil.getModulePackage(PackageUtil.getSampleProject(),
-                Constants.Ai.BALLERINA_ORG, Constants.Ai.EVALS_PACKAGE, Constants.Ai.EVALS_VERSION,
-                Constants.Ai.EVALS_REPOSITORY);
+                Constants.Ai.BALLERINA_ORG, TEMPLATE_PACKAGE);
         if (templatePackage.isEmpty()) {
             throw new IllegalStateException("Unable to resolve " + Constants.Ai.BALLERINA_ORG + "/"
-                    + Constants.Ai.EVALS_PACKAGE + ":" + Constants.Ai.EVALS_VERSION
-                    + " from the local Ballerina repository. Install the demo bala and retry.");
+                    + TEMPLATE_PACKAGE + " from Ballerina Central.");
         }
 
         List<Item> templates = new ArrayList<>();
         Package pkg = templatePackage.get();
+        String version = pkg.packageVersion().value().toString();
         PackageCompilation compilation = PackageUtil.getCompilation(pkg);
         for (Module module : pkg.modules()) {
             SemanticModel semanticModel = compilation.getSemanticModel(module.moduleId());
@@ -83,7 +83,7 @@ public class EvalTemplateSearchCommand extends SearchCommand {
                 }
                 metadata(functionSymbol).ifPresent(info -> {
                     if (matches(info, functionSymbol.getName().get(), filter)) {
-                        templates.add(toNode(functionSymbol.getName().get(), info));
+                        templates.add(toNode(functionSymbol.getName().get(), info, version));
                     }
                 });
             }
@@ -102,10 +102,10 @@ public class EvalTemplateSearchCommand extends SearchCommand {
                 .toLowerCase(Locale.ROOT).contains(searchTerm);
     }
 
-    private AvailableNode toNode(String functionName, TemplateInfo info) {
+    private AvailableNode toNode(String functionName, TemplateInfo info, String version) {
         Codedata codedata = new Codedata(NodeKind.EVAL_TEMPLATE, Constants.Ai.BALLERINA_ORG,
-                Constants.Ai.EVALS_PACKAGE, Constants.Ai.EVALS_PACKAGE, null, functionName,
-                Constants.Ai.EVALS_VERSION, null, null, null, null, null, true, false, null,
+                TEMPLATE_PACKAGE, TEMPLATE_PACKAGE, null, functionName,
+                version, null, null, null, null, null, true, false, null,
                 Map.of("label", info.label, "description", info.description, "kind", info.kind,
                         "needsEvalset", info.needsEvalset));
         Metadata metadata = new Metadata(info.label, info.description, List.of(info.kind,

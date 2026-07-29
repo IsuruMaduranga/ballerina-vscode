@@ -27,10 +27,7 @@ import io.ballerina.flowmodelgenerator.core.model.Property;
 import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
 import io.ballerina.flowmodelgenerator.core.utils.FlowNodeUtil;
 import io.ballerina.modelgenerator.commons.FunctionData;
-import io.ballerina.modelgenerator.commons.FunctionDataBuilder;
-import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.PackageUtil;
-import io.ballerina.projects.Package;
 import org.eclipse.lsp4j.TextEdit;
 
 import java.nio.file.Path;
@@ -92,26 +89,6 @@ public class FunctionCall extends CallBuilder {
     private boolean isGetDefaultModelCall(Codedata codedata) {
         return codedata != null && Constants.BALLERINA.equals(codedata.org())
                 && Constants.AI.equals(codedata.module()) && Constants.DEFAULT_MODEL_PROVIDER.equals(codedata.symbol());
-    }
-
-    @Override
-    protected FunctionDataBuilder createFunctionDataBuilder(TemplateContext context, ModuleInfo targetModuleInfo) {
-        FunctionDataBuilder functionDataBuilder = super.createFunctionDataBuilder(context, targetModuleInfo);
-        Codedata codedata = context.codedata();
-        if (codedata == null || !Constants.Ai.BALLERINA_ORG.equals(codedata.org())
-                || !Constants.Ai.EVALS_PACKAGE.equals(codedata.packageName())
-                || !Constants.Ai.EVALS_VERSION.equals(codedata.version())) {
-            return functionDataBuilder;
-        }
-        // Temporary: ai_evals is distributed only as a locally installed demo Bala. Supply that package directly so
-        // the shared function builder does not invoke its normal Central-backed external-module resolver. Remove
-        // this along with the other local-repository workarounds once ai_evals is published to Central.
-        Package templatePackage = PackageUtil.getModulePackage(PackageUtil.getSampleProject(), codedata.org(),
-                        codedata.packageName(), codedata.version(), Constants.Ai.EVALS_REPOSITORY)
-                .orElseThrow(() -> new IllegalStateException("Unable to resolve " + codedata.org() + "/"
-                        + codedata.packageName() + ":" + codedata.version()
-                        + " from the local Ballerina repository. Install the demo bala and retry."));
-        return functionDataBuilder.resolvedPackage(templatePackage);
     }
 
     @Override

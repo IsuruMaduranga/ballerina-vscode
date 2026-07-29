@@ -533,8 +533,8 @@ public class Utils {
         return isModuleImportExists(node, Constants.MODULE_AI);
     }
 
-    public static boolean isAiEvalsModuleImportExists(ModulePartNode node) {
-        return isModuleImportExists(node, Constants.MODULE_AI_EVALS);
+    public static boolean isAiEvalModuleImportExists(ModulePartNode node) {
+        return isModuleImportExists(node, Constants.MODULE_AI_EVAL);
     }
 
     /**
@@ -646,7 +646,7 @@ public class Utils {
     }
 
     public static String buildEvalTemplateInvocation(String symbol, List<String> arguments) {
-        return Constants.KEYWORD_CHECK + Constants.SPACE + Constants.MODULE_AI_EVALS + Constants.COLON + symbol
+        return Constants.KEYWORD_CHECK + Constants.SPACE + Constants.AI_EVAL_PREFIX + Constants.COLON + symbol
                 + Constants.OPEN_PARAM + String.join(Constants.COMMA + Constants.SPACE, arguments)
                 + Constants.CLOSED_PARAM + ";";
     }
@@ -670,7 +670,7 @@ public class Utils {
         }
         return expression instanceof FunctionCallExpressionNode funcCall
                 && funcCall.functionName().toSourceCode().trim()
-                        .startsWith(Constants.MODULE_AI_EVALS + Constants.COLON);
+                        .startsWith(Constants.AI_EVAL_PREFIX + Constants.COLON);
     }
 
     public static String buildQueriesArray(List<String> queries) {

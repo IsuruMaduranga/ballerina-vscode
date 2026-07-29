@@ -154,9 +154,6 @@ public class Constants {
 
         public static final String BALLERINA_ORG = "ballerina";
         public static final String AI_PACKAGE = "ai";
-        public static final String EVALS_PACKAGE = "ai_evals";
-        public static final String EVALS_VERSION = "0.1.0";
-        public static final String EVALS_REPOSITORY = "local";
         public static final String MCP_PACKAGE = "mcp";
         public static final String LOG_PACKAGE = "log";
         public static final String HTTP_PACKAGE = "http";
