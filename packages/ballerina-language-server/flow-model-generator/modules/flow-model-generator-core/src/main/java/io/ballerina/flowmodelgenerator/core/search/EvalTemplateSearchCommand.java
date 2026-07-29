@@ -14,6 +14,7 @@ import io.ballerina.compiler.api.symbols.FunctionSymbol;
 import io.ballerina.compiler.api.symbols.Qualifier;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.values.ConstantValue;
+import io.ballerina.flowmodelgenerator.core.Constants;
 import io.ballerina.flowmodelgenerator.core.model.AvailableNode;
 import io.ballerina.flowmodelgenerator.core.model.Category;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
@@ -39,11 +40,6 @@ import java.util.Optional;
 /** Searches the configured AI evaluation package for public functions annotated with {@code @EvalTemplate}. */
 public class EvalTemplateSearchCommand extends SearchCommand {
 
-    /** Keep the demo library identity in one place until the package name is finalized. */
-    static final String TEMPLATE_ORG = "ballerina";
-    static final String TEMPLATE_PACKAGE = "ai_evals";
-    static final String TEMPLATE_VERSION = "0.1.0";
-    static final String TEMPLATE_REPOSITORY = "local";
     private static final String TEMPLATE_ANNOTATION = "EvalTemplate";
 
     public EvalTemplateSearchCommand(Project project, LineRange position, Map<String, String> queryMap) {
@@ -67,10 +63,12 @@ public class EvalTemplateSearchCommand extends SearchCommand {
 
     private List<Item> templates(String filter) {
         Optional<Package> templatePackage = PackageUtil.getModulePackage(PackageUtil.getSampleProject(),
-                TEMPLATE_ORG, TEMPLATE_PACKAGE, TEMPLATE_VERSION, TEMPLATE_REPOSITORY);
+                Constants.Ai.BALLERINA_ORG, Constants.Ai.EVALS_PACKAGE, Constants.Ai.EVALS_VERSION,
+                Constants.Ai.EVALS_REPOSITORY);
         if (templatePackage.isEmpty()) {
-            throw new IllegalStateException("Unable to resolve " + TEMPLATE_ORG + "/" + TEMPLATE_PACKAGE + ":"
-                    + TEMPLATE_VERSION + " from the local Ballerina repository. Install the demo bala and retry.");
+            throw new IllegalStateException("Unable to resolve " + Constants.Ai.BALLERINA_ORG + "/"
+                    + Constants.Ai.EVALS_PACKAGE + ":" + Constants.Ai.EVALS_VERSION
+                    + " from the local Ballerina repository. Install the demo bala and retry.");
         }
 
         List<Item> templates = new ArrayList<>();
@@ -105,8 +103,9 @@ public class EvalTemplateSearchCommand extends SearchCommand {
     }
 
     private AvailableNode toNode(String functionName, TemplateInfo info) {
-        Codedata codedata = new Codedata(NodeKind.EVAL_TEMPLATE, TEMPLATE_ORG, TEMPLATE_PACKAGE, TEMPLATE_PACKAGE,
-                null, functionName, TEMPLATE_VERSION, null, null, null, null, null, true, false, null,
+        Codedata codedata = new Codedata(NodeKind.EVAL_TEMPLATE, Constants.Ai.BALLERINA_ORG,
+                Constants.Ai.EVALS_PACKAGE, Constants.Ai.EVALS_PACKAGE, null, functionName,
+                Constants.Ai.EVALS_VERSION, null, null, null, null, null, true, false, null,
                 Map.of("label", info.label, "description", info.description, "kind", info.kind,
                         "needsEvalset", info.needsEvalset));
         Metadata metadata = new Metadata(info.label, info.description, List.of(info.kind,

@@ -14,10 +14,6 @@ import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Property;
 import io.ballerina.flowmodelgenerator.core.model.PropertyType;
 import io.ballerina.modelgenerator.commons.FunctionData;
-import io.ballerina.modelgenerator.commons.FunctionDataBuilder;
-import io.ballerina.modelgenerator.commons.ModuleInfo;
-import io.ballerina.modelgenerator.commons.PackageUtil;
-import io.ballerina.projects.Package;
 
 import java.util.List;
 import java.util.Map;
@@ -33,7 +29,6 @@ import java.util.Map;
  */
 public class EvalTemplateBuilder extends FunctionCall {
 
-    private static final String LOCAL_REPOSITORY = "local";
     private static final String CONVERSATION_THREAD_TYPE = "ConversationThread";
     private static final String AGENT_TYPE = "ai:Agent";
     private static final String MODEL_PROVIDER_TYPE = "ai:ModelProvider";
@@ -92,18 +87,5 @@ public class EvalTemplateBuilder extends FunctionCall {
     @Override
     protected FunctionData.Kind getFunctionResultKind() {
         return FunctionData.Kind.FUNCTION;
-    }
-
-    @Override
-    protected FunctionDataBuilder createFunctionDataBuilder(TemplateContext context, ModuleInfo targetModuleInfo) {
-        Codedata codedata = context.codedata();
-        // Temporary: ai_evals is distributed only as a locally installed demo Bala. Supply that package directly so
-        // the shared function builder does not invoke its normal Central-backed external-module resolver.
-        Package templatePackage = PackageUtil.getModulePackage(PackageUtil.getSampleProject(), codedata.org(),
-                        codedata.packageName(), codedata.version(), LOCAL_REPOSITORY)
-                .orElseThrow(() -> new IllegalStateException("Unable to resolve " + codedata.org() + "/"
-                        + codedata.packageName() + ":" + codedata.version()
-                        + " from the local Ballerina repository. Install the demo bala and retry."));
-        return super.createFunctionDataBuilder(context, targetModuleInfo).resolvedPackage(templatePackage);
     }
 }
