@@ -1680,7 +1680,7 @@ public class AiUtils {
                     }
                 }
             }
-        } catch (Throwable t) {
+        } catch (RuntimeException e) {
         }
         return projects;
     }
@@ -1978,7 +1978,7 @@ public class AiUtils {
                         return Optional.of(classSymbol);
                     }
                 }
-            } catch (Throwable t) {
+            } catch (RuntimeException e) {
             }
         }
         try {
@@ -1992,7 +1992,7 @@ public class AiUtils {
                     }
                 }
             }
-        } catch (Throwable t) {
+        } catch (RuntimeException e) {
         }
         return Optional.empty();
     }
