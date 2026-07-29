@@ -229,7 +229,7 @@ const InstallButton = styled.button`
     border-radius: 4px;
     font-size: 13px;
     cursor: pointer;
-    &:hover {
+    &:hover:not(:disabled) {
         background-color: var(--vscode-button-secondaryHoverBackground);
     }
     &:disabled {
