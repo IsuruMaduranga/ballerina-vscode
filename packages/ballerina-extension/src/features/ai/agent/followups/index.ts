@@ -122,7 +122,11 @@ export function startFollowupSuggestions(turn: FollowupTurn): boolean {
             if (suggestions.length === 0 || (!interrupted && abortSignal.aborted)) {
                 return;
             }
-            chatStateStorage.updateGeneration(projectRootPath, threadId, messageId, { followupSuggestions: suggestions });
+            const stored = chatStateStorage.updateGeneration(projectRootPath, threadId, messageId, { followupSuggestions: suggestions });
+            if (!stored) {
+                console.warn(`[Followups] Not showing for ${messageId} — could not store them on the generation`);
+                return;
+            }
 
             // The webview shows whatever arrives and cannot tell the thread has since changed, so
             // skip the emit and let the switch back read these off the generation instead.
