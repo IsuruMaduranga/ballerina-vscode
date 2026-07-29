@@ -507,7 +507,7 @@ public class AiUtils {
                 .optional(optional)
                 .editable()
                 .codedata()
-                    .kind("REQUIRED")
+                    .kind(optional ? "DEFAULTABLE" : "REQUIRED")
                     .stepOut()
                 .stepOut()
                 .addProperty(key);
@@ -1636,7 +1636,10 @@ public class AiUtils {
                 continue;
             }
             String src = f.valueExpr().get().toSourceCode().strip();
-            String value = src.contains("`") ? src.substring(src.indexOf('`') + 1, src.lastIndexOf('`'))
+            int firstBacktick = src.indexOf('`');
+            int lastBacktick = src.lastIndexOf('`');
+            String value = firstBacktick >= 0 && lastBacktick > firstBacktick
+                    ? src.substring(firstBacktick + 1, lastBacktick)
                     : src.replaceAll("^\"|\"$", "");
             switch (f.fieldName().toSourceCode().trim()) {
                 case SYSTEM_PROMPT_ROLE -> role = value;
@@ -1954,7 +1957,7 @@ public class AiUtils {
                 property.diagnostics(),
                 codedata,
                 property.advancedValue(),
-                null,
+                property.imports(),
                 property.defaultValue(),
                 property.comment(),
                 property.dynamicFormFields(),
