@@ -21,6 +21,7 @@ package io.ballerina.testmanagerservice.extension;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.AnnotationSymbol;
 import io.ballerina.compiler.syntax.tree.AnnotationNode;
+import io.ballerina.compiler.syntax.tree.BasicLiteralNode;
 import io.ballerina.compiler.syntax.tree.CheckExpressionNode;
 import io.ballerina.compiler.syntax.tree.ExpressionFunctionBodyNode;
 import io.ballerina.compiler.syntax.tree.ExpressionNode;
@@ -37,11 +38,14 @@ import io.ballerina.compiler.syntax.tree.MappingFieldNode;
 import io.ballerina.compiler.syntax.tree.ModulePartNode;
 import io.ballerina.compiler.syntax.tree.Node;
 import io.ballerina.compiler.syntax.tree.NodeList;
+import io.ballerina.compiler.syntax.tree.NodeParser;
 import io.ballerina.compiler.syntax.tree.PositionalArgumentNode;
 import io.ballerina.compiler.syntax.tree.ReturnStatementNode;
 import io.ballerina.compiler.syntax.tree.SeparatedNodeList;
 import io.ballerina.compiler.syntax.tree.SpecificFieldNode;
 import io.ballerina.compiler.syntax.tree.StatementNode;
+import io.ballerina.compiler.syntax.tree.SyntaxKind;
+import io.ballerina.compiler.syntax.tree.TemplateExpressionNode;
 import io.ballerina.testmanagerservice.extension.model.Annotation;
 import io.ballerina.testmanagerservice.extension.model.Codedata;
 import io.ballerina.testmanagerservice.extension.model.FunctionParameter;
@@ -225,7 +229,7 @@ public class Utils {
                 builder.evalSetFile(evalSetPath);
                 builder.dataProviderMode(Constants.DATA_PROVIDER_MODE_EVALSET);
             } else {
-                List<String> queries = extractQueriesFromDataProvider(modulePartNode, dataProviderName);
+                List<String> queries = extractQueryExpressionsFromDataProvider(modulePartNode, dataProviderName);
                 if (!queries.isEmpty()) {
                     builder.queries(queries);
                     builder.dataProviderMode(Constants.DATA_SOURCE_MODE_QUERIES);
@@ -673,16 +677,15 @@ public class Utils {
                         .startsWith(Constants.AI_EVAL_PREFIX + Constants.COLON);
     }
 
-    public static String buildQueriesArray(List<String> queries) {
+    /** Builds the query data-provider rows from the string expressions produced by the TEXT_SET editor. */
+    public static String buildQueryExpressionArray(List<String> queryExpressions) {
         StringBuilder rows = new StringBuilder();
-        for (int i = 0; i < queries.size(); i++) {
+        for (int i = 0; i < queryExpressions.size(); i++) {
             if (i > 0) {
                 rows.append(Constants.COMMA).append(Constants.SPACE);
             }
             rows.append(Constants.OPEN_BRACKET)
-                    .append(Constants.DOUBLE_QUOTE)
-                    .append(escapeStringLiteral(queries.get(i)))
-                    .append(Constants.DOUBLE_QUOTE)
+                    .append(validateQueryExpression(queryExpressions.get(i)))
                     .append(Constants.CLOSE_BRACKET);
         }
         return Constants.OPEN_BRACKET + rows + Constants.CLOSE_BRACKET;
@@ -694,7 +697,7 @@ public class Utils {
                 + functionName + Constants.OPEN_PARAM + Constants.CLOSED_PARAM + Constants.SPACE
                 + Constants.KEYWORD_RETURNS + Constants.SPACE + Constants.STRING_ARRAY_2D_RETURN_TYPE + Constants.SPACE
                 + Constants.OPEN_CURLY_BRACE + Constants.LINE_SEPARATOR + Constants.TAB_SEPARATOR
-                + "return " + buildQueriesArray(queries) + ";"
+                + "return " + buildQueryExpressionArray(queries) + ";"
                 + Constants.LINE_SEPARATOR + Constants.CLOSE_CURLY_BRACE;
     }
 
@@ -716,7 +719,8 @@ public class Utils {
         return findQueriesList(provider.functionBody()).map(Node::lineRange);
     }
 
-    public static List<String> extractQueriesFromDataProvider(ModulePartNode modulePartNode, String providerName) {
+    public static List<String> extractQueryExpressionsFromDataProvider(ModulePartNode modulePartNode,
+                                                                         String providerName) {
         Optional<FunctionDefinitionNode> provider = findFunctionByName(modulePartNode, providerName);
         if (provider.isEmpty() || getDataProviderShape(provider.get()) != DataProviderShape.QUERIES) {
             return List.of();
@@ -729,9 +733,9 @@ public class Utils {
         for (Node row : rows.get().expressions()) {
             if (row instanceof ListConstructorExpressionNode rowList) {
                 rowList.expressions().stream().findFirst()
-                        .ifPresent(value -> queries.add(unquote(value.toSourceCode().trim())));
+                        .ifPresent(value -> queries.add(value.toSourceCode().trim()));
             } else {
-                queries.add(unquote(row.toSourceCode().trim()));
+                queries.add(row.toSourceCode().trim());
             }
         }
         return queries;
@@ -752,18 +756,19 @@ public class Utils {
         return Optional.empty();
     }
 
-    private static String unquote(String value) {
-        String unquoted = value.replaceAll("^\"|\"$", "");
-        return unquoted.replace("\\\"", "\"").replace("\\n", "\n").replace("\\r", "\r")
-                .replace("\\t", "\t").replace("\\\\", "\\");
-    }
-
-    private static String escapeStringLiteral(String value) {
-        if (value == null) {
-            return "";
+    private static String validateQueryExpression(String queryExpression) {
+        if (queryExpression == null || queryExpression.isBlank()) {
+            throw new IllegalArgumentException("A query expression is required");
         }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+        ExpressionNode expression = NodeParser.parseExpression(queryExpression.trim());
+        boolean isStringLiteral = expression instanceof BasicLiteralNode
+                && expression.kind() == SyntaxKind.STRING_LITERAL;
+        boolean isStringTemplate = expression instanceof TemplateExpressionNode
+                && expression.kind() == SyntaxKind.STRING_TEMPLATE_EXPRESSION;
+        if (expression.hasDiagnostics() || (!isStringLiteral && !isStringTemplate)) {
+            throw new IllegalArgumentException("Queries must be string literals or string templates");
+        }
+        return expression.toSourceCode().trim();
     }
 
     /**

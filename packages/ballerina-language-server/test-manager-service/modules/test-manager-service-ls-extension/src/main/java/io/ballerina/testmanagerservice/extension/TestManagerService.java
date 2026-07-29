@@ -389,14 +389,14 @@ public class TestManagerService implements ExtendedLanguageServerService {
             }
             providerTemplate = name -> Utils.getQueriesDataProviderFunctionTemplate(name, queries);
             patchInPlace = () -> Utils.findQueriesListLocation(provider.get()).ifPresent(range ->
-                    edits.add(new TextEdit(Utils.toRange(range), Utils.buildQueriesArray(queries))));
+                    edits.add(new TextEdit(Utils.toRange(range), Utils.buildQueryExpressionArray(queries))));
         } else {
             String evalSetFile = dataSource.has("evalSetFile") ? dataSource.get("evalSetFile").getAsString() : "";
             if (evalSetFile.isBlank()) {
                 throw new IllegalArgumentException("An evalset is required for the selected input mode");
             }
             providerTemplate = name -> Utils.getEvalSetDataProviderFunctionTemplate(name, evalSetFile);
-            patchInPlace = () -> updateEvalSetFile(textDocument, modulePartNode, request.function(), edits);
+            patchInPlace = () -> updateEvalSetFile(textDocument, modulePartNode, providerName, evalSetFile, edits);
         }
 
         if (shape == wantedShape) {
@@ -650,8 +650,11 @@ public class TestManagerService implements ExtendedLanguageServerService {
      */
     private void updateEvalSetFile(TextDocument textDocument, ModulePartNode modulePartNode, TestFunction function,
                                    List<TextEdit> edits) {
-        String newEvalSetFile = getEvalSetFile(function);
-        String dataProviderName = getDataProviderName(function);
+        updateEvalSetFile(textDocument, modulePartNode, getDataProviderName(function), getEvalSetFile(function), edits);
+    }
+
+    private void updateEvalSetFile(TextDocument textDocument, ModulePartNode modulePartNode, String dataProviderName,
+                                   String newEvalSetFile, List<TextEdit> edits) {
 
         if (newEvalSetFile == null || newEvalSetFile.isEmpty() ||
                 dataProviderName == null || dataProviderName.isEmpty()) {

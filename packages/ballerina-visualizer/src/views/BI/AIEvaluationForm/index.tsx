@@ -337,7 +337,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         } catch (error) {
             console.error('Failed to load evaluation templates:', error);
             setEvalTemplates([]);
-            setTemplateLoadError('Unable to load evaluation templates. Check that the ballerina/ai.eval package is available.');
+            setTemplateLoadError('Unable to load evaluation templates. Please check whether the ballerina/ai.eval package is available.');
             return [];
         }
     };
@@ -548,14 +548,14 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                 return;
             }
             const originalName = templateProperty.codedata?.originalName || key;
-            parameters[originalName] = String(data[`template_${key}`] ?? templateProperty.value ?? '');
+            parameters[originalName] = String(data[`${TEMPLATE_FIELD_PREFIX}${key}`] ?? templateProperty.value ?? '');
         });
         const dataSource = dataSourceParam ? {
             paramName: dataSourceParam.paramName,
             mode: dataSourceMode,
             ...(dataSourceMode === 'evalset'
                 ? { evalSetFile: selectedEvalsetFile }
-                : { queries: (Array.isArray(data['evalQueries']) ? data['evalQueries'] : evalQueries) as string[] })
+                : { queries: (Array.isArray(data[QUERIES_FIELD_KEY]) ? data[QUERIES_FIELD_KEY] : evalQueries) as string[] })
         } : undefined;
         return {
             symbol: selectedTemplate.codedata.symbol || '',
