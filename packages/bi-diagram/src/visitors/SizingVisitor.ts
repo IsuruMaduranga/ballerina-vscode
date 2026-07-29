@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { BaseVisitor, isEvalTemplateCall, NodeMetadata } from "@wso2/ballerina-core";
+import { BaseVisitor, NodeMetadata } from "@wso2/ballerina-core";
 
 import {
     AGENT_NODE_ADD_TOOL_BUTTON_WIDTH,
@@ -43,6 +43,7 @@ import {
     WHILE_NODE_WIDTH,
 } from "../resources/constants";
 import { getEvalNodeContainerHeight } from "../components/nodes/EvalNode/evalNodePresentation";
+import { isEvalTemplateCall } from "../utils/eval";
 import { reverseCustomNodeId } from "../utils/node";
 import { Branch, FlowNode } from "../utils/types";
 

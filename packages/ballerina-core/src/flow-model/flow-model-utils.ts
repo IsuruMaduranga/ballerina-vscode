@@ -23,12 +23,6 @@ import { BaseVisitor } from "./BaseVisitor";
 
 const metaNodes = ["viewState", "position", "parent"];
 
-const EVAL_TEMPLATE_PACKAGE = "ai.eval";
-
-export function isEvalTemplateCall(node: FlowNode | undefined): boolean {
-    return node?.codedata?.node === "FUNCTION_CALL" && node?.codedata?.packageName === EVAL_TEMPLATE_PACKAGE;
-}
-
 export function traverseFlow(flow: Flow, visitor: BaseVisitor, parent?: FlowNode) {
     let lastNode: FlowNode = undefined;
     flow.nodes.forEach((node) => {
