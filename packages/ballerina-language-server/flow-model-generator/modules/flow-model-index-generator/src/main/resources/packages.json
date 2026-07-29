@@ -3826,6 +3826,11 @@
       "name": "jballerina.java",
       "version": "2201.13.2",
       "description": "This module provides library operations required for Java interoperability in Ballerina. It includes a set of"
+    },
+    {
+      "name": "xlsx",
+      "version": "1.0.1",
+      "description": "Provides functionality to read and write Microsoft Excel files in the XLSX format with type-safe data binding."
     }
   ]
 }
