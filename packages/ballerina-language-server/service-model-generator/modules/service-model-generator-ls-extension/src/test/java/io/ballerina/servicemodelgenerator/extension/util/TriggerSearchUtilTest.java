@@ -18,12 +18,24 @@
 
 package io.ballerina.servicemodelgenerator.extension.util;
 
+import io.ballerina.centralconnector.CentralAPI;
+import io.ballerina.centralconnector.response.ConnectorResponse;
+import io.ballerina.centralconnector.response.ConnectorsResponse;
+import io.ballerina.centralconnector.response.DependentPackage;
+import io.ballerina.centralconnector.response.FunctionResponse;
+import io.ballerina.centralconnector.response.FunctionsResponse;
+import io.ballerina.centralconnector.response.Listeners;
 import io.ballerina.centralconnector.response.PackageResponse;
+import io.ballerina.centralconnector.response.SymbolResponse;
 import io.ballerina.servicemodelgenerator.extension.model.TriggerBasicInfo;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -49,6 +61,35 @@ public class TriggerSearchUtilTest {
     }
 
     @Test
+    public void testTypeTriggerTagIsAuthoritative() {
+        // Real Central classification tags (verified against aws.sqs/kafka/rabbitmq), distinct from the
+        // bare 'trigger'/'listener'/'event' keywords: 'Type/Trigger' alone must mark a trigger package,
+        // case-insensitively, without needing any other keyword or the trigger.* naming convention.
+        Assert.assertTrue(TriggerSearchUtil.isTriggerPackage(
+                        List.of("IT Operations/Message Brokers", "Vendor/Amazon", "Type/Connector", "Type/Trigger"),
+                        "aws.sqs"),
+                "the Type/Trigger tag alone marks a trigger");
+        Assert.assertTrue(TriggerSearchUtil.isTriggerPackage(List.of("type/trigger"), "kafka"),
+                "the Type/Trigger tag is matched case-insensitively");
+        Assert.assertFalse(TriggerSearchUtil.isTriggerPackage(List.of("Type/Connector", "Type/Library"), "aws"),
+                "Type/Connector or Type/Library alone do not mark a trigger");
+    }
+
+    @Test
+    public void testDisplayNameHumanizesPackageNames() {
+        Assert.assertEquals(TriggerSearchUtil.displayName("trigger.github"), "Github",
+                "the trigger. family prefix is dropped, keeping only the connector name");
+        Assert.assertEquals(TriggerSearchUtil.displayName("confluent.cavroserdes"), "Cavroserdes",
+                "a vendor-namespaced package keeps only the trailing segment");
+        Assert.assertEquals(TriggerSearchUtil.displayName("cdc-mysql"), "Cdc Mysql",
+                "every hyphen-separated word is Title-Cased, not just the first");
+        Assert.assertEquals(TriggerSearchUtil.displayName("kafka"), "Kafka",
+                "a single lowercase word is capitalized");
+        Assert.assertEquals(TriggerSearchUtil.displayName("googleapis.gmail"), "Gmail",
+                "only the trailing segment survives");
+    }
+
+    @Test
     public void testToTriggerResultsFiltersAndMaps() {
         PackageResponse response = new PackageResponse(
                 List.of(
@@ -70,22 +111,46 @@ public class TriggerSearchUtilTest {
     }
 
     @Test
-    public void testListenerBackedPackageIncludedWithoutTriggerKeyword() {
-        // activemq/aws.sqs/smb are triggers but may lack an 'event'/'trigger'/'listener' keyword. They
-        // must still appear when they export a Listener (the authoritative signal).
+    public void testPackageWithoutTriggerSignalExcluded() {
+        // No network-bound Listener-export fallback exists: a package lacking a trigger keyword, the
+        // Type/Trigger tag, and the trigger.* naming convention is excluded even if (like the real
+        // smb/mqtt packages) it happens to export a Listener -- there is nothing here that can tell.
         PackageResponse response = new PackageResponse(
                 List.of(
                         pkg("ballerinax", "activemq", "1.0.0", List.of("messaging", "jms"), "ActiveMQ", "amq-icon"),
                         pkg("ballerinax", "somehttpclient", "2.0.0", List.of("http", "client"), "", "")),
                 List.of(), null, 2, 0, 30);
 
-        // Pretend only activemq exports a Listener.
-        java.util.function.Predicate<PackageResponse.Package> exportsListener =
-                p -> "activemq".equals(p.name());
-        List<TriggerBasicInfo> results = TriggerSearchUtil.toTriggerResults(response, Set.of(), exportsListener);
+        List<TriggerBasicInfo> results = TriggerSearchUtil.toTriggerResults(response, Set.of());
 
-        Assert.assertEquals(results.size(), 1, "only the listener-backed package is included");
-        Assert.assertEquals(results.getFirst().packageName(), "activemq");
+        Assert.assertTrue(results.isEmpty(), "neither package carries a trigger signal");
+    }
+
+    @Test
+    public void testSearchCentralScopesToBallerinaAndBallerinaxOnly() {
+        // Central's search-packages 'q' string only accepts a single 'org:<name>' token per call, so
+        // searchCentral issues one call per allowed org, concurrently, and merges -- verify both org-scoped
+        // queries actually happen (order is not guaranteed since they race), and that a package returned
+        // under a non-ballerina/ballerinax org can never appear (the fake never even offers one, mirroring
+        // what a real org: filter would enforce).
+        FakeCentralAPI central = new FakeCentralAPI();
+        central.responsesByOrg.put("ballerina", new PackageResponse(
+                List.of(pkg("ballerina", "mqtt", "1.0.0", List.of("mqtt", "listener"), "MQTT", "mqtt-icon")),
+                List.of(), null, 1, 0, 30));
+        central.responsesByOrg.put("ballerinax", new PackageResponse(
+                List.of(pkg("ballerinax", "kafka", "4.5.0", List.of("Type/Trigger"), "Kafka", "kafka-icon")),
+                List.of(), null, 1, 0, 30));
+
+        List<TriggerBasicInfo> results = TriggerSearchUtil.searchCentral(central, "trigger", null, null, Set.of());
+
+        Assert.assertEquals(central.queriesSent.size(), 2, "one search call per allowed org");
+        Assert.assertTrue(central.queriesSent.stream().anyMatch(q -> q.get("q").endsWith("org:ballerina")));
+        Assert.assertTrue(central.queriesSent.stream().anyMatch(q -> q.get("q").endsWith("org:ballerinax")));
+        Assert.assertEquals(results.size(), 2, "results from both allowed orgs are merged");
+        Assert.assertTrue(results.stream().anyMatch(r -> r.orgName().equals("ballerina")
+                && r.packageName().equals("mqtt")));
+        Assert.assertTrue(results.stream().anyMatch(r -> r.orgName().equals("ballerinax")
+                && r.packageName().equals("kafka")));
     }
 
     @Test
@@ -112,5 +177,91 @@ public class TriggerSearchUtilTest {
                 1, org, name, version, "java21", "2201.0.0", deprecatedFlag, "", "", version, "", "",
                 summary, "", false, List.of(), List.of(), "", keywords, "2201.0.0", icon, "", 0L, 0,
                 "public", List.of(), "", "true");
+    }
+
+    /**
+     * A minimal {@link CentralAPI} test double: records every {@code searchPackages} query and returns a
+     * canned {@link PackageResponse} keyed by the query's {@code org:<name>} token, so
+     * {@code searchCentral}'s per-org querying can be verified without a network call.
+     * {@code searchCentral} now issues its per-org queries concurrently, so {@code searchPackages} may be
+     * invoked from multiple threads at once -- {@code queriesSent} must therefore be a thread-safe list.
+     */
+    private static final class FakeCentralAPI implements CentralAPI {
+
+        final Map<String, PackageResponse> responsesByOrg = new HashMap<>();
+        final List<Map<String, String>> queriesSent = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public PackageResponse searchPackages(Map<String, String> queryMap) {
+            queriesSent.add(queryMap);
+            String q = queryMap.get("q");
+            for (Map.Entry<String, PackageResponse> entry : responsesByOrg.entrySet()) {
+                if (q != null && q.endsWith("org:" + entry.getKey())) {
+                    return entry.getValue();
+                }
+            }
+            return new PackageResponse(List.of(), List.of(), null, 0, 0, 30);
+        }
+
+        @Override
+        public SymbolResponse searchSymbols(Map<String, String> queryMap) {
+            return null;
+        }
+
+        @Override
+        public FunctionsResponse functions(String organization, String name, String version) {
+            return null;
+        }
+
+        @Override
+        public Listeners listeners(String organization, String name, String version) {
+            return null;
+        }
+
+        @Override
+        public FunctionResponse function(String organization, String name, String version, String functionName) {
+            return null;
+        }
+
+        @Override
+        public ConnectorsResponse connectors(Map<String, String> queryMap) {
+            return null;
+        }
+
+        @Override
+        public ConnectorResponse connector(String id) {
+            return null;
+        }
+
+        @Override
+        public ConnectorResponse connector(String organization, String name, String version, String clientName) {
+            return null;
+        }
+
+        @Override
+        public String latestPackageVersion(String org, String name) {
+            return null;
+        }
+
+        @Override
+        public List<String> allPackageVersions(String org, String name) {
+            return List.of();
+        }
+
+        @Override
+        public Map<String, List<DependentPackage>> dependentPackages(String org, String packageName,
+                                                                      List<String> versions) {
+            return Map.of();
+        }
+
+        @Override
+        public Map<String, List<String>> packageKeywords(List<DependentPackage> modules) {
+            return Map.of();
+        }
+
+        @Override
+        public boolean hasAuthorizedAccess() {
+            return false;
+        }
     }
 }
