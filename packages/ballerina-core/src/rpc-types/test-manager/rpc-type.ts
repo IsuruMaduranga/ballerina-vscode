@@ -27,6 +27,18 @@ export const addTestFunction: RequestType<AddOrUpdateTestFunctionRequest, Source
 export const updateTestFunction: RequestType<AddOrUpdateTestFunctionRequest, SourceUpdateResponse> =
     { method: `${_preFix}/updateTestFunction` };
 
+export interface GetTestFunctionNamesRequest {
+    projectPath: string;
+}
+
+/** Names of the annotated test functions in the project's test documents. */
+export interface GetTestFunctionNamesResponse {
+    names: string[];
+}
+
+export const getTestFunctionNames: RequestType<GetTestFunctionNamesRequest, GetTestFunctionNamesResponse> =
+    { method: `${_preFix}/getTestFunctionNames` };
+
 export interface EvalsetItem {
     id: string;
     name: string;

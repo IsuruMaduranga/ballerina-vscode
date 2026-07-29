@@ -620,7 +620,8 @@ export interface TestsDiscoveryRequest {
 }
 
 export interface TestsDiscoveryResponse {
-    result?: Map<string, FunctionTreeNode[]>;
+    // The language client returns a Map in-process, while JSON RPC can deserialize it as a plain object.
+    result?: Map<string, FunctionTreeNode[]> | Record<string, FunctionTreeNode[]>;
     errorMsg?: string;
     stacktrace?: string;
 }
