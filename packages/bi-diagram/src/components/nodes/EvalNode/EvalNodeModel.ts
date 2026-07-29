@@ -18,9 +18,9 @@
 
 import { NodeTypes } from "../../../resources/constants";
 import { FlowNode } from "../../../utils/types";
-import { BaseAgentNodeModel } from "../BaseAgentNodeModel";
+import { BaseNodeModel } from "../BaseNode/BaseNodeModel";
 
-export class EvalNodeModel extends BaseAgentNodeModel {
+export class EvalNodeModel extends BaseNodeModel {
     constructor(node: FlowNode) {
         super(node, NodeTypes.EVAL_NODE);
     }

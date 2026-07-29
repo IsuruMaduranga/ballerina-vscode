@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import React from "react";
+import React, { useState } from "react";
 import styled from "@emotion/styled";
 import { DiagramEngine, PortWidget } from "@projectstorm/react-diagrams-core";
 import {
@@ -30,8 +30,8 @@ import { FlowNode } from "../../../utils/types";
 import { DiagnosticsPopUp } from "../../DiagnosticsPopUp";
 import { nodeHasError } from "../../../utils/node";
 import { BreakpointMenu } from "../../BreakNodeMenu/BreakNodeMenu";
-import { ThemeListener } from "../../NodeIcon";
-import { useAgentNodeController } from "../AgentWidget/useAgentNodeController";
+import { getAIColor, ThemeListener } from "../../NodeIcon";
+import { useDiagramContext } from "../../DiagramContext";
 import {
     DESCRIPTION_HEIGHT,
     DESCRIPTION_LINES, DESCRIPTION_LINE_HEIGHT, DESCRIPTION_MARGIN_Y, ICON_BOX_SIZE,
@@ -180,8 +180,9 @@ const RoleSummary = styled.div`
     box-sizing: border-box;
     margin: 0 0 ${ROLE_SUMMARY_MARGIN_BOTTOM}px;
     padding: ${ROLE_SUMMARY_PADDING}px;
-    border: 1px dashed ${ThemeColors.OUTLINE_VARIANT};
+    border: 1px solid ${ThemeColors.OUTLINE_VARIANT};
     border-radius: 4px;
+    background-color: ${ThemeColors.SURFACE};
     z-index: 2;
 `;
 
@@ -251,15 +252,18 @@ interface EvalNodeWidgetProps {
 
 export function EvalNodeWidget(props: EvalNodeWidgetProps) {
     const { model, engine, onClick } = props;
-    const controller = useAgentNodeController(model);
-    const { onNodeSelect, goToSource, onDeleteNode, addBreakpoint, removeBreakpoint, readOnly } =
-        controller.context;
-    const {
-        isSelected, isBoxHovered, setIsBoxHovered, anchorEl, setAnchorEl, menuButtonElement, setMenuButtonElement,
-        isMenuOpen, hasBreakpoint, isActiveBreakpoint, handleThemeChange, aiColor,
-    } = controller;
-
     const node = model.node;
+    const { onNodeSelect, goToSource, onDeleteNode, addBreakpoint, removeBreakpoint, readOnly, selectedNodeId } =
+        useDiagramContext();
+    const [isBoxHovered, setIsBoxHovered] = useState(false);
+    const [anchorEl, setAnchorEl] = useState<HTMLElement | SVGSVGElement | null>(null);
+    const [menuButtonElement, setMenuButtonElement] = useState<HTMLElement | null>(null);
+    const [aiColor, setAiColor] = useState(() => getAIColor());
+    const isSelected = selectedNodeId === node.id;
+    const isMenuOpen = Boolean(anchorEl);
+    const hasBreakpoint = model.hasBreakpoint();
+    const isActiveBreakpoint = model.isActiveBreakpoint();
+    const handleThemeChange = () => setAiColor(getAIColor());
     const presentation = getEvalPresentation(node);
     const hasError = nodeHasError(node);
 
