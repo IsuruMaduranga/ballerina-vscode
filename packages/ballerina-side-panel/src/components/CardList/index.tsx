@@ -506,6 +506,14 @@ function CardList(props: CardListProps) {
                         key={node.id + index}
                         enabled={node.enabled}
                         onClick={() => node.enabled !== false && handleCardClick(node)}
+                        onKeyDown={(event) => {
+                            if (node.enabled !== false && (event.key === "Enter" || event.key === " ")) {
+                                event.preventDefault();
+                                handleCardClick(node);
+                            }
+                        }}
+                        role="button"
+                        tabIndex={node.enabled !== false ? 0 : -1}
                         title={node.description}
                     >
                         <S.ChildIcon>
