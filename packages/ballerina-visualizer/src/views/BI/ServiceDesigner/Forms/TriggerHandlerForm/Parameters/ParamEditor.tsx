@@ -31,6 +31,8 @@ export interface ParamEditorProps {
     onSave?: (param: ParameterModel) => void;
     onCancel?: (param?: ParameterModel) => void;
     typeLabel?: string;
+    /** Hides the name field — the parameter keeps its shipped name (e.g. a fixed data-binding param). */
+    hideName?: boolean;
 }
 
 /** Strips array or stream wrapper to recover the bare record type name. */
@@ -48,7 +50,7 @@ const extractBaseRecordType = (typeValue: string): string => {
 };
 
 export function ParamEditor(props: ParamEditorProps) {
-    const { param, onChange, onSave, onCancel, typeLabel = 'Content Schema' } = props;
+    const { param, onChange, onSave, onCancel, typeLabel = 'Content Schema', hideName } = props;
 
     const { rpcClient } = useRpcContext();
     const [currentFields, setCurrentFields] = useState<FormField[]>([]);
@@ -71,17 +73,19 @@ export function ParamEditor(props: ParamEditorProps) {
         const typeFieldType = getPrimaryInputType(param.type?.types)?.fieldType || 'TYPE';
         const baseType = extractBaseRecordType(param.type?.value || param.type?.placeholder || '');
 
-        fields.push({
-            key: `name`,
-            label: 'Name',
-            type: 'IDENTIFIER',
-            optional: false,
-            editable: true,
-            documentation: '',
-            enabled: param.name?.enabled ?? true,
-            value: param.name?.value ?? '',
-            types: [{ fieldType: 'IDENTIFIER', selected: false }]
-        });
+        if (!hideName) {
+            fields.push({
+                key: `name`,
+                label: 'Name',
+                type: 'IDENTIFIER',
+                optional: false,
+                editable: true,
+                documentation: '',
+                enabled: param.name?.enabled ?? true,
+                value: param.name?.value ?? '',
+                types: [{ fieldType: 'IDENTIFIER', selected: false }]
+            });
+        }
 
         fields.push({
             key: `type`,

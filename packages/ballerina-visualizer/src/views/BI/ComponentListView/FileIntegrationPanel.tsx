@@ -16,25 +16,28 @@
  * under the License.
  */
 import React, { useEffect, useState } from 'react';
-import { Icon } from '@wso2/ui-toolkit';
+import { Icon, ImageWithFallback } from '@wso2/ui-toolkit';
 import { useRpcContext } from '@wso2/ballerina-rpc-client';
-import { EVENT_TYPE, MACHINE_VIEW, SCOPE, ServiceModel, TriggerModelsResponse } from '@wso2/ballerina-core';
+import { EVENT_TYPE, MACHINE_VIEW, SCOPE, ServiceModel, TriggerModelsResponse, resolveBrandIcon, resolveKindDefaultIcon } from '@wso2/ballerina-core';
 
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
-import { OutOfScopeComponentTooltip } from './componentListUtils';
+import { matchesArtifactQuery, OutOfScopeComponentTooltip } from './componentListUtils';
 import { RelativeLoader } from '../../../components/RelativeLoader';
 
 interface FileIntegrationPanelProps {
     scope: SCOPE;
     triggers: TriggerModelsResponse;
+    /** Page-level gallery search; when set, only matching cards show. */
+    searchQuery?: string;
 };
 
 export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
     const { rpcClient } = useRpcContext();
 
     const isDisabled = props.scope && (props.scope !== SCOPE.FILE_INTEGRATION && props.scope !== SCOPE.ANY);
+    const searchQuery = props.searchQuery ?? "";
 
     const handleOnSelect = async (model: ServiceModel) => {
         await rpcClient.getVisualizerRpcClient().openView({
@@ -51,6 +54,15 @@ export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
         });
     };
 
+    const visibleTriggers = props.triggers.local
+        .filter((t) => t.type === "file")
+        .filter((t) => matchesArtifactQuery(searchQuery, t.name, t.moduleName));
+
+    // While the user is searching, a section with no matches disappears entirely.
+    if (searchQuery.trim() && visibleTriggers.length === 0) {
+        return null;
+    }
+
     return (
         <PanelViewMore disabled={isDisabled}>
             <TitleWrapper>
@@ -59,8 +71,7 @@ export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
             </TitleWrapper>
             <CardGrid>
                 {props.triggers.local.length === 0 && <RelativeLoader />}
-                {props.triggers.local
-                    .filter((t) => t.type === "file")
+                {visibleTriggers
                     .map((item, index) => {
                         return (
                             <ButtonCard
@@ -83,18 +94,26 @@ export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
 
 // TODO: This should be removed once the new icons are added to the BE API.
 export function getFileIntegrationIcon(item: ServiceModel) {
-    return getCustomFileIntegrationIcon(item.moduleName) || <img src={item.icon} alt={item.name} style={{ width: "38px" }} />;
+    const brandIcon = getCustomFileIntegrationIcon(item.moduleName);
+    if (brandIcon) {
+        return brandIcon;
+    }
+    const kindDefault = resolveKindDefaultIcon(item.type);
+    return (
+        <ImageWithFallback
+            imageUrl={item.icon}
+            fallbackEl={<Icon name={kindDefault.glyph} />}
+            size={38}
+        />
+    );
 }
 
 // INFO: This is a temporary function to get the custom icon for the file integration triggers.
 // TODO: This should be removed once the new icons are added to the BE API.
 export function getCustomFileIntegrationIcon(type: string) {
-    switch (type) {
-        case "ftp":
-            return <Icon name="bi-ftp" />;
-        case "file":
-            return <Icon name="bi-file" />;
-        default:
-            return null;
+    const brand = resolveBrandIcon(type);
+    if (!brand) {
+        return null;
     }
+    return <Icon name={brand.glyph} sx={brand.color ? { color: brand.color } : undefined} />;
 }

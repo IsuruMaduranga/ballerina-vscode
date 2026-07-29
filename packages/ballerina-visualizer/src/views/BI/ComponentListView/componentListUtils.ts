@@ -23,3 +23,15 @@ export const AutomationAlreadyExistsTooltip = "An integration can only have one 
 export function isBetaModule(moduleName: string) {
     return BetaModules.includes(moduleName);
 }
+
+/**
+ * Case-insensitive substring match for the artifact gallery's page-level search. An empty query
+ * matches everything (the gallery shows its full catalog until the user types).
+ */
+export function matchesArtifactQuery(query: string, ...texts: (string | undefined)[]): boolean {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) {
+        return true;
+    }
+    return texts.some((text) => text?.toLowerCase().includes(normalized));
+}

@@ -22,10 +22,12 @@ import { EVENT_TYPE, MACHINE_VIEW, SCOPE } from '@wso2/ballerina-core';
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
-import { OutOfScopeComponentTooltip } from './componentListUtils';
+import { matchesArtifactQuery, OutOfScopeComponentTooltip } from './componentListUtils';
 
 interface IntegrationAPIPanelProps {
     scope: SCOPE;
+    /** Page-level gallery search; when set, only matching cards show. */
+    searchQuery?: string;
 };
 
 interface ServiceModel {
@@ -37,6 +39,7 @@ interface ServiceModel {
 export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
     const { rpcClient } = useRpcContext();
     const isDisabled = props.scope && (props.scope !== SCOPE.INTEGRATION_AS_API && props.scope !== SCOPE.ANY);
+    const searchQuery = props.searchQuery ?? "";
 
     const handleClick = async (model: ServiceModel) => {
         await rpcClient.getVisualizerRpcClient().openView({
@@ -52,6 +55,15 @@ export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
         });
     };
 
+    const showHttp = matchesArtifactQuery(searchQuery, "HTTP Service", "http");
+    const showGraphql = matchesArtifactQuery(searchQuery, "GraphQL Service", "graphql");
+    const showTcp = matchesArtifactQuery(searchQuery, "TCP Service", "tcp");
+
+    // While the user is searching, a section with no matches disappears entirely.
+    if (searchQuery.trim() && !showHttp && !showGraphql && !showTcp) {
+        return null;
+    }
+
     return (
         <>
             <PanelViewMore disabled={isDisabled}>
@@ -62,7 +74,7 @@ export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
                     </BodyText>
                 </TitleWrapper>
                 <CardGrid>
-                    <ButtonCard
+                    {showHttp && <ButtonCard
                         id="http-service-card"
                         icon={<Icon name="bi-globe" />}
                         title="HTTP Service"
@@ -74,8 +86,8 @@ export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
                         })}
                         disabled={isDisabled}
                         tooltip={isDisabled ? OutOfScopeComponentTooltip : ""}
-                    />
-                    <ButtonCard
+                    />}
+                    {showGraphql && <ButtonCard
                         id="graphql-service-card"
                         data-testid="websocket-service-card"
                         icon={<Icon name="bi-graphql" sx={{ color: "#e535ab" }} />}
@@ -89,8 +101,8 @@ export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
                         disabled={isDisabled}
                         tooltip={isDisabled ? OutOfScopeComponentTooltip : ""}
                         isBeta
-                    />
-                    <ButtonCard
+                    />}
+                    {showTcp && <ButtonCard
                         id="tcp-service-card"
                         data-testid="websocket-service-card"
                         icon={<Icon name="bi-tcp" />}
@@ -104,7 +116,7 @@ export function IntegrationAPIPanel(props: IntegrationAPIPanelProps) {
                         disabled={isDisabled}
                         tooltip={isDisabled ? OutOfScopeComponentTooltip : ""}
                         isBeta
-                    />
+                    />}
                     {/* TODO: Add this when GRPC is working */}
                     {/* <ButtonCard
                     icon={<Icon name="bi-grpc" />}
