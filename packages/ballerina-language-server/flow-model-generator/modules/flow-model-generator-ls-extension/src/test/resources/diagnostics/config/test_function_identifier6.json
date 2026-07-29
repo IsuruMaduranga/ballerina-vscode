@@ -1,17 +1,17 @@
 {
-  "description": "An unused test function name reports no diagnostics",
+  "description": "A Global identifier in a test document does not collide with a function-local variable",
   "filePath": "testproj/tests/tests.bal",
   "context": {
-    "expression": "testBrandNew",
+    "expression": "localOnly",
     "startLine": {
-      "line": 9,
-      "offset": 0
+      "line": 13,
+      "offset": 4
     },
     "offset": 0,
     "property": {
       "metadata": {
-        "label": "AI Evaluation Name",
-        "description": "Name of the AI evaluation"
+        "label": "Test Function Name",
+        "description": "Name of the test function"
       },
       "types": [
         {

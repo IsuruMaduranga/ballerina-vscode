@@ -220,9 +220,6 @@ public record Property(Metadata metadata, List<PropertyType> types, Object value
     public static final String SERVICE_INIT_SCOPE = "ServiceInit";
     public static final String OBJECT_SCOPE = "Object";
     public static final String LOCAL_SCOPE = "Local";
-    // Module-level declaration that may live in a test document, which GLOBAL_SCOPE cannot see.
-    public static final String DECLARATION_SCOPE = "Declaration";
-
     public static final String CONNECTION_KEY = "connection";
     public static final String CONNECTION_LABEL = "Connection";
     public static final String CONNECTION_DOC = "Connection to use";

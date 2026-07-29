@@ -16,7 +16,7 @@
       "types": [
         {
           "fieldType": "IDENTIFIER",
-          "scope": "Declaration"
+          "scope": "Global"
         }
       ],
       "value": "",

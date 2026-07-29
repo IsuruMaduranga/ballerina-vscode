@@ -625,7 +625,7 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             fields.push({
                 ...generateFieldFromProperty('functionName', testFunction.functionName),
                 type: 'IDENTIFIER',
-                types: [{ fieldType: 'IDENTIFIER', scope: 'Declaration', selected: true }]
+                types: [{ fieldType: 'IDENTIFIER', scope: 'Global', selected: true }]
             });
         }
         if (testFunction.parameters) {

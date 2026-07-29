@@ -1,17 +1,17 @@
 {
-  "description": "A new test function name that collides with an existing test function in the same test document",
+  "description": "A Global identifier in a test document collides with a test module variable",
   "filePath": "testproj/tests/tests.bal",
   "context": {
-    "expression": "testExisting",
+    "expression": "testModuleValue",
     "startLine": {
-      "line": 9,
+      "line": 15,
       "offset": 0
     },
     "offset": 0,
     "property": {
       "metadata": {
-        "label": "AI Evaluation Name",
-        "description": "Name of the AI evaluation"
+        "label": "Test Function Name",
+        "description": "Name of the test function"
       },
       "types": [
         {
@@ -29,19 +29,19 @@
     {
       "range": {
         "start": {
-          "line": 9,
+          "line": 15,
           "character": 0
         },
         "end": {
-          "line": 9,
-          "character": 12
+          "line": 15,
+          "character": 15
         }
       },
       "severity": "Error",
       "code": {
         "left": "BCE2008"
       },
-      "message": "redeclared symbol 'testExisting'"
+      "message": "redeclared symbol 'testModuleValue'"
     }
   ]
 }
