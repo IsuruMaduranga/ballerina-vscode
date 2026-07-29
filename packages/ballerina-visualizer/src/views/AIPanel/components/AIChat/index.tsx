@@ -1849,10 +1849,8 @@ const AIChat: React.FC = () => {
         if (content.input.length === 0) {
             return;
         }
-        if (hasActiveReview) {
-            await rpcClient.getAiPanelRpcClient().acceptChanges().catch((e: unknown) => console.warn("[AIChat] auto-accept failed:", e));
-            setHasActiveReview(false);
-        }
+        // The extension finalizes the previous generation when this run starts.
+        setHasActiveReview(false);
         const generationId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         activeRunGenerationIdRef.current = generationId;
         activeRunScopeRef.current = undefined;
@@ -2220,10 +2218,11 @@ const AIChat: React.FC = () => {
     async function handleSwitchThread(threadId: string): Promise<void> {
         await rpcClient.getAiPanelRpcClient().switchThread({ threadId });
 
-        // Reload messages and checkpoints for the newly active thread in parallel
-        const [msgs, checkpoints] = await Promise.all([
+        // Reload messages, checkpoints and revert availability for the newly active thread in parallel
+        const [msgs, checkpoints, revertable] = await Promise.all([
             rpcClient.getAiPanelRpcClient().getChatMessages(),
             rpcClient.getAiPanelRpcClient().getCheckpoints(),
+            rpcClient.getAiPanelRpcClient().hasPendingReview({}),
         ]);
 
         setMessages(msgs.map(m => ({ role: m.role === "user" ? "User" : "Copilot", content: m.content, type: "text", checkpointId: m.checkpointId, messageId: m.messageId })));
@@ -2233,8 +2232,8 @@ const AIChat: React.FC = () => {
         // and all restore buttons would appear disabled.
         setAvailableCheckpointIds(new Set(checkpoints.map(cp => cp.id)));
 
-        // Clear review and restore state that belongs to the previous thread
-        setHasActiveReview(false);
+        // Belongs to the thread, not the panel: the target may have its own revertible generation.
+        setHasActiveReview(revertable);
         setRestoringCheckpointId(null);
         setApprovalRequest(null);
         setContextUsage(null);
@@ -2245,14 +2244,15 @@ const AIChat: React.FC = () => {
     async function handleDeleteThread(threadId: string): Promise<void> {
         await rpcClient.getAiPanelRpcClient().deleteThread({ threadId });
 
-        // Reload messages and checkpoints for the (possibly new) active thread in parallel
-        const [msgs, checkpoints] = await Promise.all([
+        // Reload messages, checkpoints and revert availability for the (possibly new) active thread
+        const [msgs, checkpoints, revertable] = await Promise.all([
             rpcClient.getAiPanelRpcClient().getChatMessages(),
             rpcClient.getAiPanelRpcClient().getCheckpoints(),
+            rpcClient.getAiPanelRpcClient().hasPendingReview({}),
         ]);
         setMessages(msgs.map(m => ({ role: m.role === "user" ? "User" : "Copilot", content: m.content, type: "text", checkpointId: m.checkpointId, messageId: m.messageId })));
         setAvailableCheckpointIds(new Set(checkpoints.map(cp => cp.id)));
-        setHasActiveReview(false);
+        setHasActiveReview(revertable);
         setRestoringCheckpointId(null);
         setApprovalRequest(null);
         setContextUsage(null);
