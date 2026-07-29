@@ -10,19 +10,40 @@
     "offset": 1
   },
   "response": {
-    "id": "0",
-    "name": "FTP Integration",
+    "id": "5",
+    "name": "FTP / SFTP",
     "type": "ftp",
+    "displayName": "FTP / SFTP",
     "moduleName": "ftp",
     "orgName": "ballerina",
     "version": "2.19.0",
     "packageName": "ftp",
+    "listenerProtocol": "ftp",
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_ftp_2.19.0.png",
+    "documentation": {
+      "metadata": {
+        "label": "Description",
+        "description": "The description of the class"
+      },
+      "codedata": {
+        "type": "DOCUMENTATION"
+      },
+      "types": [
+        {
+          "fieldType": "TEXT",
+          "selected": true
+        }
+      ],
+      "enabled": true,
+      "editable": true,
+      "optional": true,
+      "advanced": false
+    },
     "properties": {
       "listener": {
         "metadata": {
           "label": "Listeners",
-          "description": ""
+          "description": "The Listeners to be bound with the service"
         },
         "codedata": {
           "type": "LISTENER"
@@ -64,6 +85,37 @@
           }
         ],
         "enabled": true,
+        "editable": true,
+        "optional": false,
+        "advanced": false
+      },
+      "serviceType": {
+        "metadata": {
+          "label": "Service Type",
+          "description": "The name of the service contract type"
+        },
+        "codedata": {
+          "type": "SERVICE_TYPE"
+        },
+        "placeholder": "Service",
+        "value": "Service",
+        "types": [
+          {
+            "fieldType": "SINGLE_SELECT",
+            "options": [
+              {
+                "label": "",
+                "value": ""
+              },
+              {
+                "label": "Service",
+                "value": "Service"
+              }
+            ],
+            "selected": true
+          }
+        ],
+        "enabled": false,
         "editable": false,
         "optional": false,
         "advanced": false
@@ -74,8 +126,12 @@
         },
         "placeholder": "false",
         "value": {
-          "Path": [],
-          "Protocol": []
+          "Path": [
+            "/"
+          ],
+          "Protocol": [
+            "ftp:FTP"
+          ]
         },
         "types": [
           {
@@ -86,6 +142,39 @@
         "enabled": true,
         "editable": true,
         "optional": false,
+        "advanced": false
+      },
+      "annotServiceConfig": {
+        "metadata": {
+          "label": "Service Configuration",
+          "description": "Define service-level configuration such as the FTP directory path to monitor"
+        },
+        "codedata": {
+          "type": "ANNOTATION_ATTACHMENT",
+          "originalName": "ServiceConfig"
+        },
+        "placeholder": "{}",
+        "value": "",
+        "values": [],
+        "types": [
+          {
+            "fieldType": "RECORD_MAP_EXPRESSION",
+            "ballerinaType": "ftp:FtpServiceConfig",
+            "typeMembers": [
+              {
+                "type": "FtpServiceConfig",
+                "packageInfo": "ballerina:ftp:2.19.0",
+                "packageName": "ftp",
+                "kind": "RECORD_TYPE",
+                "selected": true
+              }
+            ],
+            "selected": true
+          }
+        ],
+        "enabled": true,
+        "editable": true,
+        "optional": true,
         "advanced": false
       }
     },
@@ -108,17 +197,23 @@
     "functions": [
       {
         "metadata": {
-          "label": "onCreate",
-          "description": "Handle file creation on remote server"
+          "label": "onFileCsv",
+          "description": "Triggered when a CSV file is added to the monitored FTP location. Supports raw 2D string arrays, data binding to custom record types, and streaming for large files"
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
-            "label": "CSV",
-            "description": "CSV file creation handler"
+            "label": "onFileCsv",
+            "description": "Triggered when a CSV file is added to the monitored FTP location. Supports raw 2D string arrays, data binding to custom record types, and streaming for large files"
           },
-          "placeholder": "",
+          "placeholder": "onFileCsv",
           "value": "onFileCsv",
+          "types": [
+            {
+              "fieldType": "IDENTIFIER",
+              "selected": true
+            }
+          ],
           "enabled": true,
           "editable": false,
           "optional": false,
@@ -127,24 +222,62 @@
         "parameters": [
           {
             "metadata": {
-              "label": "Content",
-              "description": "CSV file content"
+              "label": "content",
+              "description": "CSV file content. Can be string[][] for raw rows, record{}[] for data-bound rows, stream<string[]> for streaming raw rows from large files, or stream<record{}> for streaming data-bound rows"
             },
             "kind": "DATA_BINDING",
             "type": {
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
               "placeholder": "string[][]",
               "value": "string[][]",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
-              "editable": false,
-              "optional": false,
+              "editable": true,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "content",
+                "description": "CSV file content. Can be string[][] for raw rows, record{}[] for data-bound rows, stream<string[]> for streaming raw rows from large files, or stream<record{}> for streaming data-bound rows"
+              },
+              "placeholder": "content",
               "value": "content",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
+              "advanced": false
+            },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
               "advanced": false
             },
             "enabled": true,
@@ -156,291 +289,183 @@
           },
           {
             "metadata": {
-              "label": "File Metadata (fileInfo)",
-              "description": "Additional file properties"
+              "label": "fileInfo",
+              "description": "Additional file properties such as size, modification time, and permissions"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "string",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:FileInfo",
               "value": "ftp:FileInfo",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "fileInfo",
+                "description": "Additional file properties such as size, modification time, and permissions"
+              },
+              "placeholder": "fileInfo",
               "value": "fileInfo",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
             "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           },
           {
             "metadata": {
-              "label": "FTP Connection (caller)",
-              "description": "FTP connection for further operations"
+              "label": "caller",
+              "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "string",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:Caller",
               "value": "ftp:Caller",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "caller",
+                "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
+              },
+              "placeholder": "caller",
               "value": "caller",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
-            "enabled": false,
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
+            "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           }
         ],
         "returnType": {
-          "hasError": false,
+          "hasError": true,
           "isGraphqlId": false,
           "metadata": {
-            "label": "Return type",
-            "description": "Return type of the function"
+            "label": "Return Type",
+            "description": "The return type of the function"
           },
-          "placeholder": "json",
+          "placeholder": "error?",
           "value": "error?",
+          "types": [
+            {
+              "fieldType": "TYPE",
+              "selected": true
+            }
+          ],
           "enabled": true,
-          "editable": true,
+          "editable": false,
           "optional": true,
           "advanced": false
         },
         "enabled": false,
         "optional": true,
-        "editable": true,
-        "canAddParameters": false,
-        "codedata": {
-          "moduleName": "ftp"
-        },
-        "properties": {
-          "stream": {
-            "metadata": {
-              "label": "Stream (Large Files)",
-              "description": "Process the file content in chunks"
-            },
-            "value": "true",
-            "enabled": false,
-            "editable": true,
-            "optional": false,
-            "advanced": false
-          },
-          "canDataBind": {
-            "metadata": {
-              "label": "Row Schema",
-              "description": "Define the type for a single CSV row"
-            },
-            "value": "true",
-            "enabled": false,
-            "editable": true,
-            "optional": false,
-            "advanced": false
-          },
-          "isArray": {
-            "metadata": {
-              "label": "Rows",
-              "description": "Content Schema contains a row of CSV Row type"
-            },
-            "value": "true",
-            "enabled": true,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          },
-          "annotations": {
-            "properties": {
-              "postProcessAction": {
-                "metadata": {
-                  "label": "After File Processing",
-                  "description": "Configure actions after file processing"
-                },
-                "value": "",
-                "properties": {
-                  "onSuccess": {
-                    "metadata": {
-                      "label": "Success",
-                      "description": "Action when handler completes without returning an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after successful processing"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after successful processing"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  },
-                  "onError": {
-                    "metadata": {
-                      "label": "Error",
-                      "description": "Action when handler returns an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after error"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after error"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  }
-                },
-                "types": [
-                  {
-                    "selected": true
-                  }
-                ],
-                "enabled": true,
-                "editable": true,
-                "optional": false,
-                "advanced": false
-              }
-            },
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          }
-        }
+        "editable": false,
+        "canAddParameters": false
       },
       {
         "metadata": {
-          "label": "onCreate",
-          "description": "Handle file deletion on remote server"
+          "label": "onFileJson",
+          "description": "Triggered when a JSON file is added to the monitored FTP location. Supports raw json or data binding to custom record types"
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
-            "label": "JSON",
-            "description": "JSON file creation handler"
+            "label": "onFileJson",
+            "description": "Triggered when a JSON file is added to the monitored FTP location. Supports raw json or data binding to custom record types"
           },
-          "placeholder": "",
+          "placeholder": "onFileJson",
           "value": "onFileJson",
+          "types": [
+            {
+              "fieldType": "IDENTIFIER",
+              "selected": true
+            }
+          ],
           "enabled": true,
           "editable": false,
           "optional": false,
@@ -449,24 +474,62 @@
         "parameters": [
           {
             "metadata": {
-              "label": "Content",
-              "description": "Parsed JSON file content"
+              "label": "content",
+              "description": "JSON file content. Can be json for raw JSON or a custom record type for data binding"
             },
             "kind": "DATA_BINDING",
             "type": {
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
               "placeholder": "json",
               "value": "json",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
-              "editable": false,
-              "optional": false,
+              "editable": true,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "content",
+                "description": "JSON file content. Can be json for raw JSON or a custom record type for data binding"
+              },
+              "placeholder": "content",
               "value": "content",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
+              "advanced": false
+            },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
               "advanced": false
             },
             "enabled": true,
@@ -478,269 +541,183 @@
           },
           {
             "metadata": {
-              "label": "File Metadata (fileInfo)",
-              "description": "Additional file properties"
+              "label": "fileInfo",
+              "description": "Additional file properties such as size, modification time, and permissions"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "string",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:FileInfo",
               "value": "ftp:FileInfo",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "fileInfo",
+                "description": "Additional file properties such as size, modification time, and permissions"
+              },
+              "placeholder": "fileInfo",
               "value": "fileInfo",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
             "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           },
           {
             "metadata": {
-              "label": "FTP Connection (caller)",
-              "description": "FTP connection for further operations"
+              "label": "caller",
+              "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "string",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:Caller",
               "value": "ftp:Caller",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "caller",
+                "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
+              },
+              "placeholder": "caller",
               "value": "caller",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
-            "enabled": false,
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
+            "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           }
         ],
         "returnType": {
-          "hasError": false,
+          "hasError": true,
           "isGraphqlId": false,
           "metadata": {
-            "label": "Return type",
-            "description": "Return type of the function"
+            "label": "Return Type",
+            "description": "The return type of the function"
           },
-          "placeholder": "json",
+          "placeholder": "error?",
           "value": "error?",
+          "types": [
+            {
+              "fieldType": "TYPE",
+              "selected": true
+            }
+          ],
           "enabled": true,
-          "editable": true,
+          "editable": false,
           "optional": true,
           "advanced": false
         },
         "enabled": false,
         "optional": true,
-        "editable": true,
-        "canAddParameters": false,
-        "codedata": {
-          "moduleName": "ftp"
-        },
-        "properties": {
-          "canDataBind": {
-            "metadata": {
-              "label": "Content Schema",
-              "description": "Define a custom content schema for this handler"
-            },
-            "value": "true",
-            "enabled": false,
-            "editable": true,
-            "optional": false,
-            "advanced": false
-          },
-          "annotations": {
-            "properties": {
-              "postProcessAction": {
-                "metadata": {
-                  "label": "After File Processing",
-                  "description": "Configure actions after file processing"
-                },
-                "value": "",
-                "properties": {
-                  "onSuccess": {
-                    "metadata": {
-                      "label": "Success",
-                      "description": "Action when handler completes without returning an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after successful processing"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after successful processing"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  },
-                  "onError": {
-                    "metadata": {
-                      "label": "Error",
-                      "description": "Action when handler returns an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after error"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after error"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  }
-                },
-                "types": [
-                  {
-                    "selected": true
-                  }
-                ],
-                "enabled": true,
-                "editable": true,
-                "optional": false,
-                "advanced": false
-              }
-            },
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          }
-        }
+        "editable": false,
+        "canAddParameters": false
       },
       {
         "metadata": {
-          "label": "onCreate",
-          "description": "Handle file deletion on remote server"
+          "label": "onFileXml",
+          "description": "Triggered when an XML file is added to the monitored FTP location"
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
-            "label": "XML",
-            "description": "XML file creation handler"
+            "label": "onFileXml",
+            "description": "Triggered when an XML file is added to the monitored FTP location"
           },
-          "placeholder": "xml",
+          "placeholder": "onFileXml",
           "value": "onFileXml",
+          "types": [
+            {
+              "fieldType": "IDENTIFIER",
+              "selected": true
+            }
+          ],
           "enabled": true,
           "editable": false,
           "optional": false,
@@ -749,24 +726,62 @@
         "parameters": [
           {
             "metadata": {
-              "label": "Content",
-              "description": "Parsed XML file content"
+              "label": "content",
+              "description": "XML file content"
             },
-            "kind": "DATA_BINDING",
+            "kind": "REQUIRED",
             "type": {
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
               "placeholder": "xml",
               "value": "xml",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "content",
+                "description": "XML file content"
+              },
+              "placeholder": "content",
               "value": "content",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
+              "advanced": false
+            },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
               "advanced": false
             },
             "enabled": true,
@@ -778,269 +793,183 @@
           },
           {
             "metadata": {
-              "label": "File Metadata (fileInfo)",
-              "description": "Additional file properties"
+              "label": "fileInfo",
+              "description": "Additional file properties such as size, modification time, and permissions"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "string",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:FileInfo",
               "value": "ftp:FileInfo",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "fileInfo",
+                "description": "Additional file properties such as size, modification time, and permissions"
+              },
+              "placeholder": "fileInfo",
               "value": "fileInfo",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
             "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           },
           {
             "metadata": {
-              "label": "FTP Connection (caller)",
-              "description": "FTP connection for further operations"
+              "label": "caller",
+              "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "string",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:Caller",
               "value": "ftp:Caller",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "caller",
+                "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
+              },
+              "placeholder": "caller",
               "value": "caller",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
-            "enabled": false,
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
+            "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           }
         ],
         "returnType": {
-          "hasError": false,
+          "hasError": true,
           "isGraphqlId": false,
           "metadata": {
-            "label": "Return type",
-            "description": "Return type of the function"
+            "label": "Return Type",
+            "description": "The return type of the function"
           },
-          "placeholder": "json",
+          "placeholder": "error?",
           "value": "error?",
+          "types": [
+            {
+              "fieldType": "TYPE",
+              "selected": true
+            }
+          ],
           "enabled": true,
-          "editable": true,
+          "editable": false,
           "optional": true,
           "advanced": false
         },
         "enabled": false,
         "optional": true,
-        "editable": true,
-        "canAddParameters": false,
-        "codedata": {
-          "moduleName": "ftp"
-        },
-        "properties": {
-          "canDataBind": {
-            "metadata": {
-              "label": "Content Schema",
-              "description": "Define a custom content schema for this handler"
-            },
-            "value": "true",
-            "enabled": false,
-            "editable": true,
-            "optional": false,
-            "advanced": false
-          },
-          "annotations": {
-            "properties": {
-              "postProcessAction": {
-                "metadata": {
-                  "label": "After File Processing",
-                  "description": "Configure actions after file processing"
-                },
-                "value": "",
-                "properties": {
-                  "onSuccess": {
-                    "metadata": {
-                      "label": "Success",
-                      "description": "Action when handler completes without returning an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after successful processing"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after successful processing"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  },
-                  "onError": {
-                    "metadata": {
-                      "label": "Error",
-                      "description": "Action when handler returns an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after error"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after error"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  }
-                },
-                "types": [
-                  {
-                    "selected": true
-                  }
-                ],
-                "enabled": true,
-                "editable": true,
-                "optional": false,
-                "advanced": false
-              }
-            },
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          }
-        }
+        "editable": false,
+        "canAddParameters": false
       },
       {
         "metadata": {
-          "label": "onCreate",
-          "description": "Handle file deletion on remote server"
+          "label": "onFileText",
+          "description": "Triggered when a text file is added to the monitored FTP location"
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
-            "label": "TEXT",
-            "description": "Text file creation handler"
+            "label": "onFileText",
+            "description": "Triggered when a text file is added to the monitored FTP location"
           },
-          "placeholder": "",
+          "placeholder": "onFileText",
           "value": "onFileText",
+          "types": [
+            {
+              "fieldType": "IDENTIFIER",
+              "selected": true
+            }
+          ],
           "enabled": true,
           "editable": false,
           "optional": false,
@@ -1049,24 +978,62 @@
         "parameters": [
           {
             "metadata": {
-              "label": "Content",
+              "label": "content",
               "description": "Text file content"
             },
             "kind": "REQUIRED",
             "type": {
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
               "placeholder": "string",
               "value": "string",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "content",
+                "description": "Text file content"
+              },
+              "placeholder": "content",
               "value": "content",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
+              "advanced": false
+            },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
               "advanced": false
             },
             "enabled": true,
@@ -1078,258 +1045,183 @@
           },
           {
             "metadata": {
-              "label": "File Metadata (fileInfo)",
-              "description": "Additional file properties"
+              "label": "fileInfo",
+              "description": "Additional file properties such as size, modification time, and permissions"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "string",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:FileInfo",
               "value": "ftp:FileInfo",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "fileInfo",
+                "description": "Additional file properties such as size, modification time, and permissions"
+              },
+              "placeholder": "fileInfo",
               "value": "fileInfo",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
             "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           },
           {
             "metadata": {
-              "label": "FTP Connection (caller)",
-              "description": "FTP connection for further operations"
+              "label": "caller",
+              "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "string",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:Caller",
               "value": "ftp:Caller",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "caller",
+                "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
+              },
+              "placeholder": "caller",
               "value": "caller",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
-            "enabled": false,
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
+            "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           }
         ],
         "returnType": {
-          "hasError": false,
+          "hasError": true,
           "isGraphqlId": false,
           "metadata": {
-            "label": "Return type",
-            "description": "Return type of the function"
+            "label": "Return Type",
+            "description": "The return type of the function"
           },
-          "placeholder": "json",
+          "placeholder": "error?",
           "value": "error?",
+          "types": [
+            {
+              "fieldType": "TYPE",
+              "selected": true
+            }
+          ],
           "enabled": true,
-          "editable": true,
+          "editable": false,
           "optional": true,
           "advanced": false
         },
         "enabled": false,
         "optional": true,
-        "editable": true,
-        "canAddParameters": false,
-        "codedata": {
-          "moduleName": "ftp"
-        },
-        "properties": {
-          "annotations": {
-            "properties": {
-              "postProcessAction": {
-                "metadata": {
-                  "label": "After File Processing",
-                  "description": "Configure actions after file processing"
-                },
-                "value": "",
-                "properties": {
-                  "onSuccess": {
-                    "metadata": {
-                      "label": "Success",
-                      "description": "Action when handler completes without returning an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after successful processing"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after successful processing"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  },
-                  "onError": {
-                    "metadata": {
-                      "label": "Error",
-                      "description": "Action when handler returns an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after error"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after error"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  }
-                },
-                "types": [
-                  {
-                    "selected": true
-                  }
-                ],
-                "enabled": true,
-                "editable": true,
-                "optional": false,
-                "advanced": false
-              }
-            },
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          }
-        }
+        "editable": false,
+        "canAddParameters": false
       },
       {
         "metadata": {
-          "label": "onCreate",
-          "description": "Handle file deletion on remote server"
+          "label": "onFile",
+          "description": "Triggered when any file is added to the monitored FTP location. Supports raw byte arrays and streaming for large binary files"
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
-            "label": "RAW",
-            "description": "Raw file creation handler"
+            "label": "onFile",
+            "description": "Triggered when any file is added to the monitored FTP location. Supports raw byte arrays and streaming for large binary files"
           },
-          "placeholder": "",
+          "placeholder": "onFile",
           "value": "onFile",
+          "types": [
+            {
+              "fieldType": "IDENTIFIER",
+              "selected": true
+            }
+          ],
           "enabled": true,
           "editable": false,
           "optional": false,
@@ -1338,24 +1230,62 @@
         "parameters": [
           {
             "metadata": {
-              "label": "Content",
-              "description": "Raw file content as byte array"
+              "label": "content",
+              "description": "Raw file content as byte[] or stream<byte[]> for large files"
             },
             "kind": "REQUIRED",
             "type": {
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
               "placeholder": "byte[]",
               "value": "byte[]",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
-              "editable": false,
-              "optional": false,
+              "editable": true,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "content",
+                "description": "Raw file content as byte[] or stream<byte[]> for large files"
+              },
+              "placeholder": "content",
               "value": "content",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
+              "advanced": false
+            },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
               "advanced": false
             },
             "enabled": true,
@@ -1367,269 +1297,183 @@
           },
           {
             "metadata": {
-              "label": "File Metadata (fileInfo)",
-              "description": "Additional file properties"
+              "label": "fileInfo",
+              "description": "Additional file properties such as size, modification time, and permissions"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "string",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:FileInfo",
               "value": "ftp:FileInfo",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "fileInfo",
+                "description": "Additional file properties such as size, modification time, and permissions"
+              },
+              "placeholder": "fileInfo",
               "value": "fileInfo",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
             "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           },
           {
             "metadata": {
-              "label": "FTP Connection (caller)",
-              "description": "FTP connection for further operations"
+              "label": "caller",
+              "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "string",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:Caller",
               "value": "ftp:Caller",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "caller",
+                "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
+              },
+              "placeholder": "caller",
               "value": "caller",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
-            "enabled": false,
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
+            "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           }
         ],
         "returnType": {
-          "hasError": false,
+          "hasError": true,
           "isGraphqlId": false,
           "metadata": {
-            "label": "Return type",
-            "description": "Return type of the function"
+            "label": "Return Type",
+            "description": "The return type of the function"
           },
-          "placeholder": "json",
+          "placeholder": "error?",
           "value": "error?",
+          "types": [
+            {
+              "fieldType": "TYPE",
+              "selected": true
+            }
+          ],
           "enabled": true,
-          "editable": true,
+          "editable": false,
           "optional": true,
           "advanced": false
         },
         "enabled": false,
         "optional": true,
-        "editable": true,
-        "canAddParameters": false,
-        "codedata": {
-          "moduleName": "ftp"
-        },
-        "properties": {
-          "stream": {
-            "metadata": {
-              "label": "Stream (Large Files)",
-              "description": "Process the file content in chunks"
-            },
-            "value": "true",
-            "enabled": false,
-            "editable": true,
-            "optional": false,
-            "advanced": false
-          },
-          "annotations": {
-            "properties": {
-              "postProcessAction": {
-                "metadata": {
-                  "label": "After File Processing",
-                  "description": "Configure actions after file processing"
-                },
-                "value": "",
-                "properties": {
-                  "onSuccess": {
-                    "metadata": {
-                      "label": "Success",
-                      "description": "Action when handler completes without returning an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after successful processing"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after successful processing"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  },
-                  "onError": {
-                    "metadata": {
-                      "label": "Error",
-                      "description": "Action when handler returns an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after error"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after error"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  }
-                },
-                "types": [
-                  {
-                    "selected": true
-                  }
-                ],
-                "enabled": true,
-                "editable": true,
-                "optional": false,
-                "advanced": false
-              }
-            },
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          }
-        }
+        "editable": false,
+        "canAddParameters": false
       },
       {
         "metadata": {
-          "label": "onDelete",
-          "description": "Handle file deletion on remote server"
+          "label": "onFileDelete",
+          "description": "Triggered when a file is deleted from the monitored FTP location"
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
             "label": "onFileDelete",
-            "description": "Handle file deletion events"
+            "description": "Triggered when a file is deleted from the monitored FTP location"
           },
-          "placeholder": "",
+          "placeholder": "onFileDelete",
           "value": "onFileDelete",
+          "types": [
+            {
+              "fieldType": "IDENTIFIER",
+              "selected": true
+            }
+          ],
           "enabled": true,
           "editable": false,
           "optional": false,
@@ -1638,28 +1482,66 @@
         "parameters": [
           {
             "metadata": {
-              "label": "deleteFiles",
-              "description": "The FTP Payload"
+              "label": "deletedFile",
+              "description": "Path of the deleted file"
             },
             "kind": "REQUIRED",
             "type": {
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
               "placeholder": "string",
               "value": "string",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "",
-              "value": "deleteFiles",
+              "metadata": {
+                "label": "deletedFile",
+                "description": "Path of the deleted file"
+              },
+              "placeholder": "deletedFile",
+              "value": "deletedFile",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
             "enabled": true,
-            "editable": false,
+            "editable": true,
             "optional": false,
             "advanced": false,
             "hidden": false,
@@ -1667,71 +1549,116 @@
           },
           {
             "metadata": {
-              "label": "FTP Connection (caller)",
-              "description": "FTP connection for further operations"
+              "label": "caller",
+              "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
             },
             "kind": "REQUIRED",
             "type": {
-              "placeholder": "",
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "ftp:Caller",
               "value": "ftp:Caller",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
-              "placeholder": "request",
+              "metadata": {
+                "label": "caller",
+                "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
+              },
+              "placeholder": "caller",
               "value": "caller",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
-            "enabled": false,
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
+            "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           }
         ],
         "returnType": {
-          "hasError": false,
+          "hasError": true,
           "isGraphqlId": false,
           "metadata": {
-            "label": "Return type",
-            "description": "Return type of the function"
+            "label": "Return Type",
+            "description": "The return type of the function"
           },
-          "placeholder": "json",
+          "placeholder": "error?",
           "value": "error?",
+          "types": [
+            {
+              "fieldType": "TYPE",
+              "selected": true
+            }
+          ],
           "enabled": true,
-          "editable": true,
+          "editable": false,
           "optional": true,
           "advanced": false
         },
         "enabled": false,
         "optional": true,
-        "editable": true,
-        "canAddParameters": false,
-        "codedata": {
-          "moduleName": "ftp"
-        },
-        "properties": {}
+        "editable": false,
+        "canAddParameters": false
       },
       {
         "metadata": {
           "label": "onError",
-          "description": "Handle file processing errors",
-          "notice": "On Error runs only for errors when file content cannot be mapped to the Content Schema."
+          "description": "Triggered when an error occurs during file processing. Implement this to handle failures gracefully"
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
             "label": "onError",
-            "description": "Error handling function"
+            "description": "Triggered when an error occurs during file processing. Implement this to handle failures gracefully"
           },
-          "placeholder": "",
+          "placeholder": "onError",
           "value": "onError",
+          "types": [
+            {
+              "fieldType": "IDENTIFIER",
+              "selected": true
+            }
+          ],
           "enabled": true,
           "editable": false,
           "optional": false,
@@ -1740,28 +1667,66 @@
         "parameters": [
           {
             "metadata": {
-              "label": "Error",
+              "label": "ftpError",
               "description": "The error that occurred during file processing"
             },
             "kind": "REQUIRED",
             "type": {
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
               "placeholder": "ftp:Error",
               "value": "ftp:Error",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
+              "metadata": {
+                "label": "ftpError",
+                "description": "The error that occurred during file processing"
+              },
               "placeholder": "ftpError",
               "value": "ftpError",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
             "enabled": true,
-            "editable": false,
+            "editable": true,
             "optional": false,
             "advanced": false,
             "hidden": false,
@@ -1769,219 +1734,100 @@
           },
           {
             "metadata": {
-              "label": "FTP Connection (caller)",
-              "description": "FTP connection for further operations"
+              "label": "caller",
+              "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
             },
             "kind": "REQUIRED",
             "type": {
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
               "placeholder": "ftp:Caller",
               "value": "ftp:Caller",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": false,
-              "optional": false,
+              "optional": true,
               "advanced": false
             },
             "name": {
+              "metadata": {
+                "label": "caller",
+                "description": "Optional FTP connection for performing additional file operations (move, delete) within this handler"
+              },
               "placeholder": "caller",
               "value": "caller",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
               "enabled": true,
               "editable": true,
               "optional": false,
               "advanced": false
             },
-            "enabled": false,
+            "defaultValue": {
+              "metadata": {
+                "label": "Default Value",
+                "description": "The default value of the parameter"
+              },
+              "placeholder": "",
+              "value": "",
+              "types": [
+                {
+                  "fieldType": "EXPRESSION",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": true,
+              "advanced": false
+            },
+            "enabled": true,
             "editable": true,
-            "optional": true,
-            "advanced": true,
+            "optional": false,
+            "advanced": false,
             "hidden": false,
             "isGraphqlId": false
           }
         ],
         "returnType": {
-          "hasError": false,
+          "hasError": true,
           "isGraphqlId": false,
           "metadata": {
-            "label": "Return type",
-            "description": "Return type of the function"
+            "label": "Return Type",
+            "description": "The return type of the function"
           },
           "placeholder": "error?",
           "value": "error?",
+          "types": [
+            {
+              "fieldType": "TYPE",
+              "selected": true
+            }
+          ],
           "enabled": true,
-          "editable": true,
+          "editable": false,
           "optional": true,
           "advanced": false
         },
         "enabled": false,
         "optional": true,
-        "editable": true,
-        "canAddParameters": false,
-        "codedata": {
-          "moduleName": "ftp"
-        },
-        "properties": {
-          "annotations": {
-            "properties": {
-              "postProcessAction": {
-                "metadata": {
-                  "label": "After File Processing",
-                  "description": "Configure actions after file processing"
-                },
-                "value": "",
-                "properties": {
-                  "onSuccess": {
-                    "metadata": {
-                      "label": "Success",
-                      "description": "Action when handler completes without returning an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after successful error handling"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after successful error handling"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  },
-                  "onError": {
-                    "metadata": {
-                      "label": "Error",
-                      "description": "Action when handler returns an error"
-                    },
-                    "value": "",
-                    "choices": [
-                      {
-                        "metadata": {
-                          "label": "Move",
-                          "description": "Move the file to a different location after error handling failure"
-                        },
-                        "value": "MOVE",
-                        "properties": {
-                          "moveTo": {
-                            "metadata": {
-                              "label": "Move To",
-                              "description": "Destination path"
-                            },
-                            "value": "",
-                            "types": [
-                              {
-                                "fieldType": "TEXT",
-                                "ballerinaType": "string",
-                                "selected": true
-                              },
-                              {
-                                "fieldType": "EXPRESSION",
-                                "ballerinaType": "string",
-                                "selected": false
-                              }
-                            ],
-                            "enabled": true,
-                            "editable": true,
-                            "optional": false,
-                            "advanced": false
-                          }
-                        },
-                        "enabled": true,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      },
-                      {
-                        "metadata": {
-                          "label": "Delete",
-                          "description": "Delete the file after error handling failure"
-                        },
-                        "value": "DELETE",
-                        "enabled": false,
-                        "editable": false,
-                        "optional": false,
-                        "advanced": false
-                      }
-                    ],
-                    "types": [
-                      {
-                        "fieldType": "CHOICE",
-                        "selected": true
-                      }
-                    ],
-                    "enabled": true,
-                    "editable": true,
-                    "optional": false,
-                    "advanced": false
-                  }
-                },
-                "types": [
-                  {
-                    "selected": true
-                  }
-                ],
-                "enabled": true,
-                "editable": true,
-                "optional": false,
-                "advanced": false
-              }
-            },
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          }
-        }
+        "editable": false,
+        "canAddParameters": false
       },
       {
         "metadata": {
-          "label": "EVENT",
+          "label": "",
           "description": ""
         },
         "kind": "REMOTE",

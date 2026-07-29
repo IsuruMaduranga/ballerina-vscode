@@ -143,8 +143,8 @@
       },
       "annotServiceConfig": {
         "metadata": {
-          "label": "Service Config",
-          "description": "Advanced CDC configuration"
+          "label": "ServiceConfig",
+          "description": "ServiceConfig"
         },
         "codedata": {
           "type": "ANNOTATION_ATTACHMENT",
@@ -154,23 +154,8 @@
         "value": "{\n    tables: \"db1.schema1.t1\"\n}",
         "types": [
           {
-            "fieldType": "RECORD_MAP_EXPRESSION",
-            "ballerinaType": "cdc:CdcServiceConfig",
-            "typeMembers": [
-              {
-                "type": "cdc:CdcServiceConfig",
-                "packageInfo": "ballerinax:cdc:1.3.0",
-                "packageName": "cdc",
-                "kind": "RECORD_TYPE",
-                "selected": true
-              }
-            ],
-            "selected": true
-          },
-          {
             "fieldType": "EXPRESSION",
-            "ballerinaType": "cdc:CdcServiceConfig",
-            "selected": false
+            "selected": true
           }
         ],
         "enabled": true,
@@ -223,7 +208,7 @@
         "parameters": [
           {
             "metadata": {
-              "label": "Database Entry",
+              "label": "afterEntry",
               "description": "The existing record from the monitored table"
             },
             "kind": "DATA_BINDING",
@@ -233,7 +218,7 @@
                 "description": "The type of the parameter"
               },
               "placeholder": "record {}",
-              "value": "AfterEntrySchema",
+              "value": "record {}",
               "types": [
                 {
                   "fieldType": "TYPE",
@@ -281,7 +266,7 @@
               "optional": true,
               "advanced": false
             },
-            "enabled": true,
+            "enabled": false,
             "editable": true,
             "optional": false,
             "advanced": false,
@@ -391,16 +376,6 @@
               "line": 17,
               "offset": 5
             }
-          },
-          "moduleName": "mssql"
-        },
-        "properties": {
-          "defaultTypeTab": {
-            "value": "create-from-scratch",
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
           }
         }
       },
@@ -431,7 +406,7 @@
         "parameters": [
           {
             "metadata": {
-              "label": "Database Entry",
+              "label": "afterEntry",
               "description": "The new record created in the monitored table"
             },
             "kind": "DATA_BINDING",
@@ -587,19 +562,7 @@
         "enabled": false,
         "optional": true,
         "editable": false,
-        "canAddParameters": false,
-        "codedata": {
-          "moduleName": "mssql"
-        },
-        "properties": {
-          "defaultTypeTab": {
-            "value": "create-from-scratch",
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          }
-        }
+        "canAddParameters": false
       },
       {
         "metadata": {
@@ -628,10 +591,10 @@
         "parameters": [
           {
             "metadata": {
-              "label": "Database Entry",
+              "label": "beforeEntry",
               "description": "The record before the update in the monitored table"
             },
-            "kind": "DATA_BINDING",
+            "kind": "REQUIRED",
             "type": {
               "metadata": {
                 "label": "Parameter Type",
@@ -656,7 +619,7 @@
                 "description": "The record before the update in the monitored table"
               },
               "placeholder": "beforeEntry",
-              "value": "beforeEntry",
+              "value": "afterEntry",
               "types": [
                 {
                   "fieldType": "IDENTIFIER",
@@ -686,7 +649,7 @@
               "optional": true,
               "advanced": false
             },
-            "enabled": false,
+            "enabled": true,
             "editable": true,
             "optional": false,
             "advanced": false,
@@ -695,7 +658,7 @@
           },
           {
             "metadata": {
-              "label": "Database Entry",
+              "label": "afterEntry",
               "description": "The record after the update in the monitored table"
             },
             "kind": "DATA_BINDING",
@@ -753,7 +716,7 @@
               "optional": true,
               "advanced": false
             },
-            "enabled": true,
+            "enabled": false,
             "editable": true,
             "optional": false,
             "advanced": false,
@@ -863,16 +826,6 @@
               "line": 25,
               "offset": 5
             }
-          },
-          "moduleName": "mssql"
-        },
-        "properties": {
-          "defaultTypeTab": {
-            "value": "create-from-scratch",
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
           }
         }
       },
@@ -903,7 +856,7 @@
         "parameters": [
           {
             "metadata": {
-              "label": "Database Entry",
+              "label": "beforeEntry",
               "description": "The record before the deletion in the monitored table"
             },
             "kind": "DATA_BINDING",
@@ -1059,19 +1012,7 @@
         "enabled": false,
         "optional": true,
         "editable": false,
-        "canAddParameters": false,
-        "codedata": {
-          "moduleName": "mssql"
-        },
-        "properties": {
-          "defaultTypeTab": {
-            "value": "create-from-scratch",
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          }
-        }
+        "canAddParameters": false
       },
       {
         "metadata": {
@@ -1189,19 +1130,7 @@
         "enabled": false,
         "optional": true,
         "editable": false,
-        "canAddParameters": false,
-        "codedata": {
-          "moduleName": "mssql"
-        },
-        "properties": {
-          "defaultTypeTab": {
-            "value": "create-from-scratch",
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          }
-        }
+        "canAddParameters": false
       }
     ]
   }

@@ -139,6 +139,16 @@ public class PackageUtil {
      * Retrieves a package matching the specified organization, name, and version. If the package is not found in the
      * local cache, it attempts to fetch it from the remote repository.
      *
+     * <p>Tries online resolution first (Central); if that doesn't resolve — e.g. a package that exists
+     * only in a local/custom repository, such as a connector under active local development that
+     * hasn't been published to Central yet — falls back to an offline resolution, which picks up
+     * whatever is already present in any locally configured repository. Without this fallback, a
+     * pinned version is only ever visible via Central, even though the version-less {@link
+     * #getModulePackage(BuildProject, String, String)} overload already resolves such packages (its
+     * offline metadata pre-check sees local repositories) — an asymmetry that silently breaks any
+     * caller that re-resolves a package by a version already echoed back from that first, version-less
+     * lookup.
+     *
      * @param buildProject The build project context
      * @param org          The organization name of the package
      * @param name         The name of the package
@@ -149,12 +159,12 @@ public class PackageUtil {
                                                      String version) {
         ResolutionRequest resolutionRequest = ResolutionRequest.from(
                 PackageDescriptor.from(PackageOrg.from(org), PackageName.from(name), PackageVersion.from(version)));
+        PackageResolver packageResolver = buildProject.projectEnvironmentContext().getService(PackageResolver.class);
 
-        Collection<ResolutionResponse> resolutionResponses =
-                buildProject.projectEnvironmentContext().getService(PackageResolver.class)
-                        .resolvePackages(Collections.singletonList(resolutionRequest),
-                                ResolutionOptions.builder().setOffline(false).setSticky(false).build());
-        Optional<ResolutionResponse> resolutionResponse = resolutionResponses.stream().findFirst();
+        Optional<ResolutionResponse> resolutionResponse = resolveResponse(packageResolver, resolutionRequest, false);
+        if (resolutionResponse.isEmpty()) {
+            resolutionResponse = resolveResponse(packageResolver, resolutionRequest, true);
+        }
         if (resolutionResponse.isEmpty()) {
             return Optional.empty();
         }
@@ -164,6 +174,24 @@ public class PackageUtil {
         defaultBuilder.addCompilationCacheFactory(TempDirCompilationCache::from);
         BalaProject balaProject = BalaProject.loadProject(defaultBuilder, balaPath);
         return Optional.ofNullable(balaProject.currentPackage());
+    }
+
+    /**
+     * A response is only usable when it actually {@code RESOLVED} — {@code resolvePackages} can return
+     * a non-empty collection containing an {@code UNRESOLVED} entry (with a {@code null} {@code
+     * resolvedPackage()}) rather than an empty collection, which previously slipped past an {@code
+     * isEmpty()} check and threw a {@code NullPointerException} on {@code resolvedPackage().project()}
+     * — silently swallowed by callers' broad {@code catch (Throwable)}, masquerading as "package not
+     * found".
+     */
+    private static Optional<ResolutionResponse> resolveResponse(PackageResolver packageResolver,
+                                                                 ResolutionRequest resolutionRequest,
+                                                                 boolean offline) {
+        return packageResolver.resolvePackages(Collections.singletonList(resolutionRequest),
+                        ResolutionOptions.builder().setOffline(offline).setSticky(false).build())
+                .stream()
+                .filter(response -> response.resolutionStatus() == ResolutionResponse.ResolutionStatus.RESOLVED)
+                .findFirst();
     }
 
     public static Optional<Package> getModulePackage(BuildProject buildProject, String org, String name) {

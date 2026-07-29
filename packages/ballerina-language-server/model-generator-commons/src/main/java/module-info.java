@@ -33,4 +33,7 @@ module io.ballerina.model.generator.commons {
     requires java.sql;
 
     exports io.ballerina.modelgenerator.commons;
+    exports io.ballerina.modelgenerator.commons.trigger;
+    exports io.ballerina.modelgenerator.commons.trigger.models;
+    exports io.ballerina.modelgenerator.commons.trigger.utils;
 }

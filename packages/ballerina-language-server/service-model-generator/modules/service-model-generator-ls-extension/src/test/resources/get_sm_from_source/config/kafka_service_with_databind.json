@@ -126,7 +126,9 @@
         },
         "placeholder": "false",
         "value": {
-          "Topic(s)": []
+          "Topic(s)": [
+            "my-topic"
+          ]
         },
         "types": [
           {
@@ -315,45 +317,6 @@
             "advanced": false,
             "hidden": false,
             "isGraphqlId": false
-          },
-          {
-            "metadata": {
-              "label": "Data Binding",
-              "description": "Data binding parameter"
-            },
-            "kind": "DATA_BINDING",
-            "type": {
-              "value": "Order",
-              "types": [
-                {
-                  "fieldType": "TYPE",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": false,
-              "optional": false,
-              "advanced": false
-            },
-            "name": {
-              "value": "messages",
-              "types": [
-                {
-                  "fieldType": "IDENTIFIER",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": false,
-              "optional": false,
-              "advanced": false
-            },
-            "enabled": true,
-            "editable": true,
-            "optional": false,
-            "advanced": false,
-            "hidden": false,
-            "isGraphqlId": false
           }
         ],
         "returnType": {
@@ -391,30 +354,6 @@
               "line": 11,
               "offset": 5
             }
-          },
-          "moduleName": "kafka"
-        },
-        "properties": {
-          "wrapperTypeName": {
-            "value": "KafkaAnydataConsumer",
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          },
-          "payloadFieldName": {
-            "value": "value",
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
-          },
-          "canDataBind": {
-            "value": "true",
-            "enabled": false,
-            "editable": false,
-            "optional": false,
-            "advanced": false
           }
         }
       },

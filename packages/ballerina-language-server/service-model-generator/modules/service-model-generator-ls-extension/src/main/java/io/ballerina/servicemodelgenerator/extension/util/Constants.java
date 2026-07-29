@@ -40,6 +40,7 @@ public class Constants {
     public static final String TWO_NEW_LINES = NEW_LINE + NEW_LINE;
     public static final String NEW_LINE_WITH_TAB = NEW_LINE + TAB;
     public static final String IMPORT_STMT_TEMPLATE = "%nimport %s/%s;%n";
+    public static final String IMPORT_STMT_TEMPLATE_WITH_ALIAS = "%nimport %s/%s as %s;%n";
     public static final String AT = "@";
     public static final String COLON = ":";
     public static final String COMMA = ",";
@@ -67,6 +68,8 @@ public class Constants {
     public static final String SF = "salesforce";
     public static final String TRIGGER_GITHUB = "trigger.github";
     public static final String TRIGGER_SHOPIFY = "trigger.shopify";
+    public static final String TRIGGER_TWILIO = "trigger.twilio";
+    public static final String SOLACE_JMS = "solace.jms";
     public static final String TRIGGER_HUBSPOT = "trigger.hubspot";
     public static final String MSSQL = "mssql";
     public static final String POSTGRESQL = "postgresql";
@@ -110,6 +113,10 @@ public class Constants {
     public static final String DB_KIND_OPTIONAL = "OPTIONAL";
 
     public static final String CD_TYPE_ANNOTATION_ATTACHMENT = "ANNOTATION_ATTACHMENT";
+    // Schema-driven (unified TriggerUISchemaModel) service-level annotation container, e.g. RabbitMQ's
+    // `serviceConfig` (-> @rabbitmq:ServiceConfig). Distinct from CD_TYPE_ANNOTATION_ATTACHMENT, which
+    // is the legacy hardcoded-builder convention (property keyed `annot<Name>`).
+    public static final String CD_TYPE_SERVICE_ANNOTATION = "SERVICE_ANNOTATION";
     public static final String CD_TYPE_INCLUDE_RECORD_PARAM = "INCLUDE_RECORD_PARAM";
 
     public static final String ARG_TYPE_LISTENER_VAR_NAME = "LISTENER_VAR_NAME";

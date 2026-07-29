@@ -107,14 +107,6 @@ public class FTPListenerUtil {
 
     /**
      * Shapes FTP listener properties for legacy/new flows in attach-listener create flow.
-     */
-    public static void adjustFtpListenerModelForDeprecatedMode(Listener listenerModel,
-                                                               boolean removeDeprecated) {
-        adjustFtpListenerModelForDeprecatedMode(listenerModel, removeDeprecated, null, null);
-    }
-
-    /**
-     * Shapes FTP listener properties for legacy/new flows in attach-listener create flow.
      * In addition, this method can suggest a unique listener name using semantic model + source document.
      */
     public static void adjustFtpListenerModelForDeprecatedMode(Listener listenerModel,

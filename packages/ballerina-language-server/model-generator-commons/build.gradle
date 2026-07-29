@@ -64,3 +64,9 @@ compileJava {
         classpath = files()
     }
 }
+
+test {
+    useTestNG() {
+        suites "src/test/resources/testng.xml"
+    }
+}

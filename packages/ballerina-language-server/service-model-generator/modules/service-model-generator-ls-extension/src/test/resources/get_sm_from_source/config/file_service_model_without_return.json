@@ -126,7 +126,9 @@
         },
         "placeholder": "false",
         "value": {
-          "Path": []
+          "Path": [
+            "/tmp"
+          ]
         },
         "types": [
           {

@@ -24,11 +24,11 @@ import io.ballerina.compiler.syntax.tree.Node;
 import io.ballerina.compiler.syntax.tree.NodeList;
 import io.ballerina.compiler.syntax.tree.ServiceDeclarationNode;
 import io.ballerina.modelgenerator.commons.AnnotationAttachment;
-import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ServiceDatabaseManager;
 import io.ballerina.modelgenerator.commons.ServiceDeclaration;
 import io.ballerina.modelgenerator.commons.ServiceInitInfo;
 import io.ballerina.modelgenerator.commons.ServiceInitProperty;
+import io.ballerina.modelgenerator.commons.trigger.utils.TriggerArtifactResolver;
 import io.ballerina.openapi.core.generators.common.exception.BallerinaOpenApiException;
 import io.ballerina.servicemodelgenerator.extension.builder.ServiceBuilderRouter;
 import io.ballerina.servicemodelgenerator.extension.builder.ServiceNodeBuilder;
@@ -309,7 +309,8 @@ public abstract class AbstractServiceBuilder implements ServiceNodeBuilder {
                 .setPackageName(pkg.name())
                 .setModuleName(context.moduleName())
                 .setType(context.moduleName())
-                .setIcon(CommonUtils.generateIcon(pkg.org(), pkg.name(), pkg.version()))
+                .setIcon(TriggerArtifactResolver.resolveIcon(pkg.org(), pkg.name(), context.moduleName(),
+                        pkg.version()).url())
                 .build();
 
         for (ServiceInitProperty property : initInfo.properties()) {
@@ -352,7 +353,8 @@ public abstract class AbstractServiceBuilder implements ServiceNodeBuilder {
 
         String label = serviceTemplate.displayName();
         Value documentation = getServiceDocumentation(ServiceClassUtil.ServiceClassContext.SERVICE_DIAGRAM);
-        String icon = CommonUtils.generateIcon(pkg.org(), pkg.name(), pkg.version());
+        String icon = TriggerArtifactResolver.resolveIcon(pkg.org(), pkg.name(), context.moduleName(),
+                pkg.version()).url();
 
         Map<String, Value> properties = new LinkedHashMap<>();
 
@@ -552,12 +554,12 @@ public abstract class AbstractServiceBuilder implements ServiceNodeBuilder {
      * @param serviceNode  the service declaration node from source
      * @param context      the model context
      */
-    private void populateServiceModelFromSource(Service serviceModel, ServiceDeclarationNode serviceNode,
+    protected void populateServiceModelFromSource(Service serviceModel, ServiceDeclarationNode serviceNode,
                                                 ModelFromSourceContext context) {
         extractServicePathInfo(serviceNode, serviceModel);
 
         List<Function> functionsInSource = extractFunctionsFromSource(serviceNode);
-        updateServiceInfoNew(serviceModel, functionsInSource);
+        mergeSourceFunctions(serviceModel, functionsInSource);
 
         // Set code metadata
         Codedata codedata = new Codedata.Builder()
@@ -574,6 +576,19 @@ public abstract class AbstractServiceBuilder implements ServiceNodeBuilder {
         updateAnnotationAttachmentProperty(serviceNode, serviceModel);
         updateListenerItems(context.moduleName(), context.semanticModel(), context.project(), serviceModel);
         updateReadOnlyMetadataWithAnnotations(serviceModel, serviceNode, context);
+    }
+
+    /**
+     * Merges the functions parsed from the user's source into the service template. The default
+     * merge marks template functions present in the source as enabled and appends unknown source
+     * functions; builders with richer templates (e.g. the schema-driven trigger catalog) override
+     * this to enrich the source functions instead.
+     *
+     * @param serviceModel      the service template being populated
+     * @param functionsInSource the functions parsed from the service declaration
+     */
+    protected void mergeSourceFunctions(Service serviceModel, List<Function> functionsInSource) {
+        updateServiceInfoNew(serviceModel, functionsInSource);
     }
 
     /**
