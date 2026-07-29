@@ -1,0 +1,20 @@
+{
+  "ftp": "trigger-models/ftp.json",
+  "file": "trigger-models/file.json",
+  "kafka": "trigger-models/kafka.json",
+  "rabbitmq": "trigger-models/rabbitmq.json",
+  "mqtt": "trigger-models/mqtt.json",
+  "trigger.github": "trigger-models/trigger.github.json",
+  "asb": "trigger-models/asb.json",
+  "salesforce": "trigger-models/salesforce.json",
+  "trigger.twilio": "trigger-models/trigger.twilio.json",
+  "trigger.shopify": "trigger-models/trigger.shopify.json",
+  "mssql": "trigger-models/mssql.json",
+  "mysql": "trigger-models/mysql.json",
+  "postgresql": "trigger-models/postgresql.json",
+  "trigger.hubspot": "trigger-models/trigger.hubspot.json",
+  "mcp": [
+    { "minVersion": "1.2.0", "resource": "trigger-models/mcp.json" },
+    { "resource": "trigger-models/mcp_1.0.3.json" }
+  ]
+}

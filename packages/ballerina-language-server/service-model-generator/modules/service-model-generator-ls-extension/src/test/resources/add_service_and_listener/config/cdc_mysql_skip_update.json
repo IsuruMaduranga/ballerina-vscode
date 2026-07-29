@@ -269,7 +269,7 @@
             "character": 0
           }
         },
-        "newText": "\nimport ballerinax/mysql;\n"
+        "newText": "\nimport ballerinax/mysql;\n\nimport ballerinax/cdc;\n\nimport ballerinax/mysql.cdc.driver as _;\n"
       },
       {
         "range": {
@@ -282,7 +282,7 @@
             "character": 0
           }
         },
-        "newText": "\nlistener mysql:Listener mysqlCdcListener = new (database = {hostname : \"localhost\", port : 3306, username : \"root\", password : \"Test@1234\", includedDatabases : [\"testdb\"]});\nservice mysql:Service on mysqlCdcListener {\n\n}\n"
+        "newText": "\nlistener mysql:CdcListener mysqlCdcListener = new (database = {hostname : \"localhost\", port : 3306, username : \"root\", password : \"Test@1234\", includedDatabases : [\"testdb\"]}, options = {skippedOperations: [\"u\"]});\nservice cdc:Service on mysqlCdcListener {\n\n}\n"
       }
     ]
   }
