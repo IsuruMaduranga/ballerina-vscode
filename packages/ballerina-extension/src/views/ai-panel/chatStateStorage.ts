@@ -975,6 +975,7 @@ export class ChatStateStorage {
 
         generation.reviewState.status = 'accepted';
         generation.reviewState.affectedPackagePaths = [];
+        generation.reviewState.reviewView = undefined;
 
         const thread = this.getOrCreateThread(projectRootPath, threadId);
         thread.updatedAt = Date.now();
@@ -999,6 +1000,7 @@ export class ChatStateStorage {
 
         generation.reviewState.status = 'reverted';
         generation.reviewState.affectedPackagePaths = [];
+        generation.reviewState.reviewView = undefined;
 
         const thread = this.getOrCreateThread(projectRootPath, threadId);
         thread.updatedAt = Date.now();

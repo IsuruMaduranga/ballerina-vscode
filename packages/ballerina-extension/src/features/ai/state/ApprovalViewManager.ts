@@ -16,11 +16,9 @@
  * under the License.
  */
 
-import * as fs from 'fs';
 import { MACHINE_VIEW, EVENT_TYPE, VisualizerLocation, PopupVisualizerLocation, AgentMetadata, navigateReviewIndex, reviewModeOpened, reviewModeClosed, ReviewModeData } from '@wso2/ballerina-core';
 import { AiPanelWebview } from '../../../views/ai-panel/webview';
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
-import { getPendingReviewRestore, clearPendingReviewRestore } from './reviewRestoreStore';
 import { sendReviewRestoreDidOpenBatch } from '../utils/project/ls-schema-notifications';
 import { VisualizerWebview } from '../../../views/visualizer/webview';
 import { openView as openMainView, StateMachine } from '../../../stateMachine';
@@ -517,66 +515,38 @@ export class ApprovalViewManager {
     }
 
     /**
-     * Rebuild ReviewModeData for the pending review after an extension host
-     * restart: the review payload survives in the workspace Memento
-     * (reviewRestoreStore) and the checkpoint snapshot in chatStateStorage,
-     * but the Language Server restarted with the in-memory ai:// (modified)
-     * and file:// (original) documents — so the modified files are re-opened
-     * in the LS before reopening the view.
+     * Rebuild ReviewModeData for the active thread's revertible generation, for a panel that lost
+     * its cached copy. The Language Server may have restarted without the in-memory ai:// (modified)
+     * and file:// (original) documents, so the modified files are re-opened in the LS first.
      */
     private async rebuildReviewDataFromStorage(): Promise<ReviewModeData | null> {
         const ctx = StateMachine.context();
-        const restore = getPendingReviewRestore();
-        if (!restore) {
+        const projectRootPath = ctx.workspacePath || ctx.projectPath || '';
+        const threadId = chatStateStorage.getActiveThreadId(projectRootPath);
+        const generation = chatStateStorage.getDoneGeneration(projectRootPath, threadId);
+        const review = generation?.reviewState;
+        // reviewView is runtime-only, so an extension-host restart leaves the generation
+        // revertible but its diff view unrebuildable.
+        if (!review?.reviewView || !review.tempProjectPath) {
             return null;
         }
-        const projectRootPath = restore.projectRootPath || ctx.workspacePath || ctx.projectPath || '';
-        let threadId = restore.threadId
-            || chatStateStorage.getActiveThread(projectRootPath)?.id
-            || 'default';
-        let generation = chatStateStorage.getGeneration(projectRootPath, threadId, restore.generationId);
-        if (!generation && !restore.threadId) {
-            const located = chatStateStorage.findGenerationScope(projectRootPath, restore.generationId);
-            if (located) {
-                threadId = located.threadId;
-                generation = located.generation;
-            }
-        }
-        if (!generation || generation.reviewState.status !== 'done') {
-            console.error('[ApprovalViewManager] No pending generation for review restore', restore.generationId);
-            // Drop the stale payload so we don't repeat this failed lookup every navigation.
-            await clearPendingReviewRestore();
-            return null;
-        }
-        if (!fs.existsSync(restore.tempProjectPath)) {
-            console.error('[ApprovalViewManager] Temp project of the pending review no longer exists:', restore.tempProjectPath);
-            await clearPendingReviewRestore();
-            return null;
-        }
-
-        // Rehydrate runtime-only state as well as the view. Accept/decline can now clean up
-        // restored temp projects even though chat persistence deliberately omits these fields.
-        chatStateStorage.updateReviewState(projectRootPath, threadId, generation.id, {
-            tempProjectPath: restore.tempProjectPath,
-            affectedPackagePaths: restore.affectedPackagePaths,
-        });
 
         sendReviewRestoreDidOpenBatch(
-            restore.tempProjectPath,
-            restore.modifiedFiles,
-            restore.baselineProjectPath,
+            review.tempProjectPath,
+            review.modifiedFiles,
+            undefined,
             generation.checkpoint?.workspaceSnapshot
         );
 
         return {
             views: [],
             currentIndex: 0,
-            semanticDiffs: restore.semanticDiffs,
-            loadDesignDiagrams: restore.loadDesignDiagrams,
-            affectedPackages: restore.affectedPackagePaths,
-            modifiedFiles: restore.modifiedFiles,
-            tempProjectPath: restore.tempProjectPath,
-            isWorkspace: restore.isWorkspace,
+            semanticDiffs: review.reviewView.semanticDiffs,
+            loadDesignDiagrams: review.reviewView.loadDesignDiagrams,
+            affectedPackages: review.affectedPackagePaths ?? [],
+            modifiedFiles: review.modifiedFiles,
+            tempProjectPath: review.tempProjectPath,
+            isWorkspace: review.reviewView.isWorkspace,
         };
     }
 
@@ -595,9 +565,6 @@ export class ApprovalViewManager {
     clearReviewData(): void {
         this.resetReviewNavigationState();
         this.cachedReviewData = null;
-        // Fire-and-forget: a lost clear only leaves stale restore data, which
-        // rebuildReviewDataFromStorage detects and clears on the next navigation.
-        void clearPendingReviewRestore();
     }
 }
 

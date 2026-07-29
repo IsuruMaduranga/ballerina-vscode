@@ -42,7 +42,6 @@ import { updateAndSaveChat, calculateTotalCost } from '../utils/events';
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
 import * as path from 'path';
 import { approvalViewManager } from '../state/ApprovalViewManager';
-import { savePendingReviewRestore } from '../state/reviewRestoreStore';
 import {
     buildContextManagementOptions,
     detectAppliedCompaction,
@@ -1075,23 +1074,13 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
 
             approvalViewManager.openReviewMode(reviewData, false);
 
-            // The chat persistence schema drops tempProjectPath/affectedPackagePaths, so
-            // stash what the diff view needs to reopen after an extension host restart.
-            await savePendingReviewRestore({
-                generationId: context.messageId,
-                projectRootPath: workspaceId,
-                // Capture the run's own thread — the reader must not re-derive it from
-                // whatever thread happens to be active at restore time.
-                threadId,
+            // Keep what the diff view needs on the generation itself, so reopening resolves against
+            // the thread that owns it rather than a workspace-wide slot.
+            chatStateStorage.updateReviewState(workspaceId, threadId, context.messageId, {
                 tempProjectPath: workingProjectPath,
-                // Direct-edit mode keeps no on-disk baseline copy; the checkpoint snapshot
-                // (fallbackOriginalContents on restore) is the source of pre-generation originals.
-                baselineProjectPath: undefined,
                 modifiedFiles: accumulatedModifiedFiles,
                 affectedPackagePaths: affectedPackages,
-                semanticDiffs,
-                loadDesignDiagrams,
-                isWorkspace,
+                reviewView: { semanticDiffs, loadDesignDiagrams, isWorkspace },
             });
 
             context.eventHandler({

@@ -824,6 +824,15 @@ export interface GenerationReviewState {
     affectedPackagePaths?: string[];
     /** Error message if status is 'error' */
     errorMessage?: string;
+    /**
+     * What ReviewMode needs to reopen, beyond the fields above. Runtime-only and deliberately not
+     * persisted, so it dies with the extension host; revert does not need it.
+     */
+    reviewView?: {
+        semanticDiffs: object[];
+        loadDesignDiagrams: boolean;
+        isWorkspace: boolean;
+    };
 }
 
 /**
