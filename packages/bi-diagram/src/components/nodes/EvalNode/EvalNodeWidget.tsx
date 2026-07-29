@@ -15,9 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/** @jsxImportSource @emotion/react */
 import React from "react";
-import { css } from "@emotion/react";
 import styled from "@emotion/styled";
 import { DiagramEngine, PortWidget } from "@projectstorm/react-diagrams-core";
 import {
@@ -25,7 +23,7 @@ import {
 } from "@wso2/ui-toolkit";
 import { EvalNodeModel } from "./EvalNodeModel";
 import {
-    LABEL_HEIGHT, LABEL_WIDTH, NODE_BORDER_WIDTH, NODE_GAP_X, NODE_HEIGHT, NODE_PADDING, NODE_WIDTH,
+    NODE_BORDER_WIDTH, NODE_HEIGHT, NODE_PADDING, NODE_WIDTH,
 } from "../../../resources/constants";
 import { MoreVertIcon } from "../../../resources/icons";
 import { FlowNode } from "../../../utils/types";
@@ -35,11 +33,11 @@ import { BreakpointMenu } from "../../BreakNodeMenu/BreakNodeMenu";
 import { ThemeListener } from "../../NodeIcon";
 import { useAgentNodeController } from "../AgentWidget/useAgentNodeController";
 import {
-    AGENT_CARD_CONTENT_HEIGHT, AGENT_CARD_HEIGHT, AGENT_CARD_MARGIN_BOTTOM, AGENT_CARD_PADDING,
     DESCRIPTION_HEIGHT,
     DESCRIPTION_LINES, DESCRIPTION_LINE_HEIGHT, DESCRIPTION_MARGIN_Y, ICON_BOX_SIZE,
     HEADER_MARGIN_TOP, HEADER_PADDING_Y, SUBTITLE_LINE_HEIGHT,
-    SUBTITLE_MARGIN_TOP, TITLE_HEIGHT, TITLE_SUBTITLE_GAP, getEvalPresentation,
+    SUBTITLE_MARGIN_TOP, TITLE_HEIGHT, TITLE_SUBTITLE_GAP, ROLE_ROW_GAP, ROLE_ROW_HEIGHT,
+    ROLE_SUMMARY_MARGIN_BOTTOM, ROLE_SUMMARY_PADDING, getEvalPresentation,
 } from "./evalNodePresentation";
 
 const Node = styled.div<{ readOnly: boolean }>`
@@ -140,6 +138,18 @@ const HeaderActions = styled.div`
     flex-shrink: 0;
 `;
 
+const JudgeBadge = styled.span`
+    flex-shrink: 0;
+    margin-right: 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background-color: ${ThemeColors.SECONDARY_CONTAINER};
+    color: ${ThemeColors.ON_SURFACE};
+    font-family: "GilmerMedium";
+    font-size: 9px;
+    letter-spacing: 0.02em;
+`;
+
 const Divider = styled.div`
     width: 100%;
     border-top: 1px dashed ${ThemeColors.OUTLINE_VARIANT};
@@ -162,27 +172,58 @@ const Description = styled.div`
     z-index: 2;
 `;
 
-const AgentCard = styled.div`
+const RoleSummary = styled.div`
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: ${ROLE_ROW_GAP}px;
     width: 100%;
-    height: ${AGENT_CARD_HEIGHT}px;
     box-sizing: border-box;
-    margin: 0 0 ${AGENT_CARD_MARGIN_BOTTOM}px;
-    padding: ${AGENT_CARD_PADDING}px;
+    margin: 0 0 ${ROLE_SUMMARY_MARGIN_BOTTOM}px;
+    padding: ${ROLE_SUMMARY_PADDING}px;
     border: 1px dashed ${ThemeColors.OUTLINE_VARIANT};
     border-radius: 4px;
     z-index: 2;
 `;
 
-const AgentName = styled.div`
+const RoleRow = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: ${ROLE_ROW_HEIGHT}px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+`;
+
+const RoleDetails = styled.div`
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+`;
+
+const RoleLabel = styled.div`
+    color: ${ThemeColors.ON_SURFACE};
+    font-family: "GilmerMedium";
+    font-size: 10px;
+    line-height: 12px;
+    margin-bottom: 3px;
+    opacity: 0.65;
+`;
+
+const RoleValue = styled.div`
+    display: block;
+    width: 100%;
+    min-width: 0;
     font-family: monospace;
-    font-size: 12px;
-    line-height: ${AGENT_CARD_CONTENT_HEIGHT}px;
-    opacity: 0.78;
+    font-size: 11px;
+    line-height: 15px;
+    opacity: 0.7;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -211,7 +252,7 @@ interface EvalNodeWidgetProps {
 export function EvalNodeWidget(props: EvalNodeWidgetProps) {
     const { model, engine, onClick } = props;
     const controller = useAgentNodeController(model);
-    const { onNodeSelect, goToSource, onDeleteNode, addBreakpoint, removeBreakpoint, readOnly, aiNodes } =
+    const { onNodeSelect, goToSource, onDeleteNode, addBreakpoint, removeBreakpoint, readOnly } =
         controller.context;
     const {
         isSelected, isBoxHovered, setIsBoxHovered, anchorEl, setAnchorEl, menuButtonElement, setMenuButtonElement,
@@ -252,13 +293,6 @@ export function EvalNodeWidget(props: EvalNodeWidgetProps) {
         setAnchorEl(event.currentTarget);
     };
 
-    const onModelEditClick = (event: React.MouseEvent<SVGElement>) => {
-        event.stopPropagation();
-        if (!readOnly) {
-            aiNodes?.onModelSelect?.(node);
-        }
-    };
-
     const menuItems: Item[] = [
         { id: "edit", label: "Edit", onClick: () => onNodeClick() },
         { id: "goToSource", label: "Source", onClick: () => onGoToSource() },
@@ -283,7 +317,7 @@ export function EvalNodeWidget(props: EvalNodeWidgetProps) {
                         }
                         : undefined
                 }
-                title="Configure Evaluation"
+                title="Configure evaluation"
             >
                 {hasBreakpoint && (
                     <div
@@ -320,10 +354,11 @@ export function EvalNodeWidget(props: EvalNodeWidgetProps) {
                             />
                         </IconBox>
                         <Header>
-                            <Title>AI Evaluation</Title>
+                            <Title>AI evaluation</Title>
                             <Subtitle title={presentation.subtitle}>{presentation.subtitle}</Subtitle>
                         </Header>
                         <HeaderActions>
+                            {presentation.judgeModel && <JudgeBadge>LLM-as-judge</JudgeBadge>}
                             {hasError && <DiagnosticsPopUp node={node} />}
                             <MenuButton
                                 ref={setMenuButtonElement}
@@ -362,100 +397,44 @@ export function EvalNodeWidget(props: EvalNodeWidgetProps) {
                         </>
                     )}
 
-                    {presentation.agentName && (
-                        <AgentCard>
-                            <Icon
-                                name="bi-ai-agent"
-                                iconSx={{ fontSize: "16px" }}
-                                sx={{ width: 16, height: 16, color: aiColor }}
-                            />
-                            <AgentName title={presentation.agentName}>{presentation.agentName}</AgentName>
-                        </AgentCard>
+                    {(presentation.agentName || presentation.judgeModel) && (
+                        <RoleSummary>
+                            {presentation.agentName && (
+                                <RoleRow>
+                                    <Icon
+                                        name="bi-ai-agent"
+                                        iconSx={{ fontSize: "20px" }}
+                                        sx={{ width: 20, height: 20, color: aiColor }}
+                                    />
+                                    <RoleDetails>
+                                        <RoleLabel>Target agent</RoleLabel>
+                                        <RoleValue title={presentation.agentName}>{presentation.agentName}</RoleValue>
+                                    </RoleDetails>
+                                </RoleRow>
+                            )}
+                            {presentation.judgeModel && (
+                                <RoleRow>
+                                    {presentation.judgeModel.isDefault ? (
+                                        <Icon name="bi-wso2" sx={{ fontSize: 20, width: 20, height: 20 }} />
+                                    ) : (
+                                        getAIModuleIcon(presentation.judgeModel.type, 20)
+                                        ?? (presentation.judgeModel.iconUrl
+                                            ? <img src={presentation.judgeModel.iconUrl} style={{ width: 20, height: 20 }} alt="" />
+                                            : <DefaultLlmIcon size={20} />)
+                                    )}
+                                    <RoleDetails>
+                                        <RoleLabel>Judge model</RoleLabel>
+                                        <RoleValue title={presentation.judgeModel.label}>
+                                            {presentation.judgeModel.label}
+                                        </RoleValue>
+                                    </RoleDetails>
+                                </RoleRow>
+                            )}
+                        </RoleSummary>
                     )}
                 </Column>
                 <BottomPortWidget port={model.getPort("out")!} engine={engine} />
             </Box>
-
-            {presentation.judgeModel && (
-                <svg
-                    width={NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH + 10}
-                    height={node.viewState?.ch}
-                    viewBox={`0 0 300 ${node.viewState?.ch}`}
-                    style={{ marginLeft: "-10px", position: "relative", zIndex: 1 }}
-                >
-                    <g onClick={onModelEditClick} css={css`cursor: ${readOnly ? "default" : "pointer"};`}>
-                        <circle
-                            cx="80"
-                            cy="24"
-                            r="22"
-                            fill={ThemeColors.SURFACE_DIM}
-                            stroke={ThemeColors.OUTLINE_VARIANT}
-                            strokeWidth={1.5}
-                            css={css`
-                                transition: stroke 0.4s ease-out;
-                                &:hover {
-                                    stroke: ${readOnly ? ThemeColors.OUTLINE_VARIANT : ThemeColors.SECONDARY};
-                                }
-                            `}
-                        >
-                            <title>Configure Judge Model</title>
-                        </circle>
-                        <foreignObject x="68" y="12" width="44" height="44" style={{ pointerEvents: "none" }}>
-                            {presentation.judgeModel.isDefault ? (
-                                <Icon name="bi-wso2" sx={{ fontSize: 24, width: 24, height: 24 }} />
-                            ) : (
-                                getAIModuleIcon(presentation.judgeModel.type)
-                                ?? (presentation.judgeModel.iconUrl
-                                    ? <img src={presentation.judgeModel.iconUrl} style={{ width: 24, height: 24 }} />
-                                    : <DefaultLlmIcon />)
-                            )}
-                        </foreignObject>
-                        <line
-                            x1="0"
-                            y1="25"
-                            x2="57"
-                            y2="25"
-                            style={{
-                                stroke: ThemeColors.ON_SURFACE,
-                                strokeWidth: 1.5,
-                                markerEnd: `url(#${node.id}-eval-arrow-head)`,
-                                markerStart: `url(#${node.id}-eval-diamond-start)`,
-                            }}
-                        />
-                    </g>
-                    <defs>
-                        <marker
-                            id={`${node.id}-eval-arrow-head`}
-                            markerWidth="4"
-                            markerHeight="4"
-                            refX="3"
-                            refY="2"
-                            viewBox="0 0 4 4"
-                            orient="auto"
-                        >
-                            <polygon points="0,4 0,0 4,2" fill={ThemeColors.ON_SURFACE} />
-                        </marker>
-                        <marker
-                            id={`${node.id}-eval-diamond-start`}
-                            markerWidth="8"
-                            markerHeight="8"
-                            refX="4.5"
-                            refY="4"
-                            viewBox="0 0 8 8"
-                            orient="auto"
-                        >
-                            <circle
-                                cx="4"
-                                cy="4"
-                                r="3"
-                                fill={ThemeColors.SURFACE_DIM}
-                                stroke={ThemeColors.ON_SURFACE}
-                                strokeWidth="1"
-                            />
-                        </marker>
-                    </defs>
-                </svg>
-            )}
             <ThemeListener onThemeChange={handleThemeChange} />
         </Node>
     );
