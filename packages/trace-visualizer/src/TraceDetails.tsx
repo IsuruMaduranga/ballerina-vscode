@@ -914,7 +914,7 @@ export function TraceDetails({ traceData, isAgentChat, focusSpanId, onViewSessio
                     onSelectSpan={selectSpan}
                     totalInputTokens={totalInputTokens}
                     totalOutputTokens={totalOutputTokens}
-                    showInternalSpans={userAdvancedModePreference}
+                    showInternalSpans={shouldShowAdvancedView}
                     onClose={() => setViewMode(preAgentMode)}
                     onExportJson={handleExportTrace}
                     onExportEvalset={handleExportAsEvalset}
