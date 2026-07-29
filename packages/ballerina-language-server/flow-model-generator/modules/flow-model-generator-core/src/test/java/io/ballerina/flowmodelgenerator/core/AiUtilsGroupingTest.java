@@ -59,11 +59,11 @@ public class AiUtilsGroupingTest {
                 List.of(openAi, azureOpenAi, azureAnthropic), null);
 
         Assert.assertEquals(category.items().size(), 2);
-        Category azure = (Category) category.items().getFirst();
+        Assert.assertSame(category.items().getFirst(), openAi);
+        Category azure = (Category) category.items().get(1);
         Assert.assertEquals(azure.metadata().label(), "Azure Model Providers");
-        Assert.assertEquals(azure.items(), List.of(azureAnthropic, azureOpenAi));
-        Assert.assertSame(((AvailableNode) azure.items().get(1)).codedata(), azureOpenAi.codedata());
-        Assert.assertSame(category.items().get(1), openAi);
+        Assert.assertEquals(azure.items(), List.of(azureOpenAi, azureAnthropic));
+        Assert.assertSame(((AvailableNode) azure.items().getFirst()).codedata(), azureOpenAi.codedata());
     }
 
     @Test(description = "Filters grouped packages by subtype and retains all children when the package matches.")
@@ -80,7 +80,17 @@ public class AiUtilsGroupingTest {
         Category packageSearch = AiUtils.buildAdaptiveAiComponentCategory("Model Providers",
                 List.of(azureOpenAi, azureAnthropic), "Azure");
         Category azureFromPackageSearch = (Category) packageSearch.items().getFirst();
-        Assert.assertEquals(azureFromPackageSearch.items(), List.of(azureAnthropic, azureOpenAi));
+        Assert.assertEquals(azureFromPackageSearch.items(), List.of(azureOpenAi, azureAnthropic));
+    }
+
+    @Test(description = "Uses a discovered icon when latest-version components omit codedata version.")
+    public void testGroupedLatestVersionComponentsKeepAValidIcon() {
+        AvailableNode first = component("First Chunker", "ai", "FirstChunker", null);
+        AvailableNode second = component("Second Chunker", "ai", "SecondChunker", null);
+
+        Category category = AiUtils.buildAdaptiveAiComponentCategory("Chunkers", List.of(first, second), null);
+
+        Assert.assertEquals(((Category) category.items().getFirst()).metadata().icon(), first.metadata().icon());
     }
 
     @Test(description = "Builds categories for every supported AI component type using the shared grouping helper.")
@@ -97,10 +107,14 @@ public class AiUtilsGroupingTest {
     }
 
     private static AvailableNode component(String label, String packageName, String object) {
+        return component(label, packageName, object, "1.0.0");
+    }
+
+    private static AvailableNode component(String label, String packageName, String object, String version) {
         return new AvailableNode(
                 new Metadata(label, label + " description", null, "icon-" + packageName, null, null, null),
                 new Codedata(NodeKind.MODEL_PROVIDER, "ballerinax", packageName, packageName, object, "init",
-                        "1.0.0", null, null, null, null, null, false, false, null, null),
+                        version, null, null, null, null, null, false, false, null, null),
                 true);
     }
 }

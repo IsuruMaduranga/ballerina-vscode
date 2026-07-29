@@ -75,6 +75,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -738,12 +739,12 @@ public class AiUtils {
     public static Category buildAdaptiveAiComponentCategory(String categoryLabel, List<AvailableNode> components,
                                                             String query) {
         Map<String, List<AvailableNode>> componentsByPackage = components.stream()
-                .collect(Collectors.groupingBy(node -> node.codedata().org() + ":" + node.codedata().packageName()));
+                .collect(Collectors.groupingBy(node -> node.codedata().org() + ":" + node.codedata().packageName(),
+                        LinkedHashMap::new, Collectors.toList()));
 
         List<Item> items = componentsByPackage.entrySet().stream()
                 .map(entry -> buildAdaptiveAiComponentItem(categoryLabel, entry.getValue(), query))
                 .filter(Objects::nonNull)
-                .sorted(Comparator.comparing(AiUtils::getItemLabel, String.CASE_INSENSITIVE_ORDER))
                 .toList();
 
         return new Category.Builder(null).metadata().label(categoryLabel).stepOut().items(items).build();
@@ -751,28 +752,29 @@ public class AiUtils {
 
     private static Item buildAdaptiveAiComponentItem(String categoryLabel, List<AvailableNode> components,
                                                      String query) {
-        List<AvailableNode> sortedComponents = components.stream()
-                .sorted(Comparator.comparing(node -> node.metadata().label(), String.CASE_INSENSITIVE_ORDER))
-                .toList();
-        AvailableNode firstComponent = sortedComponents.getFirst();
+        AvailableNode firstComponent = components.getFirst();
 
-        if (sortedComponents.size() == 1) {
+        if (components.size() == 1) {
             return matchesQuery(firstComponent, query) ? firstComponent : null;
         }
 
         String packageName = firstComponent.codedata().packageName();
         String groupLabel = getPackageDisplayLabel(packageName) + " " + categoryLabel;
         boolean packageMatches = matchesQuery(groupLabel, packageName, firstComponent.codedata().org(), query);
-        List<AvailableNode> matchingComponents = packageMatches ? sortedComponents : sortedComponents.stream()
+        List<AvailableNode> matchingComponents = packageMatches ? components : components.stream()
                 .filter(node -> matchesQuery(node, query))
                 .toList();
         if (matchingComponents.isEmpty()) {
             return null;
         }
 
-        // The group icon is always the package icon, independent of the leaves' class-specific icons.
-        String packageIcon = CommonUtils.generateIcon(firstComponent.codedata().org(), packageName,
-                firstComponent.codedata().version());
+        // The group icon is the package icon when the selected version is available. For latest-version
+        // components, codedata deliberately omits the version, so retain the discovered icon instead of
+        // constructing an invalid "null" package-icon URL.
+        String packageIcon = firstComponent.codedata().version() == null
+                ? firstComponent.metadata().icon()
+                : CommonUtils.generateIcon(firstComponent.codedata().org(), packageName,
+                        firstComponent.codedata().version());
         Metadata metadata = new Metadata.Builder<Category.Builder>(null)
                 .label(groupLabel)
                 .description(categoryLabel + " available in " + firstComponent.codedata().org() + "/" + packageName)
