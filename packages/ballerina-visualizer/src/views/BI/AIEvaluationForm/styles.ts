@@ -19,8 +19,6 @@
 import styled from "@emotion/styled";
 import { SearchBox, ThemeColors } from "@wso2/ui-toolkit";
 
-// Shared by the form, the template catalog dialog and the inline template config card.
-
 export const HintText = styled.div`
     margin-top: 2px;
     color: var(--vscode-descriptionForeground);
@@ -41,7 +39,6 @@ export const SectionLabel = styled.div`
     font-weight: 600;
 `;
 
-// Full-width block between form fields.
 export const FormSection = styled.div`
     width: 100%;
     min-width: 0;
@@ -128,8 +125,6 @@ export const NoticeTitle = styled.div`
     font-weight: 500;
 `;
 
-// --- Template catalog (modal step 1) ---
-
 export const ModalControls = styled.div`
     padding: 16px 20px;
     border-bottom: 1px solid ${ThemeColors.OUTLINE_VARIANT};
@@ -165,8 +160,6 @@ export const TemplateFilter = styled.button<{ active: boolean }>`
     }
 `;
 
-// Gap stays below the cards' internal padding, so the space inside a card reads as belonging to it
-// rather than merging with the space between cards.
 export const TemplateResultsGrid = styled.div`
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -177,10 +170,6 @@ export const TemplateResultsGrid = styled.div`
     }
 `;
 
-// Selected state mirrors CardSelector: accent border plus a low-opacity accent wash. The wash is mixed
-// into SURFACE_DIM rather than `transparent` (as CardSelector does) because these cards sit on the
-// modal's brighter surface — over transparent the selected card would read lighter than its neighbours
-// instead of tinted, breaking the grid's shared surface.
 export const TemplateOption = styled.button<{ selected: boolean }>`
     display: flex;
     align-items: stretch;
@@ -208,7 +197,6 @@ export const TemplateOption = styled.button<{ selected: boolean }>`
     }
 `;
 
-// Column so the tag footer can be pinned to the bottom and line up across a row.
 export const TemplateOptionContent = styled.div`
     display: flex;
     flex-direction: column;
@@ -228,7 +216,6 @@ export const TemplateOptionDescription = styled(HintText)`
     line-height: 1.5;
 `;
 
-// Classification reads last: title (what it is) -> description (what it does) -> tags (how it's filed).
 export const TemplateTags = styled.div`
     display: flex;
     flex-wrap: wrap;

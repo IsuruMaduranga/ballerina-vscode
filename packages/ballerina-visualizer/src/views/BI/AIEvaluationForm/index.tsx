@@ -140,8 +140,6 @@ const EmptyTemplateSlot = styled.button`
     }
 `;
 
-// The evalset choice and its follow-up are one decision in Custom mode. Keep its controls together,
-// then leave a clearer boundary before the evaluation-wide settings that follow.
 const CustomEvalsetControls = styled.div`
     display: flex;
     flex-direction: column;
@@ -183,7 +181,6 @@ const readConfigField = (testFunction: TestFunction | undefined, originalName: s
     testFunction?.annotations?.find(annotation => annotation.name === 'Config')?.fields
         ?.find(field => field.originalName === originalName)?.value;
 
-// dataProviderMode is synthetic (never in source); the server reports the data provider's shape instead.
 const resolveEditMode = (testFunction?: TestFunction): string =>
     String(readConfigField(testFunction, 'dataProviderMode') || '') === 'evalSet' ? 'evalSet' : 'function';
 
@@ -209,7 +206,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const [evalTemplates, setEvalTemplates] = useState<AvailableNode[]>([]);
     const [selectedTemplate, setSelectedTemplate] = useState<AvailableNode>();
     const [templateNode, setTemplateNode] = useState<FlowNode>();
-    // The catalog dialog is for choosing a template only; its arguments are configured inline.
     const [showTemplateCatalog, setShowTemplateCatalog] = useState(false);
     const [isSelectingTemplate, setIsSelectingTemplate] = useState(false);
     const [templateLoadError, setTemplateLoadError] = useState<string>();
@@ -235,7 +231,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const agentArgument = useMemo(() => findAgentArgument(templateNode), [templateNode]);
     const agentFieldKey = agentArgument && `${TEMPLATE_FIELD_PREFIX}${agentArgument.key}`;
 
-    // Editing never renames: the name is a test function that CI runs and test filters reference.
     const suggestedName = useMemo(() => isEditing ? undefined : suggestEvaluationName({
         template: isTemplateMode ? selectedTemplate : undefined,
         hasAgent: Boolean(agentArgument),
@@ -249,14 +244,11 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         () => formFields.find(field => field.key === EVALSET_FIELD_KEY),
         [formFields]);
 
-    // Typing takes the name over; emptying it hands it back to the suggestion. IdentifierField syncs
-    // `field.value` into the form, so driving the value here is all the tracking needs.
     const handleNameChange = useCallback((next: string | boolean) => {
         const name = String(next ?? '');
         setCustomName(name.trim() === '' ? undefined : name);
     }, []);
 
-    // Editing keeps whatever the function is already called; only creation derives a name.
     const derivedName = isEditing ? undefined : customName ?? suggestedName;
     const fields = useMemo(() => formFields.map(field => field.key === NAME_FIELD_KEY
         ? { ...field, value: derivedName ?? field.value, onValueChange: handleNameChange }
@@ -270,26 +262,18 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             return false;
         }
         if (!selectedTemplate) {
-            // Creating requires a template; editing an unrecognised one may still change base settings.
             return serviceType !== 'UPDATE_TEST';
         }
-        // The template's own required fields and diagnostics are gated by the shared Form, since they
-        // are registered against it. Only the data-source rules are ours.
         return !isDataSourceSatisfied({
             dataSourceParam, dataSourceMode, evalSetFile: selectedEvalsetFile, queries: evalQueries
         });
     }, [dataProviderMode, selectedEvalsetFile, selectedTemplate, dataSourceParam, dataSourceMode,
         evalQueries, serviceType]);
 
-    // Fields the injected section renders itself stay hidden here, so the shared form still seeds and
-    // submits their values while the section decides where they appear. The name is the exception: it
-    // renders in the form's own footer slot, so it only needs hiding until there is something to name.
     const applyFieldVisibility = (fields: FormField[], mode: string,
         hasTemplate = Boolean(selectedTemplate)): FormField[] => {
         const isChoosingTemplate = !isEditing && mode === 'template' && !hasTemplate;
         return fields.map(field => {
-            // Template selection is the first step in this guided flow. Hold the generic evaluation
-            // settings back until it supplies the context needed to configure them.
             if (isChoosingTemplate) {
                 return { ...field, hidden: true };
             }
@@ -303,9 +287,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             if (field.key === 'dataProvider') {
                 return { ...field, hidden: mode !== 'function' };
             }
-            // The template-first empty state hides the base settings. Restore them when a template
-            // is selected (or when the user switches to Custom); `params` is intentionally never
-            // exposed by this evaluation form.
             return { ...field, hidden: field.key === 'params' };
         });
     };
@@ -362,7 +343,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     };
 
     const selectEvalTemplate = async (template: AvailableNode) => {
-        // The dialog dismisses itself on click, so progress is reported by the template card instead.
         setIsSelectingTemplate(true);
         setTemplateLoadError(undefined);
         try {
@@ -398,7 +378,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         }
     };
 
-    // One bootstrap so evalsets, the template catalog and the function model can't race each other.
     const bootstrap = async () => {
         const run = ++bootstrapRunRef.current;
         setIsLoading(true);
@@ -420,9 +399,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         }
     };
 
-    // Only so a generated name doesn't land on one that is already used. The identifier field's
-    // `redeclared symbol` diagnostic is still what actually enforces uniqueness, since discovery
-    // reports annotated tests rather than every declaration in the testable package.
     const loadTakenNames = async () => {
         try {
             const res = await rpcClient.getTestManagerRpcClient().getTestFunctionNames({ projectPath });
@@ -451,8 +427,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         }
     };
 
-    // Evalset options are relative to the current project. The VS Code command expects a Uri-like
-    // object with an absolute fsPath, as it does when invoked from the Test Explorer.
     const openEvalset = useCallback(async (evalsetFile: string) => {
         if (!evalsetFile) {
             return;
@@ -463,8 +437,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         });
     }, [projectPath, rpcClient]);
 
-    // The Test Explorer command owns the creation prompt and writes the file. Reloading after it
-    // returns replaces the empty-state notice with the normal evalset selector.
     const createEvalset = async () => {
         await rpcClient.getCommonRpcClient().executeCommand({
             commands: ['ballerina.createNewEvalset']
@@ -472,8 +444,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         await loadEvalsets();
     };
 
-    // The evaluator call is its own marker for "built from a template", and the flow model already
-    // returns its arguments in form-field shape.
     const detectTemplateFromSource = async (fn: TestFunction, templates: AvailableNode[]): Promise<{
         shape: EditShape;
         node?: FlowNode;
@@ -606,7 +576,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
             await rpcClient.getTestManagerRpcClient().updateTestFunction({
                 function: updatedTestFunction,
                 filePath,
-                // Sent only for a recognised template; its absence leaves the body untouched.
                 ...(evalTemplate && isTemplateRecognised && { evalTemplate })
             });
         } else {
@@ -653,7 +622,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     const generateFormFields = (testFunction: TestFunction, options = evalsetOptions): FormField[] => {
         const fields: FormField[] = [];
         if (testFunction.functionName) {
-            // Set here because getTestFunction reports a flat valueType, with no scope.
             fields.push({
                 ...generateFieldFromProperty('functionName', testFunction.functionName),
                 type: 'IDENTIFIER',
@@ -716,7 +684,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                 }
 
                 for (const field of configAnnotation.fields) {
-                    // Skip fields already processed, plus the synthetic queries list (added as evalQueries)
                     if (field.originalName === 'dataProviderMode' ||
                         field.originalName === 'minPassRate' ||
                         field.originalName === 'evalSetFile' ||
@@ -840,8 +807,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         return baseField;
     }
 
-    // Base evaluation fields, then the queries list next to the evalset select, then the template
-    // arguments. All of the appended ones are hidden by applyFieldVisibility and rendered by the modal.
     const assembleTemplateFields = (base: FormField[], node: FlowNode,
         dsParam?: DataSourceParam, queries: string[] = []): FormField[] => {
         const baseFields = base.filter(isBaseField);
@@ -932,8 +897,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                     if (field.originalName == 'evalSetFile') {
                         if (formValues['dataProviderMode'] === 'evalSet' ||
                             (formValues['dataProviderMode'] === 'template' && templateNeedsEvalset(selectedTemplate))) {
-                            // In template mode the select lives in the modal, so fall back to the mirrored
-                            // state for a save where the modal was never opened.
                             field.value = String(formValues[EVALSET_FIELD_KEY] || selectedEvalsetFile || "");
                         }
                         // Preserve existing evalSetFile value when in function mode
@@ -1211,8 +1174,6 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         setFormFields(fields => fields.filter(isBaseField));
     };
 
-    // The template arguments, rendered by the inline config card. They stay in formFields as hidden so
-    // the shared form seeds and submits their values; the card renders un-hidden clones.
     const templateFields = useMemo(
         () => formFields.filter(isTemplateField).map(field => ({ ...field, hidden: false })),
         [formFields]);
@@ -1257,12 +1218,8 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
                                 fields={fields}
                                 targetLineRange={targetLineRange}
                                 onSubmit={onFormSubmit}
-                                // The name sits in the form's footer slot above Save, as it does on
-                                // every other artifact form, so it is reviewed rather than asked for.
                                 preserveFieldOrder={false}
                                 bottomFields={[NAME_FIELD_KEY]}
-                                // This is a guided creation flow, not a generic operation form. The shared
-                                // "no required parameters" summary is misleading until a template is chosen.
                                 hideInfoBanner
                                 onChange={handleFieldChange}
                                 isSaving={isSaving}

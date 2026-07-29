@@ -180,9 +180,8 @@ const RoleSummary = styled.div`
     box-sizing: border-box;
     margin: 0 0 ${ROLE_SUMMARY_MARGIN_BOTTOM}px;
     padding: ${ROLE_SUMMARY_PADDING}px;
-    border: 1px solid ${ThemeColors.OUTLINE_VARIANT};
+    border: 1px dashed ${ThemeColors.OUTLINE_VARIANT};
     border-radius: 4px;
-    background-color: ${ThemeColors.SURFACE};
     z-index: 2;
 `;
 

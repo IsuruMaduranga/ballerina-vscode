@@ -53,7 +53,6 @@ interface EvalsetFileControlProps {
     onOpenEvalset: (evalsetFile: string) => void;
 }
 
-/** Keeps evalset selection, creation, and editing controls consistent in custom and template flows. */
 export function EvalsetFileControl({
     field, hasEvalsets, selectedEvalsetFile, emptyState, onCreateEvalset, onOpenEvalset
 }: EvalsetFileControlProps) {

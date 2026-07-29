@@ -3442,7 +3442,7 @@ public class CodeAnalyzer extends NodeVisitor {
             String name = ParamUtils.removeLeadingSingleQuote(parameter.name());
             Node argument = namedArgs.containsKey(name) ? namedArgs.get(name)
                     : index < positional.size() ? positional.get(index++) : null;
-            if (parameter.type() != null && parameter.type().endsWith(MODEL_PROVIDER_INTERFACE_NAME)
+            if (parameter.type() != null && parameter.type().endsWith(Constants.Ai.MODEL_PROVIDER_TYPE_NAME)
                     && argument instanceof ExpressionNode expression) {
                 ModelData model = getModelIconUrl(expression);
                 if (model != null) {

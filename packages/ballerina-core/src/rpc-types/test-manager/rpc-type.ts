@@ -31,7 +31,6 @@ export interface GetTestFunctionNamesRequest {
     projectPath: string;
 }
 
-/** Names of the annotated test functions in the project's test documents. */
 export interface GetTestFunctionNamesResponse {
     names: string[];
 }
@@ -200,4 +199,3 @@ export const restoreGitSnapshot: RequestType<RestoreGitSnapshotRequest, RestoreG
 // Evaluation History panels can re-fetch instead of requiring a reopen.
 export const evaluationHistoryUpdated: NotificationType<void> =
     { method: `${_preFix}/evaluationHistoryUpdated` };
-

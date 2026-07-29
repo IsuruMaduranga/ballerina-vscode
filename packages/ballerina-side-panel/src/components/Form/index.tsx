@@ -316,6 +316,7 @@ namespace S {
 }
 export interface FormProps {
     infoLabel?: string;
+    hideInfoBanner?: boolean;
     formFields: FormField[];
     submitText?: string;
     cancelText?: string;
@@ -359,6 +360,7 @@ export interface FormProps {
     // its `propertyPath` resolves to; anything unresolvable falls back to the form-level banner.
     serverValidationErrors?: ValidationResult[];
     preserveOrder?: boolean;
+    bottomFields?: string[];
     handleSelectedTypeChange?: (type: string | CompletionItem) => void;
     scopeFieldAddon?: React.ReactNode;
     onChange?: (fieldKey: string, value: any, allValues: FormValues) => void;
@@ -387,6 +389,7 @@ export interface FormProps {
 export const Form = forwardRef((props: FormProps, _ref) => {
     const {
         infoLabel,
+        hideInfoBanner = false,
         formFields,
         selectedNode,
         submitText,
@@ -418,6 +421,7 @@ export const Form = forwardRef((props: FormProps, _ref) => {
         concertMessage,
         formImports,
         preserveOrder = false,
+        bottomFields = [],
         handleSelectedTypeChange,
         scopeFieldAddon,
         injectedComponents,
@@ -847,6 +851,7 @@ export const Form = forwardRef((props: FormProps, _ref) => {
     const typeField = formFields.find((field) => !field.advanced && !field.hidden && field.codedata?.kind !== "PARAM_FOR_TYPE_INFER" && getPrimaryInputType(field.types)?.fieldType === "TYPE");
     const expressionField = formFields.find((field) => getSecondaryInputType(field.types)?.fieldType === "EXPRESSION" || getPrimaryInputType(field.types)?.fieldType === "ACTION_OR_EXPRESSION");
     const targetTypeField = formFields.find((field) => field.codedata?.kind === "PARAM_FOR_TYPE_INFER");
+    const bottomFieldList = formFields.filter((field) => bottomFields.includes(field.key) && !field.hidden);
     const hasParameters = hasRequiredParameters(formFields, selectedNode) || hasOptionalParameters(formFields);
 
     const canOpenInDataMapper = (selectedNode === "VARIABLE" &&
@@ -1155,7 +1160,7 @@ export const Form = forwardRef((props: FormProps, _ref) => {
                     )}
                 </S.MarkdownWrapper>
             )}
-            {!preserveOrder && !compact && (
+            {!preserveOrder && !compact && !hideInfoBanner && (
                 <FormDescription formFields={formFields} selectedNode={selectedNode} />
             )}
             {formDiagnostics && formDiagnostics.length > 0 && (
@@ -1214,7 +1219,7 @@ export const Form = forwardRef((props: FormProps, _ref) => {
                             return;
                         }
                         // When preserveOrder is false, skip prioritized fields (they'll be rendered at bottom)
-                        if (!preserveOrder && isPrioritizedField(field)) {
+                        if (!preserveOrder && (isPrioritizedField(field) || bottomFields.includes(field.key))) {
                             return;
                         }
 
@@ -1384,7 +1389,7 @@ export const Form = forwardRef((props: FormProps, _ref) => {
                     })}
             </S.CategoryRow>
 
-            {!preserveOrder && (variableField || typeField || targetTypeField) && (
+            {!preserveOrder && (variableField || typeField || targetTypeField || bottomFieldList.length > 0) && (
                 <S.CategoryRow topBorder={!compact && hasParameters}>
                     {variableField && (
                         <FieldFactory
@@ -1430,6 +1435,20 @@ export const Form = forwardRef((props: FormProps, _ref) => {
                             )}
                         </>
                     )}
+                    {bottomFieldList.map((field) => {
+                        const updatedField = updateFormFieldWithImports(field, formImports);
+                        return (
+                            <FieldFactory
+                                key={updatedField.key}
+                                field={updatedField}
+                                handleOnFieldFocus={handleOnFieldFocus}
+                                recordTypeFields={recordTypeFields}
+                                onIdentifierEditingStateChange={handleIdentifierEditingStateChange}
+                                onBlur={handleOnBlur}
+                                handleFormValidation={handleFormValidation}
+                            />
+                        );
+                    })}
                 </S.CategoryRow>
             )}
 

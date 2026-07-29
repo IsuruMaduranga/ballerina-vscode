@@ -257,7 +257,6 @@ public class TestManagerService implements ExtendedLanguageServerService {
         });
     }
 
-    /** Creates a complete test function from the selected evaluation-template form. */
     private CommonSourceResponse addTemplateEvaluation(AddTestFunctionRequest request, Document document,
                                                        SemanticModel semanticModel, ModulePartNode modulePartNode,
                                                        LineRange lineRange, List<TextEdit> edits) {
@@ -331,7 +330,6 @@ public class TestManagerService implements ExtendedLanguageServerService {
         return queries;
     }
 
-    /** Rewrites the evaluator call and reconciles its data provider, leaving other statements alone. */
     private void updateTemplateEvaluation(UpdateTestFunctionRequest request, TextDocument textDocument,
                                           Document document, SemanticModel semanticModel,
                                           ModulePartNode modulePartNode, FunctionDefinitionNode functionNode,
@@ -355,10 +353,6 @@ public class TestManagerService implements ExtendedLanguageServerService {
         edits.add(new TextEdit(Utils.toRange(call.get().lineRange()), invocation));
     }
 
-    /**
-     * Brings the data provider, the test parameter and the dataProvider annotation field in line with the
-     * requested input mode. Returns the named argument binding the provider value, or null when there is none.
-     */
     private String reconcileDataSource(UpdateTestFunctionRequest request, JsonObject template,
                                        TextDocument textDocument, Document document, SemanticModel semanticModel,
                                        ModulePartNode modulePartNode, List<TextEdit> edits) {
@@ -380,7 +374,6 @@ public class TestManagerService implements ExtendedLanguageServerService {
         Utils.DataProviderShape shape = provider.map(Utils::getDataProviderShape)
                 .orElse(Utils.DataProviderShape.UNKNOWN);
 
-        // Everything below differs between the two modes only by these values.
         Utils.DataProviderShape wantedShape = wantsQueries
                 ? Utils.DataProviderShape.QUERIES : Utils.DataProviderShape.EVALSET;
         String paramType = wantsQueries ? Constants.STRING_TYPE : Constants.AI_CONVERSATION_THREAD_TYPE;
@@ -411,7 +404,6 @@ public class TestManagerService implements ExtendedLanguageServerService {
             return paramName + " = " + boundVariable(request.function(), paramType, providerVar);
         }
         if (shape == Utils.DataProviderShape.UNKNOWN && provider.isPresent()) {
-            // Hand-written provider: leave it alone and keep binding whatever the signature already declares.
             return paramName + " = " + boundVariable(request.function(), paramType, providerVar);
         }
         if (!wantsQueries && !Utils.isAiModuleImportExists(modulePartNode)) {
@@ -424,10 +416,6 @@ public class TestManagerService implements ExtendedLanguageServerService {
         return paramName + " = " + providerVar;
     }
 
-    /**
-     * Replaces a generated data provider in place, or appends one when absent. A provider still carrying a
-     * generated default name is renamed to match its new mode; a user-renamed one keeps its name.
-     */
     private String replaceDataProvider(Document document, SemanticModel semanticModel,
                                        ModulePartNode modulePartNode, Optional<FunctionDefinitionNode> provider,
                                        List<TextEdit> edits, String defaultName,
@@ -456,7 +444,6 @@ public class TestManagerService implements ExtendedLanguageServerService {
                 .map(Symbol::getName).filter(Optional::isPresent).map(Optional::get).collect(Collectors.toSet());
     }
 
-    /** Name the generated provider value binds to: an existing parameter of that type, else the default. */
     private String boundVariable(TestFunction function, String type, String defaultName) {
         if (function.parameters() == null) {
             return defaultName;
@@ -467,7 +454,6 @@ public class TestManagerService implements ExtendedLanguageServerService {
                 .findFirst().orElse(defaultName);
     }
 
-    /** Drops the previously bound provider parameter and adds the one the new mode needs. */
     private void swapDataSourceParameter(TestFunction function, String type, String variable) {
         if (function.parameters() == null) {
             return;
@@ -584,8 +570,6 @@ public class TestManagerService implements ExtendedLanguageServerService {
 
                 List<TextEdit> edits = new ArrayList<>();
 
-                // Runs first: it can change the signature parameter and the dataProvider annotation field
-                // that the signature and annotation edits below are built from.
                 if (request.evalTemplate() != null) {
                     updateTemplateEvaluation(request, textDocument, document.get(),
                             this.workspaceManager.semanticModel(filePath).orElse(null), modulePartNode,
@@ -612,7 +596,6 @@ public class TestManagerService implements ExtendedLanguageServerService {
                     updateAnnotations(functionDefinitionNode, request.function(), edits);
                 }
 
-                // Update evalSetFile in data provider if present (the template path owns its own provider)
                 if (request.evalTemplate() == null) {
                     updateEvalSetFile(textDocument, modulePartNode, request.function(), edits);
                 }

@@ -84,8 +84,6 @@ export const matchesTemplateFilter = (template: AvailableNode, filter: TemplateF
 
 const AI_AGENT_TYPE = 'ai:Agent';
 
-// Stamp the built-in ai:Agent coordinates that the shared enrichAgentField helper reads, so an agent
-// parameter renders as the connection-select editor (dropdown of existing agents + expression fallback).
 const withAgentConnectionData = (property: FlowProperty): FlowProperty => {
     const isAgent = property.types?.some(type => type.ballerinaType?.includes(AI_AGENT_TYPE));
     if (!isAgent || (property.codedata?.data as any)?.agent) {
@@ -103,8 +101,6 @@ const withAgentConnectionData = (property: FlowProperty): FlowProperty => {
     } as FlowProperty;
 };
 
-// The agent under evaluation, used to name the evaluation after its subject. Derived from the argument
-// type, like every other role in this form.
 export const findAgentArgument = (node?: FlowNode): { key: string; value: string } | undefined => {
     for (const [key, property] of Object.entries(node?.properties || {})) {
         const templateProperty = property as FlowProperty;
@@ -125,7 +121,6 @@ export const findDataSourceParam = (node: FlowNode): DataSourceParam | undefined
         if (data?.dataSourceParam) {
             return { paramName, kind: data.dataSourceKind === 'union' ? 'union' : 'strict' };
         }
-        // Nodes read from source carry no tag, so infer from the parameter type.
         const types = (templateProperty.types || []).map(type => String(type.ballerinaType || ''));
         if (types.some(type => type.includes(CONVERSATION_THREAD_TYPE))) {
             return { paramName, kind: types.some(type => type.includes('|')) ? 'union' : 'strict' };
@@ -137,7 +132,6 @@ export const findDataSourceParam = (node: FlowNode): DataSourceParam | undefined
 const propertyType = (property?: FlowProperty): string =>
     String(property?.types?.find(type => type.ballerinaType)?.ballerinaType || '');
 
-// Most judges share targetAgent / judgeModel / thresholds, so keep values whose name and type both match.
 export const carryOverArguments = (next: FlowNode, previous?: FlowNode): FlowNode => {
     if (!previous?.properties || !next.properties) {
         return next;
@@ -166,7 +160,6 @@ export const buildQueriesField = (value: string[] = []): FormField => ({
     types: [{ fieldType: 'TEXT_SET', selected: false }]
 } as FormField);
 
-// The data-source parameter is driven by the Test input section, so it never gets its own field.
 export const generateTemplateFields = (node: FlowNode, dsParamName?: string): FormField[] =>
     Object.entries(node.properties || {})
         .filter(([key, property]) => {

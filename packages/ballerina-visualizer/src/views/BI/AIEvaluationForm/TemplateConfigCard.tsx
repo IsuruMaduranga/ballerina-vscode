@@ -25,8 +25,6 @@ import { Badge, HintText, SectionLabel, TemplateIconTile, TitleRow } from "./sty
 import { DataSourceMode, DataSourceParam, getTemplateIcon, getTemplateKind, partitionTemplateFields } from "./templateUtils";
 import { EvalsetFileControl } from "./EvalsetFileControl";
 
-// One bordered object: the template identity is the header, its arguments are the body. The internal
-// rule is the seam between header and body of a single card, not a divider between two things.
 const Card = styled.div`
     width: 100%;
     min-width: 0;
@@ -57,20 +55,14 @@ const FieldRow = styled.div`
     margin-top: 24px;
 `;
 
-// The first field belongs to the card body rather than following another field, so it needs a
-// smaller inset than the regular field-to-field rhythm.
 const FirstFieldRow = styled(FieldRow)`
     margin-top: 8px;
 `;
 
-// Test input already reserves space for the selected-evalset action. Pull the next template
-// argument closer so the action reads as part of the selector instead of a full form section.
 const FieldAfterTestInput = styled(FieldRow)`
     margin-top: 8px;
 `;
 
-// The source choice and the field it reveals are a single decision. Keeping them in one compact
-// group prevents the evalset selector from reading as an unrelated template argument.
 const TestInputControls = styled.div`
     display: flex;
     flex-direction: column;
@@ -97,12 +89,10 @@ const OptionalSettingsHeader = styled.div`
 
 interface TemplateConfigCardProps {
     template: AvailableNode;
-    /** Un-hidden clones of the template_* fields, rendered through the shared form's context */
     templateFields: FormField[];
     dataSourceParam?: DataSourceParam;
     dataSourceMode: DataSourceMode;
     onDataSourceModeChange: (mode: DataSourceMode) => void;
-    /** The agent is the primary subject of an evaluation, so it leads this card when present. */
     agentFieldKey?: string;
     evalsetField?: FormField;
     queriesField?: FormField;
@@ -145,7 +135,6 @@ export function TemplateConfigCard(props: TemplateConfigCardProps) {
                 </LinkButton>
             </Header>
             <Body>
-                {/* An agent is the primary subject of an evaluation, so put it before choosing test data. */}
                 {agentField && (
                     <FirstFieldRow>
                         <FieldFactory field={{ ...agentField, hidden: false }} />
@@ -200,8 +189,6 @@ export function TemplateConfigCard(props: TemplateConfigCardProps) {
                     </FieldRow>
                 )}
 
-                {/* The originals stay hidden in formFields so the shared form seeds and submits their
-                    values; these clones are what the user actually edits. */}
                 {requiredTemplateFields.map((field, index) => {
                     const Row = dataSourceParam && index === 0 ? FieldAfterTestInput : FieldRow;
                     return (

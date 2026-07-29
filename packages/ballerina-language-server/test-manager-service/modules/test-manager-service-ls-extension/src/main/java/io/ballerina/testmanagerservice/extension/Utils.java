@@ -219,7 +219,6 @@ public class Utils {
             }
         }
 
-        // dataProviderMode is never written to source, so recover it from the data provider's shape.
         if (dataProviderName != null) {
             String evalSetPath = extractEvalSetFileFromDataProvider(modulePartNode, dataProviderName);
             if (!evalSetPath.isEmpty()) {
@@ -534,7 +533,6 @@ public class Utils {
         return isModuleImportExists(node, Constants.MODULE_AI);
     }
 
-    /** Returns whether the locally configured AI evaluations package is already imported. */
     public static boolean isAiEvalsModuleImportExists(ModulePartNode node) {
         return isModuleImportExists(node, Constants.MODULE_AI_EVALS);
     }
@@ -647,14 +645,12 @@ public class Utils {
         return builder.toString();
     }
 
-    /** Builds {@code check ai_evals:<symbol>(<args>);}. Shared so create and update emit identical source. */
     public static String buildEvalTemplateInvocation(String symbol, List<String> arguments) {
         return Constants.KEYWORD_CHECK + Constants.SPACE + Constants.MODULE_AI_EVALS + Constants.COLON + symbol
                 + Constants.OPEN_PARAM + String.join(Constants.COMMA + Constants.SPACE, arguments)
                 + Constants.CLOSED_PARAM + ";";
     }
 
-    /** Finds the evaluator call in a test function body; empty unless there is exactly one. */
     public static Optional<ExpressionStatementNode> findEvalTemplateCall(FunctionDefinitionNode function) {
         if (!(function.functionBody() instanceof FunctionBodyBlockNode blockBody)) {
             return Optional.empty();
@@ -677,7 +673,6 @@ public class Utils {
                         .startsWith(Constants.MODULE_AI_EVALS + Constants.COLON);
     }
 
-    /** Renders the query rows as {@code [["a"], ["b"]]} — one single-argument row per test run. */
     public static String buildQueriesArray(List<String> queries) {
         StringBuilder rows = new StringBuilder();
         for (int i = 0; i < queries.size(); i++) {
@@ -703,7 +698,6 @@ public class Utils {
                 + Constants.LINE_SEPARATOR + Constants.CLOSE_CURLY_BRACE;
     }
 
-    /** What a data provider function supplies, inferred from its return type rather than its name. */
     public enum DataProviderShape { EVALSET, QUERIES, UNKNOWN }
 
     public static DataProviderShape getDataProviderShape(FunctionDefinitionNode provider) {
@@ -718,12 +712,10 @@ public class Utils {
         return DataProviderShape.UNKNOWN;
     }
 
-    /** Locates the returned list constructor of a queries provider, for in-place literal updates. */
     public static Optional<LineRange> findQueriesListLocation(FunctionDefinitionNode provider) {
         return findQueriesList(provider.functionBody()).map(Node::lineRange);
     }
 
-    /** Reads the query literals out of a queries provider. */
     public static List<String> extractQueriesFromDataProvider(ModulePartNode modulePartNode, String providerName) {
         Optional<FunctionDefinitionNode> provider = findFunctionByName(modulePartNode, providerName);
         if (provider.isEmpty() || getDataProviderShape(provider.get()) != DataProviderShape.QUERIES) {

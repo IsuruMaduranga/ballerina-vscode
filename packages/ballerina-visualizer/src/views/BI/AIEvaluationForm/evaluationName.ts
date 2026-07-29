@@ -18,19 +18,9 @@
 
 import { AvailableNode } from "@wso2/ballerina-core";
 
-/**
- * Names an evaluation after what it evaluates: `evaluate<Subject><Template>`, e.g.
- * `evaluateMathTutorAgentCompleteness`. The shared `evaluate` prefix keeps evaluations together in the
- * Test Explorer and in `bal test` output, and the subject sorting next means one agent's evaluations
- * cluster as a project grows.
- *
- * Generation is deterministic: the same template, agent and project produce the same name every time.
- */
-
 const NAME_PREFIX = 'evaluate';
 const CUSTOM_NAME = 'customEvaluation';
 const IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-// `evaluateToolTrajectory` reads as `ToolTrajectory` once the verb moves to the front of the name.
 const SYMBOL_VERB = /^(evaluate|assert|check|test)(?=[A-Z_])/;
 
 const toPascalCase = (text: string): string =>
@@ -41,8 +31,6 @@ const toPascalCase = (text: string): string =>
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join('');
 
-// The label is what the user picked in the catalog, so it names the evaluation; the symbol is a fallback
-// for a template whose label is missing or punctuation-only.
 const templateToken = (template?: AvailableNode): string => {
     const symbol = String(template?.codedata?.symbol || '');
     return toPascalCase(String(template?.metadata?.label || ''))
@@ -53,10 +41,6 @@ const templateToken = (template?: AvailableNode): string => {
 const evalsetToken = (evalSetFile: string): string =>
     toPascalCase(evalSetFile.split(/[\\/]/).pop()?.replace(/\..*$/, '') || '');
 
-// What is under evaluation. A template that takes an agent is named after it and nothing else: the agent
-// is a required argument, so a name derived from the evalset in the meantime would only claim a subject
-// the user has not chosen. The agent argument is an expression field, so it names the evaluation only
-// when it holds a plain reference rather than an inline expression.
 const subjectToken = (hasAgent: boolean, agentValue: string, evalSetFile: string): string => {
     if (!hasAgent) {
         return evalsetToken(evalSetFile);
@@ -76,17 +60,8 @@ const uniqueName = (base: string, takenNames: Iterable<string>): string => {
     return `${base}${suffix}`;
 };
 
-/**
- * Suggests a name for a new evaluation. Without a template there is no intent to name after, so this
- * falls back to a placeholder the user is expected to replace.
- *
- * `takenNames` only holds the project's annotated test functions, so a collision with an unannotated
- * declaration in the same package is still possible; the identifier field's `redeclared symbol`
- * diagnostic remains the authority.
- */
 export const suggestEvaluationName = (args: {
     template?: AvailableNode;
-    /** Whether the template takes an `ai:Agent` at all, which decides what can name the evaluation. */
     hasAgent?: boolean;
     agentValue?: string;
     evalSetFile?: string;

@@ -18,7 +18,6 @@
 
 import { FunctionTreeNode, TestsDiscoveryResponse } from "@wso2/ballerina-core";
 
-/** Normalizes the two wire representations used by the test-discovery response. */
 export const getTestFunctionGroups = (response?: TestsDiscoveryResponse): Array<[string, FunctionTreeNode[]]> => {
     const result = response?.result;
     if (!result) {
@@ -27,7 +26,6 @@ export const getTestFunctionGroups = (response?: TestsDiscoveryResponse): Array<
     return result instanceof Map ? Array.from(result.entries()) : Object.entries(result);
 };
 
-/** Returns unique test-function names while preserving the language server's discovery order. */
 export const getTestFunctionNames = (response?: TestsDiscoveryResponse): string[] => {
     const names = getTestFunctionGroups(response).flatMap(([, functions]) =>
         functions.map(testFunction => testFunction.functionName));

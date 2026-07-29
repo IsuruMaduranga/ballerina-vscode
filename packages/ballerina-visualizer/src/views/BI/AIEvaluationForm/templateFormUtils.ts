@@ -22,7 +22,6 @@ export type DataSourceMode = 'evalset' | 'queries';
 
 export type DataSourceParam = { paramName: string; kind: 'union' | 'strict' };
 
-/** Orders template inputs around the evaluation subject and defers optional inputs behind one disclosure. */
 export const partitionTemplateFields = (templateFields: FormField[], agentFieldKey?: string): {
     agentField?: FormField;
     requiredFields: FormField[];
@@ -37,7 +36,6 @@ export const partitionTemplateFields = (templateFields: FormField[], agentFieldK
     };
 };
 
-/** Checks that the test-input mode has the data it needs before an evaluation is saved. */
 export const isDataSourceSatisfied = (args: {
     dataSourceParam?: DataSourceParam;
     dataSourceMode: DataSourceMode;

@@ -34,7 +34,6 @@ import {
     TemplateFilterKind, getTemplateIcon, getTemplateKind, matchesTemplateFilter, templateNeedsEvalset
 } from "./templateUtils";
 
-// 150ms ease-out, matching AIAgentSidePanel's connection-step animations.
 const MOTION_MS = 150;
 
 const AnimatedOverlay = styled(PopupOverlay) <{ $closing: boolean }>`
@@ -56,8 +55,6 @@ const AnimatedOverlay = styled(PopupOverlay) <{ $closing: boolean }>`
     }
 `;
 
-// The scale keyframes must carry the -50%/-50% centering translate, or the modal jumps to the corner
-// for the duration of the animation.
 const AnimatedContainer = styled(PopupContainer) <{ $closing: boolean }>`
     animation: ${(props: { $closing: boolean }) =>
         `${props.$closing ? 'eval-modal-out' : 'eval-modal-in'} ${MOTION_MS}ms ease-out both`};
@@ -80,22 +77,16 @@ const AnimatedContainer = styled(PopupContainer) <{ $closing: boolean }>`
 interface TemplateModalProps {
     templates: AvailableNode[];
     templateLoadError?: string;
-    /** Highlights the current choice when reopened via "Change Template" */
     selectedTemplate?: AvailableNode;
     onSelectTemplate: (template: AvailableNode) => void;
     onClose: () => void;
 }
 
-/**
- * Browsing only. Picking a template applies it and dismisses this dialog straight away; fetching the
- * template and configuring its arguments both happen in the form's template card.
- */
 export function TemplateModal(props: TemplateModalProps) {
     const { templates, templateLoadError, selectedTemplate, onSelectTemplate, onClose } = props;
 
     const [query, setQuery] = useState('');
     const [filter, setFilter] = useState<TemplateFilterKind>('all');
-    // The parent unmounts us as soon as it closes, so an exit animation needs the unmount deferred.
     const [closing, setClosing] = useState(false);
     const closeTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -128,10 +119,6 @@ export function TemplateModal(props: TemplateModalProps) {
         });
     }, [templates, filter, query]);
 
-    // Apply immediately and dismiss. The template still has to be fetched, but that is reported by a
-    // loader in the form's template card, not here: once a choice is made this dialog has no job left,
-    // and a modal containing only a spinner is a surface the user cannot act on. `closing` doubles as
-    // the guard against a second click landing during the exit animation.
     const handleSelect = (template: AvailableNode) => {
         if (closing) {
             return;
@@ -140,12 +127,8 @@ export function TemplateModal(props: TemplateModalProps) {
         handleClose();
     };
 
-    // Portalled so the dialog is not subject to Form hiding its content subtree behind `display: none`
-    // while fields resolve (Form/index.tsx:1353), nor to any ancestor transform becoming its
-    // containing block. It is rendered from the form's injected content to stay inside FormContext.
     return createPortal(
         <>
-            {/* Matches ExpandedEditor's backdrop: a color-mix alpha rather than `opacity`. */}
             <AnimatedOverlay $closing={closing}
                 sx={{ background: `color-mix(in srgb, ${ThemeColors.SECONDARY_CONTAINER} 70%, transparent)` }}
                 onClose={handleClose} />
