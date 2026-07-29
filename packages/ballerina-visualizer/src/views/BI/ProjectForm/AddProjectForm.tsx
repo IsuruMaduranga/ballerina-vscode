@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import styled from "@emotion/styled";
-import { Button, Typography } from "@wso2/ui-toolkit";
+import { Button, ProgressRing, ThemeColors, Typography } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { AddProjectFormFields } from "./AddProjectFormFields";
 import { AddLibraryFields } from "./AddLibraryFields";
@@ -26,22 +26,42 @@ import { AddProjectFormData } from "./types";
 import { isFormValidAddProject, joinPath, sanitizeOrgHandle, sanitizePackageName, splitPath } from "./utils";
 import { useRealtimeProjectPathValidation } from "../CreateIntegrationWizard/hooks/useRealtimeProjectPathValidation";
 import { ValidateProjectFormErrorField } from "@wso2/ballerina-core";
-import { CreateIntegrationWizard } from "../CreateIntegrationWizard";
 import { ProjectContext } from "../CreateIntegrationWizard/types";
 import { BiWsClientProvider } from "../wsManager/WsClientContext";
 import { CreateFlowShell } from "./embedded/integrator-form/shared/CreateFlowShell";
 import { FormFooter } from "./embedded/integrator-form/shared/FormPageLayout";
 import { useDirectoryNameCoupling } from "./hooks/useDirectoryNameCoupling";
 import { useDefaultOrgName } from "./hooks/useDefaultOrgName";
+import { prefetchChunks } from "../../../utils/viewPrefetch";
 
 /** Which screen of the Add-to-project flow is showing. */
 type Screen = "chooser" | "integration" | "library";
+
+/**
+ * The wizard reaches the whole artifact-form tree — side panel editors, expression
+ * editors, the markdown stack — which is by far the largest chunk any view in the
+ * visualizer pulls. Loading it statically made this form's *first* screen wait on
+ * all of it, even though the chooser is what the user is waiting to see and the
+ * wizard is one click further in. Warmed as soon as the chooser mounts, so the click
+ * that needs it rarely waits.
+ */
+const LazyCreateIntegrationWizard = React.lazy(() =>
+    import("../CreateIntegrationWizard").then((module) => ({ default: module.CreateIntegrationWizard }))
+);
 
 /**
  * Submit-time error text shown beside the action button, for failures that belong
  * to no single field on the current screen. Takes the leading space in the footer
  * so the button stays right-aligned.
  */
+const WizardLoader = styled.div`
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+`;
+
 const SubmitError = styled.div`
     flex: 1;
     margin-right: 16px;
@@ -152,6 +172,12 @@ export function AddProjectForm() {
         onPathErrorChange: useCallback((error: string | null) => setConvertPathError(error), []),
         directoryName: effectiveConvertDirName,
     });
+
+    // Both starting points lead into the wizard, so start pulling its chunk while the
+    // user is still reading the chooser.
+    useEffect(() => {
+        prefetchChunks(["createIntegrationWizard"]);
+    }, []);
 
     useEffect(() => {
         Promise.all([
@@ -361,7 +387,19 @@ export function AddProjectForm() {
                 fill
             >
                 <BiWsClientProvider onBack={() => setScreen("chooser")}>
-                    <CreateIntegrationWizard embedded showHeader={false} projectContext={integrationProjectContext} />
+                    <React.Suspense
+                        fallback={
+                            <WizardLoader>
+                                <ProgressRing color={ThemeColors.PRIMARY} />
+                            </WizardLoader>
+                        }
+                    >
+                        <LazyCreateIntegrationWizard
+                            embedded
+                            showHeader={false}
+                            projectContext={integrationProjectContext}
+                        />
+                    </React.Suspense>
                 </BiWsClientProvider>
             </CreateFlowShell>
         );

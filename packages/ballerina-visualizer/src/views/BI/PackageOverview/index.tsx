@@ -32,9 +32,8 @@ import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { Typography, Codicon, ProgressRing, Button, Icon, Divider, CheckBox, ProgressIndicator, Overlay, Dropdown } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
 import { ThemeColors } from "@wso2/ui-toolkit";
-import ComponentDiagram from "../ComponentDiagram";
 import { VSCodeLink } from "@vscode/webview-ui-toolkit/react";
-import ReactMarkdown from "react-markdown";
+import { Markdown } from "../../../components/Markdown";
 import { IOpenInConsoleCmdParams, WICommandIds } from "@wso2/wso2-platform-core";
 import { AlertBoxWithClose } from "../../AIPanel/AlertBoxWithClose";
 import { getIntegrationTypes, validateComponentName } from "./utils";
@@ -48,6 +47,12 @@ import { LibraryOverview } from "./LibraryOverview";
 /** Only reachable from an empty integration, and it pulls in the whole wizard +
  *  artifact form tree — so keep it out of the overview's own chunk. */
 const LazyAddIntegrationPanel = React.lazy(() => import("./AddIntegrationPanel"));
+
+/** The diagram engine (`@wso2/component-diagram` and its layout stack) is the
+ *  heaviest thing this view renders. Kept out of the overview's chunk so the page —
+ *  header, README, deployment panel — paints without waiting for it; the diagram
+ *  fills in a moment later, and the prefetcher usually has it warm before then. */
+const LazyComponentDiagram = React.lazy(() => import("../ComponentDiagram"));
 
 const SpinnerContainer = styled.div`
     display: flex;
@@ -1224,7 +1229,15 @@ export function PackageOverview(props: PackageOverviewProps) {
                                             </ButtonContainer>
                                         </EmptyStateContainer>
                                     ) : (
-                                        <ComponentDiagram projectStructure={projectStructure} />
+                                        <React.Suspense
+                                            fallback={
+                                                <SpinnerContainer>
+                                                    <ProgressRing color={ThemeColors.PRIMARY} />
+                                                </SpinnerContainer>
+                                            }
+                                        >
+                                            <LazyComponentDiagram projectStructure={projectStructure} />
+                                        </React.Suspense>
                                     )}
                                 </DiagramContent>
                             )}
@@ -1246,7 +1259,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                                 </ReadmeHeaderContainer>
                                 <ReadmeContent>
                                     {readmeContent ? (
-                                        <ReactMarkdown>{readmeContent}</ReactMarkdown>
+                                        <Markdown>{readmeContent}</Markdown>
                                     ) : (
                                         <EmptyReadmeContainer>
                                             <Description variant="body2">
