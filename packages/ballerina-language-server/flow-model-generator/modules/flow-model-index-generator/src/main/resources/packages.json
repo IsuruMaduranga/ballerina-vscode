@@ -196,6 +196,11 @@
       "description": "Connects to [Avaza API v1](https://api.avaza.com/swagger/ui/index) from Ballerina"
     },
     {
+      "name": "aws",
+      "version": "1.0.0",
+      "description": "AWS is a comprehensive cloud computing platform offering over 200 services, all authenticated through a common scheme: IAM credentials and AWS Signature Version 4 request signing."
+    },
+    {
       "name": "aws.dynamodb",
       "version": "2.3.0",
       "description": "Connects to AWS DynamoDB from Ballerina"
