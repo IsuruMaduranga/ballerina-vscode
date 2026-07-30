@@ -61,6 +61,7 @@ export interface ArtifactCard {
         moduleName: string;
         version?: string;
     };
+    tooltip?: string;
 }
 
 export type ArtifactCategoryKey =
@@ -92,10 +93,11 @@ export const ARTIFACT_CATEGORY_META: Record<ArtifactCategoryKey, ArtifactCategor
     },
     workflow: {
         key: "workflow",
-        title: "Workflow",
+        title: "Durable Workflow",
         shortTitle: "Workflow",
         icon: "type-hierarchy",
-        description: "Create a workflow integration.",
+        description: "Design static workflow logic that can be interrupted by events, use timer-based " +
+            "activities, involve human tasks, and run for long periods with crash recovery enabled.",
     },
     "ai-integration": {
         key: "ai-integration",
@@ -137,8 +139,9 @@ export const AUTOMATION_CARD: ArtifactCard = {
 export const WORKFLOW_CARD: ArtifactCard = {
     id: "workflow",
     kind: "workflow",
-    displayName: "Workflow",
+    displayName: "Durable Workflow",
     icon: <Icon name="bi-flowchart" />,
+    tooltip: "Long-running workflow logic with events, timers, human tasks, and crash recovery."
 };
 
 export const AI_CHAT_AGENT_CARD: ArtifactCard = {
