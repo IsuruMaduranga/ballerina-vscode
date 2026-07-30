@@ -118,12 +118,11 @@ Running that exact command locally is the closest reproduction.
 - `BALLERINA_LS_TAG=<tag>` — pin a specific release
 - *(default)* — prefer the local pack output, fall back to download
 
-**The version is authored in exactly one file: the root `package.json`.** To change it,
-change that and nothing else. `common/scripts/sync-version.js` writes the only generated
-copy, `packages/ballerina-extension/package.json` (`version`), because `vsce` requires it
-on disk. The extension runs the sync at the head of its build, so editing that generated
-copy is pointless. Gradle reads the root version directly; `-Pversion=<v>` remains
-available for a one-off build.
+**The version is authored in exactly one file:
+`packages/ballerina-extension/package.json`.** `vsce` reads it directly, and the
+language-server Gradle build reads the same manifest at configuration time. To change the
+extension and LS version, edit that field and nothing else. `-Pversion=<v>` remains
+available for a one-off Gradle build without changing the manifest.
 
 ### "Add a dependency to a package"
 
