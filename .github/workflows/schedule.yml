@@ -359,6 +359,35 @@ jobs:
       runFrontendTests: true
       runBackendTests: false
 
+  # Keep a stable ref for the most recent nightly that passed every validation
+  # job. This is only a Git tag: the nightly VSIX remains a workflow artifact and
+  # no GitHub Release is created.
+  Tag:
+    name: Update nightly tag
+    needs:
+      - sync-nightly
+      - ls-ubuntu-pack
+      - ls-ubuntu-test
+      - ls-windows-build
+      - ls-trivy
+      - Build
+    if: ${{ github.repository == 'ballerina-platform/ballerina-vscode' }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout successful nightly commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.sync-nightly.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Move nightly tag
+        run: |
+          set -euo pipefail
+          git tag --force nightly "${{ needs.sync-nightly.outputs.sha }}"
+          git push --force origin refs/tags/nightly
+
   # ─────────────────────────────────────────────────────────────────────────
   # Notifications
   # ─────────────────────────────────────────────────────────────────────────
@@ -370,6 +399,7 @@ jobs:
       - ls-windows-build
       - ls-trivy
       - Build
+      - Tag
     if: ${{ github.repository == 'ballerina-platform/ballerina-vscode' }}
     runs-on: ubuntu-latest
     steps:
@@ -399,6 +429,7 @@ jobs:
       - ls-windows-build
       - ls-trivy
       - Build
+      - Tag
     if: ${{ always() && contains(needs.*.result, 'failure') && github.repository == 'ballerina-platform/ballerina-vscode' }}
     runs-on: ubuntu-latest
     steps:

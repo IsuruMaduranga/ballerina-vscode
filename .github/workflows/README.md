@@ -23,7 +23,7 @@ Each has `defaults.run.working-directory: packages/ballerina-language-server` in
 |---|---|---|
 | `build.yml` | `workflow_call` only | Reusable build pipeline (ballerina-only) |
 | `devBuild.yml` | manual + `workflow_call` | Builds a custom branch as a timestamped pre-release VSIX. It creates workflow artifacts only: no GitHub release and no marketplace publication. `schedule.yml` reuses this workflow after stamping the nightly branch. |
-| `schedule.yml` | nightly cron | Syncs the `nightly` branch, runs the LS multi-branch pack/test/Windows-build matrix, calls `devBuild.yml`, and dispatches success/failure notifications. The VSIX remains a workflow artifact; no GitHub release is created. See [Versioning](#versioning) and [The nightly branch](#the-nightly-branch). |
+| `schedule.yml` | nightly cron | Syncs the `nightly` branch, runs the LS multi-branch pack/test/Windows-build matrix, calls `devBuild.yml`, and moves the `nightly` tag after every job passes. The VSIX remains a workflow artifact; no GitHub Release is created. See [Versioning](#versioning) and [The nightly branch](#the-nightly-branch). |
 | `pull-request.yml` | PRs + manual | Detects changes with `dorny/paths-filter`; if anything build-relevant changed, runs `build.yml` which builds the entire chain (LS via Gradle, then all TS packages and the extension VSIX via rush) in a single job. Windows LS coverage runs in `schedule.yml` only. |
 | `release-pre-release.yml` | manual dispatch | Builds either a timestamped pre-release or the release version authored in the extension manifest, creates a GitHub release with the VSIX and LS jar, and performs the existing real-release branch/PR handling. |
 | `publish-vsix.yml` | manual dispatch | Publishes a built VSIX (passed by `workflowRunId`) to VSCode Marketplace + OpenVSX |
@@ -179,6 +179,9 @@ one commit that pins both its source and its version.
   reads that manifest directly, so the jar built from the commit carries the same version.
 - The force-push uses `GITHUB_TOKEN`, whose pushes do not trigger workflows, so the
   nightly build cannot re-enter itself.
+- After every validation job passes, the workflow force-moves the `nightly` Git tag to
+  that exact stamped commit. The tag is not a GitHub Release and has no release assets;
+  the VSIX remains available from the workflow run.
 
 Every release or pre-release GitHub release carries two assets — the VSIX and the bundled LS jar — so the server
 can be downloaded on its own to debug a regression, or pointed at an existing install via
@@ -190,7 +193,7 @@ so the two can never disagree about what was built.
 | Release (`isPreRelease: false`) | always | yes |
 | Pre-release (`isPreRelease: true`) | always, on the dispatched commit | no |
 | Custom development build | no | no |
-| Scheduled nightly build | no | nightly version commit only |
+| Scheduled nightly build | no; updates the `nightly` Git tag | nightly version commit only |
 
 Marketplace publishing remains manual: `publish-vsix.yml` takes the `VSIX` workflow artifact
 by run ID (30-day retention), independently of the GitHub release.
