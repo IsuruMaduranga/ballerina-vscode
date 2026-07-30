@@ -873,8 +873,10 @@ User reverted the last made changes. The files have been restored to the state b
 
     async getLatestFollowupSuggestions(): Promise<FollowupSuggestion[]> {
         const projectRootPath = resolveProjectRootPath();
-        const generations = chatStateStorage.getGenerations(projectRootPath, getActiveThreadId(projectRootPath));
-        return generations[generations.length - 1]?.followupSuggestions ?? [];
+        // Read the thread directly: getGenerations() would create and persist an empty thread if
+        // this one is no longer in memory.
+        const thread = chatStateStorage.getWorkspaceState(projectRootPath)?.threads.get(getActiveThreadId(projectRootPath));
+        return thread?.generations[thread.generations.length - 1]?.followupSuggestions ?? [];
     }
 
     async compactConversation(_params: CompactConversationRequest): Promise<CompactConversationResponse> {

@@ -23,14 +23,21 @@ import { FollowupSuggestion } from "@wso2/ballerina-core";
 const Container = styled.div`
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 6px;
-    margin-top: 8px;
+    /* Deliberately asymmetric: the chips belong to the input below, not the message above. */
+    margin: 20px 0 -22px;
+`;
+
+const AiHint = styled.span`
+    display: inline-flex;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.8;
 `;
 
 const Chip = styled.button`
     display: flex;
     align-items: center;
-    gap: 6px;
     padding: 4px 10px;
     font-size: 12px;
     font-family: var(--vscode-font-family);
@@ -60,6 +67,7 @@ const FollowupSuggestions: React.FC<FollowupSuggestionsProps> = ({ suggestions, 
     }
     return (
         <Container role="list" aria-label="Follow-up suggestions">
+            <AiHint className="codicon codicon-sparkle" aria-hidden="true" />
             {suggestions.map((suggestion, index) => (
                 <Chip
                     key={`followup-${index}`}
@@ -68,7 +76,6 @@ const FollowupSuggestions: React.FC<FollowupSuggestionsProps> = ({ suggestions, 
                     title={suggestion.prompt}
                     onClick={() => onPick(suggestion)}
                 >
-                    <span className="codicon codicon-sparkle" aria-hidden="true" />
                     {suggestion.label}
                 </Chip>
             ))}
