@@ -95,6 +95,7 @@ export class DefaultServer {
         if (!this.wsBootstrap) {
             this.wsBootstrap = this.startWsServer().catch((error: unknown) => {
                 // Let a later call retry instead of caching the failure forever.
+                this.wsManager?.dispose();
                 this.wsBootstrap = undefined;
                 this.wsManager = undefined;
                 throw error;
