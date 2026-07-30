@@ -1457,9 +1457,8 @@
         "copyLS": "node scripts/copy-ls.js",
         "provisionLS": "node scripts/copy-ls.js --fallback-download",
         "copyGrammar": "del-cli ./grammar/ballerina-grammar && copyfiles -u 3 \"../ballerina-grammar/syntaxes/*\" ./grammar/ballerina-grammar/syntaxes/",
-        "syncVersion": "node ../../common/scripts/sync-version.js",
-        "build": "pnpm run syncVersion && pnpm run compile && pnpm run lint && pnpm run postbuild",
-        "rebuild": "pnpm run clean && pnpm run syncVersion && pnpm run compile && pnpm run postbuild",
+        "build": "pnpm run compile && pnpm run lint && pnpm run postbuild",
+        "rebuild": "pnpm run clean && pnpm run compile && pnpm run postbuild",
         "postbuild": "pnpm run provisionLS && pnpm run copyFonts && pnpm run copyJSLibs && pnpm run package && pnpm run copyVSIX",
         "copyJSLibs": "copyfiles -f ../ballerina-visualizer/build/*.js resources/jslibs && copyfiles -f ../ballerina-visualizer/build/images/* resources/jslibs/images && copyfiles -f ../trace-visualizer/build/*.js resources/jslibs && copyfiles -f ../graphql/build/*.js resources/jslibs",
         "test:typecheck": "tsc --noEmit -p tsconfig.spec.json"

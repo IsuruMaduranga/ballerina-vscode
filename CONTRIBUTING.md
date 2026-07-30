@@ -231,11 +231,14 @@ the `postbuild` step calls `provisionLS`, which:
 2. Otherwise, falls back to `scripts/download-ls.js` and downloads the latest GitHub
    release jar (`v1.6.0` at time of writing).
 
-The language server does not have an independently authored version. Set the monorepo
-version in the root `package.json`; `common/scripts/sync-version.js` copies it into the
-extension manifest and the language server's `gradle.properties`. Both package builds
-run the synchronization step before their normal build, so manual edits to either
-generated copy are overwritten.
+The language server does not have an independently authored version. Set the version in
+`packages/ballerina-extension/package.json`; `vsce` reads it directly and Gradle reads the
+same manifest at configuration time. There is no generated version file and no build step
+rewrites tracked files.
+
+This changes the published language-server artifact from its former independent `1.8.x`
+line to the extension's `5.x` line. Consumers pinning
+`io.ballerina:ballerina-language-server` must use the corresponding extension version.
 
 Override knobs:
 
@@ -248,10 +251,9 @@ BALLERINA_LS_TAG=v1.6.0 rush build --to ballerina
 
 # Pick a specific local jar manually (delete what's in build/, then build again)
 rm packages/ballerina-language-server/build/ballerina-language-server-*.jar
-node common/scripts/sync-version.js
 cd packages/ballerina-language-server && ./gradlew pack -x test
 
-# Override the generated Gradle version for a one-off build without editing files
+# Override the extension version for a one-off Gradle build without editing files
 ./gradlew pack -x test -Pversion=9.9.9-local
 ```
 
