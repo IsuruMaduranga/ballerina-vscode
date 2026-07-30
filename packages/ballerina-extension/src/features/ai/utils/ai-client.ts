@@ -288,18 +288,23 @@ export type AnthropicEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export type ProviderModelOptions =
     | { anthropic: { thinking: { type: 'disabled' }; effort?: AnthropicEffort } }
-    | { bedrock: { reasoningConfig: { type: 'disabled' } } };
+    | { bedrock: { additionalModelRequestFields: { thinking: { type: 'disabled' } } } };
 
 /**
  * Sonnet 5 enables adaptive thinking when `thinking` is omitted, and reasoning shares
  * `maxOutputTokens` with the response — omitting it truncates answers. Bedrock ignores the
  * `anthropic` namespace and reads `providerOptions.bedrock`.
+ *
+ * On Bedrock the field goes through `additionalModelRequestFields`, not `reasoningConfig`:
+ * the provider only serializes `reasoningConfig` when reasoning is enabled or adaptive, so a
+ * `disabled` value there is silently dropped. Bedrock also requires reasoning to be off
+ * alongside a forced `tool_choice`, which web-tools uses.
  */
 export const getProviderModelOptions = async (effort?: AnthropicEffort): Promise<ProviderModelOptions> => {
     const loginMethod = await getLoginMethod();
 
     if (loginMethod === LoginMethod.AWS_BEDROCK) {
-        return { bedrock: { reasoningConfig: { type: 'disabled' } } };
+        return { bedrock: { additionalModelRequestFields: { thinking: { type: 'disabled' } } } };
     }
     return { anthropic: { thinking: { type: 'disabled' }, ...(effort ? { effort } : {}) } };
 };
