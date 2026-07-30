@@ -68,6 +68,15 @@ export interface StartupIntegrationProgress {
     integrationName: string;
     /** e.g. "service" — absent for an empty integration. */
     artifactLabel?: string;
+    /**
+     * Kind of the first artifact being generated, absent for an empty integration.
+     * The webview uses it to know WHICH project-structure entry to wait for before
+     * leaving this screen, so the overview's first frame already shows the new
+     * integration's type instead of filling it in a beat later.
+     */
+    artifactKind?: PendingIntegrationArtifactKind;
+    /** The package the artifact is generated into — the one to watch for it. */
+    projectRoot: string;
 }
 
 export function readPendingIntegrationPointer(): PendingIntegrationArtifactPointer | undefined {
@@ -120,5 +129,7 @@ export function getStartupIntegrationProgress(openedPath: string | undefined): S
     return {
         integrationName: pointer.integrationName,
         artifactLabel: pointer.artifactKind ? INTEGRATION_ARTIFACT_LABELS[pointer.artifactKind] : undefined,
+        artifactKind: pointer.artifactKind,
+        projectRoot: pointer.projectRoot,
     };
 }

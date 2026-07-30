@@ -16,9 +16,16 @@
  * under the License.
  */
 
-import React, { Suspense, useEffect } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
-import { AIMachineStateValue, MachineStateValue } from "@wso2/ballerina-core";
+import {
+    AIMachineStateValue,
+    DIRECTORY_MAP,
+    isSamePath,
+    MachineStateValue,
+    PendingIntegrationArtifactKind,
+    ProjectDirectoryMap,
+} from "@wso2/ballerina-core";
 import styled from '@emotion/styled';
 
 import { VSCodeProgressRing } from "@vscode/webview-ui-toolkit/react";
@@ -175,6 +182,10 @@ interface StartupIntegration {
     integrationName: string;
     /** e.g. "service" — absent for an empty integration. */
     artifactLabel?: string;
+    /** Absent for an empty integration (nothing is generated, nothing to wait for). */
+    artifactKind?: PendingIntegrationArtifactKind;
+    /** The package the pending artifact is generated into. */
+    projectRoot: string;
 }
 
 type StartupIntegrationHost = { startupIntegration?: StartupIntegration | null };
@@ -188,25 +199,125 @@ function clearStartupIntegration(): void {
     (window as unknown as StartupIntegrationHost).startupIntegration = null;
 }
 
+/**
+ * Artifact kinds whose generation writes something the project structure reports.
+ * `AI_CHAT_AGENT` is deliberately absent: it opens its own wizard rather than
+ * writing an artifact (see `generatePendingArtifact`), so there is nothing to wait
+ * for and holding would block that wizard.
+ */
+const KINDS_WRITING_AN_ARTIFACT: PendingIntegrationArtifactKind[] = ["SERVICE", "AUTOMATION", "WORKFLOW"];
+
+/**
+ * Structure entries that mean "the generated artifact has landed". Kept as a set
+ * rather than a per-kind mapping so a kind that reports under a different entry
+ * than expected still releases the hold — the package this runs for was created
+ * moments ago by the wizard and starts out with no artifacts at all, so ANY
+ * artifact appearing in it is the one being waited for.
+ */
+const ARTIFACT_DIRECTORIES: (keyof ProjectDirectoryMap)[] = [
+    DIRECTORY_MAP.SERVICE,
+    DIRECTORY_MAP.AUTOMATION,
+    DIRECTORY_MAP.WORKFLOW,
+    DIRECTORY_MAP.ACTIVITY,
+    DIRECTORY_MAP.AGENTS,
+    DIRECTORY_MAP.FUNCTION,
+];
+
+/**
+ * Upper bound on the hold below, so a generation that fails — or never publishes
+ * its artifact — cannot strand the window on the progress screen. Sits just above
+ * the 10s artifact-notification timeout the generation itself gives up at.
+ */
+const PENDING_ARTIFACT_HOLD_TIMEOUT_MS = 12_000;
+
+/**
+ * Whether the startup progress screen must stay up even though a view is ready.
+ *
+ * Post-reload the pending first artifact is generated only after the extension
+ * reaches `extensionReady`, and the first view can be pushed before that finishes.
+ * Without this the overview paints an integration card whose type chip is still
+ * missing and fills it in a second or two later, when generation lands and the
+ * refresh notification arrives. Waiting until the artifact is actually in the
+ * project structure makes the overview's first frame the finished one — matching
+ * the in-project add flow, where the wizard itself stays up until generation
+ * returns.
+ */
+function usePendingArtifactHold(pending: StartupIntegration | undefined): boolean {
+    const { rpcClient } = useRpcContext();
+    const projectRoot = pending?.projectRoot;
+    const waitsForArtifact =
+        !!projectRoot && !!pending?.artifactKind && KINDS_WRITING_AN_ARTIFACT.includes(pending.artifactKind);
+    const [holding, setHolding] = useState<boolean>(waitsForArtifact);
+
+    useEffect(() => {
+        if (!holding || !waitsForArtifact) {
+            return;
+        }
+        let released = false;
+        const release = () => {
+            released = true;
+            setHolding(false);
+        };
+        const check = async (): Promise<void> => {
+            try {
+                const res = await rpcClient.getBIDiagramRpcClient().getProjectStructure();
+                const project = res?.projects?.find((p) => isSamePath(p.projectPath, projectRoot));
+                const hasArtifact = ARTIFACT_DIRECTORIES.some(
+                    (directory) => (project?.directoryMap?.[directory]?.length ?? 0) > 0
+                );
+                if (!released && hasArtifact) {
+                    release();
+                }
+            } catch (error) {
+                // Never hold on a broken read — fall through to the normal view.
+                console.error(">>> Error while waiting for the pending artifact", error);
+                release();
+            }
+        };
+        void check();
+        // Two signals: the refresh notification the generation fires, plus a poll as
+        // the backstop for one that is suppressed or missed. The read is a cached
+        // context lookup on the extension side, so polling it is cheap.
+        const unsubscribe = rpcClient.onProjectContentUpdated(() => void check());
+        const interval = setInterval((): void => {
+            void check();
+        }, 1000);
+        const timeout = setTimeout(release, PENDING_ARTIFACT_HOLD_TIMEOUT_MS);
+        return () => {
+            clearInterval(interval);
+            clearTimeout(timeout);
+            unsubscribe?.();
+        };
+    }, [holding, waitsForArtifact, projectRoot, rpcClient]);
+
+    return holding;
+}
+
 const VisualizerComponent = React.memo(({ state }: { state: MachineStateValue }) => {
     const isViewReady = typeof state === 'object' && 'viewActive' in state && state.viewActive === "viewReady";
+    // Captured on mount, before the value is consumed below, so both the hold and
+    // this screen's copy outlive the clear that happens once the view is shown.
+    const pendingRef = useRef(readStartupIntegration());
+    const pending = pendingRef.current;
+    const isHoldingForPendingArtifact = usePendingArtifactHold(pending);
+    const showMainPanel = isViewReady && !isHoldingForPendingArtifact;
 
     // The startup narrative belongs to startup only. Once a view has been shown the
     // create is over, so drop it — any later loading state is an ordinary one and
     // must not claim the integration is still being created.
     useEffect(() => {
-        if (isViewReady) {
+        if (showMainPanel) {
             clearStartupIntegration();
         }
-    }, [isViewReady]);
+    }, [showMainPanel]);
 
     switch (true) {
-        case isViewReady:
+        case showMainPanel:
             return <MainPanel />;
         case typeof state === 'object' && 'viewActive' in state && state.viewActive === "resolveMissingDependencies":
             return <PullingDependenciesView />;
         default:
-            return <LanguageServerLoadingView startupIntegration={readStartupIntegration()} />;
+            return <LanguageServerLoadingView startupIntegration={pending} />;
     }
 });
 
