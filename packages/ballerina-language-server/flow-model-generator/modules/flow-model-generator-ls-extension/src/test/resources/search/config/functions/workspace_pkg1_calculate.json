@@ -33,7 +33,16 @@
             "description": "",
             "keywords": []
           },
-          "items": []
+          "items": [
+            {
+              "metadata": {
+                "label": "package1.helpers",
+                "description": "",
+                "keywords": []
+              },
+              "items": []
+            }
+          ]
         },
         {
           "metadata": {
@@ -80,9 +89,22 @@
                 "org": "testorg",
                 "module": "package1",
                 "symbol": "calculateTotal",
-                "version": "0.1.0"
+                "version": "0.1.0",
+                "isGenerated": false,
+                "data": {
+                  "moduleRelation": "CURRENT_MODULE",
+                  "moduleKind": "DEFAULT_MODULE"
+                }
               },
               "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "package1.helpers",
+                "description": "",
+                "keywords": []
+              },
+              "items": []
             }
           ]
         },

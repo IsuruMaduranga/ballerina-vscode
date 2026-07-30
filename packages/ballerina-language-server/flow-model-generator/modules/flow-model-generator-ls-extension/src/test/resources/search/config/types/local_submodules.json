@@ -1,10 +1,9 @@
 {
-  "description": "Test query with no matches - should return empty results",
+  "description": "Local manual and generated module types use project-local categories",
   "kind": "TYPE",
-  "source": "proj2/automation.bal",
+  "source": "submodule_project/main.bal",
   "queryMap": {
-    "q": "DatabaseConnection",
-    "limit": "30"
+    "q": ""
   },
   "categories": [
     {
@@ -22,24 +21,53 @@
       "items": [
         {
           "metadata": {
-            "label": "mod1.Weather (Generated)",
+            "label": "submodule_project.client (Generated)",
             "description": "",
             "keywords": []
           },
           "items": [
             {
               "metadata": {
-                "label": "ForecastCondition",
+                "label": "GeneratedPublic",
                 "description": ""
               },
               "codedata": {
                 "node": "RECORD",
-                "org": "lakshanweerasinghe",
-                "module": "mod1.Weather",
-                "packageName": "mod1",
-                "symbol": "ForecastCondition",
+                "org": "testorg",
+                "module": "submodule_project.client",
+                "packageName": "submodule_project",
+                "symbol": "GeneratedPublic",
                 "version": "0.1.0",
                 "isGenerated": true,
+                "data": {
+                  "moduleRelation": "SAME_PACKAGE_MODULE",
+                  "moduleKind": "SUBMODULE"
+                }
+              },
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "label": "submodule_project.manual",
+            "description": "",
+            "keywords": []
+          },
+          "items": [
+            {
+              "metadata": {
+                "label": "ManualPublic",
+                "description": ""
+              },
+              "codedata": {
+                "node": "RECORD",
+                "org": "testorg",
+                "module": "submodule_project.manual",
+                "packageName": "submodule_project",
+                "symbol": "ManualPublic",
+                "version": "0.1.0",
+                "isGenerated": false,
                 "data": {
                   "moduleRelation": "SAME_PACKAGE_MODULE",
                   "moduleKind": "SUBMODULE"
@@ -72,33 +100,7 @@
           "Library"
         ]
       },
-      "items": [
-        {
-          "metadata": {
-            "label": "cdc",
-            "description": "",
-            "keywords": []
-          },
-          "items": [
-            {
-              "metadata": {
-                "label": "DatabaseConnection",
-                "description": "Base database connection configuration for all CDC connectors.\n",
-                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_cdc_1.3.1.png"
-              },
-              "codedata": {
-                "node": "TYPEDESC",
-                "org": "ballerinax",
-                "module": "cdc",
-                "packageName": "cdc",
-                "symbol": "DatabaseConnection",
-                "version": "1.3.1"
-              },
-              "enabled": true
-            }
-          ]
-        }
-      ]
+      "items": []
     }
   ]
 }
