@@ -26,12 +26,12 @@ plugins {
 }
 apply plugin: 'maven-publish'
 
-def extensionManifest = file("$rootDir/../ballerina-extension/package.json")
-def extensionVersion = new JsonSlurper().parse(extensionManifest).version
-if (!extensionVersion) {
-    throw new GradleException("No version found in ${extensionManifest}")
+def rootPackageJson = file("$rootDir/../../package.json")
+def rootVersion = new JsonSlurper().parse(rootPackageJson).version
+if (!rootVersion) {
+    throw new GradleException("No version found in ${rootPackageJson}")
 }
-def buildVersion = providers.gradleProperty("version").getOrElse(extensionVersion)
+def buildVersion = providers.gradleProperty("version").getOrElse(rootVersion)
 
 allprojects {
     group = project.group

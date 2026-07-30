@@ -63,8 +63,8 @@ jobs:
       - name: Set version env variable
         run: |
           set -euo pipefail
-          # The extension manifest is the shared extension/LS version.
-          BASE_VERSION=$(node -p "require('../ballerina-extension/package.json').version" | cut -d- -f1)
+          # The root package.json is the shared extension/LS version.
+          BASE_VERSION=$(node -p "require('../../package.json').version" | cut -d- -f1)
           echo BASE_VERSION=${BASE_VERSION} >> $GITHUB_ENV
 
           if [ "${{ github.event.inputs.is_prerelease }}" == "true" ]; then
