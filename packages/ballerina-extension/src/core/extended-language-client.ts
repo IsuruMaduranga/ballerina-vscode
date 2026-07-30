@@ -17,6 +17,7 @@
  */
 
 import { LanguageClient, LanguageClientOptions, ServerOptions } from "vscode-languageclient/node";
+import { isRecording, recordLs } from "../test-support/fixtureRecorder";
 import { CodeAction, CodeActionParams, DocumentSymbol, DocumentSymbolParams, ExecuteCommandParams, RenameParams, SymbolInformation, WorkspaceEdit } from "monaco-languageclient";
 import {
     Connectors,
@@ -196,6 +197,10 @@ import {
     AINodesRequest,
     BISearchRequest,
     BISearchResponse,
+    GenActivityRequest,
+    GenActivityResponse,
+    AnalyzeActivityActionRequest,
+    AnalyzeActivityActionResponse,
     WorkflowDataRequest,
     WorkflowDataResponse,
     AIModelsResponse,
@@ -486,6 +491,8 @@ enum EXTENDED_APIS {
     BI_DISABLE_WORKFLOW_MGMT = 'workflowManagementService/disableWorkflowManagement',
     BI_SHOULD_ENABLE_WORKFLOW_MGMT_DEFAULT = 'workflowManagementService/shouldEnableWorkflowManagementByDefault',
     BI_WORKFLOW_ALL_DATA = 'workflowManager/getAllData',
+    BI_WORKFLOW_GEN_ACTIVITY = 'workflowManager/genActivity',
+    BI_WORKFLOW_ANALYZE_ACTIVITY_ACTION = 'workflowManager/analyzeActivityAction',
     BI_SEARCH = 'flowDesignService/search',
     BI_SEARCH_NODES = 'flowDesignService/searchNodes',
     OPEN_API_GENERATE_CLIENT = 'openAPIService/genClient',
@@ -549,6 +556,11 @@ enum VSCODE_APIS {
     DID_CHANGE_WATCHED_FILES = 'workspace/didChangeWatchedFiles'
 }
 
+// Cached once at module load: recording is enabled process-wide via BAL_RECORD_FIXTURES
+// before the extension launches and never toggles at runtime, so the per-request
+// sendRequest hook below branches on this const instead of reading process.env each call.
+const RECORDING_ENABLED = isRecording();
+
 export class ExtendedLangClient extends LanguageClient implements ExtendedLangClientInterface {
     private ballerinaExtendedServices: Set<String> | undefined;
     private isDynamicRegistrationSupported: boolean;
@@ -565,6 +577,24 @@ export class ExtendedLangClient extends LanguageClient implements ExtendedLangCl
         this.timeConsumption = { diagnostics: [], completion: [] };
     }
     init?: (params: InitializeParams) => Promise<InitializeResult>;
+
+    // Records all LS request/response traffic to fixtures when BAL_RECORD_FIXTURES is set.
+    // When not recording this is a single branch on a cached const per request (no env read).
+    // See src/test-support/fixtureRecorder.ts.
+    public sendRequest<R = any>(...args: any[]): Promise<R> {
+        const result = (super.sendRequest as any)(...args) as Promise<R>;
+        if (RECORDING_ENABLED) {
+            const method = typeof args[0] === "string" ? args[0] : args[0]?.method;
+            const maybeParams = args[1];
+            const request =
+                maybeParams && typeof maybeParams.isCancellationRequested === "boolean" ? undefined : maybeParams;
+            Promise.resolve(result).then(
+                (response) => recordLs(method, request, response),
+                () => { /* ignore rejected LS calls */ }
+            );
+        }
+        return result;
+    }
 
     // <------------ VS CODE RELATED APIS START --------------->
     didOpen(params: DidOpenParams): void {
@@ -1487,6 +1517,14 @@ export class ExtendedLangClient extends LanguageClient implements ExtendedLangCl
 
     async getAllData(params: WorkflowDataRequest): Promise<WorkflowDataResponse> {
         return this.sendRequest<WorkflowDataResponse>(EXTENDED_APIS.BI_WORKFLOW_ALL_DATA, params);
+    }
+
+    async genActivity(params: GenActivityRequest): Promise<GenActivityResponse> {
+        return this.sendRequest<GenActivityResponse>(EXTENDED_APIS.BI_WORKFLOW_GEN_ACTIVITY, params);
+    }
+
+    async analyzeActivityAction(params: AnalyzeActivityActionRequest): Promise<AnalyzeActivityActionResponse> {
+        return this.sendRequest<AnalyzeActivityActionResponse>(EXTENDED_APIS.BI_WORKFLOW_ANALYZE_ACTIVITY_ACTION, params);
     }
 
     async searchNodes(params: BISearchNodesRequest): Promise<BISearchNodesResponse> {

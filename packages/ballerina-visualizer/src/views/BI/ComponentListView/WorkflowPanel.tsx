@@ -54,6 +54,7 @@ export function WorkflowPanel({ searchQuery }: { searchQuery?: string }) {
                     icon={WORKFLOW_CARD.icon}
                     title={WORKFLOW_CARD.displayName}
                     onClick={handleClick}
+                    tooltip={WORKFLOW_CARD.tooltip}
                 />
             </CardGrid>
         </PanelViewMore>
