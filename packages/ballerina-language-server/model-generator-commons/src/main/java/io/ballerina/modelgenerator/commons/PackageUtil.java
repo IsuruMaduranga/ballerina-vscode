@@ -375,16 +375,15 @@ public class PackageUtil {
             }
 
             ModuleId moduleId = currentPackage.getDefaultModule().moduleId();
-            if (moduleName == null || moduleName.isEmpty() || packageName.equals(moduleName)) {
+            if (moduleName == null || moduleName.isEmpty() || currentPackageName.equals(moduleName)) {
                 return Optional.of(getCompilation(childProject).getSemanticModel(moduleId));
             }
             for (Module mod : currentPackage.modules()) {
                 if (mod.moduleName().toString().equals(moduleName)) {
-                    moduleId = mod.moduleId();
-                    break;
+                    return Optional.of(getCompilation(childProject).getSemanticModel(mod.moduleId()));
                 }
             }
-            return Optional.of(getCompilation(childProject).getSemanticModel(moduleId));
+            return Optional.empty();
         }
         return Optional.empty();
     }

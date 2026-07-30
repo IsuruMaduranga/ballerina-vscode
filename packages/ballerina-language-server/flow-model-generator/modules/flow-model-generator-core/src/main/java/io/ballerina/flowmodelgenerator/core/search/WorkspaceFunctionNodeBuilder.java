@@ -19,6 +19,7 @@
 package io.ballerina.flowmodelgenerator.core.search;
 
 import io.ballerina.compiler.api.ModuleID;
+import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.AnnotationAttachmentSymbol;
 import io.ballerina.compiler.api.symbols.AnnotationSymbol;
 import io.ballerina.compiler.api.symbols.Documentation;
@@ -35,8 +36,10 @@ import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.node.AutomationBuilder;
 import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
 import io.ballerina.modelgenerator.commons.CommonUtils;
+import io.ballerina.modelgenerator.commons.PackageModuleUtils;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.projects.Document;
+import io.ballerina.projects.Module;
 import io.ballerina.projects.Package;
 import io.ballerina.projects.PackageName;
 import io.ballerina.projects.Project;
@@ -47,6 +50,7 @@ import io.ballerina.tools.text.LineRange;
 import org.ballerinalang.langserver.common.utils.PositionUtil;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -111,6 +115,121 @@ class WorkspaceFunctionNodeBuilder {
             buildProjectNodes(project, buildProject, projectBuilder, projectAgentToolsBuilder, position, query,
                     functionsDoc);
         }
+    }
+
+    /**
+     * Builds the module-aware workspace results used only by function helper search.
+     */
+    static void buildSubmoduleWorkspaceNodes(Category.Builder rootBuilder, Project project, LineRange position,
+                                             String query, Document functionsDoc) {
+        Category.Builder agentToolsBuilder = rootBuilder.stepIn(Category.Name.AGENT_TOOLS);
+        Module currentModule = PackageModuleUtils.findModule(project.currentPackage(),
+                        position == null ? null : position.fileName())
+                .orElse(project.currentPackage().getDefaultModule());
+        Optional<WorkspaceProject> workspaceProject = project.workspaceProject();
+        if (workspaceProject.isEmpty()) {
+            Category.Builder packageBuilder = rootBuilder.stepIn(Category.Name.CURRENT_INTEGRATION);
+            buildPackageModules(project, project, currentModule, packageBuilder, agentToolsBuilder,
+                    position, query, functionsDoc);
+            return;
+        }
+
+        Category.Builder workspaceBuilder = rootBuilder.stepIn(Category.Name.CURRENT_WORKSPACE);
+        String currentPackageName = project.currentPackage().packageName().value();
+        Category.Builder currentPackageBuilder = workspaceBuilder.stepIn(
+                currentPackageName + CURRENT_INTEGRATION_INDICATOR, "", List.of());
+        Category.Builder currentAgentPackageBuilder = agentToolsBuilder.stepIn(
+                currentPackageName + CURRENT_INTEGRATION_INDICATOR, "", List.of());
+        buildPackageModules(project, project, currentModule, currentPackageBuilder, currentAgentPackageBuilder,
+                position, query, functionsDoc);
+        PackageName currentPackage = project.currentPackage().packageName();
+        for (BuildProject buildProject : workspaceProject.get().projects()) {
+            if (buildProject.currentPackage().packageName().equals(currentPackage)) {
+                continue;
+            }
+            String packageName = buildProject.currentPackage().packageName().value();
+            Category.Builder packageBuilder = workspaceBuilder.stepIn(packageName, "", List.of());
+            Category.Builder agentPackageBuilder = agentToolsBuilder.stepIn(packageName, "", List.of());
+            buildPackageModules(project, buildProject, currentModule, packageBuilder, agentPackageBuilder,
+                    position, query, null);
+        }
+    }
+
+    private static void buildPackageModules(Project currentProject, Project targetProject, Module currentModule,
+                                            Category.Builder parentBuilder, Category.Builder agentToolsBuilder,
+                                            LineRange position, String query, Document functionsDoc) {
+        Package targetPackage = targetProject.currentPackage();
+        var compilation = PackageUtil.getCompilation(targetPackage);
+        boolean currentPackage = currentProject.currentPackage().packageName().equals(targetPackage.packageName());
+        List<Item> packageItems = new ArrayList<>();
+        List<Item> packageAgentToolItems = new ArrayList<>();
+        List<Module> modules = new ArrayList<>(PackageModuleUtils.modules(targetPackage));
+        modules.sort(Comparator.comparingInt(module -> currentPackage
+                && module.moduleId().equals(currentModule.moduleId()) ? 0 : 1));
+
+        for (Module module : modules) {
+            boolean current = currentPackage && module.moduleId().equals(currentModule.moduleId());
+            String moduleName = PackageModuleUtils.fullModuleName(module);
+            String label = moduleName + (PackageModuleUtils.isGenerated(module) ? " (Generated)" : "");
+            boolean flattenDefaultModule = !currentPackage && module.isDefaultModule();
+            String relation = current ? PackageModuleUtils.CURRENT_MODULE
+                    : currentPackage ? PackageModuleUtils.SAME_PACKAGE_MODULE
+                    : PackageModuleUtils.WORKSPACE_PACKAGE_MODULE;
+            ModuleNodes moduleNodes = buildModuleNodes(
+                    getFunctions(compilation.getSemanticModel(module.moduleId())), module, current, relation,
+                    position, query, current ? functionsDoc : null);
+            if (current || flattenDefaultModule) {
+                packageItems.addAll(moduleNodes.functions());
+                packageAgentToolItems.addAll(moduleNodes.agentTools());
+            } else {
+                packageItems.add(buildCategory(label, moduleNodes.functions()));
+                packageAgentToolItems.add(buildCategory(label, moduleNodes.agentTools()));
+            }
+        }
+        parentBuilder.items(packageItems);
+        agentToolsBuilder.items(packageAgentToolItems);
+    }
+
+    private static ModuleNodes buildModuleNodes(List<FunctionSymbol> functions, Module module, boolean current,
+                                                String relation, LineRange position, String query,
+                                                Document functionsDoc) {
+        List<Item> availableNodes = new ArrayList<>();
+        List<Item> availableTools = new ArrayList<>();
+        for (FunctionSymbol function : functions) {
+            if (!current && !function.qualifiers().contains(Qualifier.PUBLIC)) {
+                continue;
+            }
+            if (isNaturalExprBodiedFunction(function, functionsDoc) || WorkflowUtil.isActivityFunction(function)
+                    || WorkflowUtil.isWorkflowFunction(function)) {
+                continue;
+            }
+            boolean dataMapped = isDataMappedFunction(function);
+            if (dataMapped && current && position != null && function.getLocation().isPresent()) {
+                LineRange functionRange = function.getLocation().get().lineRange();
+                if (position.fileName().replace('\\', '/').endsWith(functionRange.fileName().replace('\\', '/'))
+                        && PositionUtil.isWithinLineRange(functionRange, position)) {
+                    continue;
+                }
+            }
+            if (!isValidFunctionForSearchQuery(function, query)) {
+                continue;
+            }
+            boolean agentTool = isAgentTool(function);
+            AvailableNode availableNode = createAvailableNode(function, dataMapped, agentTool,
+                    function.qualifiers().contains(Qualifier.ISOLATED), module, relation);
+            if (agentTool) {
+                availableTools.add(availableNode);
+            } else {
+                availableNodes.add(availableNode);
+            }
+        }
+        return new ModuleNodes(availableNodes, availableTools);
+    }
+
+    private static Category buildCategory(String label, List<Item> items) {
+        Category.Builder categoryBuilder = new Category.Builder(null);
+        categoryBuilder.metadata().label(label).description("").keywords(List.of());
+        return categoryBuilder.items(items).build();
     }
 
     private static void buildProjectNodes(Project currentProject, Project targetProject,
@@ -249,5 +368,44 @@ class WorkspaceFunctionNodeBuilder {
         }
 
         return new AvailableNode(metadata, codedataBuilder.build(), true);
+    }
+
+    private static List<FunctionSymbol> getFunctions(SemanticModel semanticModel) {
+        return semanticModel.moduleSymbols().stream()
+                .filter(symbol -> symbol.kind().equals(SymbolKind.FUNCTION)
+                        && !symbol.nameEquals(AutomationBuilder.MAIN_FUNCTION_NAME))
+                .map(symbol -> (FunctionSymbol) symbol)
+                .toList();
+    }
+
+    private static AvailableNode createAvailableNode(FunctionSymbol function, boolean dataMapped,
+                                                     boolean agentTool, boolean isolated, Module ownerModule,
+                                                     String moduleRelation) {
+        boolean generated = PackageModuleUtils.isGenerated(ownerModule);
+        String moduleKind = PackageModuleUtils.moduleKind(ownerModule);
+        Metadata.Builder<Object> metadataBuilder = new Metadata.Builder<>(null)
+                .label(function.getName().orElseThrow())
+                .description(function.documentation().flatMap(Documentation::description).orElse(null))
+                .addData("isDataMappedFunction", dataMapped)
+                .addData("isAgentTool", agentTool)
+                .addData("isIsolatedFunction", isolated);
+
+        Codedata.Builder<Object> codedataBuilder = new Codedata.Builder<>(null)
+                .node(NodeKind.FUNCTION_CALL)
+                .symbol(function.getName().orElseThrow())
+                .isGenerated(generated)
+                .data("moduleRelation", moduleRelation)
+                .data("moduleKind", moduleKind);
+        function.getModule().ifPresent(module -> {
+            ModuleID id = module.id();
+            codedataBuilder.org(id.orgName()).module(id.moduleName()).version(id.version());
+            if (!PackageModuleUtils.CURRENT_MODULE.equals(moduleRelation)) {
+                codedataBuilder.packageName(id.packageName());
+            }
+        });
+        return new AvailableNode(metadataBuilder.build(), codedataBuilder.build(), true);
+    }
+
+    private record ModuleNodes(List<Item> functions, List<Item> agentTools) {
     }
 }

@@ -472,10 +472,31 @@ public class CommonUtils {
             DocumentId documentId = project.documentId(
                     project.kind() == ProjectKind.SINGLE_FILE_PROJECT ? project.sourceRoot() :
                             project.sourceRoot().resolve(location.lineRange().fileName()));
-            return project.currentPackage().getDefaultModule().document(documentId);
+            return project.currentPackage().module(documentId.moduleId()).document(documentId);
         } catch (ProjectException ex) {
-            return null;
+            return findDocument(project, location, null).orElse(null);
         }
+    }
+
+    private static Optional<Document> findDocument(Project project, Location location, String moduleName) {
+        String locationFileName = location.lineRange().fileName().replace('\\', '/');
+        for (Module module : project.currentPackage().modules()) {
+            if (moduleName != null && !module.moduleName().toString().equals(moduleName)) {
+                continue;
+            }
+            for (DocumentId documentId : module.documentIds()) {
+                Document document = module.document(documentId);
+                String documentPath = project.documentPath(documentId)
+                        .map(Path::toString)
+                        .orElse(document.name())
+                        .replace('\\', '/');
+                if (document.name().equals(locationFileName) || documentPath.equals(locationFileName)
+                        || documentPath.endsWith("/" + locationFileName)) {
+                    return Optional.of(document);
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     /***
@@ -1385,9 +1406,10 @@ public class CommonUtils {
             return Optional.empty();
         }
 
-        // Check if it's the default package
+        // Check if the symbol belongs to any module in the current package.
         if (symbolPackage.equals(moduleInfo.packageName())) {
-            return CommonUtil.findNode(symbol, CommonUtils.getDocument(project, location).syntaxTree())
+            return findDocument(project, location, moduleId.get().moduleName())
+                    .flatMap(document -> CommonUtil.findNode(symbol, document.syntaxTree()))
                     .map(Node::lineRange);
         }
 
@@ -1403,8 +1425,9 @@ public class CommonUtils {
         for (Project wsProject : workspaceProjects) {
             String wsPackageName = wsProject.currentPackage().packageName().value();
             if (wsPackageName.equals(symbolPackage)) {
-                // Use the sibling project to get the document
-                return CommonUtil.findNode(symbol, CommonUtils.getDocument(wsProject, location).syntaxTree())
+                // Use the sibling project and the symbol's owner module to get the document.
+                return findDocument(wsProject, location, moduleId.get().moduleName())
+                        .flatMap(document -> CommonUtil.findNode(symbol, document.syntaxTree()))
                         .map(Node::lineRange);
             }
         }
