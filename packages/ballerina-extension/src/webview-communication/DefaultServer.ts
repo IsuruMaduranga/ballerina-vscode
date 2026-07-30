@@ -107,12 +107,7 @@ export class DefaultServer {
         const mgr = createExtensionTransportManager<WebviewWsRequest, WebviewWsResponse>({
             initialMode: "websocket",
             wsPort: 0,
-            // Authenticates the websocket handshake: a client that does not
-            // present this token is refused the upgrade, so it can neither send
-            // requests nor observe the events `publishEvent` broadcasts to every
-            // open socket (migration logs, migrated project details, AI chat).
-            // A cross-site page cannot read the token, so gating the upgrade
-            // also rules out cross-site websocket hijacking.
+            // Authenticates the handshake; upgrades without this token are refused.
             authToken: this.token,
             handleRequest: (request) => this.router.handle(request),
         });
