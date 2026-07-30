@@ -94,6 +94,10 @@ export class BiWsClient {
             mode: bootstrap.mode,
             server: bootstrap.wsServer,
             port: bootstrap.wsPort,
+            // Presented during the websocket handshake; the host rejects the
+            // upgrade without it. Ignored in proxy mode, which does not use a
+            // socket. Requests also still carry the token (see `request`).
+            token: bootstrap.token,
         });
         this.transport.subscribe(
             (message) => this.handleIncomingMessage(message),

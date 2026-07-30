@@ -57,6 +57,9 @@ export class EmbeddedWsRpc {
             mode: "websocket",
             server: coords.host,
             port: coords.port,
+            // Required by the handshake: the Ballerina host now rejects
+            // websocket upgrades that do not present the per-session token.
+            token: coords.token,
         });
     }
 

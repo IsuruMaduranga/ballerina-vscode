@@ -94,6 +94,17 @@ export class DefaultServer {
             const mgr = createExtensionTransportManager<WebviewWsRequest, WebviewWsResponse>({
                 initialMode: "websocket",
                 wsPort: 0,
+                // Gate the handshake, not just individual requests. Checking the
+                // token per request still let an unauthenticated client hold an
+                // open socket and receive everything `publishEvent` broadcasts
+                // (migration logs, migrated project details, AI chat events).
+                // Rejecting the upgrade closes that path, and because a
+                // cross-site page cannot read the token it also blocks
+                // cross-site websocket hijacking.
+                authToken: this.token,
+                // Retained as defence in depth: the handshake is the real gate,
+                // but this keeps an untokened request from being served if the
+                // transport is ever reached by some other route.
                 handleRequest: (request) => {
                     if (!request || request.token !== this.token) {
                         return this.errorResponse(request?.action ?? "unknown", "Unauthorized BI bridge request.");
