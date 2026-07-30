@@ -111,12 +111,10 @@ Running that exact command locally is the closest reproduction.
 
 ### "Change the LS jar shipped in the vsix"
 
-`packages/ballerina-extension/scripts/copy-ls.js` decides which jar lands in
-`ls/`. Read it before changing anything LS-related. Override knobs:
-
-- `BALLERINA_LS_SOURCE=download` — always download from GH releases
-- `BALLERINA_LS_TAG=<tag>` — pin a specific release
-- *(default)* — prefer the local pack output, fall back to download
+`packages/ballerina-extension/scripts/copy-ls.js` copies the jar into `ls/`. It is
+always the local `pack` output of `packages/ballerina-language-server` — there is no
+download path and nothing to select. To change the shipped jar, rebuild the LS
+(`rush build --to ballerina-language-server`).
 
 **The version is authored in exactly one file:
 `packages/ballerina-extension/package.json`.** `vsce` reads it directly, and the

@@ -4,17 +4,110 @@ on:
   schedule:
     - cron: '30 1 * * *'
   workflow_dispatch:
+    inputs:
+      sourceBranch:
+        description: >-
+          Branch to copy into `nightly`. Defaults to main, which is what the
+          schedule always uses. Override it to dry-run the whole daily pipeline
+          against a feature branch — note that this also makes the pipeline pick
+          up that branch's .github/actions, since they are resolved from the
+          checked-out nightly tree.
+        required: false
+        default: ''
 
 permissions:
   contents: read
   packages: read
 
+# The nightly branch is force-pushed by sync-nightly, so two concurrent runs
+# (e.g. the schedule and a manual dispatch) must not interleave: the second would
+# move the branch out from under the first's build.
+concurrency:
+  group: daily-build
+  cancel-in-progress: false
+
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Nightly branch — always main plus a single version commit
+  #
+  # The branch is reset to the source branch (main, on the schedule) every run and
+  # force-pushed, so it is never a merge target and never accumulates history:
+  # `git diff main nightly` is always exactly the version bump. Its purpose is to
+  # give every nightly VSIX an inspectable commit that pins both the source and
+  # the version it was built at.
+  #
+  # Note that .github/actions/* used by the downstream jobs resolve from the
+  # checked-out nightly tree, so a change to them only takes effect for the daily
+  # build once it is on main (or via the sourceBranch dispatch input).
+  #
+  # The version is derived from the extension package.json — the single source of truth,
+  # which on main always reads 'major.minor.patch-SNAPSHOT' — as
+  # major.(minor-1).<minutes since 2020-01-01 UTC>, e.g. 5.14.0-SNAPSHOT -> 5.13.3458370. It is
+  # and read directly by both vsce and the language-server Gradle build, so the
+  # extension and the bundled LS always report the same version. See
+  # common/scripts/nightly-version.js.
+  # ─────────────────────────────────────────────────────────────────────────
+  sync-nightly:
+    name: Sync nightly branch
+    # Deliberately NOT gated on the upstream repository: a fork pushing a nightly
+    # branch to itself is harmless, and gating here would make every downstream job
+    # (which all 'needs' this one) skip, leaving forks unable to dry-run the daily
+    # build at all. Publishing and notifying stay gated.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.stamp.outputs.version }}
+      sha: ${{ steps.push.outputs.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Reset nightly to the source branch
+        env:
+          SOURCE_BRANCH: ${{ inputs.sourceBranch || 'main' }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # checkout fetches only the triggering ref, so the source branch has to be
+          # fetched explicitly even at fetch-depth 0.
+          git fetch origin "${SOURCE_BRANCH}"
+          git checkout -B nightly "origin/${SOURCE_BRANCH}"
+
+      - name: Stamp nightly version
+        id: stamp
+        uses: ./.github/actions/updateVersion
+        with:
+          version: 'N/A'
+          isPreRelease: 'false'
+          nightly: 'true'
+
+      - name: Commit and push nightly
+        id: push
+        run: |
+          set -euo pipefail
+          # The extension manifest is the authored version and Gradle reads it directly,
+          # so this single-file commit also pins the language-server version.
+          git add packages/ballerina-extension/package.json
+          # Tolerate a no-op stamp (a re-run within the same hour of a source branch
+          # that already carries this version) instead of failing on an empty commit.
+          git diff --staged --quiet || git commit -m "Nightly build ${{ steps.stamp.outputs.version }}"
+          # Force-push both creates the branch on the very first run and discards
+          # yesterday's version commit, so nightly stays a single commit ahead of
+          # main. Pushes made with GITHUB_TOKEN do not trigger workflows, so this
+          # cannot re-enter the daily build.
+          git push --force origin nightly
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   # ─────────────────────────────────────────────────────────────────────────
   # Ballerina language server — multi-branch pack & test
   # ─────────────────────────────────────────────────────────────────────────
   ls-prepare-matrix:
     name: LS prepare matrix
+    needs: sync-nightly
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -34,29 +127,50 @@ jobs:
         run: |
           set -euo pipefail
 
-          latest_branch=$(git ls-remote --heads origin | awk -F'/' '/refs\/heads\/1\.[0-9]+\.x$/ { print $NF }' | sort -V | tail -n 1)
+          # Release lines are 'X.Y.x' with an even minor (5.14.x, 5.16.x); odd minors are the
+          # pre-release channel and never get a branch. The pattern was '1.[0-9]+.x' when the
+          # language server versioned itself independently — it now shares the extension's
+          # version, so its lines are the repo's lines.
+          latest_branch=$(git ls-remote --heads origin | awk -F'/' '/refs\/heads\/[0-9]+\.[0-9]+\.x$/ { print $NF }' | sort -V | tail -n 1)
           if [ -z "${latest_branch}" ]; then
-            echo "No 1.x.x release branch found on origin; building from main only." >&2
+            echo "No X.Y.x release branch found on origin; building from nightly only." >&2
           fi
 
           timestamp=$(date '+%Y%m%d-%H%M%S')
           targets='[]'
 
-          branches="main"
+          # 'nightly' rather than 'main': it is main plus the version commit, so the
+          # LS verified here is the same tree the extension build packages.
+          branches="nightly"
           if [ -n "${latest_branch}" ]; then
-            branches="main ${latest_branch}"
+            branches="nightly ${latest_branch}"
           fi
 
           for branch in ${branches}; do
             git fetch --depth=1 origin "${branch}:refs/remotes/origin/${branch}"
 
-            branch_version=$(git show "origin/${branch}:packages/ballerina-extension/package.json" | jq -r '.version')
-            if [ -z "${branch_version}" ]; then
-              echo "Unable to resolve version from the extension manifest for ${branch}" >&2
-              exit 1
+            if [ "${branch}" = "nightly" ]; then
+              # The nightly branch already carries the timestamped version in the extension
+              # manifest. Reusing it here
+              # means this verification build and the jar attached to the nightly release
+              # are one and the same version, instead of two competing nightly version
+              # schemes in one run.
+              build_version=$(git show "origin/${branch}:packages/ballerina-extension/package.json" | jq -r '.version')
+              if [ -z "${build_version}" ] || [ "${build_version}" = "null" ]; then
+                echo "Unable to resolve version from the extension manifest on ${branch}" >&2
+                exit 1
+              fi
+            else
+              # A release line carries a concrete version — only main uses '-SNAPSHOT'.
+              # Suffix it with a timestamp because this is a verification build, not a release.
+              branch_version=$(git show "origin/${branch}:packages/ballerina-extension/package.json" | jq -r '.version')
+              if [ -z "${branch_version}" ] || [ "${branch_version}" = "null" ]; then
+                echo "Unable to resolve version from the extension manifest for ${branch}" >&2
+                exit 1
+              fi
+              build_version="${branch_version}-${timestamp}"
             fi
 
-            build_version="${branch_version}-${timestamp}"
             targets=$(jq -c \
               --arg branch "${branch}" \
               --arg version "${build_version}" \
@@ -253,32 +367,30 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   Build:
     name: Extension build
+    needs: sync-nightly
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
-      ballerina: true
+      # Pin the nightly commit SHA rather than the branch name: the branch is
+      # force-pushed every run, so a name would let a concurrent run swap the tree
+      # out from under this build and produce a VSIX that matches no commit.
+      ref: ${{ needs.sync-nightly.outputs.sha }}
+      # ballerina: false — do NOT re-stamp the version. The checked-out nightly commit
+      # already carries it in all three version files, and re-deriving the timestamp
+      # here would produce a different version the moment the clock ticks past the
+      # minute sync-nightly ran, leaving a VSIX that matches no commit.
+      ballerina: false
       runFastTests: true
       runBalE2ETests: true
-      # Daily builds ship only to a rolling GitHub `nightly` release, never the
-      # Marketplace, so instead of the isPreRelease timestamp suffix they get a
-      # '-SNAPSHOT' version (5.13.0-SNAPSHOT). It is valid semver so vsce
-      # accepts it, and it makes a nightly VSIX unmistakable next to a release
-      # build of the same version.
+      # A nightly is a pre-release, so it is packaged like one: isPreRelease is exported
+      # into the rush build env (actions/build), where common-libs/scripts/package-vsix.js
+      # turns it into 'vsce package --pre-release'. Nightly and the dispatched pre-release
+      # differ only in how they are branched and tagged, never in how they are packaged.
       #
-      # isPreRelease: false is deliberate and does more than drop the timestamp.
-      # It is also exported into the rush build env (actions/build/action.yml),
-      # where common-libs/scripts/package-vsix.js turns it into
-      # 'vsce package --pre-release'. Nightlies are therefore packaged WITHOUT
-      # that flag, on purpose: the flag marks the VSIX as a pre-release build,
-      # which moves whoever installs it onto the Marketplace pre-release channel
-      # for future updates. A nightly is unvetted main, not an opt-in supported
-      # channel, so it should not silently enroll testers in one.
-      #
-      # The bundled LS is built from source (lsSource defaults to 'local'), so
-      # it always matches the extension version, and isPreRelease has no effect
-      # on LS resolution here (that path is gated on lsSource == 'download').
-      isPreRelease: false
-      snapshot: true
+      # Independent of the version, which is already committed on the nightly branch:
+      # updateVersion is gated on 'ballerina', false above, so this cannot re-stamp it.
+      isPreRelease: true
+      nightly: true
 
   # ─────────────────────────────────────────────────────────────────────────
   # Daily pre-release — publish the extension VSIX as a GitHub pre-release
@@ -288,6 +400,9 @@ jobs:
   Release:
     name: Publish daily pre-release
     needs:
+      # sync-nightly is needed for its commit SHA, not for ordering — the other jobs
+      # already depend on it transitively.
+      - sync-nightly
       - ls-ubuntu-pack
       - ls-ubuntu-test
       - ls-windows-build
@@ -316,10 +431,21 @@ jobs:
         with:
           repo: ${{ github.repository }}
           name: ballerina
-          chatAPI: ${{ secrets.BI_TEAM_CHAT_API }}
-          # Rolling tag: each daily run deletes and recreates the `nightly`
-          # release so it always points at the latest build.
+          chatAPI: ${{ secrets.EDITOR_TEAM_CHAT_API }}
+          # Rolling tag: each daily run replaces the `nightly` release's assets in
+          # place and moves the tag, so the download URL never changes and always
+          # serves the latest build.
           tag: nightly
+          # The commit the VSIX was built from. This job runs on main, so without it the
+          # release would tag main's head — a tree that does not carry the nightly
+          # version — and the nightly commit would be unreachable from the release.
+          commit: ${{ needs.sync-nightly.outputs.sha }}
+          # Attach the bundled language server too, so it is downloadable on its own
+          # (debugging a nightly LS regression, or pointing an existing install at it
+          # via the ballerina.langServerPath setting). This is the exact jar inside
+          # the VSIX — copy-ls.js put it there — packed at the same parent version,
+          # so the two assets can never disagree about what was built.
+          extraAssets: packages/ballerina-extension/ls/ballerina-language-server-*.jar
 
   # ─────────────────────────────────────────────────────────────────────────
   # Notifications
@@ -332,6 +458,7 @@ jobs:
       - ls-windows-build
       - ls-trivy
       - Build
+    if: ${{ github.repository == 'ballerina-platform/ballerina-vscode' }}
     runs-on: ubuntu-latest
     steps:
       - name: Restore build
@@ -350,7 +477,7 @@ jobs:
         with:
           title: Ballerina
           fileName: ballerina
-          chatAPI: ${{ secrets.BI_TEAM_CHAT_API }}
+          chatAPI: ${{ secrets.EDITOR_TEAM_CHAT_API }}
 
   NotifyFailure:
     name: Notify (failure)

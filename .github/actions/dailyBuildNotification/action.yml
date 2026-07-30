@@ -19,8 +19,8 @@ runs:
       run: |
         file=$(ls ${{ inputs.fileName }}-[0-9]*.[0-9]*.[0-9]*.vsix)
         extension=${{ inputs.fileName }}
-        # Prefix/suffix strip, not a trailing-dash cut — nightly versions carry
-        # a '-SNAPSHOT' prerelease id (ballerina-5.13.0-SNAPSHOT.vsix).
+        # Prefix/suffix strip, not a trailing-dash cut — the name itself contains a
+        # '-', and a version may carry a prerelease id.
         version=${file#${extension}-}
         version=${version%.vsix}
         extensionName="$(echo "$extension" | sed 's/.*/\u&/')"

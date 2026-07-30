@@ -91,7 +91,10 @@ jobs:
             echo PRE_RELEASE=false >> $GITHUB_ENV
           fi
 
-      - name: Pre release depenency version update
+      # Selects the commit the release tag will point at. It no longer mutates anything:
+      # the version is owned by the extension manifest, so this branch is identical to
+      # the ref the workflow was dispatched on.
+      - name: Check out the release branch
         env:
           GITHUB_TOKEN: ${{ secrets.BALLERINA_BOT_TOKEN }}
         run: |
@@ -113,25 +116,29 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Release the artifacts
-        env:
-          GITHUB_TOKEN: ${{ secrets.BALLERINA_BOT_TOKEN }}
-          BALLERINA_CENTRAL_ACCESS_TOKEN: ${{ secrets.BALLERINA_CENTRAL_ACCESS_TOKEN }}
-          packageUser: ${{ secrets.BALLERINA_BOT_USERNAME }}
-          packagePAT: ${{ secrets.BALLERINA_BOT_TOKEN }}
-        run: |
-          ./gradlew -Pversion=${VERSION} release -Prelease.useAutomaticVersion=true -x test
+      # There is deliberately no './gradlew release' step. That task ran the
+      # net.researchgate.release plugin, whose versionPropertyFile rewrote
+      # gradle.properties (un-snapshot, then write the next dev version) and committed
+      # it — which would silently desync the version from the extension manifest that
+      # now owns it, and 'Post release PR' below would carry the desync to main.
+      # Everything that step provided is covered explicitly: the build below, and the
+      # tag created by 'gh release create'.
 
       - name: Set up Ballerina
         uses: ballerina-platform/setup-ballerina@97fd67111e3c3ecdfafff96fc24d95ad909ab299 # v1.1.4
         with:
           version: 2201.13.4
 
+      # -Pversion is required: without it this builds at whatever gradle.properties
+      # says, which previously happened to be right only because the deleted 'release'
+      # step had just un-snapshotted that file. The explicit version keeps the build and
+      # the release asset aligned. 'gh release create' below uploads
+      # build/ballerina-language-server-${VERSION}.jar, so the names must agree.
       - name: Build with Gradle
         env:
           packageUser: ${{ github.actor }}
           packagePAT: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew build ${{ github.event.inputs.skip_tests == 'true' && '-x test' || '' }}
+        run: ./gradlew -Pversion=${VERSION} build pack ${{ github.event.inputs.skip_tests == 'true' && '-x test' || '' }}
 
       - name: Publish the artifacts
         env:
@@ -152,10 +159,9 @@ jobs:
             ${{ env.PRE_RELEASE == 'true' && '--prerelease' || '' }} \
             build/ballerina-language-server-${{ env.VERSION }}.jar
 
-      - name: Post release PR
-        if: env.PRE_RELEASE == 'false'
-        env:
-          GITHUB_TOKEN: ${{ secrets.BALLERINA_BOT_TOKEN }}
-        run: |
-          curl -fsSL https://github.com/github/hub/raw/master/script/get | bash -s 2.14.1
-          bin/hub pull-request --base main -m "[Automated] Sync main after "$VERSION" release"
+      # The 'Post release PR' step that used to close this workflow was removed with the
+      # 'release' task. Its only purpose was to carry that task's version write-back on
+      # the release branch into main; nothing here mutates the tree any more, so the PR
+      # would be empty — and its head branch was pushed by that same deleted task.
+      # The extension's release flow is what returns main to the next -SNAPSHOT
+      # (.github/actions/pr).

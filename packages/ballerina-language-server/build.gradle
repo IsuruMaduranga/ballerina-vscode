@@ -126,11 +126,6 @@ subprojects {
     }
 }
 
-def moduleVersion = project.version
-if (moduleVersion.indexOf('-') != -1) {
-    moduleVersion = moduleVersion.substring(0, moduleVersion.indexOf('-'))
-}
-
 // Build-owned Ballerina user home. Both bal build (below) and every test JVM use
 // this directory instead of ~/.ballerina, so test runs never read from or write
 // to the developer's machine-wide package cache. It lives inside the task's

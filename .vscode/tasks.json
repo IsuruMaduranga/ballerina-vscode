@@ -87,14 +87,7 @@
             "label": "copy-ls:local",
             "type": "npm",
             "path": "packages/ballerina-extension",
-            "script": "copyLS",
-            "problemMatcher": []
-        },
-        {
-            "label": "copy-ls:download",
-            "type": "npm",
-            "path": "packages/ballerina-extension",
-            "script": "download-ls",
+            "script": "provisionLS",
             "problemMatcher": []
         },
         {
