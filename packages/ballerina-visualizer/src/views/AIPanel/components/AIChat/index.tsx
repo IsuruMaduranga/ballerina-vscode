@@ -2524,7 +2524,7 @@ const AIChat: React.FC = () => {
                                     onClick={() => { void loadThreads(); setHistoryOpen(v => !v); }}
                                     tooltip="Chat sessions"
                                 >
-                                    <Codicon name="history" sx={{ fontSize: "16px", marginRight: 6 }} />
+                                    <Icon name="CopilotChatRounded" sx={{ fontSize: "18px", marginRight: 6 }} iconSx={{ position: "relative" }} />
                                     Chats
                                 </Button>
                                 {historyOpen && (
