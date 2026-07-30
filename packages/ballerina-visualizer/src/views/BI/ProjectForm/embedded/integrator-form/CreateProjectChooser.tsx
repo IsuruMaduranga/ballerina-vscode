@@ -92,7 +92,13 @@ const ProjectGroupFields = styled.div`
  *  background. Instead it reads as a status bar physically attached to the
  *  fields it derives from — a full-width tinted strip sealed to the bottom of
  *  the container by a single top border, the same idiom as `SkipOptionRow`.
- *  Kept in neutral foreground colors: this is informational, never a warning. */
+ *  Kept in neutral foreground colors: this is informational, never a warning.
+ *
+ *  The tint is a light wash of the theme's blue over the editor background, so
+ *  it reads as information rather than as another chrome surface. Declared twice
+ *  on purpose: the first line is the fallback for webview runtimes without
+ *  `color-mix()` (Chromium < 111, i.e. older VS Code builds), where the theme's
+ *  own info-validation blue stands in. */
 const ProjectStatusStrip = styled.div`
     display: flex;
     align-items: flex-start;
@@ -101,7 +107,8 @@ const ProjectStatusStrip = styled.div`
     font-size: 12px;
     line-height: 1.4;
     color: var(--vscode-descriptionForeground);
-    background: var(--vscode-sideBar-background);
+    background: var(--vscode-inputValidation-infoBackground, var(--vscode-sideBar-background));
+    background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, var(--vscode-editor-background));
     border-top: 1px solid var(--vscode-panel-border);
 `;
 
@@ -443,7 +450,7 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
                     {!pathError && resolvedPath && (
                         <ProjectStatusStrip>
                             <Icon
-                                name={existingWorkspace ? "check" : "new-folder"}
+                                name={existingWorkspace ? "info" : "new-folder"}
                                 isCodicon
                                 sx={STATUS_ICON_SX}
                                 iconSx={STATUS_ICON_GLYPH_SX}
