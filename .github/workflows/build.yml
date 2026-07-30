@@ -12,7 +12,7 @@ on:
       ref:
         description: >-
           Git ref (branch, tag or SHA) to build. Defaults to the calling
-          workflow's ref. The daily build pins the nightly commit SHA here.
+          workflow's ref. The scheduled build pins the nightly commit SHA here.
         type: string
         required: false
         default: ''

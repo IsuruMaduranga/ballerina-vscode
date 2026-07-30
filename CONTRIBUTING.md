@@ -297,11 +297,11 @@ monorepo. If you want them to land here, push them upstream to
 - `X.Y.x` — release lines (`5.14.x`, `5.16.x`). Even minors are release lines, odd minors
   are the pre-release channel. Cut by hand when a line opens; they carry a **concrete**
   version, never `-SNAPSHOT`.
-- `release/X.Y.Z` — one branch per release, pushed by `release-vsix.yml` and PR'd into its
+- `release/X.Y.Z` — one branch per release, pushed by `release-pre-release.yml` and PR'd into its
   `X.Y.x` line.
 - `alpha` — staging for alpha builds; concrete version, set by hand.
 - `migrate/*` — long-lived migration work
-- `nightly` — **machine-managed, do not touch.** `daily-build.yml` resets it to
+- `nightly` — **machine-managed, do not touch.** `schedule.yml` resets it to
   `origin/main` and force-pushes it every night, so it is always `main` plus a single
   version commit. Never target it with a PR and never merge it anywhere; anything
   committed to it is gone by the next run.
@@ -326,9 +326,9 @@ nightly cannot derive a version. See the Versioning section of
 `.github/workflows/README.md` for the full table.
 
 Release process is documented at `.github/workflows/README.md`:
-1. **release-vsix** workflow (manual dispatch) — builds, creates the GitHub release, pushes
-   `release/<version>`, and opens the release PR into the `X.Y.x` line (skipped with a
-   notice if that line branch does not exist yet).
+1. **release-pre-release** workflow (manual dispatch) — builds, optionally creates the
+   GitHub release, pushes `release/<version>`, and opens the release PR into the `X.Y.x`
+   line (skipped with a notice if that line branch does not exist yet).
 2. **publish-vsix** workflow (manual dispatch) — takes the workflow run ID of the
    release build and publishes the VSIX to VSCode Marketplace + OpenVSX.
 

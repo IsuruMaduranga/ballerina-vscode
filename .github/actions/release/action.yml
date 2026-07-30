@@ -14,36 +14,17 @@ inputs:
     description: 'Google Chat thread key for grouping release notifications'
     required: false
     default: ''
-  tag:
-    description: >-
-      Fixed, rolling release tag (e.g. "nightly"). When set, any existing
-      release + git tag with this name is deleted and recreated, so the tag
-      always points at the latest build. When empty (default), a unique
-      "v<version>" release is created without deleting anything.
-    required: false
-    default: ''
   extraAssets:
     description: >-
       Additional files to attach to the release, one path or glob per line
       (e.g. the language-server jar bundled in the VSIX). Each is uploaded with
-      the same replace-safely semantics as the VSIX. A glob that matches nothing
+      the same verified-upload semantics as the VSIX. A glob that matches nothing
       fails the job — a silently missing asset is worse than a red build.
-    required: false
-    default: ''
-  commit:
-    description: >-
-      The commit the release and its tag should point at. Defaults to the commit the
-      workflow is running on. The daily build must pass the sync-nightly commit: its
-      job runs on main, so the default would tag main's head — a tree without the
-      version bump the VSIX was actually built from. Ignored when releaseBranch is
-      true, where the version commit made below is the correct target.
     required: false
     default: ''
   prerelease:
     description: >-
-      Mark the GitHub release as a pre-release. Defaults to true, which is correct
-      for the rolling nightly and for pre-release dispatches; a real release passes
-      false so it is not left mislabelled when publish-vsix.yml is not run.
+      Mark the GitHub release as a pre-release. A real release passes false.
     required: false
     default: 'true'
   releaseBranch:
@@ -52,8 +33,7 @@ inputs:
       commit instead of the workflow's own. Set only for a real release; the
       version that was packaged lives in the working tree (updateVersion wrote it
       during the build) and is otherwise never committed anywhere. Left false for
-      pre-releases and for the rolling nightly, whose version commit sync-nightly
-      has already made and pushed.
+      pre-releases.
     required: false
     default: 'false'
   ballerina:
@@ -80,20 +60,15 @@ runs:
         version=${file#${extension}-}
         version=${version%.vsix}
         extensionName="$(echo "$extension" | sed 's/.*/\u&/')"
-        # A non-empty `tag` input selects the rolling release (e.g. nightly);
-        # otherwise fall back to a unique per-version tag.
-        if [ -n "${{ inputs.tag }}" ]; then
-          releaseTag="${{ inputs.tag }}"
-          releaseName="Nightly Build (v${version})"
-        else
-          releaseTag="v${version}"
-          releaseName="Release v${version}"
-        fi
         echo "vsixName=$file" >> $GITHUB_OUTPUT
         echo "version=$version" >> $GITHUB_OUTPUT
         echo "extensionName=$extensionName" >> $GITHUB_OUTPUT
-        echo "releaseTag=$releaseTag" >> $GITHUB_OUTPUT
-        echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
+        echo "releaseTag=v${version}" >> $GITHUB_OUTPUT
+        if [ "${{ inputs.prerelease }}" = "true" ]; then
+          echo "releaseName=Pre-release v${version}" >> $GITHUB_OUTPUT
+        else
+          echo "releaseName=Release v${version}" >> $GITHUB_OUTPUT
+        fi
 
     # ── Release refs ─────────────────────────────────────────────────────────
     # Only for a real release. The version the build packaged exists solely in the
@@ -183,17 +158,7 @@ runs:
         RELEASE_NAME: ${{ steps.vsix.outputs.releaseName }}
         VSIX: ${{ steps.vsix.outputs.vsixName }}
         EXTRA_ASSETS: ${{ inputs.extraAssets }}
-        ROLLING: ${{ inputs.tag != '' }}
-        # The commit the release and its tag point at, most specific first: the version
-        # commit when a release branch was pushed, then an explicit 'commit' input (the
-        # daily build passes the sync-nightly commit the VSIX was built from), and only
-        # then the commit the workflow is running on.
-        #
-        # The last of those is wrong for the nightly — that job runs on main, so it would
-        # tag main's head, a tree with no version bump in it. The nightly commit exists
-        # precisely so a nightly VSIX is traceable to one, which the release has to
-        # reference for that to be worth anything.
-        TARGET_COMMIT: ${{ steps.release_branch.outputs.sha || inputs.commit || github.sha }}
+        TARGET_COMMIT: ${{ steps.release_branch.outputs.sha || github.sha }}
         PRERELEASE: ${{ inputs.prerelease }}
       run: |
         set -euo pipefail
@@ -216,48 +181,26 @@ runs:
         CURL_API=(curl -sS --connect-timeout 15 --max-time 60)
         CURL_UPLOAD=(curl -sS --connect-timeout 15 --max-time 900)
 
-        # On the rolling path (e.g. nightly) the release is REUSED rather than
-        # deleted and recreated. Nothing is destroyed until the replacement
-        # artifact is uploaded and verified, so a failed run always leaves the
-        # previous nightly downloadable. That matters because the whole point of
-        # a fixed tag is a URL that keeps working; deleting first would take
-        # 'releases/download/<tag>/...' offline until the next successful build.
-        existingId=""
         existingAssets="[]"
-        if [ "${ROLLING}" = "true" ]; then
-          existing=$("${CURL_API[@]}" -H "Authorization:token ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "${API}/releases/tags/${TAG}")
-          existingId=$(echo "${existing}" | jq -r '.id // empty')
-          existingAssets=$(echo "${existing}" | jq -c '.assets // []')
+        createResponse=$("${CURL_API[@]}" -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization:token ${GH_TOKEN}" \
+          "${API}/releases" \
+          -d "$(jq -n \
+            --arg tag "${TAG}" \
+            --arg name "${RELEASE_NAME}" \
+            --arg commit "${TARGET_COMMIT}" \
+            --argjson prerelease "${PRERELEASE}" \
+            '{tag_name: $tag, target_commitish: $commit, draft: false, name: $name, prerelease: $prerelease}')")
+        id=$(echo "${createResponse}" | jq -r '.id // empty')
+        if [ -z "${id}" ]; then
+          echo "Failed to create release:" >&2
+          echo "${createResponse}" >&2
+          exit 1
         fi
 
-        if [ -n "${existingId}" ]; then
-          echo "Reusing existing release ${existingId} for tag ${TAG}"
-          id="${existingId}"
-        else
-          createResponse=$("${CURL_API[@]}" -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Authorization:token ${GH_TOKEN}" \
-            "${API}/releases" \
-            -d "$(jq -n \
-              --arg tag "${TAG}" \
-              --arg name "${RELEASE_NAME}" \
-              --arg commit "${TARGET_COMMIT}" \
-              --argjson prerelease "${PRERELEASE}" \
-              '{tag_name: $tag, target_commitish: $commit, draft: false, name: $name, prerelease: $prerelease}')")
-          id=$(echo "${createResponse}" | jq -r '.id // empty')
-          if [ -z "${id}" ]; then
-            echo "Failed to create release:" >&2
-            echo "${createResponse}" >&2
-            exit 1
-          fi
-        fi
-
-        # Uploads one file, replacing any same-named asset already on the release.
-        # Asset names must be unique within a release, and a rolling release's
-        # assets have the same filenames every run — so the replacement is uploaded
-        # under a temp name and renamed only after the old one is gone.
+        # Uploads one file. The temporary name ensures an incomplete upload is never
+        # exposed as the final release asset.
         publish_asset() {
           local file="$1"
           local name
@@ -331,43 +274,6 @@ runs:
             publish_asset "${file}"
           done
         done <<< "${EXTRA_ASSETS}"
-
-        # Refresh the reused release's title, and move the tag to this commit so
-        # the rolling tag tracks the newest build. Both happen after a verified
-        # upload, so tag and artifact never disagree on a failed run.
-        if [ -n "${existingId}" ]; then
-          releasePatch=$("${CURL_API[@]}" -X PATCH \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Authorization:token ${GH_TOKEN}" \
-            "${API}/releases/${id}" \
-            -d "$(jq -n --arg name "${RELEASE_NAME}" \
-              --argjson prerelease "${PRERELEASE}" \
-              '{name: $name, draft: false, prerelease: $prerelease}')")
-          if [ -z "$(echo "${releasePatch}" | jq -r '.id // empty')" ]; then
-            echo "Failed to update release ${id}:" >&2
-            echo "${releasePatch}" >&2
-            exit 1
-          fi
-          # Moves to TARGET_COMMIT, the same commit the release was created against —
-          # not GITHUB_SHA, which for the nightly is main's head rather than the
-          # version commit the VSIX came from.
-          #
-          # Compare the returned ref target rather than just checking for a body:
-          # a rejected ref update (missing ref, concurrent move) would otherwise
-          # leave ${TAG} on a stale commit while the release serves the new VSIX.
-          refPatch=$("${CURL_API[@]}" -X PATCH \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Authorization:token ${GH_TOKEN}" \
-            "${API}/git/refs/tags/${TAG}" \
-            -d "$(jq -n --arg sha "${TARGET_COMMIT}" \
-              '{sha: $sha, force: true}')")
-          if [ "$(echo "${refPatch}" | jq -r '.object.sha // empty')" != "${TARGET_COMMIT}" ]; then
-            echo "Failed to move tag ${TAG} to ${TARGET_COMMIT}:" >&2
-            echo "${refPatch}" >&2
-            exit 1
-          fi
-          echo "Moved tag ${TAG} to ${TARGET_COMMIT}"
-        fi
 
     - name: "Release Notification"
       shell: bash

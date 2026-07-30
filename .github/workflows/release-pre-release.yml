@@ -1,4 +1,4 @@
-name: Release Extension
+name: Release / Pre-release Build
 
 on:
   workflow_dispatch:
@@ -8,16 +8,6 @@ on:
         required: true
         type: boolean
         default: true
-      githubRelease:
-        description: 'Publish a GitHub release (tag + VSIX and LS jar assets). Applies to pre-releases only — a real release always publishes one. Off by default: a pre-release is normally just handed over as a VSIX or pushed to the marketplaces, neither of which needs a permanent tag'
-        type: boolean
-        required: false
-        default: false
-      version:
-        description: 'Explicit version override. Leave empty to derive the version from the extension package.json'
-        type: string
-        required: false
-        default: ''
       runFrontendTests:
         description: 'Run frontend tests (jest fast tests + Ballerina e2e)'
         type: boolean
@@ -39,7 +29,6 @@ jobs:
       isPreRelease: ${{ inputs.isPreRelease }}
       enableCache: false
       ballerina: true
-      version: ${{ inputs.version }}
       isReleaseBuild: true
       runFastTests: ${{ inputs.runFrontendTests }}
       runBalE2ETests: ${{ inputs.runFrontendTests }}
@@ -134,12 +123,9 @@ jobs:
             "${CHAT_API}&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD" \
             -d "$body"
 
-      # A real release always publishes one — its version commit, 'release/X.Y.Z' branch and
-      # tag all come out of this step, so gating it would leave a release with none of them.
-      # For a pre-release the tag is opt-in: most are handed over as a VSIX or pushed straight
-      # to the marketplaces, and a permanent tag per pre-release is just noise.
+      # Both release modes create a GitHub release. Pre-releases use the timestamped
+      # version derived during the build; releases use the concrete extension version.
       - name: Create a release in ${{ github.repository }} repo
-        if: ${{ inputs.isPreRelease == false || inputs.githubRelease }}
         uses: ./.github/actions/release
         with:
           repo: ${{ github.repository }}
@@ -160,13 +146,10 @@ jobs:
           # debugging an LS regression, or pointing an existing install at it via the
           # ballerina.langServerPath setting. This is the exact jar inside the VSIX
           # (copy-ls.js put it there) packed at the same version, so the two assets can
-          # never disagree about what was built. Same glob the daily build passes.
+          # never disagree about what was built.
           extraAssets: packages/ballerina-extension/ls/ballerina-language-server-*.jar
 
-      # Same condition as the release step above: this card's Download button points at
-      # releases/tag/v<version>, which 404s when no release was created.
       - name: Release Announcement
-        if: ${{ inputs.isPreRelease == false || inputs.githubRelease }}
         env:
           CHAT_API: ${{ secrets.EDITOR_TEAM_CHAT_API }}
         run: |

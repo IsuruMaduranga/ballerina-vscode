@@ -128,7 +128,7 @@ runs:
         # and the file vsce used to name the VSIX.
         version=$(node -p "require('./packages/ballerina-extension/package.json').version")
         # Stage the VSIX at the workspace root so consumers that unzip build.zip
-        # (daily-build Release job, release-vsix.yml) resolve 'ballerina-<v>.vsix'
+        # (release-pre-release.yml and notifications) resolve 'ballerina-<v>.vsix'
         # with a root-level `ls`. Must happen before build.zip is created.
         cp "packages/ballerina-extension/vsix/ballerina-${version}.vsix" ./
         zip -rq build.zip ./ -x 'common/temp*' -x '**/node_modules/*' -x 'submodules/wso2-vscode-extensions/.git/*'

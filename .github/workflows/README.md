@@ -10,8 +10,8 @@ then pruned to a ballerina-only monorepo. Paths have been rewritten to the new l
 |---|---|---|
 | `ls-publish-release.yml` | ballerina-language-server repo | manual release |
 
-(The LS PR build, daily build and Trivy scan are merged into `pull-request.yml` and
-`daily-build.yml`; there are no separate `ls-build-master.yml` / `ls-trivy.yml`
+(The LS PR build, nightly build and Trivy scan are merged into `pull-request.yml` and
+`schedule.yml`; there are no separate `ls-build-master.yml` / `ls-trivy.yml`
 workflows in this repo.)
 
 Each has `defaults.run.working-directory: packages/ballerina-language-server` injected so
@@ -22,9 +22,10 @@ Each has `defaults.run.working-directory: packages/ballerina-language-server` in
 | File | Trigger | Notes |
 |---|---|---|
 | `build.yml` | `workflow_call` only | Reusable build pipeline (ballerina-only) |
-| `daily-build.yml` | nightly cron + manual | Syncs the `nightly` branch, runs the LS multi-branch pack/test/Windows-build matrix **and** calls `build.yml` for the extension, publishes the rolling `nightly` GitHub pre-release, then dispatches success/failure notifications. See [Versioning](#versioning) and [The nightly branch](#the-nightly-branch) |
-| `pull-request.yml` | PRs + manual | Detects changes with `dorny/paths-filter`; if anything build-relevant changed, runs `build.yml` which builds the entire chain (LS via Gradle, then all TS packages and the extension VSIX via rush) in a single job. Windows LS coverage runs in `daily-build.yml` only. |
-| `release-vsix.yml` | manual dispatch | Builds, then for a real release creates the GitHub release, pushes `release/<version>` and opens the release PR into the `X.Y.x` line. For a pre-release the GitHub release is opt-in (`githubRelease`) and nothing is branched. See [Branches](#branches) |
+| `devBuild.yml` | manual + `workflow_call` | Builds a custom branch as a timestamped pre-release VSIX. It creates workflow artifacts only: no GitHub release and no marketplace publication. `schedule.yml` reuses this workflow after stamping the nightly branch. |
+| `schedule.yml` | nightly cron | Syncs the `nightly` branch, runs the LS multi-branch pack/test/Windows-build matrix, calls `devBuild.yml`, and dispatches success/failure notifications. The VSIX remains a workflow artifact; no GitHub release is created. See [Versioning](#versioning) and [The nightly branch](#the-nightly-branch). |
+| `pull-request.yml` | PRs + manual | Detects changes with `dorny/paths-filter`; if anything build-relevant changed, runs `build.yml` which builds the entire chain (LS via Gradle, then all TS packages and the extension VSIX via rush) in a single job. Windows LS coverage runs in `schedule.yml` only. |
+| `release-pre-release.yml` | manual dispatch | Builds either a timestamped pre-release or the release version authored in the extension manifest, creates a GitHub release with the VSIX and LS jar, and performs the existing real-release branch/PR handling. |
 | `publish-vsix.yml` | manual dispatch | Publishes a built VSIX (passed by `workflowRunId`) to VSCode Marketplace + OpenVSX |
 | `cache-cleanup.yml` | PR closed + manual | Generic — usable as-is |
 | `sync-main-with-releases.yml` | PR merged to a `*.*.x` line branch | Opens an auto-sync PR back to `main` |
@@ -52,7 +53,7 @@ step that rewrites tracked files.
 
 `-Pversion=<v>` overrides the Gradle side for a one-off build, by normal Gradle precedence
 (an explicit project property beats the manifest default). That is how `ls-publish-release.yml`
-and the daily-build LS matrix pin a version.
+and the scheduled nightly LS matrix pin a version.
 
 Packaging itself goes through the shared
 `submodules/.../common-libs/scripts/package-vsix.js`, unchanged. The extension's `postbuild`
@@ -131,17 +132,18 @@ passes `isPreRelease: true` for exactly that reason — a nightly *is* a pre-rel
 derived version already sits on the odd-minor pre-release channel, and the two paths should
 differ only in how they are branched and tagged, never in how they are packaged. It does not
 affect the nightly's version, which is already committed on the `nightly` branch:
-`updateVersion` is gated on the `ballerina` input, which the daily build passes as `false`.
+`updateVersion` is gated on the `ballerina` input. `schedule.yml` passes `false` through
+`devBuild.yml` because its nightly commit has already been stamped.
 
 ## Branches
 
 | Branch | Extension version | Created by |
 |---|---|---|
 | `main` | `X.Y.0-SNAPSHOT`, **Y even** | — |
-| `nightly` | `X.(Y-1).<minutes since 2020-01-01 UTC>` | the daily build, force-pushed every run |
+| `nightly` | `X.(Y-1).<minutes since 2020-01-01 UTC>` | `schedule.yml`, force-pushed every run |
 | `X.Y.x` — `5.14.x`, `5.16.x` | concrete, never `-SNAPSHOT` | **by hand**, when a line opens |
 | `alpha` | concrete, set by hand | **by hand** |
-| `release/X.Y.Z` | inherited from the branch it was cut from | `release-vsix.yml`, non-pre-release only |
+| `release/X.Y.Z` | inherited from the branch it was cut from | `release-pre-release.yml`, non-pre-release only |
 
 A release dispatched with `isPreRelease: false` commits the packaged version, pushes
 `release/<version>` (reusing it if it already exists), and opens a PR from it into `X.Y.x`.
@@ -162,7 +164,7 @@ where one repo held several extensions and each needed its own stable trunk
 
 ## The nightly branch
 
-`daily-build.yml` builds from a `nightly` branch that it maintains itself: every run
+`schedule.yml` builds from a `nightly` branch that it maintains itself: every run
 resets it to `origin/main`, commits the timestamped version, and force-pushes. So
 `git diff main nightly` is always exactly the version bump, and every nightly VSIX has
 one commit that pins both its source and its version.
@@ -173,36 +175,28 @@ one commit that pins both its source and its version.
   concurrent run cannot swap the tree mid-build. The build does not re-stamp the
   version; the commit is authoritative (re-deriving the timestamp would produce a
   different version as soon as the clock ticked past the minute).
-- The version commit carries the root `package.json` plus both generated files, so the
-  nightly commit is internally consistent and the jar built from it carries the nightly
-  version.
+- The version commit carries only `packages/ballerina-extension/package.json`; Gradle
+  reads that manifest directly, so the jar built from the commit carries the same version.
 - The force-push uses `GITHUB_TOKEN`, whose pushes do not trigger workflows, so the
-  daily build cannot re-enter itself.
+  nightly build cannot re-enter itself.
 
-Every GitHub release carries two assets — the VSIX and the bundled LS jar — so the server
+Every release or pre-release GitHub release carries two assets — the VSIX and the bundled LS jar — so the server
 can be downloaded on its own to debug a regression, or pointed at an existing install via
 `ballerina.langServerPath`. It is the exact jar inside the VSIX, packed at the same version,
-so the two can never disagree about what was built. On the rolling `nightly` release they are
-replaced in place (upload-then-rename, old asset deleted only after the new one is verified)
-so the download URLs keep working even if a run fails.
-
-**A pre-release does not get a GitHub release unless asked.** `release-vsix.yml` takes a
-`githubRelease` input, off by default, and a real release ignores it:
+so the two can never disagree about what was built.
 
 | Dispatch | GitHub release + tag | Version commit + `release/X.Y.Z` |
 |---|---|---|
 | Release (`isPreRelease: false`) | always | yes |
-| Pre-release, `githubRelease: false` (default) | no | no |
-| Pre-release, `githubRelease: true` | yes, on the dispatched commit | no |
+| Pre-release (`isPreRelease: true`) | always, on the dispatched commit | no |
+| Custom development build | no | no |
+| Scheduled nightly build | no | nightly version commit only |
 
-A real release is never gated because its version commit, branch and tag all come out of that
-one step. Skipping the release does **not** block marketplace publishing: `publish-vsix.yml`
-takes the `VSIX` workflow artifact by run ID (30-day retention), not by release tag. What is
-lost is the standalone LS jar download, since the artifact holds only the VSIX — dispatch with
-`githubRelease: true` when the jar is wanted.
+Marketplace publishing remains manual: `publish-vsix.yml` takes the `VSIX` workflow artifact
+by run ID (30-day retention), independently of the GitHub release.
 
 The release's **pre-release label follows `isPreRelease`** (`actions/release`'s `prerelease`
-input, default `true`, which is what the nightly relies on). It used to be hardcoded `true` for
+input defaults to `true`). It used to be hardcoded `true` for
 everything, with `publish-vsix.yml` demoting a real release to a proper release once the
 marketplace served it. That staged promotion had a failure mode with no signal: cut a release
 and skip publishing, and it stayed labelled a pre-release forever. `publish-vsix.yml` still
@@ -222,7 +216,7 @@ GitHub Packages credentials (`packageUser` / `packagePAT`). If the jar is missin
 
 `ls-publish-release.yml` publishes `io.ballerina:ballerina-language-server` at the same
 parent version. It does not run Gradle's `release` task: that task rewrote the `version=`
-key in `gradle.properties`, which no longer exists now that the root `package.json` owns
+key in `gradle.properties`, which no longer exists now that the extension manifest owns
 the version.
 
 ## Required GitHub secrets
@@ -232,20 +226,20 @@ the version.
 - `VSCE_TOKEN` — publish-vsix → VSCode Marketplace
 - `OPENVSX_TOKEN` — publish-vsix → OpenVSX
 - `EDITOR_TEAM_CHAT_API` — every chat notification: threaded release progress, the release
-  announcement, daily build success, and build/sync failures
+  announcement, nightly build success, and build/sync failures
 - `CLOUD_EDITOR_BUILDER_REPO` / `CLOUD_EDITOR_BUILDER_REPO_TOKEN` — optional cross-repo dispatch on stable release (publish-vsix)
 - `COPILOT_ROOT_URL` / `COPILOT_DEV_ROOT_URL` / `APPINSIGHTS_INSTRUMENTATION_KEY` — passed through to the build composite action
 
 Configure these in the new repo's settings before triggering anything.
 
 All chat notifications share one secret, so a chat webhook is configured in exactly one place.
-Before this, the daily build used a separate `BI_TEAM_CHAT_API` that was never configured on the
+Before this, the nightly build used a separate `BI_TEAM_CHAT_API` that was never configured on the
 repo, which is what failed run `30416319364`: an unset secret hands `curl` a URL that is only a
 query string, so it exits 3 with `URL rejected: Malformed input to a URL function` and fails the
 job *after* the build, release and asset uploads have all succeeded.
 
 The release notifications (`actions/release`, `actions/pr`, and the inline steps in
-`release-vsix.yml`) skip with a notice when the secret is empty, so a fork can run a release
+`release-pre-release.yml`) skip with a notice when the secret is empty, so a fork can run a release
 without a webhook. `dailyBuildNotification` and `failure-notification` do **not** — they still
 fail the job on an empty value, which is only safe as long as `EDITOR_TEAM_CHAT_API` stays
 configured.
@@ -255,8 +249,8 @@ configured.
 | Action | Used by |
 |---|---|
 | `build` | `build.yml` — runs rush install + `rush build --to ballerina` |
-| `updateVersion` | `build`, `daily-build.yml` — resolves the version from the root `package.json` and propagates it |
-| `release` | `release-vsix.yml` — owns everything that materialises a release: the version commit, `release/<version>`, the tag, the GitHub release and its assets; `daily-build.yml` — rolling `nightly` release with the VSIX + LS jar (no commit, no branch) |
-| `pr` | `release-vsix.yml` — opens the follow-up pull requests (release PR into `X.Y.x`, next-snapshot PR into `main`) + Google Chat notification |
-| `dailyBuildNotification` | `daily-build.yml` — success chat notification |
-| `failure-notification` | `daily-build.yml`, `release-vsix.yml` — failure chat notification |
+| `updateVersion` | `build`, `schedule.yml` — resolves and writes the version in the extension manifest |
+| `release` | `release-pre-release.yml` — owns everything that materialises a release: the version commit, `release/<version>`, the tag, the GitHub release and its assets |
+| `pr` | `release-pre-release.yml` — opens the follow-up pull requests (release PR into `X.Y.x`, next-snapshot PR into `main`) + Google Chat notification |
+| `dailyBuildNotification` | `schedule.yml` — success chat notification |
+| `failure-notification` | `schedule.yml`, `release-pre-release.yml` — failure chat notification |
