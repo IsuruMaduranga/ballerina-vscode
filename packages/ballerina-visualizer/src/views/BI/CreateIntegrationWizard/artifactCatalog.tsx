@@ -19,7 +19,6 @@
 import { ServiceModel, TriggerModelsResponse } from "@wso2/ballerina-core";
 
 import {
-    AI_CHAT_AGENT_CARD,
     ARTIFACT_CATEGORY_META,
     ArtifactCard,
     ArtifactCategoryKey,
@@ -118,7 +117,11 @@ function category(key: ArtifactCategoryKey, cards: (ArtifactCard | DynamicCardSo
 export const ARTIFACT_CATEGORIES: ArtifactCategory[] = [
     category("automation", [AUTOMATION_CARD]),
     category("workflow", [WORKFLOW_CARD]),
-    category("ai-integration", [AI_CHAT_AGENT_CARD, "dynamic:mcp"]),
+    // TODO: Re-add `AI_CHAT_AGENT_CARD` (from ../components/artifactCards) as the
+    // first card here once creating an AI chat agent from the pre-project wizard is
+    // fully supported. It stays available on the in-project Add-Artifact screen
+    // (ComponentListView/AIAgentPanel), which is why the card itself is untouched.
+    category("ai-integration", ["dynamic:mcp"]),
     category("integration-as-api", [...INTEGRATION_API_CARDS]),
     category("event-integration", ["dynamic:event"]),
     category("file-integration", ["dynamic:file"]),
