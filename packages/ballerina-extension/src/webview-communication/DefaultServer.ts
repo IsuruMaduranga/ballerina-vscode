@@ -102,15 +102,7 @@ export class DefaultServer {
                 // cross-site page cannot read the token it also blocks
                 // cross-site websocket hijacking.
                 authToken: this.token,
-                // Retained as defence in depth: the handshake is the real gate,
-                // but this keeps an untokened request from being served if the
-                // transport is ever reached by some other route.
-                handleRequest: (request) => {
-                    if (!request || request.token !== this.token) {
-                        return this.errorResponse(request?.action ?? "unknown", "Unauthorized BI bridge request.");
-                    }
-                    return this.router.handle(request);
-                },
+                handleRequest: (request) => this.router.handle(request),
             });
             this.wsManager = mgr;
             this.wireEvents();
