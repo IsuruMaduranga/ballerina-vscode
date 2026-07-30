@@ -219,5 +219,21 @@
     "triggerName": "HubSpot",
     "version": "0.12.0",
     "kind": "event"
+  },
+  "18": {
+    "name": "sap.jco",
+    "orgName": "ballerinax",
+    "packageName": "sap.jco",
+    "keywords": [
+      "sap",
+      "jco",
+      "idoc",
+      "rfc",
+      "event"
+    ],
+    "triggerName": "SAP JCo",
+    "version": "2.0.1",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_sap.jco_2.0.1.png",
+    "kind": "event"
   }
 }

@@ -17,5 +17,6 @@
   "mcp": [
     { "minVersion": "1.2.0", "resource": "trigger-models/mcp.json" },
     { "resource": "trigger-models/mcp_1.0.3.json" }
-  ]
+  ],
+  "sap.jco": "trigger-models/sap.jco.json"
 }
