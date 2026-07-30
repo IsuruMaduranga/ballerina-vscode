@@ -15,7 +15,7 @@
 // under the License.
 
 import { generateText, ModelMessage } from "ai";
-import { getAnthropicClient, ANTHROPIC_SONNET_4 } from "../utils/ai-client";
+import { getAnthropicClient, getProviderModelOptions, ANTHROPIC_SONNET } from "../utils/ai-client";
 import { AttachmentProcessRequest, AttachmentProcessResponse, ContentPart, FileData, FileTypeHandler, ProcessType } from "./types";
 import { getRecordsPrompt, getRequirementsPrompt } from "./prompts/attachment-prompts";
 
@@ -165,9 +165,9 @@ async function processFilesWithClaude(files: FileData[], promptText: string): Pr
     const messages = buildClaudeMessages(files, promptText);
 
     const { text } = await generateText({
-        model: await getAnthropicClient(ANTHROPIC_SONNET_4),
+        model: await getAnthropicClient(ANTHROPIC_SONNET),
         maxOutputTokens: 8192,
-        temperature: 0,
+        providerOptions: await getProviderModelOptions(),
         messages,
         abortSignal: new AbortController().signal
     });

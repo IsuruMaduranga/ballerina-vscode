@@ -29,6 +29,7 @@ export type ToolModelUsage = Record<string, { inputTokens: number; outputTokens:
 
 // Per-million-token pricing by model
 const MODEL_PRICING: Record<string, { input: number; cacheWrite: number; cacheRead: number; output: number }> = {
+    'claude-sonnet-5':              { input: 3,  cacheWrite: 3.75, cacheRead: 0.30, output: 15 },
     'claude-sonnet-4-6':            { input: 3,  cacheWrite: 3.75, cacheRead: 0.30, output: 15 },
     'claude-haiku-4-5-20251001':    { input: 1,  cacheWrite: 1.25, cacheRead: 0.10, output: 5  },
 };
