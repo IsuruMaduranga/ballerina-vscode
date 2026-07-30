@@ -84,7 +84,6 @@ import {
     SwitchThreadRequest,
     DeleteThreadRequest,
     RenameThreadRequest,
-    HasPendingReviewRequest,
     CreateManagedConnectionRequest,
     CreateManagedConnectionResponse,
     // TODO(auto-memory): temporarily disabled for this release.
@@ -122,7 +121,7 @@ import { generateDocumentationForService } from "../../features/ai/documentation
 import { generateOpenAPISpec } from "../../features/ai/openapi/index";
 import { BACKEND_URL } from "../../features/ai/utils";
 import { fetchWithAuth } from "../../features/ai/utils/ai-client";
-import { sendChatComponentNotification, sendSaveChatNotification, sendSkillEnableNotification } from "../../features/ai/utils/ai-utils";
+import { sendSaveChatNotification, sendSkillEnableNotification } from "../../features/ai/utils/ai-utils";
 import { submitFeedback as submitFeedbackUtil } from "../../features/ai/utils/feedback";
 import { sendGenerationDiscardTelemetry } from "../../features/ai/utils/generation-response";
 import { getLLMDiagnosticArrayAsString } from "../../features/natural-programming/utils";
@@ -576,8 +575,6 @@ User reverted the last made changes. The files have been restored to the state b
 
             sendGenerationDiscardTelemetry(doneGeneration.id);
 
-            // Notify webview to update review component status and persist
-            sendChatComponentNotification("review", { status: "discarded" });
             sendSaveChatNotification(Command.Agent, doneGeneration.id);
         } catch (error) {
             console.error("[Review Actions] Error declining changes:", error);
@@ -968,13 +965,6 @@ User reverted the last made changes. The files have been restored to the state b
         const projectPath = doneGeneration.reviewState.tempProjectPath;
         console.log(">>> active temp project path", projectPath);
         return projectPath;
-    }
-
-    async hasPendingReview(params: HasPendingReviewRequest): Promise<boolean> {
-        const projectRootPath = params?.projectRootPath || resolveProjectRootPath();
-        const threadId = params?.threadId
-            || chatStateStorage.getActiveThreadId(projectRootPath);
-        return !!chatStateStorage.getDoneGeneration(projectRootPath, threadId);
     }
 
     async getRunStatus(params: GetRunStatusRequest): Promise<GetRunStatusResponse> {

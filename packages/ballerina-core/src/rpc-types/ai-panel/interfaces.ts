@@ -588,13 +588,6 @@ export interface AbortAIGenerationRequest {
     threadId?: string;
 }
 
-export interface HasPendingReviewRequest {
-    /** Project root path (defaults to current workspace/project root). */
-    projectRootPath?: string;
-    /** Thread identifier (defaults to the active thread). */
-    threadId?: string;
-}
-
 /**
  * Request for the current run status of a thread (panel reconnection).
  * Optional params default to current workspace and 'default' thread.

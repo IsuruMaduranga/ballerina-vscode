@@ -77,11 +77,9 @@ import {
     getAIMachineSnapshot,
     getActiveTempDir,
     getChatMessages,
-    hasPendingReview,
     getRunStatus,
     GetRunStatusRequest,
     GetRunStatusResponse,
-    HasPendingReviewRequest,
     getLatestFollowupSuggestions,
     FollowupSuggestion,
     getCheckpoints,
@@ -364,10 +362,6 @@ export class AiPanelRpcClient implements AIPanelAPI {
 
     getActiveTempDir(): Promise<string> {
         return this._messenger.sendRequest(getActiveTempDir, HOST_EXTENSION);
-    }
-
-    hasPendingReview(params: HasPendingReviewRequest): Promise<boolean> {
-        return this._messenger.sendRequest(hasPendingReview, HOST_EXTENSION, params);
     }
 
     getRunStatus(params: GetRunStatusRequest): Promise<GetRunStatusResponse> {

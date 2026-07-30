@@ -87,7 +87,6 @@ import {
     // OpenMemoryRequest,
     GetRunStatusRequest,
     GetRunStatusResponse,
-    HasPendingReviewRequest,
 } from "./interfaces";
 
 export interface AIPanelAPI {
@@ -149,7 +148,6 @@ export interface AIPanelAPI {
     clearChat: () => Promise<void>;
     updateChatMessage: (params: UpdateChatMessageRequest) => Promise<void>;
     getActiveTempDir: () => Promise<string>;
-    hasPendingReview: (params: HasPendingReviewRequest) => Promise<boolean>;
     getRunStatus: (params: GetRunStatusRequest) => Promise<GetRunStatusResponse>;
     getLatestFollowupSuggestions: () => Promise<FollowupSuggestion[]>;
     getUsage: () => Promise<UsageResponse | undefined>;
