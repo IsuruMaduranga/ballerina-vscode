@@ -141,10 +141,12 @@ class TypeSearchCommand extends SearchCommand {
         return rootBuilder.build().items();
     }
 
-    private List<Symbol> getTypes(SemanticModel semanticModel) {
+    private List<TypeSymbolEntry> getTypes(SemanticModel semanticModel) {
         return semanticModel.moduleSymbols().stream()
                 .filter(symbol -> symbol instanceof TypeDefinitionSymbol || symbol instanceof ClassSymbol
                         || symbol instanceof EnumSymbol)
+                .map(symbol -> new TypeSymbolEntry(symbol,
+                        symbol instanceof EnumSymbol ? SymbolKind.ENUM : symbol.kind()))
                 .toList();
     }
 
@@ -205,7 +207,8 @@ class TypeSearchCommand extends SearchCommand {
     private List<Item> buildProjectNodes(Module module, SemanticModel semanticModel, boolean current,
                                          String moduleRelation) {
         List<ScoredType> scoredTypes = new ArrayList<>();
-        for (Symbol typeSymbol : getTypes(semanticModel)) {
+        for (TypeSymbolEntry typeEntry : getTypes(semanticModel)) {
+            Symbol typeSymbol = typeEntry.symbol();
             if (!current && (!(typeSymbol instanceof Qualifiable qualifiable)
                     || !qualifiable.qualifiers().contains(Qualifier.PUBLIC))) {
                 continue;
@@ -218,7 +221,7 @@ class TypeSearchCommand extends SearchCommand {
                     ? documentable.documentation().flatMap(Documentation::description).orElse("") : "";
             int score = RelevanceCalculator.calculateFuzzyRelevanceScore(typeName, description, query);
             if (score > 0) {
-                scoredTypes.add(new ScoredType(typeSymbol, typeName, description, score));
+                scoredTypes.add(new ScoredType(typeSymbol, typeEntry.kind(), typeName, description, score));
             }
         }
         scoredTypes.sort(Comparator.comparingInt(ScoredType::score).reversed());
@@ -235,8 +238,8 @@ class TypeSearchCommand extends SearchCommand {
             typeDescriptor = typeDescriptor.isPresent()
                     && typeDescriptor.get().typeKind() == TypeDescKind.TYPE_REFERENCE
                     ? Optional.of(((TypeReferenceTypeSymbol) typeDescriptor.get()).typeDescriptor()) : typeDescriptor;
-            NodeKind nodeKind = NodeKind.TYPEDESC;
-            if (typeDescriptor.isPresent() && typeDescriptor.get().typeKind() != null
+            NodeKind nodeKind = scoredType.kind() == SymbolKind.ENUM ? NodeKind.ENUM : NodeKind.TYPEDESC;
+            if (nodeKind != NodeKind.ENUM && typeDescriptor.isPresent() && typeDescriptor.get().typeKind() != null
                     && typeDescriptor.get().typeKind() != TypeDescKind.COMPILATION_ERROR) {
                 nodeKind = typeDescriptor.get().kind() == SymbolKind.CLASS
                         ? NodeKind.CLASS : toNodeKind(typeDescriptor.get().typeKind());
@@ -321,14 +324,18 @@ class TypeSearchCommand extends SearchCommand {
         };
     }
 
+    private record TypeSymbolEntry(Symbol symbol, SymbolKind kind) {
+    }
+
     /**
-     * Helper record to store type definition and class symbols along with their relevance scores for ranking.
+     * Helper record to store type symbols along with their classification and relevance scores for ranking.
      *
      * @param symbol      the symbol representing the type
+     * @param kind        the symbol classification
      * @param typeName    the name of the type
      * @param description the description of the type
      * @param score       the relevance score for ranking
      */
-    private record ScoredType(Symbol symbol, String typeName, String description, int score) {
+    private record ScoredType(Symbol symbol, SymbolKind kind, String typeName, String description, int score) {
     }
 }

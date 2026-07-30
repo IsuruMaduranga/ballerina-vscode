@@ -93,6 +93,26 @@
                 }
               },
               "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "GeneratedState",
+                "description": ""
+              },
+              "codedata": {
+                "node": "ENUM",
+                "org": "testorg",
+                "module": "submodule_project.client",
+                "packageName": "submodule_project",
+                "symbol": "GeneratedState",
+                "version": "0.1.0",
+                "isGenerated": true,
+                "data": {
+                  "moduleRelation": "SAME_PACKAGE_MODULE",
+                  "moduleKind": "SUBMODULE"
+                }
+              },
+              "enabled": true
             }
           ]
         }

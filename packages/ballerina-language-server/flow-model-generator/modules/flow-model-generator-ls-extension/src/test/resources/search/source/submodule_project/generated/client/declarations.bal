@@ -11,3 +11,13 @@ public type GeneratedPublic record {
 type GeneratedPrivate record {
     int value;
 };
+
+public enum GeneratedState {
+    ACTIVE,
+    INACTIVE
+}
+
+enum GeneratedPrivateState {
+    ACTIVE,
+    INACTIVE
+}
