@@ -17,8 +17,8 @@
  */
 import * as vscode from "vscode";
 import { URI, Utils } from "vscode-uri";
-import { ARTIFACT_TYPE, Artifacts, ArtifactsNotification, BaseArtifact, DIRECTORY_MAP, isSamePath, PROJECT_KIND, ProjectInfo, ProjectStructure, ProjectStructureArtifactResponse, ProjectStructureResponse, SHARED_COMMANDS } from "@wso2/ballerina-core";
-import { StateMachine } from "../stateMachine";
+import { ARTIFACT_TYPE, Artifacts, ArtifactsNotification, BaseArtifact, DIRECTORY_MAP, EVENT_TYPE, isSamePath, MACHINE_VIEW, PROJECT_KIND, ProjectInfo, ProjectStructure, ProjectStructureArtifactResponse, ProjectStructureResponse, SHARED_COMMANDS } from "@wso2/ballerina-core";
+import { openView, StateMachine } from "../stateMachine";
 import { ExtendedLangClient } from "../core/extended-language-client";
 import { ArtifactsUpdated, ArtifactNotificationHandler } from "./project-artifacts-handler";
 import { isLibraryProject } from "./config";
@@ -32,6 +32,12 @@ const failedArtifactProjects = new Set<string>();
 // skipped during this window: the rebuild fetches the latest project state anyway, and letting
 // them run the incremental path would race the rebuild with updates based on stale structure.
 let artifactRecoveryInProgress = false;
+
+// Serializes the full rebuilds triggered from `rebuildAndPublishArtifacts`. A burst of
+// notifications for a package the structure does not know yet (e.g. one per file a new
+// package's scaffold writes) would otherwise rebuild the project concurrently, each run
+// racing the others' structure updates.
+let pendingStructureRebuild: Promise<ProjectStructureResponse | undefined> = Promise.resolve(undefined);
 
 export async function buildProjectsStructure(
     projectInfo: ProjectInfo,
@@ -152,32 +158,26 @@ export async function updateProjectArtifacts(publishedArtifacts: ArtifactsNotifi
     // Current project structure
     const currentProjectStructure: ProjectStructureResponse = StateMachine.context().projectStructure;
 
-    const rootPath = StateMachine.context().projectPath ?? StateMachine.context().workspacePath;
+    const rootPath = StateMachine.context().workspacePath ?? StateMachine.context().projectPath;
     if (!rootPath) {
         console.warn("[updateProjectArtifacts] No project or workspace path found in the StateMachine context.");
         return;
     }
-    const projectUri = URI.file(rootPath);
-    const isWithinProject = URI
-        .parse(publishedArtifacts.uri).fsPath.toLowerCase()
-        .includes(projectUri.fsPath.toLowerCase());
+    const changedFsPath = URI.parse(publishedArtifacts.uri).fsPath.toLowerCase();
+    const isWithinProject = changedFsPath.includes(URI.file(rootPath).fsPath.toLowerCase());
 
     const isSubmodule = publishedArtifacts?.moduleName;
 
-    const persistDir = Utils.joinPath(projectUri, 'persist').fsPath.toLowerCase();
-    const isInPersistDir = URI.parse(publishedArtifacts.uri).fsPath.toLowerCase().includes(persistDir);
+    // A `persist` directory belongs to a package, which in a workspace is any member
+    // package — so the exclusion is matched on the path's segments rather than against
+    // a single `<root>/persist` path, which would only cover the root itself.
+    const isInPersistDir = changedFsPath.split(/[\\/]/).includes('persist');
 
     if (currentProjectStructure && isWithinProject && !isSubmodule && !isInPersistDir) {
-        // If user is working on a workspace project pick the workspace path, otherwise fallback to the project path.
-        // Fallback can happen when user is working on a standalone integration/library and
-        // adding another integration/library via AI chat.
-        const workspacePath = StateMachine.context().workspacePath ?? StateMachine.context().projectPath;
-        if (!workspacePath) {
-            console.warn("[updateProjectArtifacts] Workspace path not found in the StateMachine context.");
-            return;
-        }
-        
-        const projectInfo = await StateMachine.langClient().getProjectInfo({ projectPath: workspacePath });
+        // `rootPath` is the workspace root for a workspace project and the package root
+        // for a standalone integration/library — which can still gain a sibling package,
+        // e.g. when another integration/library is added via AI chat.
+        const projectInfo = await StateMachine.langClient().getProjectInfo({ projectPath: rootPath });
         if (!projectInfo) {
             console.warn("[updateProjectArtifacts] Project info not found for the project:", rootPath);
             return;
@@ -193,29 +193,24 @@ export async function updateProjectArtifacts(publishedArtifacts: ArtifactsNotifi
                     ?.some(project => isSamePath(project.projectPath, child.projectPath))
             ).map(child => child.projectPath) ?? [];
 
-        // Check if the active project exists in the current structure.
-        // If not (e.g., a new package was added by Copilot), a full rebuild is needed
-        // since we can't incrementally update a project that doesn't exist yet.
-        for (const untrackedProjectPath of untrackedProjectPaths) {
-            console.log("[updateProjectArtifacts] Project not found in structure, triggering full rebuild:", untrackedProjectPath);
-            const notificationHandler = ArtifactNotificationHandler.getInstance();
-            notificationHandler.publish(ArtifactsUpdated.method, {
-                data: [],
-                timestamp: Date.now()
-            });
-            StateMachine.refreshProjectInfo();
-            return;
-        }
-
         // Resolve which package the change belongs to from the notification's URI.
         // In a workspace the context has no single `projectPath` (only a
         // `workspacePath`), so relying on it would resolve artifact file paths
         // against `undefined` and crash. Deriving the owning package from the
         // changed file keeps the incremental update correct for workspace members
         // as well as standalone projects.
-        const owningProjectPath =
-            resolveOwningProjectPath(publishedArtifacts.uri, currentProjectStructure)
-            ?? StateMachine.context().projectPath;
+        const owningProjectPath = resolveOwningProjectPath(publishedArtifacts.uri, currentProjectStructure);
+
+        // The cached structure cannot absorb the deltas when it does not know every
+        // package of the project yet (one was just added by the create wizard or by
+        // Copilot) or when the changed file belongs to none of the packages it does
+        // know: the deltas would be dropped, or applied to an unrelated package.
+        // Rebuild instead, and report the published artifacts off the rebuilt structure.
+        if (untrackedProjectPaths.length > 0 || !owningProjectPath) {
+            await rebuildAndPublishArtifacts(publishedArtifacts, projectInfo, untrackedProjectPaths);
+            return;
+        }
+
         const entryLocations = await traverseUpdatedComponents(publishedArtifacts.artifacts, currentProjectStructure, owningProjectPath);
         const notificationHandler = ArtifactNotificationHandler.getInstance();
         // Publish a notification to the artifact handler
@@ -252,6 +247,103 @@ function dedupeArtifactsById(artifacts: ProjectStructureArtifactResponse[]): Pro
     const uniqueArtifacts = new Map<string, ProjectStructureArtifactResponse>();
     artifacts.forEach((artifact) => uniqueArtifacts.set(artifact.id, artifact));
     return Array.from(uniqueArtifacts.values());
+}
+
+/** Key an artifact by type as well as id: ids are only unique within an artifact type. */
+function artifactKey(artifactType: string, artifactId: string): string {
+    return `${artifactType}::${artifactId}`;
+}
+
+/**
+ * Rebuilds the project structure from `projectInfo` and reports the artifacts the
+ * notification carries, resolved against the rebuilt structure.
+ *
+ * The rebuild already absorbs the notification's changes, so the incremental
+ * {@link traverseUpdatedComponents} cannot be used here — it would add them a second
+ * time. The artifacts must still be published: whoever triggered the change is
+ * typically waiting for its artifact to be reported before it navigates (see
+ * `updateSourceCode`), and every subscriber ignores an empty payload — so publishing
+ * nothing leaves that wait to expire even though the source was written correctly.
+ */
+async function rebuildAndPublishArtifacts(
+    publishedArtifacts: ArtifactsNotification,
+    projectInfo: ProjectInfo,
+    untrackedProjectPaths: string[]
+): Promise<void> {
+    console.log(
+        "[updateProjectArtifacts] Rebuilding the project structure. Untracked package(s):",
+        untrackedProjectPaths, "changed file:", publishedArtifacts.uri
+    );
+    let entryLocations: ProjectStructureArtifactResponse[] = [];
+    try {
+        // Chained rather than shared: an in-flight rebuild may have read the project
+        // before this notification's change landed, so a rebuild that starts after it
+        // is still needed — it just must not run concurrently with the previous one.
+        const rebuild = pendingStructureRebuild
+            .catch(() => undefined)
+            .then(() => StateMachine.updateProjectInfoAndRebuild(projectInfo));
+        pendingStructureRebuild = rebuild;
+        const rebuiltStructure = await rebuild;
+        entryLocations = collectPublishedArtifacts(publishedArtifacts, rebuiltStructure);
+        if (untrackedProjectPaths.length > 0) {
+            // Where the fire-and-forget refresh this replaces used to land the window
+            // when a package joined the project: the overview is the view guaranteed to
+            // be consistent with the rebuilt structure.
+            openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.WorkspaceOverview });
+        }
+    } catch (error) {
+        // Still publish below (with whatever was resolved) so subscribers are not left
+        // hanging on a notification that will never come.
+        console.error("[updateProjectArtifacts] Failed to rebuild the project structure:", error);
+    }
+    ArtifactNotificationHandler.getInstance().publish(ArtifactsUpdated.method, {
+        data: entryLocations,
+        timestamp: Date.now()
+    });
+}
+
+/**
+ * Picks the entries of the artifacts a notification reports as added or updated out of
+ * an up-to-date project structure, flagging the additions with `isNew` — the flag
+ * callers use to navigate to a just-created artifact.
+ */
+function collectPublishedArtifacts(
+    publishedArtifacts: ArtifactsNotification,
+    projectStructure: ProjectStructureResponse
+): ProjectStructureArtifactResponse[] {
+    const owningProjectPath = resolveOwningProjectPath(publishedArtifacts.uri, projectStructure);
+    const project = projectStructure?.projects?.find(project => isSamePath(project.projectPath, owningProjectPath));
+    if (!project || !publishedArtifacts.artifacts) {
+        console.warn("[collectPublishedArtifacts] No package in the project owns the changed file:",
+            publishedArtifacts.uri);
+        return [];
+    }
+
+    const entriesByKey = new Map<string, ProjectStructureArtifactResponse>();
+    for (const entries of Object.values(project.directoryMap ?? {})) {
+        for (const entry of entries ?? []) {
+            entriesByKey.set(artifactKey(entry.type, entry.id), entry);
+        }
+    }
+
+    const entryLocations: ProjectStructureArtifactResponse[] = [];
+    const collect = (artifacts: BaseArtifact[], isNew: boolean) => {
+        for (const artifact of artifacts) {
+            const entry = entriesByKey.get(artifactKey(artifact.type, artifact.id));
+            if (entry) {
+                entryLocations.push(isNew ? { ...entry, isNew: true } : { ...entry });
+            }
+        }
+    };
+    for (const actionMap of Object.values(publishedArtifacts.artifacts)) {
+        if (actionMap?.additions) {
+            collect(Object.values(actionMap.additions) as BaseArtifact[], true);
+        }
+        if (actionMap?.updates) {
+            collect(Object.values(actionMap.updates) as BaseArtifact[], false);
+        }
+    }
+    return dedupeArtifactsById(entryLocations);
 }
 
 async function getComponents(

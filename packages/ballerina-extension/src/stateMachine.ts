@@ -149,6 +149,14 @@ const stateMachine = createMachine<MachineContext>(
                     }
                 ]
             },
+            // Stores `projectInfo` without rebuilding the project structure. Used by
+            // `updateProjectInfoAndRebuild`, which drives the rebuild itself so it can
+            // be awaited — the rebuild of `UPDATE_PROJECT_INFO` below cannot be.
+            SET_PROJECT_INFO: {
+                actions: assign({
+                    projectInfo: (context, event) => event.projectInfo
+                })
+            },
             UPDATE_PROJECT_INFO: {
                 actions: [
                     assign({
@@ -916,6 +924,22 @@ export const StateMachine = {
     },
     updateProjectInfo: (projectInfo: ProjectInfo, options?: { silent?: boolean }) => {
         stateService.send({ type: 'UPDATE_PROJECT_INFO', projectInfo, silent: options?.silent });
+    },
+    /**
+     * Awaitable counterpart of {@link updateProjectInfo}: stores `projectInfo` in the
+     * context and rebuilds the project structure from it, resolving with the rebuilt
+     * structure once it is in the context.
+     *
+     * `REFRESH_PROJECT_INFO`/`UPDATE_PROJECT_INFO` run their rebuild as a
+     * fire-and-forget machine action, so a caller cannot tell when the structure has
+     * caught up. Callers that must read the rebuilt structure immediately after — such
+     * as reporting the artifacts of a package that has just joined the project — need
+     * that guarantee. Never navigates; the caller decides where the window lands.
+     */
+    updateProjectInfoAndRebuild: async (projectInfo: ProjectInfo): Promise<ProjectStructureResponse> => {
+        stateService.send({ type: 'SET_PROJECT_INFO', projectInfo });
+        await buildProjectsStructure(projectInfo, StateMachine.langClient(), true);
+        return stateService.getSnapshot().context.projectStructure;
     },
     resetToExtensionReady: () => {
         stateService.send({ type: 'RESET_TO_EXTENSION_READY' });
