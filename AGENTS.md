@@ -118,6 +118,18 @@ Running that exact command locally is the closest reproduction.
 - `BALLERINA_LS_TAG=<tag>` — pin a specific release
 - *(default)* — prefer the local pack output, fall back to download
 
+**The version is authored in exactly one file: the root `package.json`.** To change it,
+change that and nothing else. Two files hold a generated copy, both written by
+`common/scripts/sync-version.js`, which each project runs at the head of its build:
+
+- `packages/ballerina-extension/package.json` (`version`) — read by `vsce`.
+- `packages/ballerina-language-server/gradle.properties` (`version=`) — read by Gradle;
+  `-Pversion=<v>` remains available for a one-off build.
+
+Editing either generated copy by hand is pointless because the next build overwrites it.
+Do not delete the Gradle key: a direct `./gradlew` invocation before synchronization
+would otherwise fall back to `unspecified`.
+
 ### "Add a dependency to a package"
 
 1. Edit the package's `package.json`.
