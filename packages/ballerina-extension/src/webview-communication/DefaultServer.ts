@@ -107,13 +107,12 @@ export class DefaultServer {
         const mgr = createExtensionTransportManager<WebviewWsRequest, WebviewWsResponse>({
             initialMode: "websocket",
             wsPort: 0,
-            // Gate the handshake, not just individual requests. Checking the
-            // token per request still let an unauthenticated client hold an
-            // open socket and receive everything `publishEvent` broadcasts
-            // (migration logs, migrated project details, AI chat events).
-            // Rejecting the upgrade closes that path, and because a
-            // cross-site page cannot read the token it also blocks
-            // cross-site websocket hijacking.
+            // Authenticates the websocket handshake: a client that does not
+            // present this token is refused the upgrade, so it can neither send
+            // requests nor observe the events `publishEvent` broadcasts to every
+            // open socket (migration logs, migrated project details, AI chat).
+            // A cross-site page cannot read the token, so gating the upgrade
+            // also rules out cross-site websocket hijacking.
             authToken: this.token,
             handleRequest: (request) => this.router.handle(request),
         });
