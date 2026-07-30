@@ -25,7 +25,7 @@ Each has `defaults.run.working-directory: packages/ballerina-language-server` in
 | `devBuild.yml` | manual + `workflow_call` | Builds a custom branch as a timestamped pre-release VSIX. It creates workflow artifacts only: no GitHub release and no marketplace publication. `schedule.yml` reuses this workflow after stamping the nightly branch. |
 | `schedule.yml` | nightly cron | Syncs the `nightly` branch, runs the LS multi-branch pack/test/Windows-build matrix, calls `devBuild.yml`, and moves the `nightly` tag after every job passes. The VSIX remains a workflow artifact; no GitHub Release is created. See [Versioning](#versioning) and [The nightly branch](#the-nightly-branch). |
 | `pull-request.yml` | PRs + manual | Detects changes with `dorny/paths-filter`; if anything build-relevant changed, runs `build.yml` which builds the entire chain (LS via Gradle, then all TS packages and the extension VSIX via rush) in a single job. Windows LS coverage runs in `schedule.yml` only. |
-| `release-pre-release.yml` | manual dispatch | Builds either a timestamped pre-release or the release version authored in the extension manifest, creates a GitHub release with the VSIX and LS jar, and performs the existing real-release branch/PR handling. |
+| `release-pre-release.yml` | manual dispatch | Builds either a timestamped pre-release or the release version authored in the extension manifest. Its `githubRelease` input optionally creates a GitHub Release with the VSIX and LS jar and, for a real release, performs the release branch/PR handling. |
 | `publish-vsix.yml` | manual dispatch | Publishes a built VSIX (passed by `workflowRunId`) to VSCode Marketplace + OpenVSX |
 | `cache-cleanup.yml` | PR closed + manual | Generic — usable as-is |
 | `sync-main-with-releases.yml` | PR merged to a `*.*.x` line branch | Opens an auto-sync PR back to `main` |
@@ -190,8 +190,10 @@ so the two can never disagree about what was built.
 
 | Dispatch | GitHub release + tag | Version commit + `release/X.Y.Z` |
 |---|---|---|
-| Release (`isPreRelease: false`) | always | yes |
-| Pre-release (`isPreRelease: true`) | always, on the dispatched commit | no |
+| Release + `githubRelease: true` | yes | yes |
+| Release + `githubRelease: false` | no; VSIX artifact only | no |
+| Pre-release + `githubRelease: true` | yes, on the dispatched commit | no |
+| Pre-release + `githubRelease: false` | no; VSIX artifact only | no |
 | Custom development build | no | no |
 | Scheduled nightly build | no; updates the `nightly` Git tag | nightly version commit only |
 

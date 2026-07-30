@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: true
+      githubRelease:
+        description: 'Create the GitHub Release and tag. For a real release, this also performs the release branch and follow-up PR handling. Unchecked = build the VSIX artifact only'
+        required: false
+        type: boolean
+        default: false
       runFrontendTests:
         description: 'Run frontend tests (jest fast tests + Ballerina e2e)'
         type: boolean
@@ -37,6 +42,7 @@ jobs:
   Release:
     name: Release VSIX
     needs: Build
+    if: ${{ inputs.githubRelease }}
     timeout-minutes: 45
     permissions:
       contents: write
