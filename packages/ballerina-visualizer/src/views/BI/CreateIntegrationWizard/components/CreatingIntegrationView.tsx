@@ -17,7 +17,8 @@
  */
 
 import styled from "@emotion/styled";
-import { ProgressRing, ThemeColors } from "@wso2/ui-toolkit";
+import { getIntegrationCreationCopy } from "@wso2/ballerina-core";
+import { ProgressRing } from "@wso2/ui-toolkit";
 
 const Wrapper = styled.div`
     flex: 1;
@@ -57,31 +58,8 @@ const Title = styled.h1`
 const Subtitle = styled.p`
     color: var(--vscode-descriptionForeground);
     font-size: 13px;
-    margin: 0.5rem 0 2rem 0;
+    margin: 0.5rem 0 0 0;
     opacity: 0.8;
-`;
-
-const StatusLine = styled.div`
-    color: ${ThemeColors.PRIMARY};
-    font-size: 13px;
-    font-weight: 500;
-    .creating-dots::after {
-        content: '';
-        animation: creatingDots 1.5s infinite;
-    }
-    @keyframes creatingDots {
-        0%, 20% { content: ''; }
-        40% { content: '.'; }
-        60% { content: '..'; }
-        80%, 100% { content: '...'; }
-    }
-`;
-
-const ReloadHint = styled.p`
-    color: var(--vscode-descriptionForeground);
-    font-size: 12px;
-    margin: 1.5rem 0 0 0;
-    opacity: 0.7;
 `;
 
 /**
@@ -112,31 +90,28 @@ type CreatingIntegrationViewProps =
  * window reload, so what is really "wizard → blank workbench → visualizer" reads
  * as a single screen that stays put until the integration is ready.
  *
- * The status line is deliberately vague about *which* step is running: the submit
- * is a single RPC with no progress signal, and inventing per-step checkmarks would
- * be narrating work we cannot observe. The footnote likewise avoids promising a
- * window reload — whether one happens is the extension's call (it is skipped when
- * the target project is already open), and the wizard cannot tell in advance.
+ * The create wording comes from `getIntegrationCreationCopy` so all three screens
+ * are worded identically by construction. Neither variant names a step or promises
+ * a reload: the submit is a single RPC with no progress signal, and whether the
+ * window reloads is the extension's call (it is skipped when the target project is
+ * already open), so the wizard cannot honestly say either.
  */
 export function CreatingIntegrationView(props: CreatingIntegrationViewProps) {
-    const isCreate = props.variant === "create";
-    // Only a create can legitimately have no artifact (an empty integration); the
-    // add path always carries one, so its fallback is just defensive.
-    const artifact = props.artifactLabel ?? (isCreate ? "integration" : "artifact");
+    const copy = props.variant === "create"
+        ? getIntegrationCreationCopy(props.integrationName, props.artifactLabel)
+        : {
+            // The add path always carries an artifact, so its fallback is defensive.
+            title: `Adding your ${props.artifactLabel ?? "artifact"}`,
+            subtitle: `Your new ${props.artifactLabel ?? "artifact"} will appear in the integration once it has been generated.`,
+        };
     return (
         <Wrapper>
             <Content>
                 <RingSlot>
                     <ProgressRing sx={{ height: 36, width: 36 }} />
                 </RingSlot>
-                <Title>{props.variant === "create" ? `Creating ${props.integrationName}` : `Adding your ${artifact}`}</Title>
-                <Subtitle>
-                    {isCreate ? `Setting up your ${artifact}.` : "Generating it in your integration."}
-                </Subtitle>
-                <StatusLine>
-                    <span className="creating-dots">{isCreate ? "Creating project" : "Generating"}</span>
-                </StatusLine>
-                {isCreate && <ReloadHint>Opening your integration — this takes a few seconds.</ReloadHint>}
+                <Title>{copy.title}</Title>
+                <Subtitle>{copy.subtitle}</Subtitle>
             </Content>
         </Wrapper>
     );

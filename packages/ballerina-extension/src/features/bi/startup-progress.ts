@@ -43,11 +43,6 @@ export const PENDING_ARTIFACT_TTL_MS = 10 * 60 * 1000; // 10 minutes
  * Shape of the value stored in VS Code globalState before the reload. The pointer
  * stays small; any filled artifact model lives in the created project's
  * `target/.wizard-pending-artifact.json`.
- *
- * Written for EVERY wizard create — including an empty integration, which has no
- * payload file — because it is also what tells the freshly reloaded window that it
- * is mid-create, so the startup screen can name the integration being created
- * instead of showing a generic "Activating Language Server".
  */
 export interface PendingIntegrationArtifactPointer {
     projectRoot: string;

@@ -249,7 +249,7 @@ export async function generateArtifactInPlace(
 
     try {
         await window.withProgress(
-            { location: ProgressLocation.Notification, title: `Setting up your ${label}...` },
+            { location: ProgressLocation.Notification, title: `Generating your ${label}...` },
             () => generatePendingArtifact(payload, packageRoot, landOnPackageOverview)
         );
         // A non-silent refresh ends on the workspace overview (see UPDATE_PROJECT_INFO

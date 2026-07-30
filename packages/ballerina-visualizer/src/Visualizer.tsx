@@ -21,6 +21,7 @@ import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import {
     AIMachineStateValue,
     DIRECTORY_MAP,
+    getIntegrationCreationCopy,
     isSamePath,
     MachineStateValue,
     PendingIntegrationArtifactKind,
@@ -79,30 +80,22 @@ const LoadingTitle = styled.h1`
 const LoadingSubtitle = styled.p`
     color: var(--vscode-descriptionForeground);
     font-size: 13px;
-    margin: 0.5rem 0 2rem 0;
+    margin: 0.5rem 0 0 0;
     opacity: 0.8;
 `;
 
+/** A live step, for the one wait that genuinely reports its progress. */
 const LoadingText = styled.div`
     color: ${ThemeColors.PRIMARY};
     font-size: 13px;
     font-weight: 500;
+    margin-top: 2rem;
 `;
 
 const globalStyles = css`
     @keyframes fadeIn {
         0% { opacity: 0; }
         100% { opacity: 1; }
-    }
-    .loading-dots::after {
-        content: '';
-        animation: dots 1.5s infinite;
-    }
-    @keyframes dots {
-        0%, 20% { content: ''; }
-        40% { content: '.'; }
-        60% { content: '..'; }
-        80%, 100% { content: '...'; }
     }
 `;
 
@@ -188,10 +181,17 @@ interface StartupIntegration {
     projectRoot: string;
 }
 
-type StartupIntegrationHost = { startupIntegration?: StartupIntegration | null };
+type StartupIntegrationHost = {
+    startupIntegration?: StartupIntegration | null;
+    startupTitle?: string | null;
+};
 
 function readStartupIntegration(): StartupIntegration | undefined {
     return (window as unknown as StartupIntegrationHost).startupIntegration ?? undefined;
+}
+
+function readStartupTitle(): string | undefined {
+    return (window as unknown as StartupIntegrationHost).startupTitle ?? undefined;
 }
 
 /** Consumed once: see the effect in `VisualizerComponent`. */
@@ -329,6 +329,12 @@ const VisualizerComponent = React.memo(({ state }: { state: MachineStateValue })
  * sequence of unrelated waits.
  */
 const LanguageServerLoadingView = ({ startupIntegration }: { startupIntegration?: StartupIntegration }) => {
+    const copy = startupIntegration
+        ? getIntegrationCreationCopy(startupIntegration.integrationName, startupIntegration.artifactLabel)
+        : {
+            title: readStartupTitle() ?? "Preparing your project",
+            subtitle: "Your project is being prepared. This may take a few moments.",
+        };
     return (
         <div style={{
             backgroundColor: 'var(--vscode-editor-background)',
@@ -340,19 +346,8 @@ const LanguageServerLoadingView = ({ startupIntegration }: { startupIntegration?
             <Global styles={globalStyles} />
             <LoadingContent>
                 <ProgressRing />
-                <LoadingTitle>
-                    {startupIntegration
-                        ? `Creating ${startupIntegration.integrationName}`
-                        : "Activating Language Server"}
-                </LoadingTitle>
-                <LoadingSubtitle>
-                    {startupIntegration
-                        ? `Setting up your ${startupIntegration.artifactLabel ?? "integration"}.`
-                        : "Preparing your Ballerina development environment."}
-                </LoadingSubtitle>
-                <LoadingText>
-                    <span className="loading-dots">{startupIntegration ? "Opening workspace" : "Initializing"}</span>
-                </LoadingText>
+                <LoadingTitle>{copy.title}</LoadingTitle>
+                <LoadingSubtitle>{copy.subtitle}</LoadingSubtitle>
             </LoadingContent>
         </div>
     );

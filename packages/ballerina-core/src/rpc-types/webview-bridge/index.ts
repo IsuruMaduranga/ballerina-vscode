@@ -139,6 +139,17 @@ export const INTEGRATION_ARTIFACT_LABELS: Record<PendingIntegrationArtifactKind,
     AI_CHAT_AGENT: "AI chat agent",
 };
 
+export function getIntegrationCreationCopy(
+    integrationName: string,
+    artifactLabel?: string
+): { title: string; subtitle: string } {
+    return {
+        title: `Creating ${integrationName}`,
+        // An integration created without an artifact is still an integration to open.
+        subtitle: `Your new ${artifactLabel ?? "integration"} will open once the project is ready.`,
+    };
+}
+
 /**
  * The filled artifact model persisted by the wizard right before the terminal
  * `vscode.openFolder` reload (at `<projectRoot>/target/.wizard-pending-artifact.json`)

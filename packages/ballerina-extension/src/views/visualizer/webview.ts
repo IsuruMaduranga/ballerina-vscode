@@ -26,7 +26,7 @@ import { WebViewOptions, getComposerWebViewOptions, getLibraryWebViewContent } f
 import { extension } from "../../BalExtensionContext";
 import { StateMachine, undoRedoManager, updateView } from "../../stateMachine";
 import { LANGUAGE } from "../../core";
-import { MACHINE_VIEW, isPathInside } from "@wso2/ballerina-core";
+import { MACHINE_VIEW, isPathInside, getIntegrationCreationCopy } from "@wso2/ballerina-core";
 import { refreshDataMapper } from "../../rpc-managers/data-mapper/utils";
 import { AiPanelWebview } from "../ai-panel/webview";
 import { approvalViewManager } from "../../features/ai/state/ApprovalViewManager";
@@ -224,13 +224,13 @@ export class VisualizerWebview {
         const startupProgress = getStartupIntegrationProgress(
             StateMachine.context().workspacePath || StateMachine.context().projectPath
         );
-        const title = startupProgress
-            ? `Creating Your Integration: ${escapeHtml(startupProgress.integrationName)}`
-            : (biExtension ? VisualizerWebview.biTitle : VisualizerWebview.ballerinaTitle);
-        const subtitle = startupProgress
-            ? `Setting up your ${escapeHtml(startupProgress.artifactLabel ?? "integration")}`
-            : "Setting up your workspace and tools";
-        const statusLine = startupProgress ? "Opening workspace" : "Loading";
+        const productTitle = biExtension ? VisualizerWebview.biTitle : VisualizerWebview.ballerinaTitle;
+        const creationCopy = startupProgress
+            && getIntegrationCreationCopy(startupProgress.integrationName, startupProgress.artifactLabel);
+        const title = creationCopy ? escapeHtml(creationCopy.title) : productTitle;
+        const subtitle = creationCopy
+            ? escapeHtml(creationCopy.subtitle)
+            : "Your project is being prepared. This may take a few moments.";
         const body = `<div class="container" id="webview-container">
                 <div class="loader-wrapper">
                     <div class="welcome-content">
@@ -239,9 +239,6 @@ export class VisualizerWebview {
                         </div>
                         <h1 class="welcome-title">${title}</h1>
                         <p class="welcome-subtitle">${subtitle}</p>
-                        <div class="loading-text">
-                            <span class="loading-dots">${statusLine}</span>
-                        </div>
                     </div>
                 </div>
             </div>`;
@@ -307,31 +304,16 @@ export class VisualizerWebview {
             .welcome-subtitle {
                 color: var(--vscode-descriptionForeground);
                 font-size: 13px;
-                margin: 0 0 2rem 0;
+                margin: 0;
                 opacity: 0.8;
             }
-            .loading-text {
-                color: var(--vscode-button-background);
-                font-size: 13px;
-                font-weight: 500;
-            }
-            .loading-dots::after {
-                content: '';
-                animation: dots 1.5s infinite;
-            }
             @keyframes fadeIn {
-                0% { 
+                0% {
                     opacity: 0;
                 }
-                100% { 
+                100% {
                     opacity: 1;
                 }
-            }
-            @keyframes dots {
-                0%, 20% { content: ''; }
-                40% { content: '.'; }
-                60% { content: '..'; }
-                80%, 100% { content: '...'; }
             }
         `;
         const scripts = `
@@ -342,6 +324,10 @@ export class VisualizerWebview {
             // "Creating <name>" copy as the static HTML above (and as the wizard did
             // before the reload) rather than flipping to a generic loading message.
             window.startupIntegration = ${toInlineJson(startupProgress)};
+            // Heading for an ordinary open, so the React startup screen keeps the
+            // product name this HTML already put on screen instead of replacing it
+            // with a different loading message mid-wait.
+            window.startupTitle = ${toInlineJson(productTitle)};
 
             function loadedScript() {
                 function renderDiagrams() {
