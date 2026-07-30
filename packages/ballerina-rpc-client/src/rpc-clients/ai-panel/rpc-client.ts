@@ -67,7 +67,7 @@ import {
     clearChat,
     clearInitialPrompt,
     createTestDirecoryIfNotExists,
-    declineChanges,
+    revertGeneration,
     declinePlan,
     declineTask,
     enhancePrompt,
@@ -296,8 +296,8 @@ export class AiPanelRpcClient implements AIPanelAPI {
         return this._messenger.sendRequest(isWorkspaceProject, HOST_EXTENSION);
     }
 
-    declineChanges(): Promise<void> {
-        return this._messenger.sendRequest(declineChanges, HOST_EXTENSION);
+    revertGeneration(): Promise<void> {
+        return this._messenger.sendRequest(revertGeneration, HOST_EXTENSION);
     }
 
     approvePlan(params: PlanApprovalRequest): Promise<void> {

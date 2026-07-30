@@ -125,7 +125,7 @@ export interface AIPanelAPI {
     // AI schema related functions
     getSemanticDiff: (params: SemanticDiffRequest) => Promise<SemanticDiffResponse>;
     isWorkspaceProject: () => Promise<boolean>;
-    declineChanges: () => Promise<void>;
+    revertGeneration: () => Promise<void>;
     // ==================================
     // Approval Related Functions (Human-in-the-Loop)
     // ==================================

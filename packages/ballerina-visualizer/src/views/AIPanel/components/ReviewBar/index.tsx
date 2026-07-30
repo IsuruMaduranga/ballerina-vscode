@@ -760,7 +760,7 @@ export const ReviewBar: React.FC<ReviewBarProps> = ({
         if (!rpcClient) return;
         try {
             setIsProcessing(true);
-            await rpcClient.getAiPanelRpcClient().declineChanges();
+            await rpcClient.getAiPanelRpcClient().revertGeneration();
             rpcClient.getVisualizerRpcClient().goBack();
             onDiscarded?.();
         } catch (error) {

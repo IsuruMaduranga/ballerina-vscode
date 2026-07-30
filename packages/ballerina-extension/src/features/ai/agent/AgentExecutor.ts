@@ -596,7 +596,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                     // Emit save_chat so any pre-step-boundary streamed text is persisted into uiResponse.
                     updateAndSaveChat(this.config.generationId, Command.Agent, this.config.eventHandler);
                     // Leave any live edits in place — the user may want to continue from them.
-                    // Only an explicit revert (declineChanges) restores the checkpoint.
+                    // Only an explicit revert (revertGeneration) restores the checkpoint.
                     const abortedGeneration = chatStateStorage.getGeneration(projectRootPath, threadId, this.config.generationId);
                     if (abortedGeneration && !['accepted', 'reverted', 'error'].includes(abortedGeneration.reviewState.status)) {
                         const generationModifiedFiles = Array.from(new Set([...allModifiedFiles, ...modifiedFiles]));
@@ -771,7 +771,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         const tempProjectPath = context.ctx.tempProjectPath!;
 
         // Leave any live edits in place — the user may want to continue from them. Only an
-        // explicit revert (declineChanges) restores the checkpoint.
+        // explicit revert (revertGeneration) restores the checkpoint.
         const projectRootPath = context.ctx.workspacePath || context.ctx.projectPath || '';
         const threadId = this.config.chatStorage?.threadId ?? 'default';
         const erroredGeneration = chatStateStorage.getGeneration(projectRootPath, threadId, context.messageId);

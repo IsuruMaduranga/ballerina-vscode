@@ -535,14 +535,14 @@ export class AiPanelRpcManager implements AIPanelAPI {
         return isWorkspace;
     }
 
-    async declineChanges(): Promise<void> {
+    async revertGeneration(): Promise<void> {
         try {
             const projectRootPath = resolveProjectRootPath();
             const threadId = getActiveThreadId();
 
             const doneGeneration = chatStateStorage.getDoneGeneration(projectRootPath, threadId);
             if (!doneGeneration) {
-                console.warn("[Review Actions] No open generation found for decline");
+                console.warn("[Review Actions] No revertible generation found");
                 return;
             }
 
@@ -577,7 +577,7 @@ User reverted the last made changes. The files have been restored to the state b
 
             sendSaveChatNotification(Command.Agent, doneGeneration.id);
         } catch (error) {
-            console.error("[Review Actions] Error declining changes:", error);
+            console.error("[Review Actions] Error reverting generation:", error);
             throw error;
         }
     }
