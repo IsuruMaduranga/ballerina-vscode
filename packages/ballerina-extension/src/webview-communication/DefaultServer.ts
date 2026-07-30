@@ -73,11 +73,7 @@ type TransportManager = ReturnType<typeof createExtensionTransportManager<Webvie
 /** Upper bound for a bridge request waiting on language-server activation. */
 const LANG_CLIENT_READY_TIMEOUT_MS = 60 * 1000;
 
-/**
- * Resolves once the state machine has an active language client. WS requests
- * from the embedded wizard can arrive while the extension is still in
- * `activateLS`, so the model handlers await this before touching the LS.
- */
+/** Resolves once the state machine has an active language client; model handlers await this. */
 function waitForLangClientReady(): Promise<void> {
     if (StateMachine.context().langClient) {
         return Promise.resolve();
@@ -217,7 +213,7 @@ export class DefaultServer {
         );
     }
 
-    /** Resolves (and creates, if missing) the file the wizard's step-3 artifact
+    /** Resolves (and creates, if missing) the file the wizard's Configure-step artifact
      *  form targets inside the silently scaffolded project. */
     private async resolveWizardFormTarget(params: WizardFormTargetRequest): Promise<WizardFormTargetResponse> {
         const filePath = path.join(params.projectRoot, "main.bal");
@@ -269,8 +265,6 @@ export class DefaultServer {
         this.register("getDefaultCreationPath", () => ({ path: getDefaultCreationPath() }));
         this.register("isSupportedSLVersion", (p) => langClient.isSupportedSLVersion(p));
         this.register("showErrorMessage", (p) => common.showErrorMessage(p));
-
-        // ── Create Integration wizard (3-step) ────────────────
         // The model handlers await LS activation: the embedded wizard can send
         // requests while the extension is still in `activateLS`.
         this.register("getWizardCapabilities", () => getWizardCapabilities());

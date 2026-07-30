@@ -49,7 +49,7 @@ interface ConfigureStepProps {
     selection: ArtifactCard;
     scaffold: ScaffoldState;
     isSubmitting: boolean;
-    /** Service model cached by the wizard root from an earlier step-3 visit. */
+    /** Service model cached by the wizard root from an earlier Configure-step visit. */
     cachedServiceModel?: ServiceInitModel | null;
     /** Reports the fetched service model for cross-step caching. */
     onServiceModelLoaded?: (model: ServiceInitModel) => void;
@@ -57,7 +57,7 @@ interface ConfigureStepProps {
     onSubmit: (artifact: PendingIntegrationArtifactPayload) => void;
 }
 
-/** Step 3 — dispatches to the artifact-kind-specific configuration form. */
+/** The Configure step — dispatches to the artifact-kind-specific configuration form. */
 export function ConfigureStep({ wsClient, selection, scaffold, isSubmitting, cachedServiceModel, onServiceModelLoaded, onSubmit }: ConfigureStepProps) {
     if (scaffold.status === "creating" || scaffold.status === "idle") {
         return (
@@ -79,6 +79,8 @@ export function ConfigureStep({ wsClient, selection, scaffold, isSubmitting, cac
         );
     }
 
+    const { projectRoot } = scaffold;
+
     return (
         <ConfigureStepContainer>
             {(() => {
@@ -88,7 +90,7 @@ export function ConfigureStep({ wsClient, selection, scaffold, isSubmitting, cac
                             <WizardRpcAdapterProvider wsClient={wsClient}>
                                 <ServiceConfigureForm
                                     wsClient={wsClient}
-                                    projectRoot={scaffold.projectRoot}
+                                    projectRoot={projectRoot}
                                     selection={selection}
                                     isSubmitting={isSubmitting}
                                     cachedModel={cachedServiceModel}
@@ -105,7 +107,7 @@ export function ConfigureStep({ wsClient, selection, scaffold, isSubmitting, cac
                             <WizardRpcAdapterProvider wsClient={wsClient}>
                                 <FunctionConfigureForm
                                     wsClient={wsClient}
-                                    projectRoot={scaffold.projectRoot}
+                                    projectRoot={projectRoot}
                                     kind={selection.kind}
                                     isSubmitting={isSubmitting}
                                     onSubmit={(flowNode) =>

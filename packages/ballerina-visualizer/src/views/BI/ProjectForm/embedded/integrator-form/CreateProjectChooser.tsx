@@ -50,18 +50,8 @@ const Section = styled.section`
 
 /** The bordered box around Project name + Location.
  *
- *  Extends the shared `ProjectSectionContainer` for the sole purpose of
- *  neutralizing its `:focus-within` border recolor. Each field inside already
- *  draws its own focus ring, so recoloring the whole card on focus is redundant
- *  and actively misleading at this size: the entire group reads as active (or,
- *  worse, as validating) instead of indicating which field has focus, and the
- *  card-wide blue competes with the real focus indicator.
- *
- *  Scoped here on purpose rather than removed from the shared component, which
- *  keeps its current behavior for `ProjectFormFields`. Emotion composes an
- *  extended styled-component into a single class (base declarations first, then
- *  these), so this same-specificity rule reliably wins on source order.
- *  The shared `transition: border-color` is left in place but is now inert. */
+ *  Neutralizes `ProjectSectionContainer`'s `:focus-within` recolor — each field already
+ *  draws its own focus ring — scoped here so `ProjectFormFields` keeps the shared behavior. */
 const ProjectGroupContainer = styled(ProjectSectionContainer)`
     &:focus-within {
         border-color: var(--vscode-panel-border);
@@ -69,11 +59,8 @@ const ProjectGroupContainer = styled(ProjectSectionContainer)`
 `;
 
 /** Padded interior of the bordered project group. `ProjectSectionContainer`
- *  intentionally carries no padding of its own (its children in
- *  `ProjectFormFields` each supply theirs), so the fields need this wrapper.
- *  The trailing `FieldGroup`'s bottom margin is zeroed out so the status
- *  footer's top border sits flush under the fields instead of floating below a
- *  dangling 20px gap. */
+ *  carries no padding of its own; the last field's bottom margin is zeroed so the
+ *  status footer sits flush. */
 const ProjectGroupFields = styled.div`
     padding: 12px;
 
@@ -85,20 +72,9 @@ const ProjectGroupFields = styled.div`
 /** Live, derived status of the project group: do the current Project name +
  *  Location resolve to a brand-new project, or to one that already exists?
  *
- *  Deliberately NOT styled like the `Note` callout in `styles/form.styles.ts`
- *  — the starting-point section immediately below uses `Note` for a static tip,
- *  and two identical quote-blocks stacked together would flatten a live status
- *  into background noise. So: no left accent bar and no `textBlockQuote`
- *  background. Instead it reads as a status bar physically attached to the
- *  fields it derives from — a full-width tinted strip sealed to the bottom of
- *  the container by a single top border, the same idiom as `SkipOptionRow`.
- *  Kept in neutral foreground colors: this is informational, never a warning.
- *
- *  The tint is a light wash of the theme's blue over the editor background, so
- *  it reads as information rather than as another chrome surface. Declared twice
- *  on purpose: the first line is the fallback for webview runtimes without
- *  `color-mix()` (Chromium < 111, i.e. older VS Code builds), where the theme's
- *  own info-validation blue stands in. */
+ *  Styled as a tinted strip sealed to the container rather than as a `Note` callout,
+ *  which the starting-point section below already uses. The duplicate `background` is
+ *  a fallback for runtimes without `color-mix()` (Chromium < 111). */
 const ProjectStatusStrip = styled.div`
     display: flex;
     align-items: flex-start;
@@ -154,16 +130,10 @@ interface CreateProjectChooserProps {
 }
 
 /**
- * Screen 1 of the unified Create flow: choose (or create) the project and the
- * starting point (integration or library), then route to the 3-step integration
- * wizard or the library form — all inside one shared shell so the flow feels
- * continuous.
- *
- * The Default project (`<defaultLocation>/default`) is pre-selected: if it already
- * exists the new artifact is added into it; otherwise it is created on submit.
- * Editing the name/location or choosing an existing project retargets it, and
- * whether the target is an existing project or a new one is detected live and
- * surfaced under the location field.
+ * Screen 1 of the Create flow: pick the project and the starting point (integration or
+ * library), then route to the integration wizard or the library form in the same shell.
+ * The Default project is pre-selected; existing vs new is detected live and shown under
+ * the location field.
  */
 export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack }: CreateProjectChooserProps) {
     const { wsClient } = useVisualizerContext();
@@ -232,27 +202,12 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
         return () => { mounted = false; };
     }, [wsClient]);
 
-    // Focus the Project name field on every arrival at the chooser screen (initial
-    // mount, and Back from the integration/library screens), selecting its whole
-    // value so the pre-filled name can be overtyped immediately.
-    //
-    // Two things defeat a bare `setTimeout(0)` + `select()` here:
-    //
-    //  1. The seed effect above resolves asynchronously and, when the Default
-    //     project already exists, replaces the name with the real one from its
-    //     Ballerina.toml. Pushing a new value into the web component re-assigns the
-    //     inner <input>'s value, which collapses the selection to the caret — so on
-    //     exactly that path a select that already succeeded is silently undone a
-    //     moment later. `preselectRequestId` re-runs this effect for the new value.
-    //  2. `TextField` renders the `vscode-text-field` web component, so the real
-    //     <input> lives in its shadow root and may not be attached — or may not yet
-    //     hold the value — on the first macrotask. Selecting then is a silent no-op,
-    //     hence the bounded per-frame retry until it is genuinely ready.
-    //
-    // The guards keep this from ever fighting the user: the value is only selected
-    // while it is still the programmatic one (`projectNameTouchedRef`), and focus is
-    // never pulled out of wherever the user has already put it — notably the
-    // Location field, which they may be mid-edit in when the seed effect resolves.
+    // Focus + select the Project name field on every arrival at the chooser. A bare
+    // setTimeout(0)+select() fails twice over: (1) the async seed above can replace the
+    // name afterwards, and re-assigning the web component's value collapses the selection
+    // — `preselectRequestId` re-runs this; (2) the real <input> lives in
+    // `vscode-text-field`'s shadow root and may not be attached yet, hence the bounded
+    // per-frame retry. The guards below keep it from ever fighting the user.
     useEffect(() => {
         if (screen !== "chooser") return;
 
@@ -261,12 +216,8 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
 
         const focusFirstField = () => {
             const host = firstFieldRef.current;
-            // The toolkit forwards its ref to the web component, not to the <input>.
-            // The element does expose `focus()`/`select()` publicly (FAST enables
-            // `delegatesFocus` and proxies `select()` to its inner control), but both
-            // bottom out in the very control we have to wait for anyway — and it is
-            // the only readiness signal the toolkit offers — so once we hold it, act
-            // on it directly rather than through two indirections.
+            // The ref points at the web component; its focus()/select() bottom out in the
+            // inner <input> we must wait for anyway, so act on that directly.
             const inner = host?.shadowRoot?.querySelector("input") ?? null;
             // Re-read each frame: the user may start typing during the retry window.
             const shouldSelect = !projectNameTouchedRef.current;
@@ -341,11 +292,8 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
     };
 
     /**
-     * Browse for the project folder. The picked folder IS the project location
-     * (its parent + its own name — not an appended, name-derived subfolder). If it
-     * is an existing project, its real name is shown
-     * and it is used as-is; otherwise it becomes a new project at that path.
-     * Editing the name afterwards retargets to a new sibling project.
+     * Browse: the picked folder IS the project location. An existing project is used as-is
+     * (with its real name); otherwise it becomes a new project there.
      */
     const handlePathSelection = async () => {
         try {

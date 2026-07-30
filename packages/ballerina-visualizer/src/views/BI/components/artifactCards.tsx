@@ -21,25 +21,11 @@ import { Icon } from "@wso2/ui-toolkit";
 import { DIRECTORY_MAP } from "@wso2/ballerina-core";
 
 /**
- * Single source of truth for the STATIC artifact cards and the category copy
- * shared by the two artifact-picking surfaces:
- *
- * - the in-project Add-Artifact screen — `ComponentListView`'s panels, which
- *   navigate to a creation view on click; and
- * - the pre-project Create Integration wizard's type step — `IntegrationTypeStep`
- *   via `CreateIntegrationWizard/artifactCatalog.tsx`, which selects and advances.
- *
- * Both surfaces show the same cards but do different things with them, so only
- * the DATA lives here — each keeps its own layout and click behaviour. Card
- * titles are also the search keys on both surfaces, so defining them once is
- * what stops a card from being rendered but unsearchable.
- *
- * Dynamically discovered cards (event/file/MCP triggers from `getTriggerModels`)
- * are deliberately absent: they come from the language server at runtime, so both
- * surfaces already pick them up automatically and they cannot drift.
- *
- * Keep this module free of panel/step imports (data + ui-toolkit icons only) so
- * both the main and federation bundles can import it without an import cycle.
+ * Single source of truth for the STATIC artifact cards and category copy shared by
+ * `ComponentListView` (in-project add) and the wizard's type step. Only the DATA lives
+ * here — each surface keeps its own layout and click behaviour. Card titles double as
+ * search keys on both. Keep this module free of panel/step imports so both bundles can
+ * import it without a cycle.
  */
 
 /** The artifact kinds the Create Integration wizard can create. */
@@ -190,12 +176,7 @@ export const INTEGRATION_API_CARDS: ArtifactCard[] = [
     },
 ];
 
-/**
- * A supporting artifact (function, type, connection, …). These exist only inside
- * an already-open package, so the pre-project wizard cannot offer them — they are
- * rendered by `OtherArtifactsPanel` alone, and live here so all card data
- * (and every search key) has one home.
- */
+/** A supporting artifact (function, type, connection, …). Only exists inside an open package, so the pre-project wizard cannot offer them. */
 export interface OtherArtifactCard {
     id: string;
     /** Card title. Doubles as the search key. */

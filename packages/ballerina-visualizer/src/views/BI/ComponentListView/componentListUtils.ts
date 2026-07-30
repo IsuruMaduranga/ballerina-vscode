@@ -25,10 +25,14 @@ export function isBetaModule(moduleName: string) {
 }
 
 /**
- * Whether a card title matches the Add-Artifact search query (case-insensitive
- * substring). An empty/blank query matches everything, so panels show all cards.
+ * Whether a card matches the Add-Artifact search query (case-insensitive substring
+ * over the title plus any `extraTerms`, e.g. package/module names). An empty/blank
+ * query matches everything, so panels show all cards.
  */
-export function cardMatchesSearch(title: string, query?: string): boolean {
+export function cardMatchesSearch(title: string, query?: string, ...extraTerms: (string | undefined)[]): boolean {
     const q = (query ?? "").trim().toLowerCase();
-    return q === "" || title.toLowerCase().includes(q);
+    if (q === "") {
+        return true;
+    }
+    return [title, ...extraTerms].filter(Boolean).join(" ").toLowerCase().includes(q);
 }

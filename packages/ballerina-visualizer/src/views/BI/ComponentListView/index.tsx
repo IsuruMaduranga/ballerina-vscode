@@ -112,7 +112,7 @@ export function ComponentListView(props: ComponentListViewProps) {
     // whether anything actually rendered into the panel container.
     useLayoutEffect(() => {
         setNoResults(!!addPanelRef.current && addPanelRef.current.childElementCount === 0);
-    });
+    }, [searchQuery, activeCategory, triggers, isLoadingTriggers, isNPSupported, isLibrary, scope]);
 
     const title = isLibrary ? "Library Artifacts" : "Artifacts";
     const subtitle = isLibrary

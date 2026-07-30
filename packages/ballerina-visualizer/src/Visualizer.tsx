@@ -166,11 +166,7 @@ export function Visualizer({ mode }: { mode: string }) {
     );
 };
 
-/**
- * The create-in-progress this window was opened to finish, injected into the
- * webview's HTML by the extension (see `VisualizerWebview.getWebviewContent`).
- * Read synchronously, so the very first React render already has it.
- */
+/** Create-in-progress injected into the webview HTML by the extension; read synchronously so the first render has it. */
 interface StartupIntegration {
     integrationName: string;
     /** e.g. "service" — absent for an empty integration. */
@@ -199,21 +195,10 @@ function clearStartupIntegration(): void {
     (window as unknown as StartupIntegrationHost).startupIntegration = null;
 }
 
-/**
- * Artifact kinds whose generation writes something the project structure reports.
- * `AI_CHAT_AGENT` is deliberately absent: it opens its own wizard rather than
- * writing an artifact (see `generatePendingArtifact`), so there is nothing to wait
- * for and holding would block that wizard.
- */
+/** Kinds whose generation writes an artifact. `AI_CHAT_AGENT` opens its own wizard, so holding would block it. */
 const KINDS_WRITING_AN_ARTIFACT: PendingIntegrationArtifactKind[] = ["SERVICE", "AUTOMATION", "WORKFLOW"];
 
-/**
- * Structure entries that mean "the generated artifact has landed". Kept as a set
- * rather than a per-kind mapping so a kind that reports under a different entry
- * than expected still releases the hold — the package this runs for was created
- * moments ago by the wizard and starts out with no artifacts at all, so ANY
- * artifact appearing in it is the one being waited for.
- */
+/** The package was created moments ago with no artifacts, so ANY artifact appearing in it is the one being waited for. */
 const ARTIFACT_DIRECTORIES: (keyof ProjectDirectoryMap)[] = [
     DIRECTORY_MAP.SERVICE,
     DIRECTORY_MAP.AUTOMATION,
@@ -223,24 +208,17 @@ const ARTIFACT_DIRECTORIES: (keyof ProjectDirectoryMap)[] = [
     DIRECTORY_MAP.FUNCTION,
 ];
 
-/**
- * Upper bound on the hold below, so a generation that fails — or never publishes
- * its artifact — cannot strand the window on the progress screen. Sits just above
- * the 10s artifact-notification timeout the generation itself gives up at.
- */
+/** Upper bound on the hold, just above the 10s artifact-notification timeout. */
 const PENDING_ARTIFACT_HOLD_TIMEOUT_MS = 12_000;
 
+/** Backstop poll interval for the hold below; the refresh notification is the primary signal. */
+const PENDING_ARTIFACT_POLL_MS = 3_000;
+
 /**
- * Whether the startup progress screen must stay up even though a view is ready.
- *
- * Post-reload the pending first artifact is generated only after the extension
- * reaches `extensionReady`, and the first view can be pushed before that finishes.
- * Without this the overview paints an integration card whose type chip is still
- * missing and fills it in a second or two later, when generation lands and the
- * refresh notification arrives. Waiting until the artifact is actually in the
- * project structure makes the overview's first frame the finished one — matching
- * the in-project add flow, where the wizard itself stays up until generation
- * returns.
+ * Whether the startup progress screen must stay up even though a view is ready. The
+ * pending artifact is generated only after `extensionReady`, and the first view can be
+ * pushed before that — without the hold the overview paints an integration card with a
+ * missing type chip and fills it in a beat later.
  */
 function usePendingArtifactHold(pending: StartupIntegration | undefined): boolean {
     const { rpcClient } = useRpcContext();
@@ -254,11 +232,16 @@ function usePendingArtifactHold(pending: StartupIntegration | undefined): boolea
             return;
         }
         let released = false;
+        let inFlight = false;
         const release = () => {
             released = true;
             setHolding(false);
         };
         const check = async (): Promise<void> => {
+            if (inFlight || released) {
+                return;
+            }
+            inFlight = true;
             try {
                 const res = await rpcClient.getBIDiagramRpcClient().getProjectStructure();
                 const project = res?.projects?.find((p) => isSamePath(p.projectPath, projectRoot));
@@ -272,16 +255,17 @@ function usePendingArtifactHold(pending: StartupIntegration | undefined): boolea
                 // Never hold on a broken read — fall through to the normal view.
                 console.error(">>> Error while waiting for the pending artifact", error);
                 release();
+            } finally {
+                inFlight = false;
             }
         };
         void check();
-        // Two signals: the refresh notification the generation fires, plus a poll as
-        // the backstop for one that is suppressed or missed. The read is a cached
-        // context lookup on the extension side, so polling it is cheap.
+        // The refresh notification the generation fires is the primary signal; the
+        // slower poll is only a backstop for one that is suppressed or missed.
         const unsubscribe = rpcClient.onProjectContentUpdated(() => void check());
         const interval = setInterval((): void => {
             void check();
-        }, 1000);
+        }, PENDING_ARTIFACT_POLL_MS);
         const timeout = setTimeout(release, PENDING_ARTIFACT_HOLD_TIMEOUT_MS);
         return () => {
             clearInterval(interval);
@@ -321,13 +305,7 @@ const VisualizerComponent = React.memo(({ state }: { state: MachineStateValue })
     }
 });
 
-/**
- * The pre-view loading screen. When this window is finishing a Create Integration
- * wizard submit it continues that flow's "Creating <name>" screen — same layout
- * and wording as both the wizard before the reload and the static HTML this app
- * replaces — so the whole create reads as one progress screen rather than a
- * sequence of unrelated waits.
- */
+/** Pre-view loading screen; continues the wizard's "Creating <name>" copy when this window is finishing a submit. */
 const LanguageServerLoadingView = ({ startupIntegration }: { startupIntegration?: StartupIntegration }) => {
     const copy = startupIntegration
         ? getIntegrationCreationCopy(startupIntegration.integrationName, startupIntegration.artifactLabel)

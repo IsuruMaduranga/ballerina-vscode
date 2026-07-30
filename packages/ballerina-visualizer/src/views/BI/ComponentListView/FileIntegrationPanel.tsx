@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@wso2/ui-toolkit';
 import { useRpcContext } from '@wso2/ballerina-rpc-client';
 import { EVENT_TYPE, MACHINE_VIEW, SCOPE, ServiceModel, TriggerModelsResponse } from '@wso2/ballerina-core';
@@ -42,7 +42,10 @@ export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
 
     const isDisabled = props.scope && (props.scope !== SCOPE.FILE_INTEGRATION && props.scope !== SCOPE.ANY);
     const q = props.searchQuery;
-    const matched = props.triggers.local.filter((t) => t.type === "file" && cardMatchesSearch(t.name, q));
+    const matched = useMemo(
+        () => props.triggers.local.filter((t) => t.type === "file" && cardMatchesSearch(t.name, q)),
+        [props.triggers, q]
+    );
 
     const handleOnSelect = async (model: ServiceModel) => {
         await rpcClient.getVisualizerRpcClient().openView({

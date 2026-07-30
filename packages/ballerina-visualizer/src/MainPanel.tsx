@@ -196,9 +196,8 @@ const MainPanel = () => {
     const [viewComponent, setViewComponent] = useState<React.ReactNode>();
     const [viewError, setViewError] = useState<string>();
     const [navActive, setNavActive] = useState<boolean>(true);
-    // A navigation is in flight. The previous view stays on screen while the next
-    // one's chunk loads, so without this the window looks frozen for as long as that
-    // takes — which on a view's first visit is seconds, not milliseconds.
+    // A navigation is in flight: the previous view stays on screen while the next one's
+    // chunk loads, which on a first visit is seconds.
     const [navPending, setNavPending] = useState<boolean>(false);
     const [showNavProgress, setShowNavProgress] = useState<boolean>(false);
     const [showHome, setShowHome] = useState<boolean>(true);
@@ -212,10 +211,7 @@ const MainPanel = () => {
 
     const gitIssueUrl = "https://github.com/wso2/product-integrator/issues";
 
-    // Leading edge: a single `viewReady` — every ordinary navigation — starts fetching
-    // the view immediately instead of paying a flat 200ms first. The trailing call is
-    // kept for bursts (a view update landing right behind a navigation), where lodash
-    // only re-invokes because the debounced function was called again while waiting.
+    // Leading edge so an ordinary navigation fetches immediately; trailing kept for bursts.
     const debounceFetchContext = useCallback(
         debounce(() => {
             fetchContext();
@@ -877,9 +873,8 @@ const MainPanel = () => {
                             setViewComponent(<LoadingRing />);
                     }
                 }
-                // The view is resolved and its chunk is in memory, so the browser is
-                // about to go idle: the cheapest moment to pay for wherever the user
-                // goes next.
+                // The chunk is in memory and the browser is about to go idle — cheapest
+                // moment to warm the next view.
                 prefetchAfterView(value?.view);
             } catch (error) {
                 if (isStaleNavigation()) return;
@@ -889,9 +884,8 @@ const MainPanel = () => {
             if (navKey !== navKeyRef.current) return;
             handleViewLoadError(error, "Failed to load visualizer context.");
         }).finally(() => {
-            // Only the newest navigation may clear the flag; an older one finishing
-            // late would otherwise hide the indicator while its successor is still
-            // loading.
+            // Only the newest navigation may clear the flag; a late older one would hide the
+            // indicator while its successor is still loading.
             if (navKey === navKeyRef.current) {
                 setNavPending(false);
             }

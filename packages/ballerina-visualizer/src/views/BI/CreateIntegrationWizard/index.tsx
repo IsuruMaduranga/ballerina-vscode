@@ -65,32 +65,15 @@ const INVALID_PATH_MESSAGE = "Please select a valid directory";
 interface CreateIntegrationWizardProps {
     /** Hide the page header when the embedding host renders its own chrome. */
     showHeader?: boolean;
-    /**
-     * The project the integration is created into, resolved by the unified Create
-     * chooser. When provided, the path is seeded from `workspacePath` (rather than
-     * the open folder / default creation path) and the artifact is created inside
-     * that workspace — freshly scaffolded when `isNewProject`.
-     */
+    /** Project resolved by the Create chooser; seeds the path and hosts the new artifact (scaffolded fresh when `isNewProject`). */
     projectContext?: ProjectContext;
-    /**
-     * Returns to the chooser (screen 1). When provided, the top-bar back arrow is
-     * shown on step 0 too and invokes this instead of decrementing the step.
-     */
+    /** Return to the chooser (screen 1); also shows the back arrow on step 0. */
     onBackToChooser?: () => void;
-    /**
-     * Renders the wizard to fill a bounded parent (the unified Create shell)
-     * instead of the standalone viewport. When true, the self-height-locking
-     * layout effect is skipped — the shell already bounds the height, so the
-     * pinned-stepper / scrolling-step-body flex layout works directly.
-     */
+    /** Fill a bounded parent (the Create shell) instead of the viewport — skips the height-locking layout effect. */
     embedded?: boolean;
     /**
-     * Runs the wizard against an ALREADY-created package at this root, for a user
-     * who skipped the wizard and is now continuing from their empty integration's
-     * overview. The package exists and keeps its name, so step 1 collects only the
-     * artifact type (no name/path fields, no "Create Empty Integration" skip), and
-     * submit generates the artifact into this package instead of creating one.
-     * Mutually exclusive with `projectContext`.
+     * Run against an ALREADY-created package: the Type step collects only the artifact
+     * type, and submit generates it in place. Mutually exclusive with `projectContext`.
      */
     existingPackagePath?: string;
     /** Fired after the artifact was added to `existingPackagePath`, so the host can
@@ -99,17 +82,10 @@ interface CreateIntegrationWizardProps {
 }
 
 /**
- * The 3-step Create Integration wizard (Basic Info → Integration Type → Configure).
- *
- * The whole wizard runs pre-project: the package is scaffolded silently on disk
- * when step 3 is entered (so the LS can serve the artifact's config model), and
- * the single `vscode.openFolder` reload happens only at final submit — with the
- * configured artifact persisted as a pending entry the extension generates
- * post-reload. Skipping at any step creates an empty integration.
- *
- * `existingPackagePath` switches it to the mirror-image case: the package was
- * already created (the user skipped the wizard) and only the artifact is missing,
- * so nothing is created and the artifact is generated in place.
+ * The Create Integration wizard (Type → Configure). Runs pre-project: a staging package
+ * is scaffolded when Configure is entered, and the single `vscode.openFolder` reload
+ * happens only at final submit, with the artifact persisted as a pending entry generated
+ * post-reload. `existingPackagePath` flips it to generate-in-place.
  */
 export function CreateIntegrationWizard({
     showHeader = true,
@@ -120,8 +96,7 @@ export function CreateIntegrationWizard({
     onArtifactAdded,
 }: CreateIntegrationWizardProps) {
     const { wsClient, onBack } = useBiWsContext();
-    // The package already exists and keeps its own name/location, so every
-    // name-, path- and creation-related concern of the wizard is inert.
+    // The package exists and keeps its name/location, so name/path/creation logic is inert.
     const isExistingPackage = !!existingPackagePath;
 
     const [step, setStep] = useState<WizardStep>(0);
@@ -135,18 +110,15 @@ export function CreateIntegrationWizard({
     const [nameError, setNameError] = useState<string | null>(null);
     const [pathError, setPathError] = useState<string | null>(null);
     const [existingWorkspace, setExistingWorkspace] = useState(false);
-    // Folder names and component titles already used in the target project, so a
-    // name the user types can be flagged live if it collides with an existing one.
+    // Existing folders/titles in the target project, for live collision flagging.
     const [takenNames, setTakenNames] = useState<TakenNames>(emptyTakenNames());
     const [triggers, setTriggers] = useState<TriggerModelsResponse | null>(null);
     const [selection, setSelection] = useState<ArtifactCard | null>(null);
-    // Service model cached across step navigation (keyed by the selected card),
-    // so re-entering step 3 skips the model fetch / package pull.
+    // Cached per selected card so re-entering Configure skips the model fetch.
     const [serviceModelCache, setServiceModelCache] = useState<{ id: string; model: ServiceInitModel } | null>(null);
     const [scaffold, setScaffold] = useState<ScaffoldState>({ status: "idle" });
     const [isSubmitting, setIsSubmitting] = useState(false);
-    // Artifact kind of the in-flight submit, so the progress screen can name it the
-    // same way the post-reload screen does. Null for an empty integration.
+    // Artifact kind of the in-flight submit, for the progress screen's label.
     const [submittingKind, setSubmittingKind] = useState<PendingIntegrationArtifactPayload["kind"] | null>(null);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const scaffoldRef = useRef<ScaffoldState>(scaffold);
@@ -154,19 +126,10 @@ export function CreateIntegrationWizard({
     const rootRef = useRef<HTMLDivElement>(null);
 
     useLayoutEffect(() => {
-        // Root cause of the whole-page scroll: the embedding chrome (host
-        // CreationView; native panel) sizes its wrappers with `min-height`, so
-        // no ancestor has a *definite* height. Our scroll host's `overflow:auto`
-        // therefore never engages, and long content grows the document instead
-        // of scrolling internally. The fix is to give the scroll host a definite
-        // height derived from the viewport (so its overflow engages and it stops
-        // growing the page) and lock the document from scrolling as a guarantee.
-        // Once the host is bounded, pure CSS flex (WizardPage → StepBody →
-        // StepScrollArea) pins the stepper/footer and scrolls only the middle.
-        // Embedded in the Create shell: the parent already provides a definite,
-        // bounded height, so the flex chain (WizardPage → StepBody → StepScrollArea)
-        // scrolls on its own — the viewport height-locking below is not needed and
-        // would fight the shell's layout.
+        // The embedding chrome sizes its wrappers with `min-height`, so no ancestor has a
+        // definite height and our scroll host's `overflow:auto` never engages — long content
+        // grows the document instead. Give the scroll host a viewport-derived height and lock
+        // the document. Not needed when embedded: the shell already bounds the height.
         if (embedded) {
             return;
         }
@@ -190,8 +153,7 @@ export function CreateIntegrationWizard({
         const target = scrollHost ?? root;
         const MIN_HEIGHT = 200;
 
-        // Lock the document itself so the page can never scroll, regardless of
-        // any residual overflow from the embedding chrome's paddings/borders.
+        // Belt-and-braces: stop the document itself from scrolling.
         const docEl = document.documentElement;
         const body = document.body;
         const prevDocOverflow = docEl.style.overflow;
@@ -206,13 +168,9 @@ export function CreateIntegrationWizard({
         let lastHeight = -1;
 
         const measure = () => {
-            // The target's top is fixed by the chrome above it and does not
-            // depend on its own height, so no clear-and-remeasure is needed.
             const top = target.getBoundingClientRect().top;
 
-            // Space below the target that must remain visible (the form panel's
-            // bottom border, backdrop bottom padding, etc.) — summed generically
-            // from the ancestors' bottom paddings/borders and the nodes' margins.
+            // Space below the target that must stay visible (ancestors' bottom padding/borders + margins).
             let belowChrome = 0;
             for (let node: HTMLElement | null = target; node && node !== body; node = node.parentElement) {
                 belowChrome += parseFloat(getComputedStyle(node).marginBottom) || 0;
@@ -237,18 +195,30 @@ export function CreateIntegrationWizard({
             target.style.overflow = "hidden";
         };
 
+        // `measure` reads layout for every ancestor, so coalesce the resize burst
+        // into one measurement per frame.
+        let resizeRaf = 0;
+        const onResize = () => {
+            if (resizeRaf) {
+                return;
+            }
+            resizeRaf = requestAnimationFrame(() => {
+                resizeRaf = 0;
+                measure();
+            });
+        };
+
         measure();
-        // Re-measure after paint settles (fonts / host chrome finishing layout),
-        // then keep it correct across viewport resizes. Content changes don't
-        // matter — the height is viewport-derived, not content-derived.
+        // Re-measure after paint settles and on resize; the height is viewport-derived.
         const raf1 = requestAnimationFrame(measure);
         const timer = window.setTimeout(measure, 250);
-        window.addEventListener("resize", measure);
+        window.addEventListener("resize", onResize);
 
         return () => {
             cancelAnimationFrame(raf1);
+            cancelAnimationFrame(resizeRaf);
             window.clearTimeout(timer);
-            window.removeEventListener("resize", measure);
+            window.removeEventListener("resize", onResize);
             docEl.style.overflow = prevDocOverflow;
             body.style.overflow = prevBodyOverflow;
             target.style.height = prevHeight;
@@ -261,37 +231,21 @@ export function CreateIntegrationWizard({
     const packageName = sanitizePackageName(effectiveName) || "untitled";
     // The name-derived default for the directory segment (empty until a name is typed).
     const autoDirectoryName = basicInfo.integrationName.trim() ? sanitizePackageName(basicInfo.integrationName) : "";
-    // The folder segment actually used. When the user has taken manual control of
-    // the path, it is honored exactly — including an empty segment, which means
-    // "create the integration directly in the parent directory" (no new folder).
-    // Otherwise it falls back to the name-derived package name.
+    // Once the user edits the path, the segment is honored exactly — including empty
+    // ("create in the parent dir").
     const trimmedDirectoryName = basicInfo.directoryName.trim();
     const effectiveDirectoryName = basicInfo.dirTouched ? trimmedDirectoryName : trimmedDirectoryName || packageName;
-    // Full creation path shown in the path field.
     const fullPath = joinPath(basicInfo.baseDir, basicInfo.directoryName);
 
     useEffect(() => {
-        // Discard any temp staging package left by a previously abandoned session
-        // (the unmount cancel can be lost when the embedded remote is torn down
-        // before it flushes). Staging lives in the OS temp dir and never touches
-        // the user's path, so this is purely housekeeping.
+        // Sweep any temp staging package left by an abandoned session (the unmount cancel can be lost).
         wsClient
             .cleanupAbandonedIntegrationScaffolds()
             .catch((error: unknown) => console.error(">>> Error cleaning up staging package", error));
 
-        // Seed the path field: prefer the currently open workspace folder (matching
-        // the native/embedded project & library forms), falling back to the default
-        // creation directory only when no folder is open. The default name/folder
-        // is "Untitled"/"untitled"; if the target project already has a component
-        // with that folder OR that title, an indexed variant is used for BOTH the
-        // name and folder ("Untitled_2" / "untitled_2", …) so the new integration
-        // collides with neither an existing folder nor an existing integration name.
-
-        // When the chooser resolved a project, the integration lives inside that
-        // workspace folder — seed the path from it directly. Otherwise fall back to
-        // the open folder / default creation path (standalone wizard entry).
-        // Adding into an existing package needs none of this: its name and location
-        // are already fixed, and no name is collected that could collide.
+        // Seed the path: the chooser's project when there is one, else the open folder /
+        // default creation dir. The default name/folder is indexed ("Untitled_2") when it
+        // would collide. Not needed for an existing package.
         if (!isExistingPackage) {
             const seedBaseDir = projectContext?.workspacePath
                 ? Promise.resolve(projectContext.workspacePath)
@@ -299,8 +253,7 @@ export function CreateIntegrationWizard({
 
             seedBaseDir
                 .then(async (seedPath: string) => {
-                    // Fetch the project's existing folders + component titles once: used
-                    // to pick a collision-free default AND to flag name collisions live.
+                    // Fetched once: picks a collision-free default and flags collisions live.
                     let taken = emptyTakenNames();
                     try {
                         taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: seedPath }));
@@ -321,8 +274,7 @@ export function CreateIntegrationWizard({
     }, [wsClient, projectContext?.workspacePath, isExistingPackage]);
 
     useEffect(() => {
-        // Leaving the wizard discards the temp staging package (best-effort;
-        // the mount-time sweep is the race-free backstop).
+        // Best-effort discard; the mount-time sweep is the race-free backstop.
         return () => {
             if (scaffoldRef.current.status === "ready") {
                 wsClient.cancelIntegrationWizard().catch(() => { });
@@ -335,12 +287,8 @@ export function CreateIntegrationWizard({
         projectPath: basicInfo.baseDir,
         projectName: packageName,
         createAsWorkspace: false,
-        // Validate as soon as there is a real target — i.e. once the path has been
-        // seeded and a directory segment is present, even before the path is
-        // edited — so a "directory already exists" conflict surfaces live under
-        // the path field. Gated on baseDir too so the default "Untitled" name
-        // doesn't flash a "Path is required" error before seeding resolves.
-        // Never runs for an existing package: there is no path to validate.
+        // Validate as soon as baseDir + a directory segment exist (before any edit), so a
+        // "directory exists" conflict shows live. Never for an existing package.
         pathTouched:
             !isExistingPackage &&
             (basicInfo.pathTouched ||
@@ -350,8 +298,7 @@ export function CreateIntegrationWizard({
         onPathErrorChange: useCallback((error: string | null) => setPathError(error), []),
         onExistingWorkspaceChange: useCallback((isWorkspace: boolean) => setExistingWorkspace(isWorkspace), []),
         directoryName: effectiveDirectoryName,
-        // The path field is the exact project root — allow creating into an
-        // existing (non-Ballerina) directory instead of forcing a new folder.
+        // The path field is the exact project root, so an existing (non-Ballerina) dir is allowed.
         allowExistingDirectory: true,
     });
 
@@ -438,10 +385,7 @@ export function CreateIntegrationWizard({
     };
 
     /**
-     * Ensures the throwaway staging package (for the Configure step's model
-     * fetching) exists. It is name/path agnostic, so it is created once and reused
-     * for the rest of the session — back-navigation and name changes need no
-     * re-scaffold.
+     * Creates the throwaway staging package once per session (name/path agnostic, so it is reused).
      */
     const ensureScaffold = async () => {
         if (scaffold.status === "ready" || scaffold.status === "creating") {
@@ -458,15 +402,14 @@ export function CreateIntegrationWizard({
         }
     };
 
-    /** Step 1 → 2: the name and artifact type are captured together on the first
+    /** Type → Configure: the name and artifact type are captured together on the first
      *  step, so validate the name (and, when standalone, the path) and require a
      *  selection before advancing to Configure. */
     const handleContinueToConfigure = async () => {
         if (!selection) {
             return;
         }
-        // An existing package collects no name or path, so there is nothing to
-        // validate beyond the artifact selection.
+        // An existing package collects no name or path.
         if (!isExistingPackage) {
             if (!basicInfo.integrationName.trim()) {
                 setNameError("Integration name is required");
@@ -475,8 +418,7 @@ export function CreateIntegrationWizard({
             if (!validateBasicInfo()) {
                 return;
             }
-            // Embedded in the Create flow the project (location) was already validated
-            // by the chooser; only the standalone wizard owns and re-validates the path.
+            // The chooser already validated the location in the embedded flow.
             if (!embedded && !(await validatePathForSubmit())) {
                 return;
             }
@@ -486,10 +428,7 @@ export function CreateIntegrationWizard({
     };
 
     /**
-     * Final submit for the existing-package mode: only the artifact is generated,
-     * into the package that is already open, so the host stays exactly where it is
-     * (no project creation, no window reload). The wizard keeps its submitting
-     * state until the host dismisses it.
+     * Existing-package submit: generate the artifact in place — no project creation, no reload.
      */
     const handleAddArtifactToExistingPackage = async (packageRoot: string, artifact: PendingIntegrationArtifactPayload) => {
         setSubmitError(null);
@@ -530,8 +469,7 @@ export function CreateIntegrationWizard({
                 },
                 artifact,
             });
-            // The extension opens the project (window reload) — keep the wizard
-            // in its submitting state until teardown.
+            // The extension reloads the window — stay in the submitting state until teardown.
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error(">>> Error creating integration", error);
@@ -550,12 +488,8 @@ export function CreateIntegrationWizard({
         void handleCreateIntegration(artifact);
     };
 
-    // Once the final submit is in flight there is nothing left to interact with —
-    // and on the create paths the window is about to reload — so the wizard is
-    // replaced by a dedicated progress screen instead of a frozen, disabled form.
-    // On the reload paths the extension's startup screen continues this exact
-    // layout and wording on the other side, so the reload reads as one screen that
-    // stays put rather than as three unrelated waits.
+    // Nothing is interactive once submit is in flight (and the window may reload), so show a
+    // dedicated progress screen — the extension's startup screen continues the same layout.
     if (isSubmitting) {
         const artifactLabel = submittingKind ? INTEGRATION_ARTIFACT_LABELS[submittingKind] : undefined;
         return (
@@ -616,7 +550,7 @@ export function CreateIntegrationWizard({
             <StepBody>
                 {step === 0 && (
                     <StepPinnedHeader>
-                        {/* The existing package owns its name and location, so step 1
+                        {/* The existing package owns its name and location, so the Type step
                             asks only for the artifact type. */}
                         {!isExistingPackage && (
                             <BasicInfoStep
@@ -666,8 +600,7 @@ export function CreateIntegrationWizard({
                         primaryLabel="Continue"
                         onPrimary={handleContinueToConfigure}
                         primaryDisabled={isSubmitting || !!nameError || (!embedded && !!pathError) || !selection}
-                        // The package already exists and is already empty, so there is
-                        // no empty integration left to create — only Continue applies.
+                        // The package already exists and is empty — only Continue applies.
                         skipLabel={isExistingPackage ? undefined : "Create Empty Integration"}
                         onSkip={() => handleCreateIntegration()}
                         skipDisabled={isSubmitting || !!nameError || (!embedded && !!pathError)}

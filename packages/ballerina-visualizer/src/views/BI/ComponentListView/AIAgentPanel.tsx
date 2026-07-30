@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { useMemo } from "react";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import {
     DIRECTORY_MAP,
@@ -45,7 +46,10 @@ export function AIAgentPanel(props: AIAgentPanelProps) {
     const { rpcClient } = useRpcContext();
     const isDisabled = props.scope && props.scope !== SCOPE.AI_AGENT && props.scope !== SCOPE.ANY;
     const q = props.searchQuery;
-    const mcpTriggers = props.triggers.local.filter((t) => t.type === "mcp" && cardMatchesSearch(t.name, q));
+    const mcpTriggers = useMemo(
+        () => props.triggers.local.filter((t) => t.type === "mcp" && cardMatchesSearch(t.name, q)),
+        [props.triggers, q]
+    );
     const agentMatches = cardMatchesSearch(AI_CHAT_AGENT_CARD.displayName, q);
 
     const handleMcpClick = async (key: DIRECTORY_MAP, model: ServiceModel) => {

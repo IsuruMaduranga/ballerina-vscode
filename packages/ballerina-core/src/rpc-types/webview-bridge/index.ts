@@ -123,7 +123,7 @@ export interface SignInResult {
 // (`DefaultServer` → `features/bi/integration-wizard.ts`).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Artifact kinds the Create Integration wizard can pre-configure at step 3. */
+/** Artifact kinds the Create Integration wizard can pre-configure in the Configure step. */
 export type PendingIntegrationArtifactKind = "SERVICE" | "AUTOMATION" | "WORKFLOW" | "AI_CHAT_AGENT";
 
 /**
@@ -195,7 +195,7 @@ export interface IntegrationProjectParams {
 }
 
 /**
- * Response to the request for the throwaway staging package the step-3 artifact
+ * Response to the request for the throwaway staging package the Configure-step artifact
  * form resolves its language-server model against. The staging package lives in
  * the OS temp dir — NOT at the user's chosen path — so an abandoned wizard can
  * never occupy (and later collide with) the final location. The real project is
@@ -241,7 +241,7 @@ export interface WizardCapabilitiesResponse {
     isWorkspaceSupported: boolean;
 }
 
-/** Resolves the file the wizard's step-3 artifact form should target. */
+/** Resolves the file the wizard's Configure-step artifact form should target. */
 export interface WizardFormTargetRequest {
     projectRoot: string;
 }

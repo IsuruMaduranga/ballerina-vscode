@@ -37,7 +37,7 @@ import { CreateIntegrationWizard } from "../../CreateIntegrationWizard";
 /**
  * Which BI creation form to render. `create` is the unified entry point (project
  * chooser → integration wizard / library form) and the primary mode going
- * forward. `integration` is the standalone 3-step wizard (rendered inside the
+ * forward. `integration` is the standalone Create Integration wizard (rendered inside the
  * host's CreationView chrome); `project` and `library` are the legacy welcome
  * "More Actions" flows, which carry their own page chrome and a Back button
  * driven by `onBack`.
@@ -76,7 +76,7 @@ type WizardSupport = "probing" | "supported" | "unsupported";
  * project-creation RPCs, composes it with the host client (which keeps serving
  * cloud reads), and renders the appropriate creation form against that
  * composite. For `mode="integration"` it probes the extension's wizard
- * capabilities and renders the 3-step Create Integration wizard, falling back
+ * capabilities and renders the Create Integration wizard, falling back
  * to the legacy single-step form against an older extension.
  */
 export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, mode = "integration", onBack }: EmbeddedBIProjectFormProps) {
@@ -101,7 +101,7 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
                 }
 
                 // Both the standalone wizard (`integration`) and the unified entry
-                // (`create`, which can route to the wizard) need the 3-step wizard
+                // (`create`, which can route to the wizard) need the Create Integration wizard
                 // client. Probe the handshake first; an older extension without the
                 // handler rejects (or times out) → legacy form / no wizard route.
                 if (mode === "integration" || mode === "create") {

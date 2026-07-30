@@ -49,13 +49,9 @@ function pendingArtifactFilePath(projectRoot: string): string {
 }
 
 /**
- * Records the create the wizard just performed so the reloaded window can finish
- * it: generate the configured first artifact (when there is one) and land on the
- * new integration. Call this right before `openInVSCode(projectRoot)`.
- *
- * The pointer is written even for an empty integration (no `payload`): it is also
- * what lets the reloading window narrate "Creating <name>" on its startup screen
- * and navigate to the result, instead of coming up on a bare loading screen.
+ * Records the wizard's create so the reloaded window can finish it. Written even for an
+ * empty integration — it is also what lets the new window narrate "Creating <name>".
+ * Call right before `openInVSCode(projectRoot)`.
  */
 export async function schedulePendingIntegration(
     projectRoot: string,
@@ -80,19 +76,10 @@ export async function schedulePendingIntegration(
 }
 
 /**
- * Finishes a Create Integration wizard submit that spanned the last folder
- * reload: generates the configured first artifact (when there was one) and lands
- * on the new integration.
- *
- * Consume-immediately semantics: the globalState pointer and the payload file
- * are both cleared BEFORE any generation runs, so a failure can never loop.
- * Safe to call on every activation — a no-op when there is no pending entry.
- * Never throws.
- *
- * No progress notification is raised here: while this runs the visualizer is
- * still showing the "Creating <name>" startup screen carried over from the
- * wizard, so a toast on top of it would narrate the same wait twice. Only the
- * failure path notifies.
+ * Finishes a wizard submit that spanned the last folder reload: generates the configured
+ * first artifact and lands on the new integration. Consume-immediately — the pointer and
+ * payload file are cleared BEFORE generation, so a failure can never loop. Safe on every
+ * activation; never throws. No progress toast: the startup screen already narrates the wait.
  */
 export async function checkAndRunPendingArtifact(): Promise<void> {
     try {
@@ -113,11 +100,8 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
             return;
         }
 
-        // The pending entry only applies to the project it was scheduled for.
-        // It was created either as a standalone package (opened directly, so it is
-        // the context's projectPath) or inside an existing Ballerina workspace (the
-        // workspace root is opened and projectPath is undefined, so match by the
-        // package living under the opened workspace).
+        // Match the entry to the opened project: a standalone package is the context's
+        // projectPath; inside a workspace only workspacePath is set.
         const ctx = StateMachine.context();
         const opensStoredPackage = isSamePath(stored.projectRoot, ctx.projectPath);
         const insideOpenWorkspace = !!ctx.workspacePath && isPathInside(ctx.workspacePath, stored.projectRoot);
@@ -162,10 +146,8 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
                 `Your integration was created; you can add the artifact from the Artifacts panel.`
             );
         }
-        // Whether generation navigated on its own (standalone lands on the package
-        // overview; the AI agent path opens its own wizard), deliberately did not
-        // (added into a workspace), or failed outright, the window must never be
-        // left sitting on the startup screen that was narrating the create.
+        // Whatever generation did (navigated, didn't, or failed), never leave the window
+        // on the startup screen.
         ensureLandedOnNewIntegration(stored, opensStoredPackage);
     } catch (error) {
         console.error("[IntegrationWizard] Unexpected error while checking pending artifact:", error);
@@ -173,14 +155,9 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
 }
 
 /**
- * Guarantees the window ends up on a real view after a wizard create, instead of
- * sitting on the startup progress screen.
- *
- * Acts only when nothing has navigated yet — the machine still being in
- * `extensionReady` means no view has been opened at all — so it stays a no-op on
- * the paths that navigate themselves (standalone package overview, the AI agent
- * wizard) and does the work on the ones that don't: an empty integration with
- * nothing to generate, a package added into a workspace, or a failed generation.
+ * Guarantees the window lands on a real view after a wizard create. Acts only when
+ * nothing has navigated yet (machine still in `extensionReady`), so it stays a no-op on
+ * paths that navigate themselves.
  */
 function ensureLandedOnNewIntegration(
     pointer: PendingIntegrationArtifactPointer,
@@ -199,11 +176,7 @@ function ensureLandedOnNewIntegration(
     openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.WorkspaceOverview });
 }
 
-/**
- * Reads and immediately deletes the payload file (consume-before-generate).
- * Returns undefined when the file is missing (the normal case for an empty
- * integration, which schedules a pointer but no payload) or unreadable.
- */
+/** Reads and immediately deletes the payload file; undefined when missing (empty integration) or unreadable. */
 function consumePendingArtifactPayload(projectRoot: string): PendingIntegrationArtifactPayload | undefined {
     const payloadFile = pendingArtifactFilePath(projectRoot);
     if (!fs.existsSync(payloadFile)) {
@@ -230,11 +203,8 @@ function consumePendingArtifactPayload(projectRoot: string): PendingIntegrationA
 }
 
 /**
- * Generates a configured first artifact for a package that was just added into a
- * workspace that is ALREADY open in this window (no folder switch, no reload —
- * see `createIntegration` in integration-wizard.ts). Unlike `checkAndRunPendingArtifact`,
- * this runs entirely in the current session: there is no globalState pointer and no
- * reliance on the `extensionReady` transition.
+ * Generates the first artifact for a package added into a workspace already open in this
+ * window — runs in the current session, no pointer and no reload.
  */
 export async function generateArtifactInPlace(
     packageRoot: string,
@@ -252,10 +222,8 @@ export async function generateArtifactInPlace(
             { location: ProgressLocation.Notification, title: `Generating your ${label}...` },
             () => generatePendingArtifact(payload, packageRoot, landOnPackageOverview)
         );
-        // A non-silent refresh ends on the workspace overview (see UPDATE_PROJECT_INFO
-        // in stateMachine.ts) — right for the add-into-open-workspace path, but it
-        // would clobber the package overview just navigated to above, showing the
-        // workspace overview and then jumping. Refresh silently in that case.
+        // A non-silent refresh lands on the workspace overview, which would clobber the
+        // package overview navigated to above.
         StateMachine.refreshProjectInfo({ silent: landOnPackageOverview });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -268,15 +236,9 @@ export async function generateArtifactInPlace(
 }
 
 /**
- * Runs the kind-specific generation and navigates to the produced artifact. All
- * files are targeted inside `projectRoot` — the newly created package — which is
- * the context's projectPath for a standalone package and a child package path
- * when added into an existing workspace (where the context has no projectPath).
- *
- * `landOnPackageOverview` controls the final navigation: true for a standalone
- * package (land on its overview); false when added into a workspace, so the
- * window stays on the project (workspace) overview it opened on rather than
- * auto-switching into the new package.
+ * Runs the kind-specific generation and navigates to the result. All files target
+ * `projectRoot` (the new package). `landOnPackageOverview`: true for a standalone package;
+ * false when added into a workspace, so the window stays on the project overview.
  */
 async function generatePendingArtifact(
     payload: PendingIntegrationArtifactPayload,
@@ -333,11 +295,8 @@ async function generatePendingArtifact(
 }
 
 /**
- * Lands on the new package's overview after the first artifact is created, rather
- * than drilling into the artifact's own designer. The overview lists the new
- * artifact and is the expected place to land after creating an integration. The
- * package root is passed as `projectPath` so it resolves correctly in a workspace
- * (where the context has no active `projectPath`).
+ * Lands on the new package's overview; the package root is passed as `projectPath` so it
+ * resolves inside a workspace.
  */
 function openPackageOverview(projectRoot: string): void {
     openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.PackageOverview, projectPath: projectRoot });

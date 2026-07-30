@@ -17,7 +17,7 @@
  */
 import * as vscode from "vscode";
 import { URI, Utils } from "vscode-uri";
-import { ARTIFACT_TYPE, Artifacts, ArtifactsNotification, BaseArtifact, DIRECTORY_MAP, EVENT_TYPE, isSamePath, MACHINE_VIEW, PROJECT_KIND, ProjectInfo, ProjectStructure, ProjectStructureArtifactResponse, ProjectStructureResponse, SHARED_COMMANDS } from "@wso2/ballerina-core";
+import { ARTIFACT_TYPE, Artifacts, ArtifactsNotification, BaseArtifact, DIRECTORY_MAP, EVENT_TYPE, isPathInside, isSamePath, MACHINE_VIEW, PROJECT_KIND, ProjectInfo, ProjectStructure, ProjectStructureArtifactResponse, ProjectStructureResponse, SHARED_COMMANDS } from "@wso2/ballerina-core";
 import { openView, StateMachine } from "../stateMachine";
 import { ExtendedLangClient } from "../core/extended-language-client";
 import { ArtifactsUpdated, ArtifactNotificationHandler } from "./project-artifacts-handler";
@@ -33,10 +33,8 @@ const failedArtifactProjects = new Set<string>();
 // them run the incremental path would race the rebuild with updates based on stale structure.
 let artifactRecoveryInProgress = false;
 
-// Serializes the full rebuilds triggered from `rebuildAndPublishArtifacts`. A burst of
-// notifications for a package the structure does not know yet (e.g. one per file a new
-// package's scaffold writes) would otherwise rebuild the project concurrently, each run
-// racing the others' structure updates.
+// Serializes full rebuilds: a burst of notifications for an unknown package would
+// otherwise rebuild concurrently, each run racing the others' structure updates.
 let pendingStructureRebuild: Promise<ProjectStructureResponse | undefined> = Promise.resolve(undefined);
 
 export async function buildProjectsStructure(
@@ -193,19 +191,12 @@ export async function updateProjectArtifacts(publishedArtifacts: ArtifactsNotifi
                     ?.some(project => isSamePath(project.projectPath, child.projectPath))
             ).map(child => child.projectPath) ?? [];
 
-        // Resolve which package the change belongs to from the notification's URI.
-        // In a workspace the context has no single `projectPath` (only a
-        // `workspacePath`), so relying on it would resolve artifact file paths
-        // against `undefined` and crash. Deriving the owning package from the
-        // changed file keeps the incremental update correct for workspace members
-        // as well as standalone projects.
+        // Derive the owning package from the changed URI: in a workspace the context has
+        // no single `projectPath`, so relying on it would resolve paths against undefined.
         const owningProjectPath = resolveOwningProjectPath(publishedArtifacts.uri, currentProjectStructure);
 
-        // The cached structure cannot absorb the deltas when it does not know every
-        // package of the project yet (one was just added by the create wizard or by
-        // Copilot) or when the changed file belongs to none of the packages it does
-        // know: the deltas would be dropped, or applied to an unrelated package.
-        // Rebuild instead, and report the published artifacts off the rebuilt structure.
+        // The cached structure can't absorb deltas for a package it doesn't know (just
+        // added by the wizard or Copilot) — they'd be dropped or misapplied. Rebuild instead.
         if (untrackedProjectPaths.length > 0 || !owningProjectPath) {
             await rebuildAndPublishArtifacts(publishedArtifacts, projectInfo, untrackedProjectPaths);
             return;
@@ -255,15 +246,10 @@ function artifactKey(artifactType: string, artifactId: string): string {
 }
 
 /**
- * Rebuilds the project structure from `projectInfo` and reports the artifacts the
- * notification carries, resolved against the rebuilt structure.
- *
- * The rebuild already absorbs the notification's changes, so the incremental
- * {@link traverseUpdatedComponents} cannot be used here — it would add them a second
- * time. The artifacts must still be published: whoever triggered the change is
- * typically waiting for its artifact to be reported before it navigates (see
- * `updateSourceCode`), and every subscriber ignores an empty payload — so publishing
- * nothing leaves that wait to expire even though the source was written correctly.
+ * Rebuilds the structure from `projectInfo` and publishes the notification's artifacts
+ * against it. The incremental {@link traverseUpdatedComponents} cannot be used — the
+ * rebuild already absorbed the changes — but the artifacts must still be published, or
+ * the caller waiting to navigate times out.
  */
 async function rebuildAndPublishArtifacts(
     publishedArtifacts: ArtifactsNotification,
@@ -302,11 +288,7 @@ async function rebuildAndPublishArtifacts(
     });
 }
 
-/**
- * Picks the entries of the artifacts a notification reports as added or updated out of
- * an up-to-date project structure, flagging the additions with `isNew` — the flag
- * callers use to navigate to a just-created artifact.
- */
+/** Picks the notification's added/updated artifacts out of an up-to-date structure, flagging additions with `isNew`. */
 function collectPublishedArtifacts(
     publishedArtifacts: ArtifactsNotification,
     projectStructure: ProjectStructureResponse
@@ -612,12 +594,7 @@ async function processUpdate(artifact: BaseArtifact, artifactCategoryKey: string
     }
 }
 
-/**
- * Resolves which package in the current structure owns the changed file reported
- * by a publishArtifacts notification. Picks the deepest matching project path so
- * a workspace member (nested under the workspace root) wins over the root. Returns
- * undefined when nothing matches (caller falls back to the context project path).
- */
+/** Resolves which package owns the changed file, preferring the deepest match so a workspace member wins over the root. */
 function resolveOwningProjectPath(changedUri: string, projectStructure: ProjectStructureResponse): string | undefined {
     let changedFsPath: string;
     try {
@@ -630,11 +607,9 @@ function resolveOwningProjectPath(changedUri: string, projectStructure: ProjectS
         if (!project.projectPath) {
             continue;
         }
-        const projNorm = project.projectPath.toLowerCase();
-        const isWithin = changedFsPath === projNorm
-            || changedFsPath.startsWith(projNorm + "/")
-            || changedFsPath.startsWith(projNorm + "\\");
-        if (isWithin && (best === undefined || projNorm.length > best.toLowerCase().length)) {
+        // Both sides lowercased: path case is not significant on Windows.
+        if (isPathInside(project.projectPath.toLowerCase(), changedFsPath)
+            && (best === undefined || project.projectPath.length > best.length)) {
             best = project.projectPath;
         }
     }

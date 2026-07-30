@@ -24,6 +24,7 @@ import { FormHeader } from "../../../../../components/FormHeader";
 import { RelativeLoader } from "../../../../../components/RelativeLoader";
 import ArtifactForm from "../../../Forms/ArtifactForm";
 import { convertConfig } from "../../../../../utils/bi";
+import { joinPath } from "../../../ProjectForm/utils";
 import { BiWsClient } from "../../../wsManager/WsClient";
 
 const LoaderContainer = styled.div`
@@ -72,7 +73,7 @@ interface FunctionConfigureFormProps {
 }
 
 /**
- * Step 3 for Automation and Workflow. Fetches the LS node template for the
+ * The Configure step for Automation and Workflow. Fetches the LS node template for the
  * scaffolded project and renders its (few) creation-time fields, mirroring
  * FunctionForm's per-kind field stripping:
  * - AUTOMATION hides functionName/type (the automation is always `main`).
@@ -83,8 +84,7 @@ export function FunctionConfigureForm({ wsClient, projectRoot, kind, isSubmittin
     const [formFields, setFormFields] = useState<FormField[]>([]);
     const [loadError, setLoadError] = useState<string | null>(null);
 
-    const separator = projectRoot.includes("\\") ? "\\" : "/";
-    const targetFilePath = `${projectRoot}${separator}${FUNCTIONS_FILE}`;
+    const targetFilePath = joinPath(projectRoot, FUNCTIONS_FILE);
     const title = kind === "automation" ? "Automation" : "Workflow";
 
     useEffect(() => {

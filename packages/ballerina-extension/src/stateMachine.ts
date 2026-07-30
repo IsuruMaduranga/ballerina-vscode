@@ -568,11 +568,8 @@ const stateMachine = createMachine<MachineContext>(
         // because the states that follow push a view and rely on `stateChanged`
         // notifications, which are dropped while the webview script is still loading.
         openWebView: (context, event) => openVisualizerPanel(context, true),
-        // Opens the panel for the startup render: must NOT block on the webview
-        // being ready — it only needs the panel (and its loading screen) painted as
-        // early as possible, and gating language-server activation on the webview
-        // bundle would both delay startup and stall the machine outright if the
-        // webview never loads.
+        // Startup render: must NOT block on the webview — gating LS activation on the
+        // bundle would delay startup and stall the machine if it never loads.
         openInitialWebView: (context, event) => openVisualizerPanel(context, false),
         resolveMissingDependencies: (context, event) => {
             return new Promise(async (resolve, reject) => {
@@ -829,22 +826,14 @@ const stateMachine = createMachine<MachineContext>(
     }
 });
 
-/**
- * Resolves when the visualizer panel currently on screen has reported
- * `webviewReady`. Reassigned every time a panel is created, so a caller that must
- * not lose state notifications can await readiness even when the panel was
- * created earlier by the startup render.
- */
+/** Resolves when the visualizer panel on screen has reported `webviewReady`; reassigned per panel. */
 let visualizerWebviewReady: Promise<void> = Promise.resolve();
 
 /**
- * Ensures the visualizer panel exists, revealing it when one is already open.
- *
- * `waitForReady` decides whether the caller blocks until the webview's React app
- * reports `webviewReady` — see the two service definitions that wrap this.
- * Awaiting the shared `visualizerWebviewReady` (rather than only the readiness of
- * a panel created by this very call) is what keeps the view-activation path safe
- * now that the panel is usually created earlier, during startup.
+ * Ensures the visualizer panel exists, revealing an open one. `waitForReady` blocks until
+ * the webview reports `webviewReady`; awaiting the shared `visualizerWebviewReady` (not
+ * just this call's panel) is what keeps view activation safe now that the panel is
+ * usually created during startup.
  */
 function openVisualizerPanel(context: MachineContext, waitForReady: boolean): Promise<boolean> {
     return new Promise(async (resolve, reject) => {
@@ -926,15 +915,9 @@ export const StateMachine = {
         stateService.send({ type: 'UPDATE_PROJECT_INFO', projectInfo, silent: options?.silent });
     },
     /**
-     * Awaitable counterpart of {@link updateProjectInfo}: stores `projectInfo` in the
-     * context and rebuilds the project structure from it, resolving with the rebuilt
-     * structure once it is in the context.
-     *
-     * `REFRESH_PROJECT_INFO`/`UPDATE_PROJECT_INFO` run their rebuild as a
-     * fire-and-forget machine action, so a caller cannot tell when the structure has
-     * caught up. Callers that must read the rebuilt structure immediately after — such
-     * as reporting the artifacts of a package that has just joined the project — need
-     * that guarantee. Never navigates; the caller decides where the window lands.
+     * Awaitable counterpart of {@link updateProjectInfo}: stores `projectInfo` and rebuilds
+     * the structure, resolving once it is in the context (`REFRESH_PROJECT_INFO` rebuilds
+     * fire-and-forget). Never navigates.
      */
     updateProjectInfoAndRebuild: async (projectInfo: ProjectInfo): Promise<ProjectStructureResponse> => {
         stateService.send({ type: 'SET_PROJECT_INFO', projectInfo });

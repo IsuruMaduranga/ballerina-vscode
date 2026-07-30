@@ -21,12 +21,7 @@ import { getPrimaryInputType, Property, PropertyModel, RecordTypeField, ServiceI
 import { getImportsForProperty } from "../../../utils/bi";
 import { sanitizedHttpPath, normalizeValueToArray } from "./utils";
 
-/**
- * Maps the properties to an array of FormField objects.
- *
- * @param properties The properties to map.
- * @returns An array of FormField objects.
- */
+/** Maps `properties` to FormField objects. */
 export function mapPropertiesToFormFields(properties: { [key: string]: PropertyModel; }): FormField[] {
     if (!properties) return [];
 
@@ -93,13 +88,7 @@ export function mapPropertiesToFormFields(properties: { [key: string]: PropertyM
     });
 }
 
-/**
- * Populate the ServiceInitModel from the form fields.
- *
- * @param formFields The form fields to update.
- * @param model The ServiceInitModel to update.
- * @returns The updated ServiceInitModel.
- */
+/** Writes the form field values back into the ServiceInitModel. */
 export function populateServiceInitModelFromFormFields(formFields: FormField[], model: ServiceInitModel): ServiceInitModel {
     if (!model || !model.properties || !formFields) return model;
 
@@ -119,21 +108,14 @@ export function populateServiceInitModelFromFormFields(formFields: FormField[], 
     return model;
 }
 
-/**
- * Recursively collects record type fields from properties and nested choices.
- *
- * @param properties The top-level properties to collect from.
- * @returns The collected record type fields.
- */
+/** Recursively collects record-type fields from properties and nested choices. */
 export function collectRecordTypeFields(properties: { [key: string]: PropertyModel }): RecordTypeField[] {
     const recordTypeFields: RecordTypeField[] = [];
 
-    // Recursive function to collect record type fields from properties and nested choices
     const collect = (properties: any) => {
         if (!properties) return;
 
         Object.entries(properties).forEach(([key, property]: [string, any]) => {
-            // Check if this property itself is a record type
             const primaryType = getPrimaryInputType(property.types);
             if (primaryType?.typeMembers && primaryType.typeMembers.some((member: any) => member.kind === "RECORD_TYPE")) {
                 recordTypeFields.push({
@@ -154,7 +136,6 @@ export function collectRecordTypeFields(properties: { [key: string]: PropertyMod
                 });
             }
 
-            // If this property has choices, recursively collect from all choice properties
             if (property.choices && property.choices.length > 0) {
                 property.choices.forEach((choice: any) => {
                     if (choice.properties) {
@@ -163,51 +144,37 @@ export function collectRecordTypeFields(properties: { [key: string]: PropertyMod
                 });
             }
 
-            // If this property is a GROUP_SECTION, recurse into its nested properties
             if (primaryType?.fieldType === "GROUP_SECTION" && property.properties) {
                 collect(property.properties);
             }
         });
     };
 
-    // Start collection from top-level properties
     collect(properties);
     return recordTypeFields;
 }
 
-/**
- * Recursively processes a property and its nested CHOICE fields
- *
- * @param property The property to process
- * @param data The form data containing all field values
- */
+/** Recursively processes a property and its nested CHOICE fields. */
 export function processPropertyRecursively(property: PropertyModel, data: FormValues, propertyKey?: string): void {
-    // If this property is a CHOICE field, process it
     if (getPrimaryInputType(property.types)?.fieldType === "CHOICE" && property.choices) {
-        // Get the selected index from form data if available, otherwise use property.value
         const selectedIndex = propertyKey && data[propertyKey] !== undefined
             ? Number(data[propertyKey])
             : (property.value !== undefined ? Number(property.value) : 0);
 
-        // Update property.value with the current UI selection
         if (propertyKey && data[propertyKey] !== undefined) {
             property.value = data[propertyKey] as string;
         }
 
         property.choices.forEach((choice, index) => {
-            // Disable all choices first
             choice.enabled = false;
 
-            // Enable the selected choice based on form data or property.value
             if (selectedIndex === index) {
                 choice.enabled = true;
 
-                // Process all properties in this selected choice
                 if (choice.properties) {
                     for (const nestedKey in choice.properties) {
                         const nestedProperty = choice.properties[nestedKey];
 
-                        // Set value from form data if available
                         if (data[nestedKey] !== undefined) {
                             // Handle MULTIPLE_SELECT, EXPRESSION_SET, and TEXT_SET types
                             if (getPrimaryInputType(nestedProperty.types)?.fieldType === "MULTIPLE_SELECT" || getPrimaryInputType(nestedProperty.types)?.fieldType === "EXPRESSION_SET" || getPrimaryInputType(nestedProperty.types)?.fieldType === "TEXT_SET") {
@@ -218,19 +185,16 @@ export function processPropertyRecursively(property: PropertyModel, data: FormVa
                             }
                         }
 
-                        // Recursively process this nested property, passing the key
                         processPropertyRecursively(nestedProperty, data, nestedKey);
                     }
                 }
             }
         });
     }
-    // If this property has nested properties (like CONDITIONAL_FIELDS), process them
     else if (property.properties) {
         for (const nestedKey in property.properties) {
             const nestedProperty = property.properties[nestedKey];
 
-            // Set value from form data if available
             if (data[nestedKey] !== undefined) {
                 if (getPrimaryInputType(nestedProperty.types)?.fieldType === "MULTIPLE_SELECT" || getPrimaryInputType(nestedProperty.types)?.fieldType === "EXPRESSION_SET" || getPrimaryInputType(nestedProperty.types)?.fieldType === "TEXT_SET") {
                     const value = data[nestedKey];
@@ -240,22 +204,13 @@ export function processPropertyRecursively(property: PropertyModel, data: FormVa
                 }
             }
 
-            // Recursively process nested properties, passing the key
             processPropertyRecursively(nestedProperty, data, nestedKey);
         }
     }
 }
 
-/**
- * Recursively updates CHOICE field selections in the model
- *
- * @param properties The properties object to search through
- * @param fieldKey The key of the field that changed
- * @param value The new value
- * @returns true if the field was found and updated
- */
+/** Recursively updates a CHOICE field selection in the model; true when found. */
 export function updateChoiceInModel(properties: { [key: string]: PropertyModel }, fieldKey: string, value: any): boolean {
-    // Check if the field exists at this level
     if (properties[fieldKey]) {
         const property = properties[fieldKey];
         if (getPrimaryInputType(property.types)?.fieldType === "CHOICE" && property.choices) {
@@ -271,13 +226,11 @@ export function updateChoiceInModel(properties: { [key: string]: PropertyModel }
     for (const key in properties) {
         const property = properties[key];
         if (property.choices) {
-            // Only search in the currently enabled choice
             const enabledChoice = property.choices.find(choice => choice.enabled);
             if (enabledChoice?.properties && updateChoiceInModel(enabledChoice.properties, fieldKey, value)) {
                 return true;
             }
         }
-        // Also check nested properties (for CONDITIONAL_FIELDS, etc.)
         if (property.properties && updateChoiceInModel(property.properties, fieldKey, value)) {
             return true;
         }

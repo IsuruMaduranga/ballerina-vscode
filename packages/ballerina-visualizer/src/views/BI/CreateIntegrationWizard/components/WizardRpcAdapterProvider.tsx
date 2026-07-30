@@ -21,25 +21,8 @@ import { BallerinaRpcClient, Context } from "@wso2/ballerina-rpc-client";
 import { BiWsClient } from "../../wsManager/WsClient";
 
 /**
- * A minimal `BallerinaRpcClient` look-alike backed by the wizard's `BiWsClient`.
- *
- * The wizard renders the shared `ArtifactForm` in collect-only mode BEFORE a
- * project is open, where the real vscode-messenger rpcClient does not exist.
- * Model-fetch calls the wizard genuinely needs — and expression DIAGNOSTICS, which
- * must catch an invalid value before submit rather than at generation time — go
- * over the WS bridge, resolved against the throwaway staging package. The
- * convenience calls (completions, signature help, visible types) are stubbed with
- * correct-shaped empty results, so expression fields degrade to a plain validated
- * textbox (no autocomplete) instead of crashing.
- *
- * Upgrading any stub to a real LS-backed handler only requires routing it to a
- * new bridge action here — this adapter is the single seam.
- */
-/**
- * Wraps a manager stub so any method it doesn't define resolves to `undefined`
- * with a console warning instead of crashing the render with
- * "x is not a function". Notify-style calls (formDidOpen/formDidClose/…) and
- * future additions degrade silently this way.
+ * Wraps a manager stub so an undefined method resolves to `undefined` with a warning
+ * instead of crashing the render.
  */
 function withFallback<T extends object>(managerName: string, real: T): T {
     return new Proxy(real, {
@@ -88,13 +71,9 @@ function createWizardRpcAdapter(wsClient: BiWsClient): BallerinaRpcClient {
 
     const commonRpcClient = withFallback("Common", {
         showErrorMessage: (params: any) => wsClient.showErrorMessage(params),
-        // File pickers (FILE_SELECT fields — "Import from OpenAPI Specification",
-        // GraphQL schema, …) go over the WS bridge to the host's open dialog.
-        // `allowOutsideProject` is forced: pre-project there is no target package to
-        // hold the file yet, and the host would otherwise offer to copy the picked
-        // spec into whatever project happens to be open — a different package than
-        // the one being created. The absolute path is read at generation time
-        // (post-reload), so it needs no project-relative home.
+        // FILE_SELECT pickers go over the WS bridge. `allowOutsideProject` is forced:
+        // pre-project the host would otherwise offer to copy the spec into whatever
+        // project happens to be open.
         selectFileOrDirPath: (params: any) => wsClient.selectFileOrDirPath({ ...params, allowOutsideProject: true }),
         selectFileOrFolderPath: () => wsClient.selectFileOrFolderPath(),
     });
@@ -110,10 +89,8 @@ function createWizardRpcAdapter(wsClient: BiWsClient): BallerinaRpcClient {
         onThemeChanged: (_callback: (kind: unknown) => void) => noopUnsubscribe,
     };
 
-    // Unknown manager getters (getAiPanelRpcClient, …) return an all-stub
-    // manager; other unknown client methods resolve to an empty object (safe
-    // for the common `(await rpcClient.x()).prop` pattern) — so unexpected
-    // descendants degrade instead of crashing the render.
+    // Unknown getters return an all-stub manager; unknown methods resolve to {} so
+    // `(await x()).prop` is safe.
     return new Proxy(adapter, {
         get(target, prop, receiver) {
             const value = Reflect.get(target, prop, receiver);
@@ -137,11 +114,7 @@ interface WizardRpcAdapterProviderProps {
     children: React.ReactNode;
 }
 
-/**
- * Mounts the `@wso2/ballerina-rpc-client` React context with the WS-backed
- * adapter so `useRpcContext()` consumers (ArtifactForm and descendants) work
- * inside the pre-project wizard — in both the native and embedded transports.
- */
+/** Mounts the rpc-client React context with the WS-backed adapter so `useRpcContext()` works pre-project. */
 export function WizardRpcAdapterProvider({ wsClient, children }: WizardRpcAdapterProviderProps) {
     const rpcClient = useMemo(() => createWizardRpcAdapter(wsClient), [wsClient]);
     const value = useMemo(() => ({ rpcClient }), [rpcClient]);

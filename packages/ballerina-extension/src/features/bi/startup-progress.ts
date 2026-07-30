@@ -23,15 +23,9 @@ import {
 } from "@wso2/ballerina-core";
 import { extension } from "../../BalExtensionContext";
 
-/**
- * Bookkeeping for a Create Integration wizard submit that spans the terminal
- * `vscode.openFolder` reload.
- *
- * Deliberately dependency-light: the visualizer webview reads this while building
- * its very first HTML, so pulling in the state machine or the RPC managers here
- * would add an import cycle to the earliest, most fragile part of startup. The
- * caller passes in the path of the folder this window opened instead.
- */
+// Bookkeeping for a wizard submit that spans the `vscode.openFolder` reload. Kept
+// dependency-light: the webview reads this while building its first HTML, so importing
+// the state machine here would add a startup import cycle.
 
 /** globalState key — only one pending wizard create is allowed at a time. */
 export const PENDING_INTEGRATION_ARTIFACT_KEY = "ballerina.pendingIntegrationArtifact";
@@ -39,11 +33,7 @@ export const PENDING_INTEGRATION_ARTIFACT_KEY = "ballerina.pendingIntegrationArt
 /** Milliseconds before a stale pending entry is discarded. */
 export const PENDING_ARTIFACT_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-/**
- * Shape of the value stored in VS Code globalState before the reload. The pointer
- * stays small; any filled artifact model lives in the created project's
- * `target/.wizard-pending-artifact.json`.
- */
+/** globalState value written before the reload; the filled artifact model lives in the project's `target/.wizard-pending-artifact.json`. */
 export interface PendingIntegrationArtifactPointer {
     projectRoot: string;
     /** epoch ms — used to discard stale entries (> 10 min). */
@@ -54,21 +44,12 @@ export interface PendingIntegrationArtifactPointer {
     artifactKind?: PendingIntegrationArtifactKind;
 }
 
-/**
- * What the reloaded window shows while it finishes a create that began before the
- * reload. Mirrors the wizard's own "Creating …" screen so the two read as one
- * continuous progress screen rather than two unrelated waits.
- */
+/** What the reloaded window narrates while it finishes a create started before the reload. */
 export interface StartupIntegrationProgress {
     integrationName: string;
     /** e.g. "service" — absent for an empty integration. */
     artifactLabel?: string;
-    /**
-     * Kind of the first artifact being generated, absent for an empty integration.
-     * The webview uses it to know WHICH project-structure entry to wait for before
-     * leaving this screen, so the overview's first frame already shows the new
-     * integration's type instead of filling it in a beat later.
-     */
+    /** Kind of the artifact being generated; the webview waits for the matching project-structure entry before leaving the screen. */
     artifactKind?: PendingIntegrationArtifactKind;
     /** The package the artifact is generated into — the one to watch for it. */
     projectRoot: string;
@@ -91,11 +72,7 @@ export function isPendingPointerFresh(pointer: PendingIntegrationArtifactPointer
     return Date.now() - pointer.timestamp <= PENDING_ARTIFACT_TTL_MS;
 }
 
-/**
- * Whether `pointer` belongs to the folder this window opened — either the created
- * package itself was opened, or it lives inside the opened workspace.
- * `isPathInside` is inclusive of the path itself, so it covers both.
- */
+/** Whether `pointer` belongs to the folder this window opened (`isPathInside` is inclusive of the path itself). */
 export function isPendingPointerForOpenedPath(
     pointer: PendingIntegrationArtifactPointer,
     openedPath: string | undefined
@@ -104,14 +81,8 @@ export function isPendingPointerForOpenedPath(
 }
 
 /**
- * The create-in-progress this window should narrate on its startup screen, or
- * undefined when this is an ordinary project open.
- *
- * Guarded exactly like the consumption path (`checkAndRunPendingArtifact`): a
- * stale entry, or one belonging to a different project, must never make an
- * unrelated window claim to be creating something.
- *
- * @param openedPath the workspace (or package) path this window opened.
+ * The create-in-progress this window should narrate, or undefined for an ordinary open.
+ * Freshness- and path-guarded so a stale or foreign entry never claims a create.
  */
 export function getStartupIntegrationProgress(openedPath: string | undefined): StartupIntegrationProgress | undefined {
     const pointer = readPendingIntegrationPointer();

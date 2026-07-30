@@ -38,11 +38,8 @@ export interface DisplayNameChangeOptions {
 }
 
 /**
- * Pure derivation for the "auto-derive folder name from display name" half of the
- * pattern: while the user has not taken manual control of the directory segment
- * (`dirTouched`), it mirrors the sanitized display name (or stays empty for a blank
- * name, unless `guardBlank: false`); once touched, the current directory name is
- * left exactly as-is.
+ * Derives the folder name from the display name while `dirTouched` is false; once touched
+ * the current value is left as-is.
  */
 export function deriveDirectoryName(
     displayName: string,
@@ -61,11 +58,7 @@ export function deriveDirectoryName(
     return sanitize(displayName);
 }
 
-/**
- * Pure derivation for the "decouple once the directory segment is edited away from
- * its name-derived default" half of the pattern — used when the directory segment
- * is edited directly (e.g. the last segment of a path field).
- */
+/** Marks the directory segment decoupled once it is edited away from its name-derived default. */
 export function isDirectoryNameTouched(directoryName: string, autoDirectoryName: string): boolean {
     return directoryName !== autoDirectoryName;
 }
@@ -85,18 +78,11 @@ export interface DirectoryNameCoupling {
 }
 
 /**
- * Shared "auto-derive the folder name from a display name until the user edits it"
- * state machine used by every Create-flow form (project/integration/library
- * creation and the workspace-convert flow): the directory segment mirrors the
- * sanitized display name until the user manually edits the directory field —
- * directly, or via the last segment of a path field — at which point it decouples
- * and the user's edit is honored exactly, including an empty segment (meaning "no
- * new folder, create directly in the parent directory").
- *
- * Call sites that keep the directory name/touched flag as part of a larger
- * combined state object (rather than as independent state) can use the pure
- * {@link deriveDirectoryName} / {@link isDirectoryNameTouched} functions this hook
- * is built on directly instead.
+ * Shared Create-flow coupling: the directory segment mirrors the sanitized display name
+ * until the user edits it (directly or via a path field's last segment), after which the
+ * edit is honored exactly — including an empty segment ("create in the parent dir").
+ * Call sites holding this inside a larger state object can use the pure
+ * {@link deriveDirectoryName} / {@link isDirectoryNameTouched} instead.
  */
 export function useDirectoryNameCoupling(
     initialDirectoryName: string | (() => string),

@@ -85,7 +85,7 @@ const START_OF_FILE: LineRange = {
 
 interface ServiceConfigureFormProps {
     wsClient: BiWsClient;
-    /** The silently scaffolded package root (step 2 → 3 transition). */
+    /** The silently scaffolded package root. */
     projectRoot: string;
     selection: ArtifactCard;
     isSubmitting: boolean;
@@ -98,7 +98,7 @@ interface ServiceConfigureFormProps {
 }
 
 /**
- * Step 3 for service-kind artifacts (HTTP/GraphQL/TCP/event/file/MCP): renders
+ * The Configure step for service-kind artifacts (HTTP/GraphQL/TCP/event/file/MCP): renders
  * the LS-served service-init model with the shared ArtifactForm in collect-only
  * mode, mirroring ServiceCreationView's CHOICE handling and pulling states.
  */

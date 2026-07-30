@@ -58,7 +58,7 @@ interface AIAgentConfigureFormProps {
 }
 
 /**
- * Step 3 for the AI Chat Agent — collects only the agent name (mirroring
+ * The Configure step for the AI Chat Agent — collects only the agent name (mirroring
  * AIChatAgentWizard's single input and validation rules; the duplicate-service
  * check is skipped since the project is brand-new). The agent's multi-RPC
  * creation orchestration runs post-reload via the pre-filled AIChatAgentWizard.

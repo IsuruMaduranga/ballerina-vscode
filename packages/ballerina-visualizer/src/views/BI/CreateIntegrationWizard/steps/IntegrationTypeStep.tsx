@@ -23,6 +23,7 @@ import { TriggerModelsResponse } from "@wso2/ballerina-core";
 import ButtonCard from "../../../../components/ButtonCard";
 import { RelativeLoader } from "../../../../components/RelativeLoader";
 import { Chip, ChipRow, FilterBarBase, SearchSlot } from "../../components/ChipFilterBar.styles";
+import { cardMatchesSearch } from "../../ComponentListView/componentListUtils";
 import { useContainerWidth } from "../hooks/useContainerWidth";
 import {
     ARTIFACT_CATEGORIES,
@@ -42,13 +43,14 @@ const ALL_KEY = "all";
 /** A rail/chip entry: a real category, or the synthetic "All". */
 type RailKey = typeof ALL_KEY | ArtifactCategoryKey;
 
+/** Rail/chip entries: a synthetic "All" plus one per category. */
+const RAIL_KEYS: RailKey[] = [ALL_KEY, ...ARTIFACT_CATEGORIES.map((category) => category.key)];
+
 const StepRoot = styled.div`
     display: flex;
     flex-direction: column;
     gap: 12px;
 `;
-
-/* --- Wide layout: sticky left column (search + rail) beside the grid. --- */
 
 const Body = styled.div`
     display: flex;
@@ -110,16 +112,12 @@ const RailCount = styled.span`
     opacity: 0.7;
 `;
 
-/* --- Narrow layout: sticky header (search + horizontal chips). --- */
-
 // Chip/ChipRow/SearchSlot are shared with the Add-Artifact component list panel
 // (ComponentListView/styles.ts) via ChipFilterBar.styles.ts. Only this bar's own
 // padding differs between the two call sites.
 const NarrowHeader = styled(FilterBarBase)`
     padding-bottom: 10px;
 `;
-
-/* --- Grid pane (shared by both layouts). --- */
 
 const GridPane = styled.div`
     flex: 1;
@@ -235,9 +233,9 @@ interface IntegrationTypeStepProps {
 }
 
 /**
- * Step 2 — the Integration Type picker. A category rail (or a chip row in
+ * The Integration Type picker. A category rail (or a chip row in
  * narrow/compact panels) filters a searchable grid of artifact cards; selecting a
- * card chooses the artifact and drives step 3. Selecting a category is navigation
+ * card chooses the artifact and drives the Configure step. Selecting a category is navigation
  * only — it never chooses the artifact, so the two highlights stay distinct.
  */
 export function IntegrationTypeStep({ triggers, selection, onSelect, compact = false }: IntegrationTypeStepProps) {
@@ -272,32 +270,31 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
         });
     }, [triggers]);
 
-    const query = searchQuery.trim().toLowerCase();
-    const matchesSearch = (card: ArtifactCard) => {
-        if (!query) {
-            return true;
-        }
-        const haystack = [card.displayName, card.artifactInfo?.packageName, card.artifactInfo?.moduleName]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-        return haystack.includes(query);
-    };
+    const query = searchQuery.trim();
 
     // Search-filtered cards per category (independent of the active category, so
-    // rail/chip counts always show where matches are).
-    const searchFiltered = resolvedCategories.map(({ category, cards, loading }) => ({
-        category,
-        loading,
-        cards: cards.filter(matchesSearch),
-    }));
-    const searchFilteredByKey = new Map(searchFiltered.map((entry) => [entry.category.key, entry]));
+    // rail/chip counts always show where matches are). `globalMatchCount` counts
+    // matches across every category, letting us tell "no matches at all" apart
+    // from "no matches in this category, but some elsewhere".
+    const { searchFiltered, searchFilteredByKey, totalCount, globalMatchCount } = useMemo(() => {
+        const filtered = resolvedCategories.map(({ category, cards, loading }) => ({
+            category,
+            loading,
+            cards: cards.filter((card) =>
+                cardMatchesSearch(card.displayName, query, card.artifactInfo?.packageName, card.artifactInfo?.moduleName)
+            ),
+        }));
+        const matchCount = filtered.reduce((sum, entry) => sum + entry.cards.length, 0);
+        return {
+            searchFiltered: filtered,
+            searchFilteredByKey: new Map(filtered.map((entry) => [entry.category.key, entry])),
+            totalCount: filtered.some((entry) => entry.loading) ? undefined : matchCount,
+            globalMatchCount: matchCount,
+        };
+    }, [resolvedCategories, query]);
 
     const countFor = (entry?: { cards: ArtifactCard[]; loading: boolean }) =>
         entry && !entry.loading ? entry.cards.length : undefined;
-    const totalCount = searchFiltered.some((entry) => entry.loading)
-        ? undefined
-        : searchFiltered.reduce((sum, entry) => sum + entry.cards.length, 0);
 
     // Categories rendered in the grid: all, or just the selected one.
     const visibleCategories =
@@ -306,12 +303,6 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
             : searchFiltered.filter((entry) => entry.category.key === activeCategoryKey);
     const visibleCards = visibleCategories.flatMap((entry) => entry.cards);
     const anyVisibleLoading = visibleCategories.some((entry) => entry.loading);
-    // Matches across every category (search only) — lets us tell "no matches at
-    // all" apart from "no matches in this category, but some elsewhere".
-    const globalMatchCount = searchFiltered.reduce((sum, entry) => sum + entry.cards.length, 0);
-
-    // Rail/chip entries: a synthetic "All" plus one per category.
-    const railKeys: RailKey[] = [ALL_KEY, ...ARTIFACT_CATEGORIES.map((category) => category.key)];
 
     /** Move focus across visible cards (including across sections) on arrow keys. */
     const handleGridKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -335,8 +326,8 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
             return;
         }
         const delta = event.key === "ArrowDown" ? 1 : -1;
-        const currentIndex = railKeys.indexOf(activeCategoryKey);
-        const nextKey = railKeys[(currentIndex + delta + railKeys.length) % railKeys.length];
+        const currentIndex = RAIL_KEYS.indexOf(activeCategoryKey);
+        const nextKey = RAIL_KEYS[(currentIndex + delta + RAIL_KEYS.length) % RAIL_KEYS.length];
         event.preventDefault();
         setActiveCategoryKey(nextKey);
         document.getElementById(`rail-${nextKey}`)?.focus();
@@ -460,7 +451,7 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
                 <>
                     <NarrowHeader>
                         <ChipRow role="tablist" aria-label="Integration categories">
-                            {railKeys.map((key) => {
+                            {RAIL_KEYS.map((key) => {
                                 const count = railCount(key);
                                 return (
                                     <Chip
@@ -485,7 +476,7 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
                     <LeftColumn>
                         {searchBox}
                         <Rail role="tablist" aria-label="Integration categories" onKeyDown={handleRailKeyDown}>
-                            {railKeys.map((key) => {
+                            {RAIL_KEYS.map((key) => {
                                 const count = railCount(key);
                                 const icon = railIcon(key);
                                 return (

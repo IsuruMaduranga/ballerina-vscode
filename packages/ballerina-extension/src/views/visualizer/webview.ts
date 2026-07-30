@@ -216,11 +216,8 @@ export class VisualizerWebview {
         const isDevantEditor = vscode.commands.executeCommand('getContext', 'devant.editor') !== undefined;
 
         const biExtension = isInWI() || vscode.extensions.getExtension('wso2.ballerina-integrator');
-        // When this window was opened by a Create Integration wizard submit, this
-        // HTML is the first frame the user sees after the reload — so it continues
-        // the wizard's own "Creating <name>" screen instead of introducing a
-        // generic one. It is also handed to the React app (below) so the copy does
-        // not change when the app takes over the same screen.
+        // After a wizard submit this HTML is the first frame post-reload, so it continues
+        // the wizard's "Creating <name>" screen (also handed to the React app below).
         const startupProgress = getStartupIntegrationProgress(
             StateMachine.context().workspacePath || StateMachine.context().projectPath
         );
@@ -319,10 +316,8 @@ export class VisualizerWebview {
         const scripts = `
             // Flag to check if devant.editor is active
             window.isDevantEditor = ${isDevantEditor};
-            // The create-in-progress this window was opened to finish, if any. Read
-            // synchronously by the React startup screen so it keeps showing the same
-            // "Creating <name>" copy as the static HTML above (and as the wizard did
-            // before the reload) rather than flipping to a generic loading message.
+            // Create-in-progress, if any — read synchronously so the React startup screen
+            // keeps the same copy.
             window.startupIntegration = ${toInlineJson(startupProgress)};
             // Heading for an ordinary open, so the React startup screen keeps the
             // product name this HTML already put on screen instead of replacing it

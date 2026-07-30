@@ -62,13 +62,13 @@ export interface BasicInfo {
 }
 
 /**
- * Lifecycle of the throwaway staging package used to fetch the step-3 artifact
+ * Lifecycle of the throwaway staging package used to fetch the Configure-step artifact
  * model. It lives in the OS temp dir (not at the user's path) and is name/path
- * agnostic, so it's created once on first entry to step 3 and reused.
+ * agnostic, so it's created once on first entry to the Configure step and reused.
  */
-export interface ScaffoldState {
-    status: "idle" | "creating" | "ready" | "error";
-    /** The temp staging package root, present when status is "ready". */
-    projectRoot?: string;
-    error?: string;
-}
+export type ScaffoldState =
+    | { status: "idle" }
+    | { status: "creating" }
+    /** `projectRoot` is the temp staging package root. */
+    | { status: "ready"; projectRoot: string }
+    | { status: "error"; error: string };

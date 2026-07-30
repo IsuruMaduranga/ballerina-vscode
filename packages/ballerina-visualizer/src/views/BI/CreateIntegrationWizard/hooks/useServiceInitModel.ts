@@ -24,7 +24,6 @@ import { BiWsClient } from "../../wsManager/WsClient";
 export enum PullingStatus {
     FETCHING = "fetching",
     PULLING = "pulling",
-    SUCCESS = "success",
     ERROR = "error",
 }
 
@@ -35,7 +34,7 @@ interface UseServiceInitModelOptions {
     orgName: string;
     packageName: string;
     moduleName: string;
-    /** A model cached by the wizard root from an earlier visit to step 3 —
+    /** A model cached by the wizard root from an earlier visit to the Configure step —
      *  used instead of refetching (and re-pulling the package). */
     cachedModel?: ServiceInitModel | null;
 }
@@ -50,8 +49,7 @@ export function useServiceInitModel({ wsClient, projectRoot, orgName, packageNam
     const [pullingStatus, setPullingStatus] = useState<PullingStatus | undefined>(
         cachedModel ? undefined : PullingStatus.FETCHING
     );
-    const [refreshKey, setRefreshKey] = useState(0);
-    // Re-entering step 3 with the same selection must reuse the model (with the
+    // Re-entering the Configure step with the same selection must reuse the model (with the
     // user's values already written into it), so key the fetch by module identity.
     const fetchedForRef = useRef<string | null>(
         cachedModel ? `${orgName}/${packageName}/${moduleName}` : null
@@ -114,12 +112,7 @@ export function useServiceInitModel({ wsClient, projectRoot, orgName, packageNam
         return () => {
             cancelled = true;
         };
-    }, [wsClient, projectRoot, orgName, packageName, moduleName, refreshKey]);
+    }, [wsClient, projectRoot, orgName, packageName, moduleName]);
 
-    const retry = () => {
-        fetchedForRef.current = null;
-        setRefreshKey((key) => key + 1);
-    };
-
-    return { model, setModel, pullingStatus, retry };
+    return { model, pullingStatus };
 }

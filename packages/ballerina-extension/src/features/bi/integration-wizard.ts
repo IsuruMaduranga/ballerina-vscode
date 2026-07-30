@@ -41,45 +41,33 @@ const STAGING_PARENT = path.join(os.tmpdir(), "wso2-integration-wizard");
 const STAGING_PACKAGE = "integration";
 
 /**
- * The active staging package root for this window's wizard session, or undefined
- * when none exists. The staging package is a throwaway Ballerina package created
- * ONLY so the language server can compute the step-3 artifact model against a
- * real package. It lives under the OS temp dir — never at the user's chosen
- * path — so an abandoned wizard can never occupy (and later collide with) the
- * final location. The real project is created fresh at finalize.
+ * Active staging package root for this session. Staging is a throwaway package under the
+ * OS temp dir, created only so the LS can compute the Configure-step model; the real
+ * project is created at finalize.
  */
 let activeStagingRoot: string | undefined;
 
 /** Removes the temp staging package (best-effort). Never touches user paths. */
-function cleanupStaging(): void {
+async function cleanupStaging(): Promise<void> {
     activeStagingRoot = undefined;
     try {
-        if (fs.existsSync(STAGING_PARENT)) {
-            fs.rmSync(STAGING_PARENT, { recursive: true, force: true });
-        }
+        await fs.promises.rm(STAGING_PARENT, { recursive: true, force: true });
     } catch (error) {
         console.warn("[IntegrationWizard] Failed to remove staging package:", error);
     }
 }
 
-/**
- * Provides the throwaway staging package the step-3 artifact form resolves its
- * language-server model against, creating it on first use and reusing it for the
- * rest of the session. Located in the OS temp dir, so it is invisible to the
- * user and can never collide with their chosen project path.
- */
+/** Creates (or reuses) the staging package the Configure step resolves its LS model against. */
 export async function scaffoldIntegrationProject(): Promise<ScaffoldIntegrationProjectResponse> {
     if (activeStagingRoot && fs.existsSync(path.join(activeStagingRoot, "Ballerina.toml"))) {
         return { projectRoot: activeStagingRoot };
     }
 
     // Start from a clean slate — discard any stale staging left by a prior run.
-    cleanupStaging();
+    await cleanupStaging();
     fs.mkdirSync(STAGING_PARENT, { recursive: true });
 
-    // Org and version are intentionally omitted: `createBIProjectPure` falls back
-    // to the OS username and "0.1.0". The name is irrelevant — the staging
-    // package only hosts language-server model requests for the chosen artifact.
+    // Org/version omitted (defaults apply); the name is irrelevant to the models it serves.
     const stagingRequest: ProjectRequest = {
         projectName: "Untitled",
         packageName: STAGING_PACKAGE,
@@ -92,22 +80,11 @@ export async function scaffoldIntegrationProject(): Promise<ScaffoldIntegrationP
 }
 
 /**
- * Final submit of the Create Integration wizard: creates the real package FRESH
- * at the user's chosen path (the only point at which that path is ever touched),
- * persists the configured first artifact, discards the temp staging package, and
- * opens the project.
- *
- * When the chosen path resolves inside an existing Ballerina workspace, the
- * integration is added into that project (registered in the workspace toml)
- * instead of the new package being opened on its own. Two sub-cases:
- *  - The workspace is ALREADY open in this window (the common in-project "Add
- *    Integration" case) — no folder switch is needed, so the artifact is
- *    generated LIVE, in the current session (`generateArtifactInPlace`), with no
- *    window reload at all. This matches the library-add flow, which has never
- *    needed a reload either.
- *  - The workspace is a DIFFERENT, not-currently-open project — opening it is a
- *    genuine folder switch, so the first artifact is scheduled and generated
- *    post-reload by `checkAndRunPendingArtifact`, as before.
+ * Final submit: creates the real package FRESH at the user's chosen path (the only point
+ * that path is ever touched), persists the configured first artifact, discards staging,
+ * and opens the project. When the path resolves inside an existing workspace the package
+ * is registered there; if that workspace is already open the artifact is generated live
+ * with no reload, otherwise it is scheduled for post-reload generation.
  */
 export async function createIntegration(params: CreateIntegrationRequest): Promise<void> {
     const projectRequest: ProjectRequest = {
@@ -121,13 +98,10 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
         convertToWorkspace: params.project.convertToWorkspace,
     };
     const { packageRoot, openRoot } = await createBIComponent(projectRequest);
-    cleanupStaging();
+    await cleanupStaging();
 
-    // Live, no-reload path only when `openRoot` is a workspace the extension has
-    // ALREADY activated (not merely a folder VS Code happens to have open — a
-    // brand-new/just-converted workspace at the same path would be open in VS
-    // Code too, but the extension hasn't recognized/activated it yet and still
-    // needs the reload below to do so).
+    // Live path only when the extension has ALREADY activated `openRoot` — a just-converted
+    // workspace at the same path is open in VS Code but still needs the reload.
     const addedIntoActiveWorkspace = isAlreadyOpenFolder(openRoot) && isSamePath(StateMachine.context().workspacePath, openRoot);
 
     if (addedIntoActiveWorkspace) {
@@ -139,39 +113,24 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
         return;
     }
 
-    // Scheduled for every create, artifact or not: besides carrying the artifact to
-    // generate, this is what tells the reloading window it is mid-create, so it can
-    // come up narrating "Creating <name>" and land on the new integration.
+    // Scheduled for every create: it also tells the reloading window it is mid-create.
     await schedulePendingIntegration(packageRoot, params.project.integrationName, params.artifact);
     openInVSCode(openRoot);
 }
 
 /**
- * Final submit of the wizard when it targets an EXISTING package — the "continue
- * where you left off" flow offered on an empty integration's overview. The
- * package is already on disk (and already open in this window), so nothing is
- * created and no reload is needed: the temp staging package is discarded and the
- * configured artifact is generated live, exactly like the in-project add path of
- * {@link createIntegration}.
- *
- * Unlike that path, this one lands on the target package's own overview: the user
- * started from that package's (empty) overview, so it is where they expect to come
- * back to and see the artifact they just configured.
+ * Final submit when the wizard targets an EXISTING package (the "continue where you left
+ * off" flow). Nothing is created and no reload is needed; the artifact is generated live
+ * and the window lands on that package's own overview.
  */
 export async function addIntegrationArtifact(params: AddIntegrationArtifactRequest): Promise<void> {
-    cleanupStaging();
+    await cleanupStaging();
     await generateArtifactInPlace(params.packageRoot, params.artifact, true);
 }
 
-/**
- * Discards the active wizard session's temp staging package. Called when the
- * wizard is abandoned (best-effort on unmount) and, race-free, whenever the
- * wizard (re)opens — so no staging package ever lingers. Because staging lives
- * in the OS temp dir and the real project is only created at finalize, this can
- * never affect a user's project.
- */
+/** Discards the session's temp staging package. Called on abandon and, race-free, on every (re)open. */
 export async function cancelIntegrationWizard(): Promise<void> {
-    cleanupStaging();
+    await cleanupStaging();
 }
 
 /** Alias kept for the mount-time sweep; identical to {@link cancelIntegrationWizard}. */

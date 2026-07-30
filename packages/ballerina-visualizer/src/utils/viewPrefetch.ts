@@ -20,19 +20,10 @@ import { MACHINE_VIEW } from "@wso2/ballerina-core";
 import { loadMarkdown } from "../components/Markdown";
 
 /**
- * Warms the chunk a view lives in, so the navigation that needs it does not pay for
- * the download and evaluation.
- *
- * Every view in the visualizer is reached through a dynamic `import()`, which means
- * the first navigation to each one loads megabytes of chunk before anything can
- * render — the reason a view is slow exactly once and instant afterwards. Nothing
- * here changes what a navigation does; it only moves that one-time cost into idle
- * time after the current view has painted.
- *
- * The specifiers must stay identical to the ones at the real import sites (webpack
- * keys chunks by resolved module, so a differently written path pointing at the same
- * file still shares the chunk — but a path pointing somewhere else silently warms
- * the wrong thing).
+ * Warms the chunk a view lives in so the navigation that needs it does not pay for the
+ * download. Every view is reached through a dynamic `import()`, which is why a view is
+ * slow exactly once. Specifiers MUST match the real import sites — a differently
+ * resolved path silently warms the wrong chunk.
  */
 const WARMERS = {
     workspaceOverview: () => import("../views/BI/WorkspaceOverview"),
@@ -51,12 +42,7 @@ export type PrefetchTarget = keyof typeof WARMERS;
 /** Erases each warmer's module type, which is of no interest to the queue. */
 const warmerFor = (target: PrefetchTarget): (() => Promise<unknown>) => WARMERS[target];
 
-/**
- * What to warm once a view is on screen, keyed by the view the user is looking at.
- * Ordered by how likely the next click is, because the queue is drained one entry at
- * a time; views not listed here get nothing, which is the right default for leaves
- * of the navigation tree.
- */
+/** What to warm once a view is on screen, ordered by likelihood; the queue drains one at a time. */
 const AFTER_VIEW: Partial<Record<MACHINE_VIEW, PrefetchTarget[]>> = {
     [MACHINE_VIEW.WorkspaceOverview]: ["packageOverview", "addProjectForm", "componentDiagram"],
     [MACHINE_VIEW.PackageOverview]: ["addProjectForm", "componentListView", "serviceDesigner", "flowDiagram"],

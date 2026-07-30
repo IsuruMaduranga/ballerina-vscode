@@ -189,8 +189,6 @@ export class BiWsClient {
     public isSupportedSLVersion(params: any): Promise<boolean> {
         return this.request("isSupportedSLVersion", params);
     }
-
-    // ── Create Integration wizard (3-step) ────────────────────
     public getWizardCapabilities(): Promise<WizardCapabilitiesResponse> {
         return this.request("getWizardCapabilities");
     }

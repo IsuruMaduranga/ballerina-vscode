@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@wso2/ui-toolkit';
 import { useRpcContext } from '@wso2/ballerina-rpc-client';
 import { DIRECTORY_MAP, EVENT_TYPE, MACHINE_VIEW, TriggerModelsResponse, ServiceModel, SCOPE } from '@wso2/ballerina-core';
@@ -41,7 +41,10 @@ export function EventIntegrationPanel(props: EventIntegrationPanelProps) {
     const { rpcClient } = useRpcContext();
     const isDisabled = props.scope && (props.scope !== SCOPE.EVENT_INTEGRATION && props.scope !== SCOPE.ANY);
     const q = props.searchQuery;
-    const matched = props.triggers.local.filter((t) => t.type === "event" && cardMatchesSearch(t.name, q));
+    const matched = useMemo(
+        () => props.triggers.local.filter((t) => t.type === "event" && cardMatchesSearch(t.name, q)),
+        [props.triggers, q]
+    );
 
     const handleClick = async (key: DIRECTORY_MAP, model: ServiceModel) => {
         await rpcClient.getVisualizerRpcClient().openView({

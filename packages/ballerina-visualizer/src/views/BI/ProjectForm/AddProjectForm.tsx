@@ -38,22 +38,14 @@ import { prefetchChunks } from "../../../utils/viewPrefetch";
 type Screen = "chooser" | "integration" | "library";
 
 /**
- * The wizard reaches the whole artifact-form tree — side panel editors, expression
- * editors, the markdown stack — which is by far the largest chunk any view in the
- * visualizer pulls. Loading it statically made this form's *first* screen wait on
- * all of it, even though the chooser is what the user is waiting to see and the
- * wizard is one click further in. Warmed as soon as the chooser mounts, so the click
- * that needs it rarely waits.
+ * Lazy: the wizard pulls the whole artifact-form tree, so the chooser must not wait on
+ * it. Warmed as soon as the chooser mounts.
  */
 const LazyCreateIntegrationWizard = React.lazy(() =>
     import("../CreateIntegrationWizard").then((module) => ({ default: module.CreateIntegrationWizard }))
 );
 
-/**
- * Submit-time error text shown beside the action button, for failures that belong
- * to no single field on the current screen. Takes the leading space in the footer
- * so the button stays right-aligned.
- */
+/** Submit-time error beside the action button, for failures with no single field. */
 const WizardLoader = styled.div`
     flex: 1;
     min-height: 0;
@@ -81,21 +73,16 @@ export function AddProjectForm() {
         isLibrary: false,
     });
     const [isInProject, setIsInProject] = useState<boolean>(false);
-    // Folder name of the integration currently open. Only meaningful in the convert
-    // flow, where that integration is moved into the new project — so its folder is
-    // already reserved for any library added alongside it.
+    // Folder of the open integration; reserved in the convert flow, where it is moved
+    // into the new project.
     const [currentIntegrationDirName, setCurrentIntegrationDirName] = useState<string>("");
     const [addNewAfterConvert, setAddNewAfterConvert] = useState<boolean>(false);
-    // "chooser" = pick project + starting point; "integration" = the full Create
-    // Integration wizard mounted in place; "library" = the library's name + package
-    // details. Both starting points are configured on their own screen so the two
-    // routes feel the same, matching the welcome-view Create flow.
+    // chooser = project + starting point; integration = the Create wizard in place;
+    // library = name + package details.
     const [screen, setScreen] = useState<Screen>("chooser");
     const [targetPath, setTargetPath] = useState<string>("");
-    // Convert flow: the destination is user-selectable. `convertBaseDir` is the
-    // parent location (defaults to the current integration's parent) and the
-    // directory name (last path segment) defaults to the project name but can be
-    // edited independently once the user touches it.
+    // Convert flow: `convertBaseDir` is the parent location; the folder name defaults to
+    // the project name until edited.
     const [convertBaseDir, setConvertBaseDir] = useState<string>("");
     const convertDirCoupling = useDirectoryNameCoupling("", sanitizePackageName);
     const [convertPathError, setConvertPathError] = useState<string | null>(null);
@@ -108,9 +95,7 @@ export function AddProjectForm() {
     const isConvertAndAdd = isConvert && addNewAfterConvert;
     // Whether a starting point (integration/library) is being added (vs a plain convert).
     const isAddingComponent = isInProject || addNewAfterConvert;
-    // Either starting point is named and configured on the next screen, so adding one
-    // makes this a "Next" step; a plain convert has nothing further to collect and
-    // submits straight from here.
+    // A starting point is configured on the next screen ("Next"); a plain convert submits from here.
     const routeToNextScreen = isAddingComponent;
 
     // The name-derived default for the destination folder segment.
@@ -131,16 +116,13 @@ export function AddProjectForm() {
         setProjectNameValidationError(null);
     }, []);
 
-    // The org is owned here rather than by the screen that renders its field: a plain
-    // convert never reaches the library screen but still writes the org into the new
-    // project's local context file.
+    // Owned here: a plain convert never reaches the library screen but still writes the
+    // org into the new project's context file.
     const handleOrgResolved = useCallback((orgName: string) => setFormData(prev => ({ ...prev, orgName })), []);
     const { organizations, isOrgLocked, isOrgDataLoaded, markOrgTouched } =
         useDefaultOrgName(isInProject, handleOrgResolved);
 
-    // Lives here, not in the library screen, so a manually edited package name is not
-    // re-coupled to the library name when that screen remounts after a trip back to
-    // the chooser.
+    // Owned here so a manually edited package name survives a remount of the library screen.
     const [packageNameTouched, setPackageNameTouched] = useState<boolean>(false);
     const markPackageNameTouched = useCallback(() => setPackageNameTouched(true), []);
 
@@ -209,9 +191,8 @@ export function AddProjectForm() {
     }, []);
 
     const handleConvertPathChange = (value: string) => {
-        // The field shows the full destination path; its last segment is the project
-        // folder name (editable). Editing it away from the name-derived default takes
-        // manual control so subsequent name edits no longer overwrite it.
+        // Last segment is the project folder; editing it away from the derived default
+        // takes manual control.
         const { base, name } = splitPath(value);
         setConvertBaseDir(base);
         convertDirCoupling.handleDirectoryNameEdit(name, autoConvertDirName);
@@ -231,10 +212,8 @@ export function AddProjectForm() {
         }
     };
 
-    // The project the wizard adds the new integration into: the existing workspace
-    // when adding from within a project, or a brand-new workspace created by
-    // converting the current standalone integration (the wizard performs the
-    // convert-and-add on submit).
+    // The project the wizard adds into: the open workspace, or a new one from converting
+    // the current integration.
     const integrationProjectContext: ProjectContext = isInProject
         ? { isNewProject: false, workspacePath: targetPath }
         : {
@@ -292,9 +271,8 @@ export function AddProjectForm() {
             return;
         }
 
-        // Adding into the open project validates the new package's own folder;
-        // converting validates the PROJECT folder about to be created (the package
-        // folder inside it cannot collide — the project is brand new).
+        // Adding validates the new package's folder; converting validates the PROJECT folder
+        // (nothing inside a brand-new project can collide).
         const packageDirectoryName = formData.packageDirectoryName?.trim() || sanitizePackageName(formData.packageName);
 
         try {
@@ -307,14 +285,11 @@ export function AddProjectForm() {
             });
 
             if (!validationResult.isValid) {
-                // Show the error where its field is. The convert-flow fields live on the
-                // chooser, so those cases return there rather than reporting into a
-                // screen that cannot render them.
+                // Convert-flow fields live on the chooser, so those errors return there.
                 if (validationResult.errorField === ValidateProjectFormErrorField.PATH) {
                     if (isInProject) {
-                        // The path here is `<project>/<packageName>`, so this is almost
-                        // always a name collision with an existing package — surface it
-                        // on the library screen, next to the name that caused it.
+                        // The path is `<project>/<packageName>`, so this is almost always a
+                        // name collision — show it on the library screen.
                         setPathValidationError(validationResult.errorMessage || `Invalid ${resourceTypeLabel.toLowerCase()} path`);
                     } else {
                         setConvertPathError(validationResult.errorMessage || "Invalid project path");
