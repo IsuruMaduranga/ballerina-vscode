@@ -1,4 +1,14 @@
 {
+  "oracledb": {
+    "displayName": "CDC Oracle Service",
+    "icon": {
+      "glyph": "bi-oracledb",
+      "kind": "event"
+    },
+    "labelFields": [
+      "tables"
+    ]
+  },
   "sap.jco": {
     "displayName": "SAP JCo Event Integration",
     "icon": {
