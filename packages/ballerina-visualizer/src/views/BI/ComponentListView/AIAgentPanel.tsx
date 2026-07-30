@@ -31,7 +31,6 @@ import { BodyText } from "../../styles";
 import ButtonCard from "../../../components/ButtonCard";
 import { AI_CHAT_AGENT_CARD, ARTIFACT_CATEGORY_META } from "../components/artifactCards";
 import { cardMatchesSearch, isBetaModule, OutOfScopeComponentTooltip } from "./componentListUtils";
-import { RelativeLoader } from "../../../components/RelativeLoader";
 import { getEntryNodeIcon } from "./EventIntegrationPanel";
 
 interface AIAgentPanelProps {
@@ -94,7 +93,6 @@ export function AIAgentPanel(props: AIAgentPanelProps) {
                     disabled={isDisabled}
                     tooltip={isDisabled ? OutOfScopeComponentTooltip : ""}
                 />}
-                {!q?.trim() && props.triggers.local.length === 0 && <RelativeLoader />}
                 {mcpTriggers
                     .map((item, index) => {
                         return (

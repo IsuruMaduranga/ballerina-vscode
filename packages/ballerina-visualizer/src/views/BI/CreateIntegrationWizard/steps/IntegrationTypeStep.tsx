@@ -375,7 +375,12 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
                         ))}
                     </CardGrid>
                 )}
-                {loading && (
+                {/* Only stand in for a section that has nothing to show yet. A category
+                    that mixes static cards with dynamic trigger cards (AI Integration:
+                    the chat agent plus discovered MCP servers) is already legible while
+                    the triggers load, so a trailing spinner there just reads as a stray
+                    loader wedged above the next section's heading. */}
+                {loading && cards.length === 0 && (
                     <LoaderRow>
                         <RelativeLoader />
                     </LoaderRow>

@@ -30,6 +30,8 @@ import { RelativeLoader } from '../../../components/RelativeLoader';
 interface EventIntegrationPanelProps {
     scope: SCOPE;
     triggers: TriggerModelsResponse;
+    /** True only while the trigger models are still being fetched. */
+    isLoadingTriggers?: boolean;
     searchQuery?: string;
 };
 
@@ -68,7 +70,7 @@ export function EventIntegrationPanel(props: EventIntegrationPanelProps) {
                 <BodyText>{CATEGORY.description}</BodyText>
             </TitleWrapper>
             <CardGrid>
-                {!q?.trim() && props.triggers.local.length === 0 && <RelativeLoader />}
+                {!q?.trim() && props.isLoadingTriggers && matched.length === 0 && <RelativeLoader />}
                 {
                     matched
                         .map((item, index) => {

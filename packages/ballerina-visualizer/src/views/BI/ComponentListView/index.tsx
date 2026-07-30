@@ -63,6 +63,9 @@ export function ComponentListView(props: ComponentListViewProps) {
     const { projectPath, scope } = props;
     const { rpcClient } = useRpcContext();
     const [triggers, setTriggers] = useState<TriggerModelsResponse>({ local: [] });
+    // Tracked separately from `triggers`: an empty `local` list is a legitimate
+    // result, so it can't stand in for "still fetching" without spinning forever.
+    const [isLoadingTriggers, setIsLoadingTriggers] = useState<boolean>(true);
     const { cacheTriggers, setCacheTriggers } = useVisualizerContext();
     const [isNPSupported, setIsNPSupported] = useState<boolean>(false);
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
@@ -89,6 +92,7 @@ export function ComponentListView(props: ComponentListViewProps) {
     const getTriggers = () => {
         if (cacheTriggers.local.length > 0) {
             setTriggers(cacheTriggers);
+            setIsLoadingTriggers(false);
         } else {
             rpcClient
                 .getServiceDesignerRpcClient()
@@ -97,7 +101,9 @@ export function ComponentListView(props: ComponentListViewProps) {
                     console.log(">>> bi triggers", model);
                     setTriggers(model);
                     setCacheTriggers(model);
-                });
+                })
+                .catch((error: unknown) => console.error(">>> Error fetching trigger models", error))
+                .finally(() => setIsLoadingTriggers(false));
         }
     };
 
@@ -156,8 +162,8 @@ export function ComponentListView(props: ComponentListViewProps) {
                                 {showCategory("workflow") && <WorkflowPanel searchQuery={q} />}
                                 {showCategory("ai-integration") && <AIAgentPanel scope={scope} triggers={triggers} searchQuery={q} />}
                                 {showCategory("integration-as-api") && <IntegrationAPIPanel scope={scope} searchQuery={q} />}
-                                {showCategory("event-integration") && <EventIntegrationPanel triggers={triggers} scope={scope} searchQuery={q} />}
-                                {showCategory("file-integration") && <FileIntegrationPanel triggers={triggers} scope={scope} searchQuery={q} />}
+                                {showCategory("event-integration") && <EventIntegrationPanel triggers={triggers} isLoadingTriggers={isLoadingTriggers} scope={scope} searchQuery={q} />}
+                                {showCategory("file-integration") && <FileIntegrationPanel triggers={triggers} isLoadingTriggers={isLoadingTriggers} scope={scope} searchQuery={q} />}
                             </>
                         )}
                         {showCategory(OTHER_CATEGORY) && (
