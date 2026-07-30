@@ -269,7 +269,7 @@ const LoginPanel: React.FC = () => {
     };
 
     const handleAwsClick = () => {
-        rpcClient.sendAIStateEvent(AIMachineEventType.AUTH_WITH_AWS_BEDROCK);
+        rpcClient.sendAIStateEvent(AIMachineEventType.AUTH_WITH_AWS);
     };
 
     const handleVertexAiClick = () => {
