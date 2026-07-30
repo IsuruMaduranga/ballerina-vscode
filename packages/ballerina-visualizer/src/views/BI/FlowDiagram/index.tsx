@@ -83,7 +83,7 @@ import {
     removeToolFromAgentNode,
 } from "../AIChatAgent/utils";
 import { DiagramSkeleton } from "../../../components/Skeletons";
-import { AI_COMPONENT_PROGRESS_MESSAGE, AI_COMPONENT_PROGRESS_MESSAGE_TIMEOUT, GET_DEFAULT_EMBEDDING_PROVIDER, GET_DEFAULT_MODEL_PROVIDER, LOADING_MESSAGE } from "../../../constants";
+import { AI_COMPONENT_PROGRESS_MESSAGE, AI_COMPONENT_PROGRESS_MESSAGE_TIMEOUT, FORM_LOADING_MESSAGE, GET_DEFAULT_EMBEDDING_PROVIDER, GET_DEFAULT_MODEL_PROVIDER, LOADING_MESSAGE } from "../../../constants";
 import { ConnectionListItem } from "@wso2/wso2-platform-core";
 import { usePlatformExtContext } from "../../../providers/platform-ext-ctx-provider";
 
@@ -122,6 +122,16 @@ type NodePromptLaunchOptions = {
 
 const SIDE_PANEL_DEFAULT_ERROR_MESSAGE = "Error while performing the action.";
 
+// AI component pickers resolve templates from Central, so selecting one shows a full-panel loader.
+const AI_COMPONENT_PICKER_VIEWS: SidePanelView[] = [
+    SidePanelView.MODEL_PROVIDERS,
+    SidePanelView.VECTOR_STORES,
+    SidePanelView.EMBEDDING_PROVIDERS,
+    SidePanelView.KNOWLEDGE_BASES,
+    SidePanelView.DATA_LOADERS,
+    SidePanelView.CHUNKERS,
+];
+
 export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const { projectPath, breakpointState, syntaxTree, onUpdate, onReady, onSave } = props;
     const { rpcClient } = useRpcContext();
@@ -133,6 +143,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const [sidePanelView, setSidePanelView] = useState<SidePanelView>(SidePanelView.NODE_LIST);
     const [categories, setCategories] = useState<PanelCategory[]>([]); //
     const [searchText, setSearchText] = useState<string>("");
+    // Kept here so an expanded AI package group survives switching to a form and back.
+    const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
     const [fetchingAiSuggestions, setFetchingAiSuggestions] = useState(false);
     const [showProgressIndicator, setShowProgressIndicator] = useState(false);
     const [showProgressSpinner, setShowProgressSpinner] = useState<boolean>(false);
@@ -901,6 +913,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const resetNodeSelectionStates = () => {
         setShowSidePanel(false);
         setSidePanelView(SidePanelView.NODE_LIST);
+        setExpandedGroupId(null);
         setSubPanel({ view: SubPanelView.UNDEFINED });
         setSelectedNodeId(undefined);
         selectedNodeRef.current = undefined;
@@ -1230,7 +1243,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         await handleSearch(searchText, functionType, "FUNCTION");
     };
 
-     const handleSearchWorkflow = async (searchText: string, functionType: FUNCTION_TYPE) => {
+    const handleSearchWorkflow = async (searchText: string, functionType: FUNCTION_TYPE) => {
         // NOTE: Backend payloads may still contain legacy "WORKFLOW_START" in some environments.
         // FE is intentionally standardized on "WORKFLOW_RUN"; align API/LS payloads to avoid mismatches.
         await handleSearch(searchText, functionType, "WORKFLOW_RUN");
@@ -1400,6 +1413,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
 
         // Push current state to navigation stack before navigating
         pushToNavigationStack(sidePanelView, categories, selectedNodeRef.current, selectedClientName.current);
+
+        const showFormLoader = AI_COMPONENT_PICKER_VIEWS.includes(sidePanelView);
 
         switch (node.codedata.node) {
             case "FUNCTION":
@@ -1735,6 +1750,11 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 // default node
                 selectedClientName.current = category;
                 setShowProgressIndicator(true);
+                if (showFormLoader) {
+                    setShowProgressSpinner(true);
+                    setProgressTitle(node.metadata?.label || LOADING_MESSAGE);
+                    setProgressMessage(FORM_LOADING_MESSAGE);
+                }
                 rpcClient.getBIDiagramRpcClient().getNodeTemplate({
                     position: targetRef.current.startLine,
                     filePath: model?.fileName || fileName,
@@ -1756,6 +1776,10 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     })
                     .finally(() => {
                         setShowProgressIndicator(false);
+                        if (showFormLoader) {
+                            setShowProgressSpinner(false);
+                            setProgressMessage(LOADING_MESSAGE);
+                        }
                     });
                 break;
         }
@@ -1765,6 +1789,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         // Push current state to navigation stack before navigating
         pushToNavigationStack(sidePanelView, categories, selectedNodeRef.current, selectedClientName.current);
         setShowProgressIndicator(true);
+        setShowProgressSpinner(true);
+        setProgressTitle("");
+        setProgressMessage(FORM_LOADING_MESSAGE);
 
         try {
             const { flowNode, connectionKind } = await getNodeTemplateForConnection(
@@ -1781,6 +1808,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             setShowSidePanel(true);
         } finally {
             setShowProgressIndicator(false);
+            setShowProgressSpinner(false);
+            setProgressMessage(LOADING_MESSAGE);
         }
     };
 
@@ -2466,7 +2495,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             });
     };
 
-   
+
 
     const handleOnAddNPFunction = () => {
         rpcClient.getVisualizerRpcClient().openView({
@@ -3406,6 +3435,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 onSearchNpFunction={handleSearchNpFunction}
                 onSearchTextChange={handleSearchTextChange}
                 searchText={searchText}
+                expandedGroupId={expandedGroupId}
+                onExpandedGroupChange={setExpandedGroupId}
                 // isSearching={isSearching}
                 onSearchModelProvider={handleSearchModelProvider}
                 onSearchVectorStore={handleSearchVectorStore}
