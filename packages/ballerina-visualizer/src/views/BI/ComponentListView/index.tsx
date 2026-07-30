@@ -32,6 +32,7 @@ import { OtherArtifactsPanel } from "./OtherArtifactsPanel";
 import { AIAgentPanel } from "./AIAgentPanel";
 import { useVisualizerContext } from "../../../Context";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
+import { ARTIFACT_CATEGORY_META, ArtifactCategoryKey } from "../components/artifactCards";
 
 interface ComponentListViewProps {
     projectPath: string;
@@ -39,17 +40,23 @@ interface ComponentListViewProps {
 };
 
 const ALL_CATEGORY = "all";
+/** Supporting artifacts (functions, types, connections, …) — in-project only. */
+const OTHER_CATEGORY = "other";
 
-/** Category chips shown above the artifact panels. */
-const CATEGORY_CHIPS: { key: string; label: string }[] = [
+type CategoryChipKey = typeof ALL_CATEGORY | ArtifactCategoryKey | typeof OTHER_CATEGORY;
+
+/**
+ * Category chips shown above the artifact panels. The integration categories and
+ * their labels come from the shared catalog, so they stay in step with the Create
+ * Integration wizard's type picker; "All" and "Other" are local to this screen.
+ */
+const CATEGORY_CHIPS: { key: CategoryChipKey; label: string }[] = [
     { key: ALL_CATEGORY, label: "All" },
-    { key: "automation", label: "Automation" },
-    { key: "workflow", label: "Workflow" },
-    { key: "ai", label: "AI" },
-    { key: "api", label: "API" },
-    { key: "event", label: "Event" },
-    { key: "file", label: "File" },
-    { key: "other", label: "Other" },
+    ...Object.values(ARTIFACT_CATEGORY_META).map((category) => ({
+        key: category.key,
+        label: category.shortTitle,
+    })),
+    { key: OTHER_CATEGORY, label: "Other" },
 ];
 
 export function ComponentListView(props: ComponentListViewProps) {
@@ -59,7 +66,7 @@ export function ComponentListView(props: ComponentListViewProps) {
     const { cacheTriggers, setCacheTriggers } = useVisualizerContext();
     const [isNPSupported, setIsNPSupported] = useState<boolean>(false);
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
-    const [activeCategory, setActiveCategory] = useState<string>(ALL_CATEGORY);
+    const [activeCategory, setActiveCategory] = useState<CategoryChipKey>(ALL_CATEGORY);
     const [searchQuery, setSearchQuery] = useState<string>("");
     const addPanelRef = useRef<HTMLDivElement>(null);
     const [noResults, setNoResults] = useState(false);
@@ -109,7 +116,7 @@ export function ComponentListView(props: ComponentListViewProps) {
     // Chips filter which category shows; search filters the cards within (each
     // panel self-hides when nothing in it matches). Library scope has only the
     // "Other" panel, so its chips are hidden — just the search remains.
-    const showCategory = (key: string) => activeCategory === ALL_CATEGORY || activeCategory === key;
+    const showCategory = (key: CategoryChipKey) => activeCategory === ALL_CATEGORY || activeCategory === key;
     const q = searchQuery;
 
     return (
@@ -147,13 +154,13 @@ export function ComponentListView(props: ComponentListViewProps) {
                             <>
                                 {showCategory("automation") && <AutomationPanel scope={scope} searchQuery={q} />}
                                 {showCategory("workflow") && <WorkflowPanel searchQuery={q} />}
-                                {showCategory("ai") && <AIAgentPanel scope={scope} triggers={triggers} searchQuery={q} />}
-                                {showCategory("api") && <IntegrationAPIPanel scope={scope} searchQuery={q} />}
-                                {showCategory("event") && <EventIntegrationPanel triggers={triggers} scope={scope} searchQuery={q} />}
-                                {showCategory("file") && <FileIntegrationPanel triggers={triggers} scope={scope} searchQuery={q} />}
+                                {showCategory("ai-integration") && <AIAgentPanel scope={scope} triggers={triggers} searchQuery={q} />}
+                                {showCategory("integration-as-api") && <IntegrationAPIPanel scope={scope} searchQuery={q} />}
+                                {showCategory("event-integration") && <EventIntegrationPanel triggers={triggers} scope={scope} searchQuery={q} />}
+                                {showCategory("file-integration") && <FileIntegrationPanel triggers={triggers} scope={scope} searchQuery={q} />}
                             </>
                         )}
-                        {showCategory("other") && (
+                        {showCategory(OTHER_CATEGORY) && (
                             <OtherArtifactsPanel isNPSupported={isNPSupported} isLibrary={isLibrary} searchQuery={q} />
                         )}
                     </AddPanel>

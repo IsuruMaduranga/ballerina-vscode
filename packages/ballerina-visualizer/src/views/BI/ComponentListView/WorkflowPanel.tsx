@@ -15,14 +15,16 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Icon } from '@wso2/ui-toolkit';
 import { useRpcContext } from '@wso2/ballerina-rpc-client';
 import { EVENT_TYPE, MACHINE_VIEW } from '@wso2/ballerina-core';
 
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
+import { ARTIFACT_CATEGORY_META, WORKFLOW_CARD } from '../components/artifactCards';
 import { cardMatchesSearch } from './componentListUtils';
+
+const CATEGORY = ARTIFACT_CATEGORY_META.workflow;
 
 export function WorkflowPanel({ searchQuery }: { searchQuery?: string }) {
     const { rpcClient } = useRpcContext();
@@ -36,21 +38,21 @@ export function WorkflowPanel({ searchQuery }: { searchQuery?: string }) {
         });
     };
 
-    if (!cardMatchesSearch("Workflow", searchQuery)) {
+    if (!cardMatchesSearch(WORKFLOW_CARD.displayName, searchQuery)) {
         return null;
     }
 
     return (
         <PanelViewMore>
             <TitleWrapper>
-                <Title variant="h2">Workflow</Title>
-                <BodyText>Create a workflow integration.</BodyText>
+                <Title variant="h2">{CATEGORY.title}</Title>
+                <BodyText>{CATEGORY.description}</BodyText>
             </TitleWrapper>
             <CardGrid>
                 <ButtonCard
-                    id="workflow"
-                    icon={<Icon name="bi-flowchart" />}
-                    title="Workflow"
+                    id={WORKFLOW_CARD.id}
+                    icon={WORKFLOW_CARD.icon}
+                    title={WORKFLOW_CARD.displayName}
                     onClick={handleClick}
                 />
             </CardGrid>

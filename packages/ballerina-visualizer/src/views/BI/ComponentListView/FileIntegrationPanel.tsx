@@ -23,6 +23,7 @@ import { EVENT_TYPE, MACHINE_VIEW, SCOPE, ServiceModel, TriggerModelsResponse } 
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
+import { ARTIFACT_CATEGORY_META } from '../components/artifactCards';
 import { cardMatchesSearch, OutOfScopeComponentTooltip } from './componentListUtils';
 import { RelativeLoader } from '../../../components/RelativeLoader';
 
@@ -31,6 +32,8 @@ interface FileIntegrationPanelProps {
     triggers: TriggerModelsResponse;
     searchQuery?: string;
 };
+
+const CATEGORY = ARTIFACT_CATEGORY_META["file-integration"];
 
 export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
     const { rpcClient } = useRpcContext();
@@ -62,8 +65,8 @@ export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
     return (
         <PanelViewMore disabled={isDisabled}>
             <TitleWrapper>
-                <Title variant="h2">File Integration</Title>
-                <BodyText>Create an integration that can be triggered by the availability of files in a location.</BodyText>
+                <Title variant="h2">{CATEGORY.title}</Title>
+                <BodyText>{CATEGORY.description}</BodyText>
             </TitleWrapper>
             <CardGrid>
                 {!q?.trim() && props.triggers.local.length === 0 && <RelativeLoader />}

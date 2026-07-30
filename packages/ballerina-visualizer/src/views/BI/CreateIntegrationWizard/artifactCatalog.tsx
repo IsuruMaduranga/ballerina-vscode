@@ -16,46 +16,39 @@
  * under the License.
  */
 
-import { ReactNode } from "react";
-import { Icon } from "@wso2/ui-toolkit";
 import { ServiceModel, TriggerModelsResponse } from "@wso2/ballerina-core";
 
+import {
+    AI_CHAT_AGENT_CARD,
+    ARTIFACT_CATEGORY_META,
+    ArtifactCard,
+    ArtifactCategoryKey,
+    AUTOMATION_CARD,
+    INTEGRATION_API_CARDS,
+    WORKFLOW_CARD,
+} from "../components/artifactCards";
 import { isBetaModule } from "../ComponentListView/componentListUtils";
 import { getEntryNodeIcon } from "../ComponentListView/EventIntegrationPanel";
 import { getFileIntegrationIcon } from "../ComponentListView/FileIntegrationPanel";
 
-/** The artifact kinds the wizard can create. */
-export type ArtifactKind = "automation" | "workflow" | "ai-agent" | "service";
+/**
+ * The Integration Type step's catalog: composes the shared card data and
+ * category copy from `components/artifactCards.tsx` (the same source the
+ * in-project ComponentListView panels read) into the wizard's ordered category
+ * sections, and expands the dynamically discovered trigger cards.
+ */
+
+export type { ArtifactCard, ArtifactCategoryKey, ArtifactKind } from "../components/artifactCards";
 
 /** Trigger types resolved dynamically via `getTriggerModels`. */
 export type DynamicTriggerType = "event" | "file" | "mcp";
-
-/**
- * A selectable artifact card in the wizard's Integration Type step.
- * Card ids, titles, icons, and artifactInfo literals mirror the in-project
- * ComponentListView panels so both surfaces stay consistent.
- */
-export interface ArtifactCard {
-    id: string;
-    kind: ArtifactKind;
-    displayName: string;
-    description?: string;
-    icon: ReactNode | string;
-    isBeta?: boolean;
-    artifactInfo?: {
-        org: string;
-        packageName: string;
-        moduleName: string;
-        version?: string;
-    };
-}
 
 /** Marker expanded at render time into `triggersToCards(triggers, <type>)`. */
 export type DynamicCardSource = `dynamic:${DynamicTriggerType}`;
 
 /** An ordered category section of the Integration Type step. */
 export interface ArtifactCategory {
-    key: string;
+    key: ArtifactCategoryKey;
     title: string;
     description: string;
     /** Short label shown in the category rail (falls back to `title`). */
@@ -65,69 +58,6 @@ export interface ArtifactCategory {
     /** Static cards and/or dynamic trigger markers, in display order. */
     cards: (ArtifactCard | DynamicCardSource)[];
 }
-
-/** Mirrors AutomationPanel. */
-export const AUTOMATION_CARD: ArtifactCard = {
-    id: "automation",
-    kind: "automation",
-    displayName: "Automation",
-    icon: <Icon name="bi-task" />,
-};
-
-/** Mirrors WorkflowPanel. */
-export const WORKFLOW_CARD: ArtifactCard = {
-    id: "workflow",
-    kind: "workflow",
-    displayName: "Workflow",
-    icon: <Icon name="bi-flowchart" />,
-};
-
-/** Mirrors the static AI Chat Agent card in AIAgentPanel. */
-export const AI_CHAT_AGENT_CARD: ArtifactCard = {
-    id: "ai-agent-card",
-    kind: "ai-agent",
-    displayName: "AI Chat Agent",
-    icon: <Icon name="bi-ai-agent" />,
-};
-
-/** Mirrors IntegrationApiPanel (gRPC intentionally excluded — disabled there too). */
-export const INTEGRATION_API_CARDS: ArtifactCard[] = [
-    {
-        id: "http-service-card",
-        kind: "service",
-        displayName: "HTTP Service",
-        icon: <Icon name="bi-globe" />,
-        artifactInfo: {
-            org: "ballerina",
-            packageName: "http",
-            moduleName: "http",
-        },
-    },
-    {
-        id: "graphql-service-card",
-        kind: "service",
-        displayName: "GraphQL Service",
-        icon: <Icon name="bi-graphql" sx={{ color: "#e535ab" }} />,
-        isBeta: true,
-        artifactInfo: {
-            org: "ballerina",
-            packageName: "graphql",
-            moduleName: "graphql",
-        },
-    },
-    {
-        id: "tcp-service-card",
-        kind: "service",
-        displayName: "TCP Service",
-        icon: <Icon name="bi-tcp" />,
-        isBeta: true,
-        artifactInfo: {
-            org: "ballerina",
-            packageName: "tcp",
-            moduleName: "tcp",
-        },
-    },
-];
 
 /**
  * Converts trigger models into artifact cards, replicating the per-panel
@@ -175,57 +105,21 @@ function triggerToCard(item: ServiceModel, type: DynamicTriggerType): ArtifactCa
     };
 }
 
+/** Builds a category section from the shared copy plus its cards. */
+function category(key: ArtifactCategoryKey, cards: (ArtifactCard | DynamicCardSource)[]): ArtifactCategory {
+    return { ...ARTIFACT_CATEGORY_META[key], cards };
+}
+
 /**
- * The wizard's category sections, in the same order and with the same
- * titles/descriptions as the in-project ComponentListView panels.
+ * The wizard's category sections, in display order. Titles, descriptions, and
+ * static cards come from the shared catalog, so they stay identical to the
+ * in-project ComponentListView panels by construction.
  */
 export const ARTIFACT_CATEGORIES: ArtifactCategory[] = [
-    {
-        key: "automation",
-        title: "Automation",
-        shortTitle: "Automation",
-        icon: "sync",
-        description: "Create an automation that can be invoked periodically or manually.",
-        cards: [AUTOMATION_CARD],
-    },
-    {
-        key: "workflow",
-        title: "Workflow",
-        shortTitle: "Workflow",
-        icon: "type-hierarchy",
-        description: "Create a workflow integration.",
-        cards: [WORKFLOW_CARD],
-    },
-    {
-        key: "ai-integration",
-        title: "AI Integration",
-        shortTitle: "AI",
-        icon: "hubot",
-        description: "Create an integration that connects your system with AI capabilities.",
-        cards: [AI_CHAT_AGENT_CARD, "dynamic:mcp"],
-    },
-    {
-        key: "integration-as-api",
-        title: "Integration as API",
-        shortTitle: "API",
-        icon: "globe",
-        description: "Create an integration that can be exposed as an API in the specified protocol.",
-        cards: [...INTEGRATION_API_CARDS],
-    },
-    {
-        key: "event-integration",
-        title: "Event Integration",
-        shortTitle: "Event",
-        icon: "broadcast",
-        description: "Create an integration that can be triggered by an event.",
-        cards: ["dynamic:event"],
-    },
-    {
-        key: "file-integration",
-        title: "File Integration",
-        shortTitle: "File",
-        icon: "files",
-        description: "Create an integration that can be triggered by the availability of files in a location.",
-        cards: ["dynamic:file"],
-    },
+    category("automation", [AUTOMATION_CARD]),
+    category("workflow", [WORKFLOW_CARD]),
+    category("ai-integration", [AI_CHAT_AGENT_CARD, "dynamic:mcp"]),
+    category("integration-as-api", [...INTEGRATION_API_CARDS]),
+    category("event-integration", ["dynamic:event"]),
+    category("file-integration", ["dynamic:file"]),
 ];

@@ -16,7 +16,6 @@
  * under the License.
  */
 
-import { Icon } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import {
     DIRECTORY_MAP,
@@ -30,6 +29,7 @@ import {
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from "./styles";
 import { BodyText } from "../../styles";
 import ButtonCard from "../../../components/ButtonCard";
+import { AI_CHAT_AGENT_CARD, ARTIFACT_CATEGORY_META } from "../components/artifactCards";
 import { cardMatchesSearch, isBetaModule, OutOfScopeComponentTooltip } from "./componentListUtils";
 import { RelativeLoader } from "../../../components/RelativeLoader";
 import { getEntryNodeIcon } from "./EventIntegrationPanel";
@@ -40,12 +40,14 @@ interface AIAgentPanelProps {
     searchQuery?: string;
 }
 
+const CATEGORY = ARTIFACT_CATEGORY_META["ai-integration"];
+
 export function AIAgentPanel(props: AIAgentPanelProps) {
     const { rpcClient } = useRpcContext();
     const isDisabled = props.scope && props.scope !== SCOPE.AI_AGENT && props.scope !== SCOPE.ANY;
     const q = props.searchQuery;
     const mcpTriggers = props.triggers.local.filter((t) => t.type === "mcp" && cardMatchesSearch(t.name, q));
-    const agentMatches = cardMatchesSearch("AI Chat Agent", q);
+    const agentMatches = cardMatchesSearch(AI_CHAT_AGENT_CARD.displayName, q);
 
     const handleMcpClick = async (key: DIRECTORY_MAP, model: ServiceModel) => {
         console.log(">>>>> Model: ", model);
@@ -80,14 +82,14 @@ export function AIAgentPanel(props: AIAgentPanelProps) {
     return (
         <PanelViewMore disabled={isDisabled}>
             <TitleWrapper>
-                <Title variant="h2">AI Integration</Title>
-                <BodyText>Create an integration that connects your system with AI capabilities.</BodyText>
+                <Title variant="h2">{CATEGORY.title}</Title>
+                <BodyText>{CATEGORY.description}</BodyText>
             </TitleWrapper>
             <CardGrid>
                 {agentMatches && <ButtonCard
-                    id="ai-agent-card"
-                    icon={<Icon name="bi-ai-agent" />}
-                    title="AI Chat Agent"
+                    id={AI_CHAT_AGENT_CARD.id}
+                    icon={AI_CHAT_AGENT_CARD.icon}
+                    title={AI_CHAT_AGENT_CARD.displayName}
                     onClick={handleClick}
                     disabled={isDisabled}
                     tooltip={isDisabled ? OutOfScopeComponentTooltip : ""}

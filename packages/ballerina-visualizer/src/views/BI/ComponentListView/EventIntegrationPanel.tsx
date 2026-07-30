@@ -23,6 +23,7 @@ import { DIRECTORY_MAP, EVENT_TYPE, MACHINE_VIEW, TriggerModelsResponse, Service
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
+import { ARTIFACT_CATEGORY_META } from '../components/artifactCards';
 import { cardMatchesSearch, isBetaModule, OutOfScopeComponentTooltip } from './componentListUtils';
 import { RelativeLoader } from '../../../components/RelativeLoader';
 
@@ -31,6 +32,8 @@ interface EventIntegrationPanelProps {
     triggers: TriggerModelsResponse;
     searchQuery?: string;
 };
+
+const CATEGORY = ARTIFACT_CATEGORY_META["event-integration"];
 
 export function EventIntegrationPanel(props: EventIntegrationPanelProps) {
     const { rpcClient } = useRpcContext();
@@ -61,10 +64,8 @@ export function EventIntegrationPanel(props: EventIntegrationPanelProps) {
     return (
         <PanelViewMore disabled={isDisabled}>
             <TitleWrapper>
-                <Title variant="h2">Event Integration</Title>
-                <BodyText>
-                    Create an integration that can be triggered by an event.
-                </BodyText>
+                <Title variant="h2">{CATEGORY.title}</Title>
+                <BodyText>{CATEGORY.description}</BodyText>
             </TitleWrapper>
             <CardGrid>
                 {!q?.trim() && props.triggers.local.length === 0 && <RelativeLoader />}

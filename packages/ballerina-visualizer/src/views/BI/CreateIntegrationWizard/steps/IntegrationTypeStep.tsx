@@ -28,6 +28,7 @@ import {
     ARTIFACT_CATEGORIES,
     ArtifactCard,
     ArtifactCategory,
+    ArtifactCategoryKey,
     DynamicCardSource,
     DynamicTriggerType,
     triggersToCards,
@@ -37,6 +38,9 @@ import {
 const NARROW_WIDTH = 560;
 /** The synthetic "show every category" rail entry. */
 const ALL_KEY = "all";
+
+/** A rail/chip entry: a real category, or the synthetic "All". */
+type RailKey = typeof ALL_KEY | ArtifactCategoryKey;
 
 const StepRoot = styled.div`
     display: flex;
@@ -238,7 +242,7 @@ interface IntegrationTypeStepProps {
  */
 export function IntegrationTypeStep({ triggers, selection, onSelect, compact = false }: IntegrationTypeStepProps) {
     const [searchQuery, setSearchQuery] = useState("");
-    const [activeCategoryKey, setActiveCategoryKey] = useState(ALL_KEY);
+    const [activeCategoryKey, setActiveCategoryKey] = useState<RailKey>(ALL_KEY);
     const { ref, isNarrow } = useContainerWidth<HTMLDivElement>(NARROW_WIDTH);
     // Compact mode always uses the single-column (chip) layout.
     const useSingleColumn = compact || isNarrow;
@@ -307,7 +311,7 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
     const globalMatchCount = searchFiltered.reduce((sum, entry) => sum + entry.cards.length, 0);
 
     // Rail/chip entries: a synthetic "All" plus one per category.
-    const railKeys = [ALL_KEY, ...ARTIFACT_CATEGORIES.map((category) => category.key)];
+    const railKeys: RailKey[] = [ALL_KEY, ...ARTIFACT_CATEGORIES.map((category) => category.key)];
 
     /** Move focus across visible cards (including across sections) on arrow keys. */
     const handleGridKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -428,10 +432,10 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
         />
     );
 
-    const railCount = (key: string) =>
+    const railCount = (key: RailKey) =>
         key === ALL_KEY ? totalCount : countFor(searchFilteredByKey.get(key));
 
-    const railLabel = (key: string) => {
+    const railLabel = (key: RailKey) => {
         if (key === ALL_KEY) {
             return "All";
         }
@@ -439,7 +443,7 @@ export function IntegrationTypeStep({ triggers, selection, onSelect, compact = f
         return category?.shortTitle ?? category?.title ?? key;
     };
 
-    const railIcon = (key: string) => {
+    const railIcon = (key: RailKey) => {
         if (key === ALL_KEY) {
             return "layers";
         }
