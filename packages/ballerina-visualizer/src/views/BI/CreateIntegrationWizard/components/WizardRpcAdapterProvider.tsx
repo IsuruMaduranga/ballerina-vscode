@@ -88,6 +88,15 @@ function createWizardRpcAdapter(wsClient: BiWsClient): BallerinaRpcClient {
 
     const commonRpcClient = withFallback("Common", {
         showErrorMessage: (params: any) => wsClient.showErrorMessage(params),
+        // File pickers (FILE_SELECT fields — "Import from OpenAPI Specification",
+        // GraphQL schema, …) go over the WS bridge to the host's open dialog.
+        // `allowOutsideProject` is forced: pre-project there is no target package to
+        // hold the file yet, and the host would otherwise offer to copy the picked
+        // spec into whatever project happens to be open — a different package than
+        // the one being created. The absolute path is read at generation time
+        // (post-reload), so it needs no project-relative home.
+        selectFileOrDirPath: (params: any) => wsClient.selectFileOrDirPath({ ...params, allowOutsideProject: true }),
+        selectFileOrFolderPath: () => wsClient.selectFileOrFolderPath(),
     });
 
     const adapter = {
