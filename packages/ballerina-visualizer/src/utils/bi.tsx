@@ -25,7 +25,13 @@ import {
     Parameter,
     FormImports,
 } from "@wso2/ballerina-side-panel";
-import { findCurrentIntegrationCategory, normalizeFunctionSearchCategories } from "./function-category";
+import {
+    CURRENT_INTEGRATION_CATEGORY_TITLE,
+    findCurrentIntegrationCategory,
+    getHelperCategoryPath,
+    getItemKind,
+    normalizeFunctionSearchCategories,
+} from "./function-category";
 import { AddNodeVisitor, RemoveNodeVisitor, NodeIcon, traverseFlow, ConnectorIcon, AIModelIcon } from "@wso2/bi-diagram";
 import {
     Category,
@@ -191,7 +197,7 @@ function convertDiagramCategoryToSidePanelCategory(category: Category, functionT
                 return false;
             }
             if ((item as PanelCategory).items !== undefined) {
-                // Always keep subcategories that represent the current integration, even if empty
+                // Always keep subcategories that represent the active package, even if empty
                 const title = (item as PanelCategory).title;
                 if (title?.toLowerCase().endsWith("(current integration)")) {
                     return true;
@@ -380,7 +386,7 @@ export function getRegularFunctions(functions: Category[]): Category[] {
 
 export function getDataMappingFunctions(functions: Category[]): Category[] {
     return functions
-        .filter((category) => category.metadata.label === "Current Integration")
+        .filter((category) => category.metadata.label === CURRENT_INTEGRATION_CATEGORY_TITLE)
         .filter((category) => category.items.length > 0);
 }
 
@@ -885,7 +891,8 @@ const isCategoryType = (item: Item): item is Category => {
 };
 
 export const getFunctionItemKind = (category: string): FunctionKind => {
-    if (category.toLocaleLowerCase().includes("current") || category.toLocaleLowerCase().includes("within project")) {
+    if (category.toLocaleLowerCase().includes("current")
+        || category.toLocaleLowerCase().includes("within project")) {
         return functionKinds.CURRENT;
     } else if (category.toLocaleLowerCase().includes("imported")) {
         return functionKinds.IMPORTED;
@@ -900,41 +907,60 @@ export const convertToHelperPaneFunction = (functions: Category[]): HelperPaneFu
     };
     for (const category of functions.filter((category) => category.metadata.label !== "Agent Tools")) {
         const categoryKind = getFunctionItemKind(category.metadata.label);
-        const items: HelperPaneCompletionItem[] = [];
-        const subCategory: HelperPaneFunctionCategory[] = [];
-        for (const categoryItem of category?.items) {
-            if (isCategoryType(categoryItem)) {
-                if (categoryItem.metadata.label === "Agent Tools") {
-                    continue;
-                }
-                subCategory.push({
-                    label: categoryItem.metadata.label,
-                    items: categoryItem.items.map((item) => ({
-                        label: item.metadata.label,
-                        insertText: item.metadata.label,
-                        kind: categoryKind,
-                        codedata: !isCategoryType(item) && item.codedata,
-                    })),
-                });
-            } else {
-                items.push({
-                    label: categoryItem.metadata.label,
-                    insertText: categoryItem.metadata.label,
-                    kind: categoryKind,
-                    codedata: categoryItem.codedata,
-                });
-            }
+        const items = toHelperPaneFunctionItems(category.items, categoryKind);
+        const subCategory = flattenFunctionCategories(category, categoryKind);
+        if (items.length && subCategory.length) {
+            subCategory.unshift({
+                label: moduleLabel(category.items, category.metadata.label),
+                items,
+            });
         }
 
         const categoryItem: HelperPaneFunctionCategory = {
             label: category.metadata.label,
-            items: items.length ? items : undefined,
+            items: items.length && !subCategory.length ? items : undefined,
             subCategory: subCategory.length ? subCategory : undefined,
         };
         response.category.push(categoryItem);
     }
     return response;
 };
+
+function toHelperPaneFunctionItems(items: Item[], fallback: FunctionKind): HelperPaneCompletionItem[] {
+    return items
+        .filter((item): item is AvailableNode => !isCategoryType(item))
+        .map((item) => ({
+            label: item.metadata.label,
+            insertText: item.metadata.label,
+            kind: getItemKind(item.codedata, fallback),
+            codedata: item.codedata,
+        }));
+}
+
+function flattenFunctionCategories(
+    category: Category,
+    fallback: FunctionKind,
+    parents: string[] = []
+): HelperPaneFunctionCategory[] {
+    const flattened: HelperPaneFunctionCategory[] = [];
+    for (const item of category.items) {
+        if (!isCategoryType(item) || item.metadata.label === "Agent Tools") {
+            continue;
+        }
+        const path = getHelperCategoryPath(parents, item);
+        const items = toHelperPaneFunctionItems(item.items, fallback);
+        if (items.length) {
+            flattened.push({ label: path.join(" / "), items });
+        }
+        flattened.push(...flattenFunctionCategories(item, fallback, path));
+    }
+    return flattened;
+}
+
+function moduleLabel(items: Item[], fallback: string): string {
+    const currentItem = items.find((item): item is AvailableNode => !isCategoryType(item));
+    return currentItem?.codedata?.module || fallback;
+}
 
 export function extractFunctionInsertText(template: string): CompletionInsertText {
     const match = template.match(FUNCTION_REGEX);

@@ -19,11 +19,13 @@
 import {
     CURRENT_INTEGRATION_CATEGORY_TITLE,
     findCurrentIntegrationCategory,
+    getHelperCategoryPath,
+    getItemKind,
     normalizeFunctionSearchCategories,
 } from "./function-category";
 
 describe("normalizeFunctionSearchCategories", () => {
-    it("maps workflow search results to the current integration category", () => {
+    it("maps integration-specific and legacy labels to the current-integration category", () => {
         const categories = normalizeFunctionSearchCategories([
             {
                 metadata: {
@@ -38,16 +40,19 @@ describe("normalizeFunctionSearchCategories", () => {
         expect(categories[0].metadata.description).toBe("Workflows defined within the current integration");
     });
 
-    it("maps activity and legacy project aliases to the current integration category", () => {
+    it("normalizes aliases recursively without folding workspace categories into the current integration", () => {
         const categories = normalizeFunctionSearchCategories([
-            { metadata: { label: "Activities" }, items: [] } as any,
-            { metadata: { label: "Project" }, items: [] } as any,
+            {
+                metadata: { label: "Within Project" },
+                items: [
+                    { metadata: { label: "orders (Current Integration)" }, items: [] },
+                ],
+            } as any,
         ]);
 
-        expect(categories.map((category) => category.metadata.label)).toEqual([
-            CURRENT_INTEGRATION_CATEGORY_TITLE,
-            CURRENT_INTEGRATION_CATEGORY_TITLE,
-        ]);
+        expect(categories[0].metadata.label).toBe("Within Project");
+        expect((categories[0].items[0] as any).metadata.label)
+            .toBe(`orders (${CURRENT_INTEGRATION_CATEGORY_TITLE})`);
     });
 
     it("leaves unrelated categories unchanged", () => {
@@ -59,13 +64,63 @@ describe("normalizeFunctionSearchCategories", () => {
     });
 });
 
+describe("getItemKind", () => {
+    it("keeps current-module items unqualified", () => {
+        expect(getItemKind({ data: { moduleRelation: "CURRENT_MODULE" } }, "AVAILABLE"))
+            .toBe("CURRENT");
+    });
+
+    it.each(["SAME_PACKAGE_MODULE", "WORKSPACE_PACKAGE_MODULE"] as const)(
+        "uses import semantics for %s items in workspace-local categories",
+        (moduleRelation) => {
+            expect(getItemKind({ data: { moduleRelation } }, "CURRENT"))
+                .toBe("IMPORTED");
+        }
+    );
+
+    it("preserves category fallback for external items", () => {
+        expect(getItemKind(undefined, "AVAILABLE")).toBe("AVAILABLE");
+    });
+});
+
 describe("findCurrentIntegrationCategory", () => {
-    it("returns the normalized current integration category", () => {
+    it("finds the current integration inside the workspace hierarchy", () => {
         const category = findCurrentIntegrationCategory([
             { title: "Imported Modules", items: [] } as any,
-            { title: CURRENT_INTEGRATION_CATEGORY_TITLE, items: [] } as any,
+            {
+                title: "Within Project",
+                items: [
+                    { title: `orders (${CURRENT_INTEGRATION_CATEGORY_TITLE})`, items: [] },
+                ],
+            } as any,
         ]);
 
-        expect(category?.title).toBe(CURRENT_INTEGRATION_CATEGORY_TITLE);
+        expect(category?.title).toBe(`orders (${CURRENT_INTEGRATION_CATEGORY_TITLE})`);
+    });
+});
+
+describe("getHelperCategoryPath", () => {
+    it.each([
+        ["DEFAULT_MODULE", "edi_parser"],
+        ["SUBMODULE", "edi_parser.mINVOIC"],
+    ])("collapses the package path for a %s category", (moduleKind, moduleName) => {
+        const path = getHelperCategoryPath(["edi_parser"], {
+            metadata: { label: moduleName },
+            items: [{
+                metadata: { label: "function" },
+                codedata: { data: { moduleKind } },
+            }],
+        } as any);
+
+        expect(path).toEqual([moduleName]);
+    });
+
+    it("retains parent labels for non-module categories", () => {
+        const path = getHelperCategoryPath(["parent"], {
+            metadata: { label: "child" },
+            items: [],
+        } as any);
+
+        expect(path).toEqual(["parent", "child"]);
     });
 });

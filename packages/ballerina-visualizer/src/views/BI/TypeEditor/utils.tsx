@@ -16,10 +16,11 @@
  * under the License.
  */
 
-import { AvailableNode, Category, functionKinds, Item, VisibleTypeItem, GeneralPayloadContext, Protocol, FunctionKind } from '@wso2/ballerina-core';
+import { AvailableNode, Category, Item, VisibleTypeItem, GeneralPayloadContext, Protocol, FunctionKind } from '@wso2/ballerina-core';
 import type { TypeHelperCategory, TypeHelperItem, TypeHelperOperator } from '@wso2/type-editor';
 import { COMPLETION_ITEM_KIND, convertCompletionItemKind } from '@wso2/ui-toolkit';
 import { getFunctionItemKind, isDMSupportedType } from '../../../utils/bi';
+import { getHelperCategoryPath, getItemKind } from '../../../utils/function-category';
 
 // TODO: Remove this order onces the LS is fixed
 const TYPE_CATEGORY_ORDER = [
@@ -118,39 +119,9 @@ const isCategoryType = (item: Item): item is Category => {
 }
 
 export const transformTypesFromSearchToHelperCategory = (types: Category[]): TypeHelperCategory[] => {
-    return types.map((category) => {
-        const items: TypeHelperItem[] = [];
-        const subCategories: TypeHelperCategory[] = [];
-        const categoryKind = getFunctionItemKind(category.metadata.label);
-        for (const categoryItem of category.items) {
-            if (isCategoryType(categoryItem)) {
-                subCategories.push({
-                    category: categoryItem.metadata.label,
-                    items: categoryItem.items.map((item) => ({
-                        name: item.metadata.label,
-                        insertText: item.metadata.label,
-                        type: COMPLETION_ITEM_KIND.TypeParameter,
-                        codedata: (item as AvailableNode).codedata,
-                        kind: categoryKind
-                    }))
-                });
-            } else {
-                items.push({
-                    name: categoryItem.metadata.label,
-                    insertText: categoryItem.metadata.label,
-                    type: COMPLETION_ITEM_KIND.TypeParameter,
-                    codedata: categoryItem.codedata,
-                    kind: categoryKind
-                });
-            }
-        }
-
-        return {
-            category: category.metadata.label,
-            subCategory: subCategories,
-            items: items
-        }
-    });
+    return types.map((category) =>
+        toTypeHelperCategory(category, getFunctionItemKind(category.metadata.label), false)
+    );
 }
 
 export const getFilteredTypesByKind = (types: Category[], kinds: FunctionKind[]) => {
@@ -165,62 +136,7 @@ export const getFilteredTypesByKind = (types: Category[], kinds: FunctionKind[])
         if (!kinds.includes(categoryKind)) {
             continue;
         }
-
-        const items: TypeHelperItem[] = [];
-        const subCategories: TypeHelperCategory[] = [];
-        for (const categoryItem of category.items) {
-            if (isCategoryType(categoryItem)) {
-                if (categoryItem.items.length === 0) {
-                    continue;
-                }
-
-                let subCategoryKind = categoryKind;
-                if (kinds.includes(functionKinds.CURRENT)) {
-                    // HACK: If item is under the current project category,
-                    // but it is not in the current integration, then 
-                    // treat is as an imported item.
-                    subCategoryKind = getFunctionItemKind(categoryItem.metadata.label);
-                    if (subCategoryKind !== functionKinds.CURRENT) {
-                        subCategoryKind = functionKinds.IMPORTED
-                    }
-                }
-
-                subCategories.push({
-                    category: categoryItem.metadata.label,
-                    items: categoryItem.items.map((item) => ({
-                        name: item.metadata.label,
-                        insertText: item.metadata.label,
-                        type: COMPLETION_ITEM_KIND.TypeParameter,
-                        codedata: (item as AvailableNode).codedata,
-                        kind: subCategoryKind,
-                        labelDetails: {
-                            description: (item as AvailableNode).codedata.node,
-                            detail: ""
-                        }
-                    }))
-                });
-            } else {
-                items.push({
-                    name: categoryItem.metadata.label,
-                    insertText: categoryItem.metadata.label,
-                    type: COMPLETION_ITEM_KIND.TypeParameter,
-                    codedata: categoryItem.codedata,
-                    kind: categoryKind,
-                    labelDetails: {
-                        description: categoryItem.codedata.node,
-                        detail: ""
-                    }
-                });
-            }
-        }
-
-        const categoryItem: TypeHelperCategory = {
-            category: category.metadata.label,
-            subCategory: subCategories,
-            items: items
-        }
-
-        categories.push(categoryItem);
+        categories.push(toTypeHelperCategory(category, categoryKind, true));
     }
 
     return categories;
@@ -235,43 +151,76 @@ export const getTypeBrowserTypes = (types: Category[]) => {
         }
 
         const categoryKind = getFunctionItemKind(category.metadata.label);
-        const items: TypeHelperItem[] = [];
-        const subCategories: TypeHelperCategory[] = [];
-        for (const categoryItem of category.items) {
-            if (isCategoryType(categoryItem)) {
-                if (categoryItem.items.length === 0) {
-                    continue;
-                }
-
-                subCategories.push({
-                    category: categoryItem.metadata.label,
-                    items: categoryItem.items.map((item) => ({
-                        name: item.metadata.label,
-                        insertText: item.metadata.label,
-                        type: COMPLETION_ITEM_KIND.TypeParameter,
-                        codedata: (item as AvailableNode).codedata,
-                        kind: categoryKind
-                    }))
-                });
-            } else {
-                items.push({
-                    name: categoryItem.metadata.label,
-                    insertText: categoryItem.metadata.label,
-                    type: COMPLETION_ITEM_KIND.TypeParameter,
-                    codedata: categoryItem.codedata,
-                    kind: categoryKind
-                });
-            }
-        }
-
-        const categoryItem: TypeHelperCategory = {
-            category: category.metadata.label,
-            subCategory: subCategories,
-            items: items
-        }
-
-        categories.push(categoryItem);
+        categories.push(toTypeHelperCategory(category, categoryKind, false));
     }
 
     return categories;
 };
+
+function toTypeHelperCategory(
+    category: Category,
+    fallback: FunctionKind,
+    includeLabelDetails: boolean
+): TypeHelperCategory {
+    const items = toTypeHelperItems(category.items, fallback, includeLabelDetails);
+    const subCategories = flattenTypeCategories(category, fallback, includeLabelDetails);
+    if (items.length && subCategories.length) {
+        subCategories.unshift({
+            category: typeModuleLabel(category.items, category.metadata.label),
+            items,
+        });
+    }
+    return {
+        category: category.metadata.label,
+        subCategory: subCategories,
+        items: items.length && !subCategories.length ? items : [],
+    };
+}
+
+function flattenTypeCategories(
+    category: Category,
+    fallback: FunctionKind,
+    includeLabelDetails: boolean,
+    parents: string[] = []
+): TypeHelperCategory[] {
+    const flattened: TypeHelperCategory[] = [];
+    for (const item of category.items) {
+        if (!isCategoryType(item)) {
+            continue;
+        }
+        const path = getHelperCategoryPath(parents, item);
+        const items = toTypeHelperItems(item.items, fallback, includeLabelDetails);
+        if (items.length) {
+            flattened.push({ category: path.join(" / "), items });
+        }
+        flattened.push(...flattenTypeCategories(item, fallback, includeLabelDetails, path));
+    }
+    return flattened;
+}
+
+function toTypeHelperItems(
+    items: Item[],
+    fallback: FunctionKind,
+    includeLabelDetails: boolean
+): TypeHelperItem[] {
+    return items
+        .filter((item): item is AvailableNode => !isCategoryType(item))
+        .map((item) => ({
+            name: item.metadata.label,
+            insertText: item.metadata.label,
+            type: COMPLETION_ITEM_KIND.TypeParameter,
+            codedata: item.codedata,
+            kind: getItemKind(item.codedata, fallback),
+            ...(includeLabelDetails ? {
+                labelDetails: {
+                    description: item.codedata.node,
+                    detail: "",
+                },
+            } : {}),
+        }));
+}
+
+function typeModuleLabel(items: Item[], fallback: string): string {
+    const currentItem = items.find((item): item is AvailableNode => !isCategoryType(item));
+    return currentItem?.codedata?.module || fallback;
+}
