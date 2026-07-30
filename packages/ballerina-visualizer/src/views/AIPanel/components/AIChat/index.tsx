@@ -38,7 +38,6 @@ import {
     LoginMethod,
     RunningServiceInfo,
     ThreadSummary,
-    GenerationReviewState,
 } from "@wso2/ballerina-core";
 
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
@@ -91,6 +90,7 @@ import { McpManagerPanel } from "../../McpManagerPanel";
 export type PanelRoute = "settings" | "mcp" | "skills";
 import WelcomeMessage from "./Welcome";
 import { getOnboardingOpens, incrementOnboardingOpens, convertToUIMessages, isContainsSyntaxError } from "./utils/utils";
+import { applyGenerationStatus, deriveReviewBarState, PanelMessage } from "./utils/reviewBarState";
 import {
     serializeStream, parseStream, appendToLastEntry, upsertComponent, upsertRequestCard,
     buildRequestCardData, buildPlanItem, applyPlanApprovalResolution, appendAbortMarker, applyTaskWriteResult,
@@ -237,20 +237,6 @@ type PanelUnmodelledNotifyType =
     | "evals_tool_result"
     | "plan_updated"
     | "migration_progress";
-
-/**
- * `generationStatus` mirrors the authoritative `reviewState.status` held per generation in
- * the extension's chat store; it is never written by this panel. Matching a status event to
- * a message by `messageId` is also what scopes it to the rendered thread.
- */
-type PanelMessage = {
-    role: string;
-    content: string;
-    type: string;
-    checkpointId?: string;
-    messageId?: string;
-    generationStatus?: GenerationReviewState["status"];
-};
 
 const SCAFFOLD_DONE_PREFIX = "ballerina.scaffold.done:";
 
@@ -1487,11 +1473,7 @@ const AIChat: React.FC = () => {
 
         } else if (type === "generation_status") {
             const { generationId, status } = response;
-            // An event for a generation this panel is not rendering belongs to another
-            // thread (or a trimmed turn) — drop it rather than guessing a target.
-            setMessages(prevMessages => prevMessages.some(m => m.messageId === generationId)
-                ? prevMessages.map(m => m.messageId === generationId ? { ...m, generationStatus: status } : m)
-                : prevMessages);
+            setMessages(prevMessages => applyGenerationStatus(prevMessages, generationId, status));
 
         } else if (type === "messages") {
             messagesRef.current = response.messages;
@@ -2582,6 +2564,7 @@ const AIChat: React.FC = () => {
                                     const isUserMessage = message.role === "User";
                                     const isAssistantMessage = message.role === "Copilot";
                                     const isLatestAssistantMessage = isAssistantMessage && index === lastAssistantIndex;
+                                    const reviewBar = deriveReviewBarState(message.generationStatus, isLatestAssistantMessage, isLoading);
 
                             // Note: Cannot use useMemo here as it's inside map() callback
                             // The stateless regex implementation in splitContent() ensures no corruption during streaming
@@ -2647,9 +2630,9 @@ const AIChat: React.FC = () => {
                                                                 isWorkspace={(reviewItem as any).data.isWorkspace}
                                                                 diffPackageMap={(reviewItem as any).data.diffPackageMap}
                                                                 generationId={(reviewItem as any).data.generationId}
-                                                                isDiscarded={message.generationStatus === "reverted"}
+                                                                isDiscarded={reviewBar.isDiscarded}
                                                                 rpcClient={isLatestAssistantMessage ? rpcClient : undefined}
-                                                                isActive={message.generationStatus === "done" && isLatestAssistantMessage && !isLoading}
+                                                                isActive={reviewBar.isActive}
                                                             />
                                                         )}
                                                         {buttonItems.map((item: StreamItem, ci: number) => {

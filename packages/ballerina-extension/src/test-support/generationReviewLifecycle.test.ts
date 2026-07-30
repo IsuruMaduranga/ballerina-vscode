@@ -130,4 +130,75 @@ describe('generation review lifecycle', () => {
 
         expect(store.getDoneGeneration(ROOT, 'thread-a')?.id).toBe(secondId);
     });
+
+    it('accepts a still-done generation when the next one is added', () => {
+        // Callers must not have to remember to finalize first — every entry point that starts
+        // a turn goes through addGeneration, so putting it there is what makes the invariant
+        // hold by construction rather than by convention.
+        const firstId = seedDoneGeneration(store, 'thread-a');
+
+        store.addGeneration(ROOT, 'thread-a', 'another thing', { generationType: 'agent' } as never, 'gen-second');
+
+        expect(store.getGeneration(ROOT, 'thread-a', firstId)?.reviewState.status).toBe('accepted');
+        expect(store.getDoneGeneration(ROOT, 'thread-a')).toBeUndefined();
+    });
+});
+
+describe('generation status observers', () => {
+    let store: ChatStateStorage;
+    let observed: Array<[string, string]>;
+
+    beforeEach(() => {
+        store = new ChatStateStorage();
+        observed = [];
+        store.onGenerationStatusChanged((generationId, status) => observed.push([generationId, status]));
+    });
+
+    it('announces each transition once', () => {
+        const generationId = seedDoneGeneration(store, 'thread-a');
+        store.revertLastGeneration(ROOT, 'thread-a');
+
+        expect(observed).toEqual([[generationId, 'done'], [generationId, 'reverted']]);
+    });
+
+    it('stays silent for updates that carry no status', () => {
+        // updateReviewState is an Object.assign over a PARTIAL state and most callers pass only
+        // modifiedFiles/reviewView — announcing those would flood the panel with no-op events.
+        const generationId = seedDoneGeneration(store, 'thread-a');
+        observed.length = 0;
+
+        store.updateReviewState(ROOT, 'thread-a', generationId, { modifiedFiles: ['other.bal'] });
+
+        expect(observed).toEqual([]);
+        expect(store.getDoneGeneration(ROOT, 'thread-a')?.reviewState.modifiedFiles).toEqual(['other.bal']);
+    });
+
+    it('stays silent when the status is re-set to the value it already has', () => {
+        const generationId = seedDoneGeneration(store, 'thread-a');
+        observed.length = 0;
+
+        store.updateReviewState(ROOT, 'thread-a', generationId, { status: 'done' });
+
+        expect(observed).toEqual([]);
+    });
+
+    it('EDGE: a throwing observer does not stop the transition or the other observers', () => {
+        store.onGenerationStatusChanged(() => { throw new Error('observer blew up'); });
+        const reached: string[] = [];
+        store.onGenerationStatusChanged((_, status) => reached.push(status));
+
+        expect(() => seedDoneGeneration(store, 'thread-a')).not.toThrow();
+        expect(reached).toEqual(['done']);
+        expect(store.getDoneGeneration(ROOT, 'thread-a')).toBeDefined();
+    });
+
+    it('stops announcing after the subscription is disposed', () => {
+        const seen: string[] = [];
+        const dispose = store.onGenerationStatusChanged((_, status) => seen.push(status));
+
+        dispose();
+        seedDoneGeneration(store, 'thread-a');
+
+        expect(seen).toEqual([]);
+    });
 });
