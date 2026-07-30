@@ -69,6 +69,11 @@ export interface ActiveExecution {
     abortController: AbortController;  // For actual abort operation
 }
 
+export type GenerationStatusObserver = (
+    generationId: string,
+    status: GenerationReviewState['status']
+) => void;
+
 // ============================================
 // Conversion Helpers
 // ============================================
@@ -266,6 +271,8 @@ export class ChatStateStorage {
 
     // File-based persistence store
     private readonly persistenceStore: CopilotPersistenceStore;
+
+    private generationStatusObservers: Set<GenerationStatusObserver> = new Set();
 
     constructor() {
         this.persistenceStore = new CopilotPersistenceStore({
@@ -657,6 +664,9 @@ export class ChatStateStorage {
     ): Generation {
         const thread = this.getOrCreateThread(projectRootPath, threadId);
 
+        // Keeps "at most one 'done' generation per thread" true by construction.
+        this.finalizeLastGenerationIfDone(projectRootPath, threadId);
+
         const generation: Generation = {
             id: id || generateId(),
             userPrompt,
@@ -904,6 +914,30 @@ export class ChatStateStorage {
     // ============================================
 
     /**
+     * Subscribe to review-status transitions. Storage only announces — it never imports
+     * the notification layer.
+     * @returns Disposer that removes the observer
+     */
+    onGenerationStatusChanged(cb: GenerationStatusObserver): () => void {
+        this.generationStatusObservers.add(cb);
+        return () => { this.generationStatusObservers.delete(cb); };
+    }
+
+    private setStatus(generation: Generation, status: GenerationReviewState['status']): void {
+        if (generation.reviewState.status === status) {
+            return;
+        }
+        generation.reviewState.status = status;
+        for (const observer of this.generationStatusObservers) {
+            try {
+                observer(generation.id, status);
+            } catch (error) {
+                console.error('[ChatStateStorage] Generation status observer failed:', error);
+            }
+        }
+    }
+
+    /**
      * Get the generation currently in the revertible 'done' window, if any.
      * By construction there is at most one at a time: starting a new generation always
      * finalizes ('accepted') whichever generation was previously 'done' first.
@@ -951,7 +985,11 @@ export class ChatStateStorage {
             return;
         }
 
-        Object.assign(generation.reviewState, state);
+        const { status, ...rest } = state;
+        Object.assign(generation.reviewState, rest);
+        if (status !== undefined) {
+            this.setStatus(generation, status);
+        }
         thread.updatedAt = Date.now();
 
         // Persist immediately
@@ -973,7 +1011,7 @@ export class ChatStateStorage {
             return undefined;
         }
 
-        generation.reviewState.status = 'accepted';
+        this.setStatus(generation, 'accepted');
         generation.reviewState.affectedPackagePaths = [];
         generation.reviewState.reviewView = undefined;
 
@@ -998,7 +1036,7 @@ export class ChatStateStorage {
             return undefined;
         }
 
-        generation.reviewState.status = 'reverted';
+        this.setStatus(generation, 'reverted');
         generation.reviewState.affectedPackagePaths = [];
         generation.reviewState.reviewView = undefined;
 

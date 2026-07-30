@@ -572,8 +572,6 @@ User reverted the last made changes. The files have been restored to the state b
             });
 
             chatStateStorage.revertLastGeneration(projectRootPath, threadId);
-            // The review is over: drop its cached nav state and stale restore Memento.
-            approvalViewManager.clearReviewData();
             console.log(`[Review Actions] Reverted generation: ${doneGeneration.id}`);
 
             sendGenerationDiscardTelemetry(doneGeneration.id);
@@ -931,7 +929,8 @@ User reverted the last made changes. The files have been restored to the state b
                 uiMessages.push({
                     role: 'assistant',
                     content: generation.uiResponse,
-                    messageId: generation.id
+                    messageId: generation.id,
+                    generationStatus: generation.reviewState.status
                 });
             }
         }

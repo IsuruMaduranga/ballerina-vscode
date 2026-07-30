@@ -30,7 +30,6 @@ import { extension } from "../../../BalExtensionContext";
 import { getProjectMetrics } from "../../telemetry/common/project-metrics";
 import { getHashedProjectId } from "../../telemetry/common/project-id";
 import { runEventStore } from "../utils/run-event-store";
-import { approvalViewManager } from "../state/ApprovalViewManager";
 import { sendSaveChatNotification } from "../utils/ai-utils";
 import { sendGenerationKeptTelemetry } from "../utils/generation-response";
 
@@ -105,7 +104,6 @@ export function finalizeLastGeneration(projectRootPath: string, threadId: string
         return false;
     }
 
-    approvalViewManager.clearReviewData();
     sendGenerationKeptTelemetry(finalized.id);
     sendSaveChatNotification(Command.Agent, finalized.id);
     console.log(`[Agent] Accepted generation: ${finalized.id}`);

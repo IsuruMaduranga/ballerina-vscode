@@ -393,6 +393,7 @@ export type ChatNotify = (
     | ConfigChangeEvent
     | MigrationProgressEvent
     | FollowupSuggestionsEvent
+    | GenerationStatusEvent
 ) & ChatNotifyMeta;
 
 /** A single clickable follow-up suggestion shown after a completed turn. */
@@ -409,6 +410,13 @@ export interface FollowupSuggestionsEvent {
     /** The assistant message these suggestions belong to. */
     messageId: string;
     suggestions: FollowupSuggestion[];
+}
+
+/** A generation's review status changed in storage; the panel derives its revert affordance from it. */
+export interface GenerationStatusEvent {
+    type: "generation_status";
+    generationId: string;
+    status: GenerationReviewState["status"];
 }
 
 /** Structured progress event emitted by the migration orchestrator at each stage boundary. */

@@ -35,11 +35,14 @@ jest.mock('@wso2/ballerina-core', () => ({ Command: { Agent: 'Agent' } }));
 const sendChatComponentNotification = jest.fn();
 const sendSaveChatNotification = jest.fn();
 const sendGenerationKeptTelemetry = jest.fn();
-const clearReviewData = jest.fn();
 
 jest.mock('../features/ai/utils/ai-utils', () => ({ sendChatComponentNotification, sendSaveChatNotification }));
 jest.mock('../features/ai/utils/generation-response', () => ({ sendGenerationKeptTelemetry }));
-jest.mock('../features/ai/state/ApprovalViewManager', () => ({ approvalViewManager: { clearReviewData } }));
+
+// Cuts an import chain that reaches the webview layer and an ESM-only LS dependency.
+jest.mock('../features/ai/state/ApprovalManager', () => ({
+    approvalManager: { cancelAllPending: jest.fn() },
+}));
 
 // Cut the rest of generateAgent's module graph — only finalizeLastGeneration is under test.
 jest.mock('../features/ai/utils/project/temp-project', () => ({
@@ -93,7 +96,6 @@ describe('finalizeLastGeneration', () => {
 
         finalizeLastGeneration(ROOT, 'thread-report');
 
-        expect(clearReviewData).toHaveBeenCalled();
         expect(sendGenerationKeptTelemetry).toHaveBeenCalledWith(generationId);
         expect(sendSaveChatNotification).toHaveBeenCalledWith('Agent', generationId);
     });
@@ -103,7 +105,6 @@ describe('finalizeLastGeneration', () => {
 
         expect(finalizeLastGeneration(ROOT, 'thread-empty')).toBe(false);
 
-        expect(clearReviewData).not.toHaveBeenCalled();
         expect(sendGenerationKeptTelemetry).not.toHaveBeenCalled();
         expect(sendSaveChatNotification).not.toHaveBeenCalled();
     });
