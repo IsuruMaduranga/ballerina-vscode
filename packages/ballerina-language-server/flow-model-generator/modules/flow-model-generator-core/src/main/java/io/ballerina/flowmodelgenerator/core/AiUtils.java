@@ -793,13 +793,6 @@ public class AiUtils {
                 || org.toLowerCase(Locale.ROOT).contains(lowerQuery);
     }
 
-    private static String getItemLabel(Item item) {
-        if (item instanceof AvailableNode node) {
-            return node.metadata().label();
-        }
-        return ((Category) item).metadata().label();
-    }
-
     private static String getPackageDisplayLabel(String packageName) {
         int lastDot = packageName.lastIndexOf('.');
         String rawPackageName = lastDot >= 0 ? packageName.substring(lastDot + 1) : packageName;
