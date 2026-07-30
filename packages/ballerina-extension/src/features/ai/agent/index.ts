@@ -31,7 +31,7 @@ import { getProjectMetrics } from "../../telemetry/common/project-metrics";
 import { getHashedProjectId } from "../../telemetry/common/project-id";
 import { runEventStore } from "../utils/run-event-store";
 import { approvalViewManager } from "../state/ApprovalViewManager";
-import { sendChatComponentNotification, sendSaveChatNotification } from "../utils/ai-utils";
+import { sendSaveChatNotification } from "../utils/ai-utils";
 import { sendGenerationKeptTelemetry } from "../utils/generation-response";
 
 // ==================================
@@ -107,7 +107,6 @@ export function finalizeLastGeneration(projectRootPath: string, threadId: string
 
     approvalViewManager.clearReviewData();
     sendGenerationKeptTelemetry(finalized.id);
-    sendChatComponentNotification("review", { status: "accepted" });
     sendSaveChatNotification(Command.Agent, finalized.id);
     console.log(`[Agent] Accepted generation: ${finalized.id}`);
     return true;
