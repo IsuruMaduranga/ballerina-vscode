@@ -884,7 +884,7 @@ Generation stopped by user. The last in-progress task was not saved. Files have 
 
         // Update review state — modifiedFiles is per-generation only
         chatStateStorage.updateReviewState(projectRootPath, threadId, context.messageId, {
-            status: 'under_review',
+            status: 'done',
             tempProjectPath,
             modifiedFiles: generationModifiedFiles,
             affectedPackagePaths: affectedPackagePaths,

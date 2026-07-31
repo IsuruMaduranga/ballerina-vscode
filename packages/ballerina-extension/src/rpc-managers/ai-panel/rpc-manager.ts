@@ -463,10 +463,10 @@ export class AiPanelRpcManager implements AIPanelAPI {
             const projectRootPath = resolveProjectRootPath();
             const threadId = 'default';
 
-            // Get ALL under_review generations
+            // Get ALL done generations
             const thread = chatStateStorage.getOrCreateThread(projectRootPath, threadId);
             const underReviewGenerations = thread.generations.filter(
-                g => g.reviewState.status === 'under_review'
+                g => g.reviewState.status === 'done'
             );
 
             if (underReviewGenerations.length === 0) {
@@ -478,7 +478,7 @@ export class AiPanelRpcManager implements AIPanelAPI {
             const latestReview = underReviewGenerations[underReviewGenerations.length - 1];
             console.log(`[Review Actions] Accepting generation ${latestReview.id} with ${latestReview.reviewState.modifiedFiles.length} modified file(s)`);
 
-            // Cleanup ALL under_review temp projects (prevents memory leak)
+            // Cleanup ALL done temp projects (prevents memory leak)
             if (!process.env.AI_TEST_ENV) {
                 for (const generation of underReviewGenerations) {
                     if (generation.reviewState.tempProjectPath) {
@@ -487,9 +487,9 @@ export class AiPanelRpcManager implements AIPanelAPI {
                 }
             }
 
-            // Mark ALL under_review generations as accepted (also clears affectedPackagePaths)
+            // Mark ALL done generations as accepted (also clears affectedPackagePaths)
             chatStateStorage.acceptAllReviews(projectRootPath, threadId);
-            console.log("[Review Actions] Marked all under_review generations as accepted");
+            console.log("[Review Actions] Marked all done generations as accepted");
 
             // Send telemetry for generation kept
             sendGenerationKeptTelemetry(latestReview.id);
@@ -510,10 +510,10 @@ export class AiPanelRpcManager implements AIPanelAPI {
             const projectRootPath = resolveProjectRootPath();
             const threadId = 'default';
 
-            // Get ALL under_review generations
+            // Get ALL done generations
             const thread = chatStateStorage.getOrCreateThread(projectRootPath, threadId);
             const underReviewGenerations = thread.generations.filter(
-                g => g.reviewState.status === 'under_review'
+                g => g.reviewState.status === 'done'
             );
 
             if (underReviewGenerations.length === 0) {
@@ -532,7 +532,7 @@ export class AiPanelRpcManager implements AIPanelAPI {
                 console.warn("[Review Actions] No checkpoint found for generation — workspace changes will not be reverted");
             }
 
-            // Cleanup ALL under_review temp projects (prevents memory leak)
+            // Cleanup ALL done temp projects (prevents memory leak)
             if (!process.env.AI_TEST_ENV) {
                 for (const generation of underReviewGenerations) {
                     if (generation.reviewState.tempProjectPath) {
@@ -555,9 +555,9 @@ User reverted the last made changes. The files have been restored to the state b
                 ],
             });
 
-            // Mark ALL under_review generations as error/declined
+            // Mark ALL done generations as error/declined
             chatStateStorage.declineAllReviews(projectRootPath, threadId);
-            console.log("[Review Actions] Marked all under_review generations as declined");
+            console.log("[Review Actions] Marked all done generations as declined");
 
             // Send telemetry for generation discard
             sendGenerationDiscardTelemetry(latestReview.id);
