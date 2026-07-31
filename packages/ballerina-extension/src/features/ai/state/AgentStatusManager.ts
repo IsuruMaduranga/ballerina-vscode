@@ -171,7 +171,7 @@ class AgentStatusManager {
                 this.statusBarItem.backgroundColor = undefined;
                 break;
             case 'awaiting-input':
-                this.statusBarItem.text = `$(bi-ai-agent) Copilot needs your input`;
+                this.statusBarItem.text = `$(bi-ai-chat) Copilot needs your input`;
                 this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
                 break;
             case 'completed':
@@ -184,7 +184,7 @@ class AgentStatusManager {
                 break;
             case 'idle':
             default:
-                this.statusBarItem.text = `$(bi-ai-agent) WSO2 Integrator Copilot`;
+                this.statusBarItem.text = `$(bi-ai-chat) WSO2 Integrator Copilot`;
                 this.statusBarItem.backgroundColor = undefined;
                 break;
         }

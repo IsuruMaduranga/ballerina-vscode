@@ -1239,6 +1239,13 @@
                     "fontCharacter": "\\f112"
                 }
             },
+            "bi-ai-chat": {
+                "description": "ai-chat",
+                "default": {
+                    "fontPath": "./resources/font-wso2-vscode/dist/wso2-vscode.woff",
+                    "fontCharacter": "\\f113"
+                }
+            },
             "ballerina-new-module": {
                 "description": "new-module",
                 "default": {
