@@ -119,6 +119,24 @@ public class Constants {
         public static final String WAIT_DATA_LABEL = "Await Data Event";
         public static final String WAIT_DATA_DESCRIPTION = "Wait for a data event from outside the workflow";
 
+        // Child workflow composition (Context remote methods)
+        public static final String RUN_CHILD_WORKFLOW_METHOD_NAME = "runChildWorkflow";
+        public static final String RUN_CHILD_WORKFLOW_LABEL = "Run Child Workflow";
+        public static final String RUN_CHILD_WORKFLOW_DESCRIPTION =
+                "Start a child workflow and continue without waiting for its result";
+        public static final String CALL_CHILD_WORKFLOW_METHOD_NAME = "callWorkflow";
+        public static final String CALL_CHILD_WORKFLOW_LABEL = "Call Child Workflow";
+        public static final String CALL_CHILD_WORKFLOW_DESCRIPTION =
+                "Run a child workflow and durably wait for its result";
+        public static final String WAIT_CHILD_WORKFLOW_METHOD_NAME = "waitForChildWorkflow";
+        public static final String WAIT_CHILD_WORKFLOW_LABEL = "Wait for Child Workflow";
+        public static final String WAIT_CHILD_WORKFLOW_DESCRIPTION =
+                "Durably wait for a started child workflow's result";
+        public static final String SEND_DATA_CHILD_WORKFLOW_METHOD_NAME = "sendDataToChildWorkflow";
+        public static final String SEND_DATA_CHILD_WORKFLOW_LABEL = "Send Data to Child Workflow";
+        public static final String SEND_DATA_CHILD_WORKFLOW_DESCRIPTION =
+                "Send a data event to a running child workflow";
+
         // Workflow context utility functions
         public static final String CURRENT_TIME_METHOD_NAME = "currentTime";
         public static final String CURRENT_TIME_LABEL = "Current Time";

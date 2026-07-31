@@ -86,6 +86,8 @@ public record Category(Metadata metadata, List<Item> items) implements Item {
         WORKFLOW("Workflow", "Workflow orchestration components", null),
         WORKFLOW_STEPS("Steps", "Durable steps executed by this workflow",
                 List.of("Activity", "Human Task", "Sleep", "Data", "Workflow")),
+        CHILD_WORKFLOWS("Child Workflows", "Compose child workflows from this workflow",
+                List.of("Child", "Workflow", "Composition")),
         WORKFLOW_FUNCTIONS("Workflow Functions", "Utility functions of the workflow context",
                 List.of("Utility", "Workflow", "Time", "Replay")),
         BUILTIN_ACTIVITIES("Prebuilt Activities", "Prebuilt activities for common integrations",

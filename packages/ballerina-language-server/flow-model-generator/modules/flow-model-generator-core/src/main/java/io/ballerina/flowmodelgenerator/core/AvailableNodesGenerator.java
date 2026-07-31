@@ -474,7 +474,8 @@ public class AvailableNodesGenerator {
 
         if (isInWorkflowFunction) {
             // Inside a workflow function the single Workflow section groups its items by
-            // functionality: durable Steps and the (advanced) context utility functions.
+            // functionality: durable Steps, Child Workflows, and the (advanced) context
+            // utility functions.
             Category steps = new Category.Builder(null).name(Category.Name.WORKFLOW_STEPS)
                     .items(List.of(
                             workflowNode(Workflow.CALL_ACTIVITY_LABEL, Workflow.CALL_ACTIVITY_DESCRIPTION,
@@ -484,6 +485,19 @@ public class AvailableNodesGenerator {
                             workflowNode(Workflow.WAIT_DATA_LABEL, Workflow.WAIT_DATA_DESCRIPTION,
                                     NodeKind.WAIT_DATA),
                             workflowNode(Workflow.SLEEP_LABEL, Workflow.SLEEP_DESCRIPTION, NodeKind.SLEEP)))
+                    .build();
+
+            Category childWorkflows = new Category.Builder(null).name(Category.Name.CHILD_WORKFLOWS)
+                    .items(List.of(
+                            workflowNode(Workflow.RUN_CHILD_WORKFLOW_LABEL, Workflow.RUN_CHILD_WORKFLOW_DESCRIPTION,
+                                    NodeKind.CHILD_WORKFLOW_RUN),
+                            workflowNode(Workflow.CALL_CHILD_WORKFLOW_LABEL, Workflow.CALL_CHILD_WORKFLOW_DESCRIPTION,
+                                    NodeKind.CHILD_WORKFLOW_CALL),
+                            workflowNode(Workflow.WAIT_CHILD_WORKFLOW_LABEL, Workflow.WAIT_CHILD_WORKFLOW_DESCRIPTION,
+                                    NodeKind.CHILD_WORKFLOW_WAIT),
+                            workflowNode(Workflow.SEND_DATA_CHILD_WORKFLOW_LABEL,
+                                    Workflow.SEND_DATA_CHILD_WORKFLOW_DESCRIPTION,
+                                    NodeKind.CHILD_WORKFLOW_SEND_DATA)))
                     .build();
 
             Category workflowFunctions = new Category.Builder(null).name(Category.Name.WORKFLOW_FUNCTIONS)
@@ -499,6 +513,7 @@ public class AvailableNodesGenerator {
                     .build();
 
             workflowNodes.add(steps);
+            workflowNodes.add(childWorkflows);
             workflowNodes.add(workflowFunctions);
         } else {
             // Outside workflow functions the items follow the integration's artifacts:

@@ -51,8 +51,22 @@ import java.util.Map;
  */
 class WorkflowSearchCommand extends SearchCommand {
 
+    private static final String NODE_KIND_KEY = "nodeKind";
+
+    // The node kind selected items resolve to. The same workflow list serves Run Workflow
+    // (default) and the child-workflow nodes, which pass their kind via queryMap["nodeKind"].
+    private final NodeKind itemKind;
+
     public WorkflowSearchCommand(Project project, LineRange position, Map<String, String> queryMap) {
         super(project, position, queryMap);
+        String requestedKind = queryMap == null ? null : queryMap.get(NODE_KIND_KEY);
+        if (NodeKind.CHILD_WORKFLOW_RUN.name().equals(requestedKind)) {
+            this.itemKind = NodeKind.CHILD_WORKFLOW_RUN;
+        } else if (NodeKind.CHILD_WORKFLOW_CALL.name().equals(requestedKind)) {
+            this.itemKind = NodeKind.CHILD_WORKFLOW_CALL;
+        } else {
+            this.itemKind = NodeKind.WORKFLOW_RUN;
+        }
     }
 
     @Override
@@ -101,7 +115,7 @@ class WorkflowSearchCommand extends SearchCommand {
                                 .orElse("Workflow process function");
 
                         Codedata codedata = new Codedata.Builder<>(null)
-                                .node(NodeKind.WORKFLOW_RUN)
+                                .node(itemKind)
                                 .org(orgName)
                                 .module(moduleName)
                                 .symbol(funcName)
@@ -118,8 +132,11 @@ class WorkflowSearchCommand extends SearchCommand {
                     });
 
             // Durable agentic workflows list in the same category as the workflow functions
-            // (one startable list, distinguished by icon): selecting one generates
-            // `agent.run(...)` instead of `workflow:run(...)`.
+            // (one startable list, distinguished by icon), for the Run Workflow node only:
+            // selecting one generates `agent.run(...)` instead of `workflow:run(...)`.
+            if (itemKind != NodeKind.WORKFLOW_RUN) {
+                return;
+            }
             module.getCompilation().getSemanticModel().moduleSymbols().stream()
                     .filter(symbol -> symbol.kind() == SymbolKind.VARIABLE)
                     .filter(WorkflowUtil::isDurableAgentVariable)

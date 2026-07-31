@@ -199,6 +199,11 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     // Whether the activity list/wizard currently on screen belongs to a durable agent.
     const inDurableAgentActivityFlow = () =>
         durableAgentActivityListRef.current || activityWizardForAgentRef.current;
+
+    // Set while the WORKFLOW_LIST panel was opened from a child-workflow palette node
+    // (CHILD_WORKFLOW_RUN / CHILD_WORKFLOW_CALL): in-list searches must keep producing
+    // items of that kind instead of the default WORKFLOW_RUN.
+    const childWorkflowKindRef = useRef<"CHILD_WORKFLOW_RUN" | "CHILD_WORKFLOW_CALL" | null>(null);
     // Set while a capability add/edit was started from an OBJECT-MODEL agent box
     // (`final workflow:DurableAgent x = ...`): capability forms must edit the declaration's
     // config literal, so their codedata targets the agent variable instead of ctx statements.
@@ -1075,6 +1080,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const resetNodeSelectionStates = () => {
         setShowSidePanel(false);
         setSidePanelView(SidePanelView.NODE_LIST);
+        childWorkflowKindRef.current = null;
         durableAgentObjectVarRef.current = null;
         setExpandedGroupId(null);
         setSubPanel({ view: SubPanelView.UNDEFINED });
@@ -1305,6 +1311,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 includeAvailableFunctions: "true",
                 ...(searchKind === "ACTIVITY_CALL" && durableAgentActivityListRef.current
                     ? { nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" }
+                    : {}),
+                ...(searchKind === "WORKFLOW_RUN" && childWorkflowKindRef.current
+                    ? { nodeKind: childWorkflowKindRef.current }
                     : {}),
             },
             searchKind,
@@ -1705,10 +1714,69 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     });
                 break;
 
+            case "CHILD_WORKFLOW_RUN":
+            case "CHILD_WORKFLOW_CALL":
+                // First click from the palette opens the same searchable workflow list as
+                // Run Workflow; the nodeKind override makes selected items resolve to the
+                // child-workflow node so the right template/codegen kicks in.
+                if (sidePanelView === SidePanelView.NODE_LIST) {
+                    childWorkflowKindRef.current = node.codedata.node as "CHILD_WORKFLOW_RUN" | "CHILD_WORKFLOW_CALL";
+                    setShowProgressIndicator(true);
+                    rpcClient
+                        .getBIDiagramRpcClient()
+                        .search({
+                            position: { startLine: targetRef.current.startLine, endLine: targetRef.current.endLine },
+                            filePath: model?.fileName || fileName,
+                            queryMap: { nodeKind: childWorkflowKindRef.current },
+                            searchKind: "WORKFLOW_RUN",
+                        })
+                        .then((response) => {
+                            const panelCategories = convertFunctionCategoriesToSidePanelCategories(
+                                response.categories as Category[],
+                                FUNCTION_TYPE.REGULAR
+                            );
+                            const currentIntegrationCategory = findCurrentIntegrationCategory(panelCategories);
+                            if (currentIntegrationCategory && !currentIntegrationCategory.items.length) {
+                                currentIntegrationCategory.description =
+                                    "No workflows defined. Click below to create a new workflow.";
+                            }
+                            setCategories(panelCategories);
+                            setSidePanelView(SidePanelView.WORKFLOW_LIST);
+                            setShowSidePanel(true);
+                        })
+                        .finally(() => {
+                            setShowProgressIndicator(false);
+                        });
+                    break;
+                }
+
+                // Selecting a workflow from the list opens the node template form.
+                selectedClientName.current = category;
+                setShowProgressIndicator(true);
+                rpcClient
+                    .getBIDiagramRpcClient()
+                    .getNodeTemplate({
+                        position: targetRef.current.startLine,
+                        filePath: model?.fileName || fileName,
+                        id: node.codedata,
+                    })
+                    .then((response) => {
+                        selectedNodeRef.current = response.flowNode;
+                        nodeTemplateRef.current = response.flowNode;
+                        showEditForm.current = false;
+                        setSidePanelView(SidePanelView.FORM);
+                        setShowSidePanel(true);
+                    })
+                    .finally(() => {
+                        setShowProgressIndicator(false);
+                    });
+                break;
+
             case "WORKFLOW_RUN":
                 // First click from node list should open searchable workflow list.
                 if (sidePanelView === SidePanelView.NODE_LIST) {
-                    durableAgentObjectVarRef.current = null;
+                    childWorkflowKindRef.current = null;
+        durableAgentObjectVarRef.current = null;
                     setShowProgressIndicator(true);
                     const workflowSearchRequest: BISearchRequest = {
                         position: { startLine: targetRef.current.startLine, endLine: targetRef.current.endLine },
