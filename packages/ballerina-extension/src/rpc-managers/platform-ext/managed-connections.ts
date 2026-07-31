@@ -22,30 +22,21 @@
 // (IWso2PlatformExtensionAPI → choreo-rpc → CLI → HTTPS), which owns endpoint tables, the token
 // store and retry. This service is too new to be wrapped there, so we call it directly with the
 // token the CLI hands out (`auth/getStsToken` — the same one it puts in its own Authorization
-// header). Host table, headers and retry below are transcribed from that reference client;
-// once the service is wrapped, these three functions become platformExt delegations.
-//
-// Reference (wso2-enterprise/choreo-cli @ main): pkg/api/http-client.go,
-// internal/auth/auth.go:138, internal/region/{us,eu}_config.go
+// header). Once the service is wrapped, these three functions become platformExt delegations and
+// the host resolution below goes away with them.
 
 import axios, { AxiosRequestConfig } from "axios";
 import { getPlatformExtensionAPI } from "../../utils/ai/auth";
 
-// Copy of the `apiHost` argument to BuildChoreoEnvConfig in internal/region/{us,eu}_config.go.
-// Region and env are separate hostnames, so the host must be resolved before any request —
-// no gateway routes by identity. Treat the Go files as the source of truth.
-const CHOREO_API_HOST: Record<"US" | "EU", Record<string, string>> = {
-    US: {
-        prod: "https://apis.choreo.dev",
-        stage: "https://apis.st.choreo.dev",
-        dev: "https://apis.preview-dv.choreo.dev",
-    },
-    EU: {
-        prod: "https://apis.eu.choreo.dev",
-        stage: "https://apis.st.eu.choreo.dev",
-        dev: "https://apis.dv.eu.choreo.dev",
-    },
+// Production endpoints only. Each region is a separate hostname — no gateway routes by identity —
+// so the host is resolved per request.
+const CHOREO_PROD_API_HOST: Record<"US" | "EU", string> = {
+    US: "https://apis.choreo.dev",
+    EU: "https://apis.eu.choreo.dev",
 };
+
+// Non-production hosts are not listed here; set this to target one.
+const API_HOST_OVERRIDE_VAR = "VSCODE_CHOREO_API_HOST";
 
 // Paths from the service's openapi.yaml. If it ends up fronted by the Choreo gateway under a
 // `/<service>/<version>` prefix like its neighbours, prepend that here.
@@ -54,19 +45,25 @@ const MANAGED_LIBRARIES_PATH = "/managed-libraries";
 const MANAGED_CONNECTIONS_PATH = "/managed-connections";
 
 async function resolveHost(): Promise<string | undefined> {
+    const override = process.env[API_HOST_OVERRIDE_VAR]?.trim();
+    if (override) {
+        console.log(`[managed-connections] using ${API_HOST_OVERRIDE_VAR}='${override}'.`);
+        return override;
+    }
+
     const api = await getPlatformExtensionAPI();
     if (!api) {
         console.warn("[managed-connections] WSO2 platform extension unavailable — cannot resolve a service host.");
         return undefined;
     }
 
-    const region = api.getAuthState()?.region ?? "US";
+    const region = api.getAuthState()?.region === "EU" ? "EU" : "US";
     const env = api.getWebviewStateStore()?.choreoEnv ?? "prod";
-    const host = CHOREO_API_HOST[region]?.[env];
-    if (!host) {
-        console.warn(`[managed-connections] no known Choreo API host for region='${region}' env='${env}'.`);
+    if (env !== "prod") {
+        console.warn(`[managed-connections] no host is listed for env='${env}' — set ${API_HOST_OVERRIDE_VAR} ` +
+            `to target it. Falling back to ${region} production.`);
     }
-    return host;
+    return CHOREO_PROD_API_HOST[region];
 }
 
 const BASE_HEADERS = {
