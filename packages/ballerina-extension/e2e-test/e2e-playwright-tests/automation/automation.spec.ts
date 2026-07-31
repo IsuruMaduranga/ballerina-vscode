@@ -16,17 +16,25 @@
  * under the License.
  */
 import { test } from '@playwright/test';
+import path from 'path';
 import { addArtifact, BI_INTEGRATOR_LABEL, BI_WEBVIEW_NOT_FOUND_ERROR, initTest, page } from '../utils/helpers';
 import { Form, switchToIFrame } from '@wso2/playwright-vscode-tester';
 import { ProjectExplorer } from '../utils/pages';
 import { DEFAULT_PROJECT_NAME } from '../utils/helpers/constants';
 
+// This test creates the project's *first* automation, so — unlike every other
+// suite — it needs a genuinely empty template rather than the shared
+// `empty_project` (which now ships a seeded automation so other suites can
+// reach "Add Artifact" on an otherwise-empty integration; see addArtifact()).
+const AUTOMATION_CREATION_PROJECT_TEMPLATE = path.join(__dirname, '..', 'data', 'automation_creation_project');
+
 export default function createTests() {
     test.describe.serial('Automation Tests', {
     }, async () => {
-        initTest();
+        initTest(true, true, undefined, undefined, AUTOMATION_CREATION_PROJECT_TEMPLATE);
         test('Create Automation', async () => {
-            // 1. Click on the "Add Artifact" button
+            // 1. Click on the "Add Artifact" button (or, on this empty integration,
+            //    "Add Integration", which reopens the creation wizard's artifact picker)
             // 2. Verify the Artifacts menu is displayed
             // 3. Under "Automation" section, click on "Automation" option
             await addArtifact('Automation', 'automation');
@@ -36,8 +44,10 @@ export default function createTests() {
                 throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
             }
 
-            // 4. Verify the "Create New Automation" form is displayed
-            const createForm = artifactWebView.getByRole('heading', { name: /Create New Automation/i });
+            // 4. Verify the "Create Automation" form is displayed. On an empty
+            // integration this is the creation wizard's Configure step ("Create
+            // Automation"); elsewhere it's the in-project form ("Create New Automation").
+            const createForm = artifactWebView.getByRole('heading', { name: /Create( New)? Automation/i });
             await createForm.waitFor({ timeout: 10000 });
 
             // 6. (Optional) Click on "Advanced Configurations" to expand the section
@@ -56,8 +66,9 @@ export default function createTests() {
                 }
             }
 
-            // 8. Click on the "Create" button
-            await artifactWebView.getByRole('button', { name: 'Create' }).click();
+            // 8. Click on the submit button ("Create" in the in-project form,
+            // "Create Integration" in the creation wizard's Configure step)
+            await artifactWebView.getByRole('button', { name: /^Create( Integration)?$/ }).click();
 
             // 9. Verify the Automation is created and the automation designer view is displayed
             const diagramCanvas = artifactWebView.locator('#bi-diagram-canvas');

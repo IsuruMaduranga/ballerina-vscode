@@ -21,7 +21,12 @@ import { page } from "./setup";
 import { BI_INTEGRATOR_LABEL, BI_WEBVIEW_NOT_FOUND_ERROR } from "./constants";
 
 /**
- * Add an artifact to the project
+ * Add an artifact to the project. The overview header shows "Add Artifact" (opening the
+ * flat artifact-list picker) once the integration has at least one artifact; on a still-empty
+ * integration it shows "Add Integration" instead, which reopens the creation wizard's Type
+ * step — a card picker restricted to the subset of kinds the wizard supports, but sharing the
+ * same card ids as the flat picker. That step requires an explicit "Next" after selecting the
+ * card, unlike the flat picker's direct card-click.
  */
 export async function addArtifact(artifactName: string, testId: string) {
     console.log(`Adding artifact: ${artifactName}`);
@@ -29,12 +34,26 @@ export async function addArtifact(artifactName: string, testId: string) {
     if (!artifactWebView) {
         throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
     }
-    // Navigate to the overview page
-    await artifactWebView.getByRole('button', { name: ' Add Artifact' }).click();
-    // how to get element by id
-    const addArtifactBtn = artifactWebView.locator(`#${testId}`);
-    await addArtifactBtn.waitFor();
+    const addArtifactBtn = artifactWebView.getByRole('button', { name: /Add Artifact/i });
+    const addIntegrationBtn = artifactWebView.getByRole('button', { name: /Add Integration/i });
+    await Promise.race([
+        addArtifactBtn.waitFor({ timeout: 30000 }),
+        addIntegrationBtn.waitFor({ timeout: 30000 }),
+    ]);
+
+    if (await addIntegrationBtn.isVisible().catch(() => false)) {
+        await addIntegrationBtn.click();
+        const card = artifactWebView.locator(`#${testId}`);
+        await card.waitFor();
+        await card.click();
+        await artifactWebView.getByRole('button', { name: 'Next' }).click();
+        return;
+    }
+
     await addArtifactBtn.click();
+    const card = artifactWebView.locator(`#${testId}`);
+    await card.waitFor();
+    await card.click();
 }
 
 /**

@@ -63,20 +63,25 @@ export default function createTests() {
             console.log('Filling integration create form');
 
             const integrationName = "testIntegration";
+            // Name step: integration name + path, then advance to the Type step.
+            const nameInput = biWebview.getByRole('textbox', { name: /Integration Name/i });
+            await nameInput.waitFor();
+            await nameInput.fill(integrationName);
+
             await form.fill({
                 values: {
-                    'Integration Name*': {
-                        type: 'input',
-                        value: integrationName,
+                    'Select Path': {
+                        type: 'directory',
+                        value: dataFolder,
                     }
                 },
             });
 
-            // Fill the project Path
-            const projectPathInput = biWebview.locator('input#project-folder-selector-input');
-            await projectPathInput.fill(dataFolder);
+            await biWebview.getByRole('button', { name: 'Next' }).click();
 
-            await form.submit('Create Integration');
+            // Type step: skip straight to an empty integration — this test only
+            // covers project creation, not artifact creation.
+            await biWebview.getByRole('button', { name: 'Create Empty Integration' }).click();
 
             console.log('Waiting for project and BI webview');
             const artifactWebView = await getWebview(BI_INTEGRATOR_LABEL, page);

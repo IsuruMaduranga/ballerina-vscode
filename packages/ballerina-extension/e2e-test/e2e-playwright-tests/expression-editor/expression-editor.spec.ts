@@ -17,14 +17,20 @@
  */
 
 import { test } from '@playwright/test';
+import path from 'path';
 import { addArtifact, BI_INTEGRATOR_LABEL, BI_WEBVIEW_NOT_FOUND_ERROR, initTest, page } from '../utils/helpers';
 import { switchToIFrame } from '@wso2/playwright-vscode-tester';
 import { Diagram, SidePanel } from '../utils/pages';
 
+// Creates the project's *first* automation, so it needs a genuinely empty
+// template rather than the shared `empty_project` (which ships a seeded
+// automation so other suites can reach "Add Artifact"; see automation.spec.ts).
+const AUTOMATION_CREATION_PROJECT_TEMPLATE = path.join(__dirname, '..', 'data', 'automation_creation_project');
+
 export default function createTests() {
     test.describe.serial('Expression Editor Tests', {
     }, async () => {
-        initTest();
+        initTest(true, true, undefined, undefined, AUTOMATION_CREATION_PROJECT_TEMPLATE);
         test('Retrieving suggestions', async ({ }, testInfo) => {
             const testAttempt = testInfo.retry + 1;
             console.log('Retrieving suggestions: ', testAttempt);
@@ -36,7 +42,8 @@ export default function createTests() {
             if (!artifactWebView) {
                 throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
             }
-            await artifactWebView.getByRole('button', { name: 'Create' }).click();
+            // "Create" in the in-project form, "Create Integration" in the wizard's Configure step
+            await artifactWebView.getByRole('button', { name: /^Create( Integration)?$/ }).click();
 
             // Add a node to the diagram
             const diagram = new Diagram(page.page);

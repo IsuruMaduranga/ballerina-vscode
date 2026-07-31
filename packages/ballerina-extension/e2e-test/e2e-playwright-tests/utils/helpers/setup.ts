@@ -458,21 +458,28 @@ export async function createProject(page: ExtendedPage, projectName?: string) {
     if (!webview) {
         throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
     }
+
+    // Name step: integration name + path, then advance to the Type step.
+    const nameInput = webview.getByRole('textbox', { name: /Integration Name/i });
+    await nameInput.waitFor();
+    await nameInput.fill(projectName ?? DEFAULT_PROJECT_NAME);
+
     const form = new Form(page.page, BI_INTEGRATOR_LABEL, webview);
     await form.switchToFormView(false, webview);
     await form.fill({
         values: {
-            'Integration Name*': {
-                type: 'input',
-                value: projectName ?? DEFAULT_PROJECT_NAME,
-            },
             'Select Path': {
                 type: 'directory',
                 value: newProjectPath
             }
         }
     });
-    await form.submit('Create Integration');
+    await webview.getByRole('button', { name: 'Next' }).click();
+
+    // Type step: skip straight to an empty integration, matching this helper's
+    // old single-step "fill name+path, submit" semantics.
+    await webview.getByRole('button', { name: 'Create Empty Integration' }).click();
+
     const artifactWebView = await getWebview(BI_INTEGRATOR_LABEL, page);
     if (!artifactWebView) {
         throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
