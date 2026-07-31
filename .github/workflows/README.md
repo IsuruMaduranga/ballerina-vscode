@@ -157,13 +157,14 @@ where one repo held several extensions and each needed its own stable trunk
 
 ## The nightly branch
 
-`schedule.yml` builds from a `builds/nightly` branch that it maintains itself: every run
-resets it to `origin/main`, commits the timestamped version, and force-pushes. So
-`git diff main builds/nightly` is always exactly the version bump, and every nightly VSIX has
-one commit that pins both its source and its version.
+`schedule.yml` builds from a `builds/nightly` branch that it maintains itself. Scheduled
+runs reset it to `origin/main`; manual runs reset it to the selected `sourceBranch`, which
+defaults to `main`. The workflow then commits the timestamped version and force-pushes the
+branch. Therefore `git diff origin/<sourceBranch> builds/nightly` is exactly the version
+bump, and every nightly VSIX has one commit that pins both its source and its version.
 
 - **Never open a PR against `builds/nightly` and never merge it anywhere** — it is discarded
-  and recreated daily.
+  and recreated on every run.
 - The extension build is pinned to the nightly *commit SHA*, not the branch name, so a
   concurrent run cannot swap the tree mid-build. The build does not re-stamp the
   version; the commit is authoritative (re-deriving the timestamp would produce a

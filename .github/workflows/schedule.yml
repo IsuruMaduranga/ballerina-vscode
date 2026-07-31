@@ -25,13 +25,13 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
-  # builds/nightly branch — always main plus a single version commit
+  # builds/nightly branch — selected source plus a single version commit
   #
-  # The branch is reset to the source branch (main, on the schedule) every run and
-  # force-pushed, so it is never a merge target and never accumulates history:
-  # `git diff main builds/nightly` is always exactly the version bump. Its purpose is to
-  # give every nightly VSIX an inspectable commit that pins both the source and
-  # the version it was built at.
+  # Scheduled runs reset the branch to main; manual runs reset it to sourceBranch (main by
+  # default). It is then force-pushed, so it is never a merge target and never accumulates
+  # history. `git diff <selected-source> builds/nightly` is always exactly the version bump.
+  # Its purpose is to give every nightly VSIX an inspectable commit that pins both the source
+  # and the version it was built at.
   #
   # Note that .github/actions/* used by the downstream jobs resolve from the
   # checked-out builds/nightly tree, so a change to them only takes effect once it is on main
@@ -68,7 +68,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # Checkout fetches only the triggering ref, so fetch the requested source
           # explicitly even though the initial checkout uses fetch-depth 0.
-          git check-ref-format --branch "${SOURCE_BRANCH}" >/dev/null
+          SOURCE_BRANCH="$(git check-ref-format --branch "${SOURCE_BRANCH}")"
           git fetch origin \
             "refs/heads/${SOURCE_BRANCH}:refs/remotes/origin/${SOURCE_BRANCH}"
           git checkout -B builds/nightly "origin/${SOURCE_BRANCH}"
@@ -135,8 +135,8 @@ jobs:
           timestamp=$(date '+%Y%m%d-%H%M%S')
           targets='[]'
 
-          # 'builds/nightly' rather than 'main': it is main plus the version commit, so the
-          # LS verified here is the same tree the extension build packages.
+          # 'builds/nightly' rather than the selected source branch: it includes the version
+          # commit, so the LS verified here is the same tree the extension build packages.
           branches="builds/nightly"
           if [ -n "${latest_branch}" ]; then
             branches="builds/nightly ${latest_branch}"
