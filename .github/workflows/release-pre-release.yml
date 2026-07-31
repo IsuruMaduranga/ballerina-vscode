@@ -7,12 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       isPreRelease:
-        description: 'Pre-release: version becomes major.(minor-1).<minutes since 2020-01-01 UTC> and the VSIX is packaged with --pre-release. Unchecked = a real release at the extension version minus -SNAPSHOT'
+        description: 'Pre-release: an even snapshot minor becomes the previous odd minor with a timestamped patch, and the VSIX is packaged with --pre-release. Unchecked = a real release at the extension version minus -SNAPSHOT'
         required: true
         type: boolean
         default: true
       githubRelease:
-        description: 'Create the GitHub Release and tag and publish the matching LS to GitHub Packages. For a real release, also perform the release branch/follow-up PR handling. Unchecked = build artifacts only'
+        description: 'Create the GitHub Release and tag with both VSIX and LS JAR assets, and publish the LS Maven package to GitHub Packages. For a real release, also perform release branch/follow-up PR handling. Unchecked = build artifacts only'
         required: false
         type: boolean
         default: false
@@ -43,7 +43,7 @@ jobs:
       runLSTests: ${{ inputs.runBackendTests }}
 
   Release:
-    name: Release VSIX
+    name: Release VSIX and language server
     needs: Build
     if: ${{ inputs.githubRelease }}
     timeout-minutes: 45

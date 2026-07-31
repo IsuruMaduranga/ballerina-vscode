@@ -34,7 +34,7 @@
  *
  * Exit codes:
  * - 0: version printed on stdout
- * - 1: the extension version is not a 'major.minor.patch-SNAPSHOT' with a decrementable minor,
+ * - 1: the extension version is not a 'major.minor.patch-SNAPSHOT' with a positive even minor,
  *      or the stamp is not a positive integer below int32
  */
 
@@ -58,6 +58,9 @@ function timestamp(now) {
   return String(Math.floor((now.getTime() - STAMP_EPOCH_UTC) / 60000));
 }
 
+/**
+ * Derive an odd-minor nightly version from the next even-minor release snapshot.
+ */
 function deriveNightlyVersion(extensionVersion, stamp) {
   const match = SNAPSHOT_VERSION.exec(extensionVersion);
   if (!match) {
@@ -80,7 +83,15 @@ function deriveNightlyVersion(extensionVersion, stamp) {
     throw new Error(
       `Cannot derive a nightly version from "${extensionVersion}": the minor version is 0, ` +
       `so there is no 'minor - 1' to publish under. Set the extension version to a ` +
-      `non-zero minor (e.g. ${major}.1.0-SNAPSHOT) or adjust the nightly scheme.`
+      `positive even minor (e.g. ${major}.2.0-SNAPSHOT) or adjust the nightly scheme.`
+    );
+  }
+
+  if (minor % 2 !== 0) {
+    throw new Error(
+      `Cannot derive a nightly version from "${extensionVersion}": the snapshot minor ` +
+      `must be even so minor - 1 is the odd pre-release channel. Set the extension ` +
+      `version to the next even-minor release snapshot.`
     );
   }
 

@@ -4,18 +4,9 @@ Ported from `wso2/vscode-extensions` and `ballerina-platform/ballerina-language-
 then pruned to a ballerina-only monorepo. Paths have been rewritten to the new layout
 (`packages/ballerina-extension`, `submodules/wso2-vscode-extensions/workspaces/common-libs/`).
 
-## Ballerina language server workflows
-
-| File | Source | Trigger |
-|---|---|---|
-| `ls-publish-release.yml` | ballerina-language-server repo | manual release |
-
-(The LS PR build, nightly build and Trivy scan are merged into `pull-request.yml` and
-`schedule.yml`; there are no separate `ls-build-master.yml` / `ls-trivy.yml`
-workflows in this repo.)
-
-Each has `defaults.run.working-directory: packages/ballerina-language-server` injected so
-`./gradlew …` steps resolve correctly from repo root.
+The LS build, tests, Trivy scan, GitHub Release asset, and Maven package publication are
+integrated into the corresponding extension workflows. There is no independent LS release
+workflow because the extension manifest owns the shared extension/LS version.
 
 ## VSCode extension workflows
 
@@ -52,8 +43,8 @@ same manifest during configuration, so there is no generated version file and no
 step that rewrites tracked files.
 
 `-Pversion=<v>` overrides the Gradle side for a one-off build, by normal Gradle precedence
-(an explicit project property beats the manifest default). That is how `ls-publish-release.yml`
-and the scheduled nightly LS matrix pin a version.
+(an explicit project property beats the manifest default). The scheduled nightly LS matrix
+uses it to pin a version.
 
 Packaging itself goes through the shared
 `submodules/.../common-libs/scripts/package-vsix.js`, unchanged. The extension's `postbuild`
@@ -106,10 +97,11 @@ time, long after the release is tagged. Decode one with:
 node -e 'console.log(new Date(Date.UTC(2020,0,1) + <stamp>*60000).toISOString())'
 ```
 
-The script hard-fails on an extension version that is not `major.minor.patch-SNAPSHOT`, and on a
-minor of `0` (there is no `minor - 1` to publish under; a new major line needs a human
-decision). `updateVersion` therefore only calls it when the extension manifest actually carries
-`-SNAPSHOT`; on a release line or staging branch the authored version is published as-is.
+The script hard-fails on an extension version that is not `major.minor.patch-SNAPSHOT`, on a
+minor of `0`, or on an odd snapshot minor. A positive even source minor is required so
+`minor - 1` is always the odd pre-release channel. `updateVersion` therefore only calls it
+when the extension manifest actually carries `-SNAPSHOT`; on a release line or staging
+branch the authored version is published as-is.
 **Consequence:** those branches must be bumped by hand between releases, or the second run
 reuses a version that both the Marketplace and the git tag reject.
 
@@ -224,9 +216,9 @@ missing, the copy command fails rather than silently substituting one.
 
 When `githubRelease` is selected, `release-pre-release.yml` publishes
 `io.ballerina:ballerina-language-server` to GitHub Packages at the same version before
-creating the GitHub release or pre-release. The standalone `ls-publish-release.yml` remains
-available for an independent LS publication. Neither path runs Gradle's `release` task:
-that task rewrote the `version=`
+creating the GitHub release or pre-release. There is no independent LS publication
+workflow because the extension manifest owns the shared version. This path does not run
+Gradle's `release` task: that task rewrote the `version=`
 key in `gradle.properties`, which no longer exists now that the extension manifest owns
 the version.
 

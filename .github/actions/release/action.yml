@@ -41,10 +41,6 @@ inputs:
     description: 'Stage the Ballerina version files when committing'
     required: false
     default: 'false'
-  commonLibs:
-    description: 'Stage the common-libs version files when committing'
-    required: false
-    default: 'false'
 
 runs:
   using: "composite"
@@ -121,11 +117,6 @@ runs:
       shell: bash
       # The extension manifest is the authored version and Gradle reads it directly.
       run: git add packages/ballerina-extension/package.json
-
-    - name: Stage common lib version files
-      if: ${{ inputs.releaseBranch == 'true' && inputs.commonLibs == 'true' }}
-      shell: bash
-      run: git add submodules/wso2-vscode-extensions/workspaces/common-libs/*/package.json
 
     - name: Commit version and push the release branch
       if: ${{ inputs.releaseBranch == 'true' }}
