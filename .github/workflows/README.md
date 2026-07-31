@@ -25,7 +25,7 @@ Each has `defaults.run.working-directory: packages/ballerina-language-server` in
 | `devBuild.yml` | manual + `workflow_call` | Builds a custom branch as a timestamped pre-release VSIX. It creates workflow artifacts only: no GitHub release and no marketplace publication. `schedule.yml` reuses this workflow after stamping the nightly branch. |
 | `schedule.yml` | nightly cron | Syncs the `nightly` branch, runs the LS multi-branch pack/test/Windows-build matrix, calls `devBuild.yml`, and moves the `nightly` tag after every job passes. The VSIX remains a workflow artifact; no GitHub Release is created. See [Versioning](#versioning) and [The nightly branch](#the-nightly-branch). |
 | `pull-request.yml` | PRs + manual | Detects changes with `dorny/paths-filter`; if anything build-relevant changed, runs `reusable-build.yml` which builds the entire chain (LS via Gradle, then all TS packages and the extension VSIX via rush) in a single job. Windows LS coverage runs in `schedule.yml` only. |
-| `release-pre-release.yml` | manual dispatch | Builds either a timestamped pre-release or the release version authored in the extension manifest. Its `githubRelease` input optionally creates a GitHub Release with the VSIX and LS jar and, for a real release, performs the release branch/PR handling. |
+| `release-pre-release.yml` | manual dispatch | Builds either a timestamped pre-release or the release version authored in the extension manifest. Its `githubRelease` input creates a GitHub Release with the VSIX and LS jar and publishes the matching `io.ballerina:ballerina-language-server` package. Real releases also perform the release branch/PR handling. |
 | `publish-vsix.yml` | manual dispatch | Publishes a built VSIX (passed by `workflowRunId`) to VSCode Marketplace + OpenVSX |
 | `cache-cleanup.yml` | PR closed + manual | Generic — usable as-is |
 | `sync-main-with-releases.yml` | PR merged to a `*.*.x` line branch | Opens an auto-sync PR back to `main` |
@@ -188,14 +188,14 @@ can be downloaded on its own to debug a regression, or pointed at an existing in
 `ballerina.langServerPath`. It is the exact jar inside the VSIX, packed at the same version,
 so the two can never disagree about what was built.
 
-| Dispatch | GitHub release + tag | Version commit + `release/X.Y.Z` |
-|---|---|---|
-| Release + `githubRelease: true` | yes | yes |
-| Release + `githubRelease: false` | no; VSIX artifact only | no |
-| Pre-release + `githubRelease: true` | yes, on the dispatched commit | no |
-| Pre-release + `githubRelease: false` | no; VSIX artifact only | no |
-| Custom development build | no | no |
-| Scheduled nightly build | no; updates the `nightly` Git tag | nightly version commit only |
+| Dispatch | GitHub release + tag | LS GitHub Package | Version commit + `release/X.Y.Z` |
+|---|---|---|---|
+| Release + `githubRelease: true` | yes | yes | yes |
+| Release + `githubRelease: false` | no; VSIX artifact only | no | no |
+| Pre-release + `githubRelease: true` | yes, on the dispatched commit | yes | no |
+| Pre-release + `githubRelease: false` | no; VSIX artifact only | no | no |
+| Custom development build | no | no | no |
+| Scheduled nightly build | no; updates the `nightly` Git tag | no | nightly version commit only |
 
 Marketplace publishing remains manual: `publish-vsix.yml` takes the `VSIX` workflow artifact
 by run ID (30-day retention), independently of the GitHub release.
@@ -219,14 +219,17 @@ Consequence: building the extension requires being able to build the LS — JDK 
 GitHub Packages credentials (`packageUser` / `packagePAT`). If the jar is missing,
 `copy-ls.js` fails with instructions rather than silently substituting one.
 
-`ls-publish-release.yml` publishes `io.ballerina:ballerina-language-server` at the same
-parent version. It does not run Gradle's `release` task: that task rewrote the `version=`
+When `githubRelease` is selected, `release-pre-release.yml` publishes
+`io.ballerina:ballerina-language-server` to GitHub Packages at the same version before
+creating the GitHub release or pre-release. The standalone `ls-publish-release.yml` remains
+available for an independent LS publication. Neither path runs Gradle's `release` task:
+that task rewrote the `version=`
 key in `gradle.properties`, which no longer exists now that the extension manifest owns
 the version.
 
 ## Required GitHub secrets
 
-- `BALLERINA_BOT_USERNAME` / `BALLERINA_BOT_EMAIL` / `BALLERINA_BOT_TOKEN` — LS publish workflow (git identity + write to `ballerina-platform` packages + releases)
+- `BALLERINA_BOT_USERNAME` / `BALLERINA_BOT_EMAIL` / `BALLERINA_BOT_TOKEN` — LS publishing from either release workflow (git identity + write to `ballerina-platform` packages + releases)
 - `BALLERINA_CENTRAL_ACCESS_TOKEN` — LS publish to Ballerina Central
 - `VSCE_TOKEN` — publish-vsix → VSCode Marketplace
 - `OPENVSX_TOKEN` — publish-vsix → OpenVSX

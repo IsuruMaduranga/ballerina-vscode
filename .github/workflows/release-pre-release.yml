@@ -9,7 +9,7 @@ on:
         type: boolean
         default: true
       githubRelease:
-        description: 'Create the GitHub Release and tag. For a real release, this also performs the release branch and follow-up PR handling. Unchecked = build the VSIX artifact only'
+        description: 'Create the GitHub Release and tag and publish the matching LS to GitHub Packages. For a real release, also perform the release branch/follow-up PR handling. Unchecked = build artifacts only'
         required: false
         type: boolean
         default: false
@@ -69,6 +69,38 @@ jobs:
           cache-pnpm: false
           set-env: false
           rush-install: true
+
+      - name: Set up JDK 21 for language-server publication
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: 'temurin'
+          java-version: 21.0.3
+
+      - name: Setup Gradle for language-server publication
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Set up Ballerina for language-server publication
+        uses: ballerina-platform/setup-ballerina@97fd67111e3c3ecdfafff96fc24d95ad909ab299 # v1.1.4
+        with:
+          version: 2201.13.4
+
+      # This job runs only when githubRelease is selected. Publish the matching
+      # Maven package after the complete build/test workflow succeeds and before
+      # creating either a release or pre-release on GitHub.
+      - name: Publish language server to GitHub Packages
+        working-directory: packages/ballerina-language-server
+        env:
+          packageUser: ${{ secrets.BALLERINA_BOT_USERNAME }}
+          packagePAT: ${{ secrets.BALLERINA_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${packageUser}" ] || [ -z "${packagePAT}" ]; then
+            echo "::error::BALLERINA_BOT_USERNAME and BALLERINA_BOT_TOKEN are required to publish the language-server package."
+            exit 1
+          fi
+          version=$(node -p "require('../ballerina-extension/package.json').version")
+          echo "Publishing io.ballerina:ballerina-language-server:${version} to GitHub Packages"
+          ./gradlew -Pversion="${version}" publish -x check -x test
 
       - name: Get version
         id: vsix
