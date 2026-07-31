@@ -20,14 +20,18 @@ package io.ballerina.modelgenerator.commons;
 
 import io.ballerina.projects.DocumentId;
 import io.ballerina.projects.Module;
+import io.ballerina.projects.ModuleId;
 import io.ballerina.projects.Package;
 import io.ballerina.projects.Project;
 
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.WeakHashMap;
 import java.util.stream.StreamSupport;
 
 /**
@@ -42,6 +46,9 @@ public final class PackageModuleUtils {
     public static final String WORKSPACE_PACKAGE_MODULE = "WORKSPACE_PACKAGE_MODULE";
     public static final String DEFAULT_MODULE = "DEFAULT_MODULE";
     public static final String SUBMODULE = "SUBMODULE";
+
+    private static final Map<ModuleId, SourceKind> SOURCE_KIND_CACHE =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     private PackageModuleUtils() {
     }
@@ -67,6 +74,10 @@ public final class PackageModuleUtils {
     }
 
     public static SourceKind sourceKind(Module module) {
+        return SOURCE_KIND_CACHE.computeIfAbsent(module.moduleId(), ignored -> classifySource(module));
+    }
+
+    private static SourceKind classifySource(Module module) {
         if (module.isDefaultModule()) {
             return SourceKind.DEFAULT;
         }
