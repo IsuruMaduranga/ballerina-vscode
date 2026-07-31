@@ -25,6 +25,7 @@ import com.google.gson.reflect.TypeToken;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.flowmodelgenerator.core.InstructionLoader;
+import io.ballerina.flowmodelgenerator.core.copilot.central.CentralLibrarySearchAccessor;
 import io.ballerina.flowmodelgenerator.core.copilot.database.LibraryDatabaseAccessor;
 import io.ballerina.flowmodelgenerator.core.copilot.model.Annotation;
 import io.ballerina.flowmodelgenerator.core.copilot.model.Client;
@@ -53,6 +54,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
@@ -63,9 +66,16 @@ import java.util.stream.Collectors;
  */
 public class CopilotLibraryManager {
 
+    private static final Logger LOGGER = Logger.getLogger(CopilotLibraryManager.class.getName());
     private static final Gson GSON = new Gson();
     private static final String EXCLUSION_JSON_PATH = "/copilot/exclusion.json";
     private static final String TYPE_GENERIC = "generic";
+
+    // Maximum number of libraries a keyword search hands back, applied after exclusions.
+    private static final int MAX_SEARCH_RESULTS = 10;
+
+    // When set to "true", keyword search skips Ballerina Central and queries the bundled index only.
+    private static final String USE_LOCAL_INDEX_PROPERTY = "ballerina.copilot.librarySearch.useLocalIndex";
 
     // Libraries for which README content should be included in the filtered response.
     private static final Set<String> README_WHITELIST = Set.of(
@@ -188,26 +198,57 @@ public class CopilotLibraryManager {
     }
 
     /**
-     * Searches libraries by keywords across packages, types, connectors, and functions.
+     * Searches libraries by keywords against the Ballerina Central registry, falling back to the
+     * bundled search index when Central cannot be reached.
      *
      * @param keywords Array of search keywords
-     * @return List of Library objects containing name and description (up to 20 results)
+     * @return List of Library objects containing name and description (up to
+     *         {@value #MAX_SEARCH_RESULTS} results)
      */
     public List<Library> getLibrariesBySearch(String[] keywords) {
-        List<Library> libraries = new ArrayList<>();
+        List<Library> libraries = toLibraries(searchPackageDescriptions(keywords));
+
+        // Exclusions run before truncation so that an excluded library does not consume a result slot.
+        applyLibraryExclusions(libraries);
+        return libraries.size() > MAX_SEARCH_RESULTS
+                ? new ArrayList<>(libraries.subList(0, MAX_SEARCH_RESULTS))
+                : libraries;
+    }
+
+    /**
+     * Resolves keyword matches to a package name to description map, preferring Ballerina Central and
+     * degrading to the bundled search index when the Central lookup fails.
+     *
+     * @param keywords Array of search keywords
+     * @return map of package names to descriptions, in relevance order
+     */
+    private Map<String, String> searchPackageDescriptions(String[] keywords) {
+        if (Boolean.parseBoolean(System.getProperty(USE_LOCAL_INDEX_PROPERTY))) {
+            return searchLocalIndex(keywords);
+        }
 
         try {
-            Map<String, String> packageToDescriptionMap = LibraryDatabaseAccessor.searchLibrariesByKeywords(keywords);
+            return new CentralLibrarySearchAccessor().searchLibrariesByKeywords(keywords);
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING,
+                    "Ballerina Central library search failed; falling back to the bundled search index", e);
+            return searchLocalIndex(keywords);
+        }
+    }
 
-            for (Map.Entry<String, String> entry : packageToDescriptionMap.entrySet()) {
-                Library library = new Library(entry.getKey(), entry.getValue());
-                libraries.add(library);
-            }
+    private Map<String, String> searchLocalIndex(String[] keywords) {
+        try {
+            return LibraryDatabaseAccessor.searchLibrariesByKeywords(keywords);
         } catch (SQLException e) {
             throw new RuntimeException("Failed to search libraries by keywords: " + e.getMessage(), e);
         }
+    }
 
-        applyLibraryExclusions(libraries);
+    private static List<Library> toLibraries(Map<String, String> packageToDescriptionMap) {
+        List<Library> libraries = new ArrayList<>();
+        for (Map.Entry<String, String> entry : packageToDescriptionMap.entrySet()) {
+            libraries.add(new Library(entry.getKey(), entry.getValue()));
+        }
         return libraries;
     }
 
