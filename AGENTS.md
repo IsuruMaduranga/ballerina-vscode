@@ -99,7 +99,7 @@ already covers extension + tests + LS attach.
 
 ### "Reproduce a CI failure locally"
 
-The PR workflow (`.github/workflows/pull-request.yml`) calls `.github/workflows/build.yml`
+The PR workflow (`.github/workflows/pull-request.yml`) calls `.github/workflows/reusable-build.yml`
 which delegates to the composite action at `.github/actions/build/action.yml`.
 That action ultimately does:
 

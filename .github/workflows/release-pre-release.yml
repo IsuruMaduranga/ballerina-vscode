@@ -27,7 +27,7 @@ on:
 jobs:
   Build:
     name: Build branch - ${{ github.ref_name }}
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/reusable-build.yml
     secrets: inherit
     with:
       runOnAWS: false

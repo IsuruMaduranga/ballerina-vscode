@@ -18,7 +18,7 @@
 
 // Fast L2 render tests (jsdom, no LS). Renders real components/views against COMMITTED
 // fixtures captured from the real LS (see *.capture.test.ts + jest.headless-view.config.js).
-// This IS the fast PR job's config (auto-discovered by build.yml as jest.config.js).
+// This IS the fast PR job's config (auto-discovered by reusable-build.yml as jest.config.js).
 // The `.render.` suffix keeps the L4 capture/drift tests out of this fast run.
 
 const base = require('@wso2/test-config/jest-preset');

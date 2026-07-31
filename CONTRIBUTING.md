@@ -192,7 +192,7 @@ for cfg in packages/*/jest.config.js; do ( cd "$(dirname "$cfg")" && pnpm test )
 ```
 
 CI runs the same set in the **`fast-tests`** job on every PR (it auto-discovers any
-package with a `jest.config.js` — see `.github/workflows/build.yml`).
+package with a `jest.config.js` — see `.github/workflows/reusable-build.yml`).
 
 ### Adding tests to a package
 

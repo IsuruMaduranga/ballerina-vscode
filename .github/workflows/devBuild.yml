@@ -37,7 +37,7 @@ on:
 jobs:
   Build:
     name: Pre-release build - ${{ github.ref_name }}
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/reusable-build.yml
     secrets: inherit
     with:
       ref: ${{ inputs.ref }}

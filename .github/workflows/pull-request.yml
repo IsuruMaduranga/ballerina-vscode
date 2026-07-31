@@ -39,18 +39,18 @@ jobs:
               - 'rush.json'
               - 'rush-config.json'
               - '.github/workflows/pull-request.yml'
-              - '.github/workflows/build.yml'
+              - '.github/workflows/reusable-build.yml'
               - '.github/actions/**'
             ls:
               - 'packages/ballerina-language-server/**'
-              - '.github/workflows/build.yml'
+              - '.github/workflows/reusable-build.yml'
               - '.github/actions/ls-test/action.yml'
 
   build:
     name: Build
     needs: changes
     if: needs.changes.outputs.build == 'true'
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/reusable-build.yml
     secrets: inherit
     with:
       runOnAWS: ${{ contains(github.event.pull_request.labels.*.name, 'Runner/AWS') }}
