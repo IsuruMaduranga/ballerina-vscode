@@ -73,6 +73,12 @@ public class CopilotLibraryManager {
     private static final String EXCLUSION_JSON_PATH = "/copilot/exclusion.json";
     private static final String TYPE_GENERIC = "generic";
 
+    // Maximum number of libraries a keyword search hands back, applied after exclusions.
+    private static final int MAX_SEARCH_RESULTS = 10;
+
+    // When set to "true", keyword search skips Ballerina Central and queries the bundled index only.
+    private static final String USE_LOCAL_INDEX_PROPERTY = "ballerina.copilot.librarySearch.useLocalIndex";
+
     // Organizations whose packages have their documentation included in the filtered response.
     // Documentation is trusted for these orgs, so it is whitelisted at the organization level
     // rather than per package.
