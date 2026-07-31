@@ -23,12 +23,25 @@ import { handleOpenFile, handleOpenRepo } from ".";
 import { CMP_OPEN_VSCODE_URL, TM_EVENT_OPEN_FILE_URL_START, TM_EVENT_OPEN_REPO_URL_START, sendTelemetryEvent } from "../features/telemetry";
 import { IOpenCompSrcCmdParams, WICommandIds } from "@wso2/wso2-platform-core";
 
+// Why a flow ended — a denied consent and a silent timeout are both "no connection id".
+export type ConnectionSettleReason =
+    | "callback"    // redirected back with an id; the only success
+    | "timeout"
+    | "cancelled"   // user hit Cancel on the connection card
+    | "denied"      // redirected back without an id
+    | "superseded"; // a newer flow took the single pending slot
+
+export interface ConnectionCallbackResult {
+    connectionId: string | null; // non-null only when reason is "callback"
+    reason: ConnectionSettleReason;
+}
+
 // Bridges the managed-connection browser round-trip back to the awaiting extension code:
 // createManagedConnection awaits waitForConnectionCallback, and the redirect lands on the
 // '/oauth-callback' route below.
 interface PendingConnectionFlow {
     state: string;
-    settle: (connectionId: string | null) => void;
+    settle: (connectionId: string | null, reason: ConnectionSettleReason) => void;
 }
 
 let pendingConnectionFlow: PendingConnectionFlow | null = null;
@@ -42,30 +55,30 @@ export function createConnectionState(): string {
 
 /** Releases a waiting caller immediately; any connection already created is left unused. */
 export function cancelConnectionCallback(): void {
-    pendingConnectionFlow?.settle(null);
+    pendingConnectionFlow?.settle(null, "cancelled");
 }
 
-export function waitForConnectionCallback(state: string, timeoutMs: number): Promise<string | null> {
+export function waitForConnectionCallback(state: string, timeoutMs: number): Promise<ConnectionCallbackResult> {
     return new Promise((resolve) => {
         let timer: NodeJS.Timeout;
         const flow: PendingConnectionFlow = {
             state,
-            settle: (connectionId) => {
+            settle: (connectionId, reason) => {
                 clearTimeout(timer);
                 // Only release the slot if this flow still owns it, so a late timer cannot
                 // cancel a newer flow.
                 if (pendingConnectionFlow === flow) {
                     pendingConnectionFlow = null;
                 }
-                resolve(connectionId);
+                resolve({ connectionId, reason });
             },
         };
 
         // Settle any superseded flow rather than orphaning it — its slot is gone, so nothing
         // could ever resolve it.
-        pendingConnectionFlow?.settle(null);
+        pendingConnectionFlow?.settle(null, "superseded");
 
-        timer = setTimeout(() => flow.settle(null), timeoutMs);
+        timer = setTimeout(() => flow.settle(null, "timeout"), timeoutMs);
         pendingConnectionFlow = flow;
     });
 }
@@ -115,10 +128,10 @@ export function activateUriHandlers(ballerinaExtInstance: BallerinaExtension) {
                         // Right flow, no id — e.g. consent denied. Fail now rather than making
                         // the caller sit out the full timeout.
                         console.warn("[ManagedConnection] callback carried no connection_id — treating as a failed flow.");
-                        pendingConnectionFlow.settle(null);
+                        pendingConnectionFlow.settle(null, "denied");
                         break;
                     }
-                    pendingConnectionFlow.settle(connectionId);
+                    pendingConnectionFlow.settle(connectionId, "callback");
                     break;
                 }
                 case '/open':

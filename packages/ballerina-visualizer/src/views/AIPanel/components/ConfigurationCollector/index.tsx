@@ -444,6 +444,9 @@ export const ConfigurationCollector: React.FC<ConfigurationCollectorProps> = ({ 
     // Bumped by cancel or a new attempt, so an in-flight attempt can tell its result is no longer
     // wanted — a cancelled attempt still resolves, as a failure the user didn't cause.
     const connectionRunId = useRef(0);
+    // `data` is rebuilt on every visualizer-location fetch, so only requestId tells a new request
+    // apart from a refetch of the same one.
+    const shownRequestId = useRef(data?.requestId);
 
     useEffect(() => {
         setConfigValues(buildInitialValues(data));
@@ -452,6 +455,12 @@ export const ConfigurationCollector: React.FC<ConfigurationCollectorProps> = ({ 
         setMode("editing");
         setSubmitError(null);
         setConnectionState({});
+        // A new request invalidates any in-flight connect from the previous one, so its result
+        // cannot write stale credentials into this form.
+        if (data?.requestId !== shownRequestId.current) {
+            shownRequestId.current = data?.requestId;
+            connectionRunId.current++;
+        }
     }, [data]);
 
     // Takes the group, not a key: `vendor` is not unique across groups, so looking up by vendor

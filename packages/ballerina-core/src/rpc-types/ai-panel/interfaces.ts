@@ -482,7 +482,7 @@ export interface ConfigurationCancelRequest {
 export interface CreateManagedConnectionRequest {
     vendor: string;
     // Expected grant shape, used to verify the service returned a matching credential kind.
-    authType?: "oauth2RefreshToken" | "staticToken";
+    authType: "oauth2RefreshToken" | "staticToken";
 }
 
 export interface CreateManagedConnectionResponse {

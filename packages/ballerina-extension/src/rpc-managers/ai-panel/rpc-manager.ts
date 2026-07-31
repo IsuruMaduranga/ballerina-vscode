@@ -129,7 +129,7 @@ import { enhancePrompt as enhancePromptService } from "../../features/ai/service
 import { StateMachine, updateView } from "../../stateMachine";
 import { isInDevant, isInWI } from "../../utils";
 import { getLoginMethod, isPlatformExtensionAvailable, loginGithubCopilot } from "../../utils/ai/auth";
-import { cancelConnectionCallback, createConnectionState, waitForConnectionCallback } from "../../utils/uri-handlers";
+import { cancelConnectionCallback, ConnectionSettleReason, createConnectionState, waitForConnectionCallback } from "../../utils/uri-handlers";
 import { exchangeManagedConnection, initiateManagedConnection } from "../platform-ext/managed-connections";
 import { normalizeCodeContext } from "../../views/ai-panel/codeContextUtils";
 import { resolveActiveFilePath } from "../../views/ai-panel/activeFileContext";
@@ -187,6 +187,16 @@ function getActiveThreadId(projectRootPath?: string): string {
 }
 
 const OAUTH_CALLBACK_TIMEOUT_MS = 3 * 60 * 1_000;
+
+// Shown when a flow ends without a connection id. "cancelled" and "superseded" are dropped by the
+// webview's run-id guard, so those only reach the log.
+const CONNECTION_FAILURE_MESSAGE: Record<ConnectionSettleReason, string> = {
+    callback: "Managed connection failed.",
+    timeout: "Timed out waiting for the connection to be authorized. Please try again.",
+    denied: "The connection was not authorized. Please try again and approve access.",
+    cancelled: "Connection cancelled.",
+    superseded: "Connection cancelled — a newer connection attempt was started.",
+};
 
 export class AiPanelRpcManager implements AIPanelAPI {
 
@@ -677,10 +687,10 @@ User reverted the last made changes. The files have been restored to the state b
                 return { success: false, error: "Could not open a browser to complete the connection." };
             }
 
-            const connectionId = await callback;
+            const { connectionId, reason } = await callback;
             if (!connectionId) {
-                console.log(`[ManagedConnection] step 2 — callback NOT received within ${OAUTH_CALLBACK_TIMEOUT_MS}ms. Aborting.`);
-                return { success: false, error: "Timed out waiting for OAuth flow to complete. Please try again." };
+                console.log(`[ManagedConnection] step 2 — no connection id (reason='${reason}'). Aborting.`);
+                return { success: false, error: CONNECTION_FAILURE_MESSAGE[reason] };
             }
             console.log(`[ManagedConnection] step 2 done — received connectionId='${connectionId}'.`);
 
@@ -691,10 +701,8 @@ User reverted the last made changes. The files have been restored to the state b
 
             // Never write bot-token creds into a refresh config (or vice-versa) if the group was
             // mislabeled upstream.
-            const expectedKind = params.authType === "staticToken" ? "bearer"
-                : params.authType === "oauth2RefreshToken" ? "oauth2_refresh"
-                    : undefined;
-            if (expectedKind && credentials.kind !== expectedKind) {
+            const expectedKind = params.authType === "staticToken" ? "bearer" : "oauth2_refresh";
+            if (credentials.kind !== expectedKind) {
                 console.log(`[ManagedConnection] kind mismatch — expected '${expectedKind}', got '${credentials.kind}'. Aborting.`);
                 return { success: false, error: `Expected ${expectedKind} credentials but the service returned '${credentials.kind}'.` };
             }
@@ -738,8 +746,9 @@ User reverted the last made changes. The files have been restored to the state b
         } catch (err) {
             // managed-connections.ts has already logged the URL, HTTP status and response body — the
             // detail the bare message drops. What surfaces here is the user-facing summary.
-            console.error("[ManagedConnection] flow failed:", (err as Error)?.message ?? err);
-            return { success: false, error: (err as Error).message };
+            const message = (err as Error)?.message ?? String(err);
+            console.error("[ManagedConnection] flow failed:", message);
+            return { success: false, error: message || "Failed to create a managed connection." };
         }
     }
 

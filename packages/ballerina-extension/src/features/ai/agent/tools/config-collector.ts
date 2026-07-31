@@ -486,12 +486,32 @@ async function fetchManagedLibraries(): Promise<ManagedLibrariesResponse> {
             return { libraries: [] };
         }
 
+        // Remote JSON: the response type asserts these shapes, nothing validates them. Dropping
+        // malformed entries here keeps one bad entry from degrading anything but its own group.
+        const libraries: ManagedLibraryEntry[] = [];
+        for (const entry of data.libraries) {
+            if (!entry || typeof entry.library !== "string" || !Array.isArray(entry.authOptions)) {
+                continue;
+            }
+            libraries.push({
+                library: entry.library,
+                authOptions: entry.authOptions.filter(
+                    (option) => option && typeof option.grant === "string" && typeof option.provider === "string"
+                ),
+            });
+        }
+        const dropped = data.libraries.length - libraries.length;
+        if (dropped > 0) {
+            console.warn(`[ConfigCollector][managed-connections] dropped ${dropped} malformed catalog ` +
+                `entr${dropped === 1 ? "y" : "ies"} — their groups will fall back to manual entry.`);
+        }
+
         // Cache only a catalog that actually carries entries — an empty one is indistinguishable
         // from a misconfigured or not-yet-deployed service, and is not worth pinning the session to.
-        if (data.libraries.length > 0) {
-            managedLibrariesCache = data;
+        if (libraries.length > 0) {
+            managedLibrariesCache = { libraries };
         }
-        return data;
+        return { libraries };
     } catch (error: any) {
         console.error("[ConfigCollector][managed-connections] Failed to load the managed-libraries catalog " +
             "(unreachable, erroring, or not deployed) — treating all candidate groups as unmanaged:",
@@ -509,10 +529,28 @@ interface ResolvedManagedConnections {
     degradedVariables: ConfigVariable[];
 }
 
+// Configurables a group contributes when collected by hand — no managed provider matched its
+// (library, shape), or the registry check failed.
+function manualVariablesFor(group: ManagedConnectionInput): ConfigVariable[] {
+    if (group.authType === "oauth2RefreshToken") {
+        return [
+            { name: group.clientId, description: "Client ID", type: "string", secret: true },
+            { name: group.clientSecret, description: "Client Secret", type: "string", secret: true },
+            { name: group.refreshToken, description: "Refresh Token", type: "string", secret: true },
+            { name: group.refreshUrl, description: "Refresh URL", type: "string", secret: false },
+        ];
+    }
+    return [
+        { name: group.token, description: "Token", type: "string", secret: true },
+    ];
+}
+
 // Partitions groups: those whose (library, shape) is a registered managed provider become
 // managed metas, everything else degrades to manual configurables. The
 // credentialField → variable mapping is taken as-is from the LLM, which has the code context;
 // this only confirms the (library, shape) and applies the beta gate.
+//
+// Never throws: any failure degrades every group to manual entry rather than failing the collect.
 async function resolveManagedConnections(groups: ManagedConnectionInput[]): Promise<ResolvedManagedConnections> {
     const result: ResolvedManagedConnections = { metas: [], managedVariables: [], degradedVariables: [] };
     if (groups.length === 0) { return result; }
@@ -520,76 +558,73 @@ async function resolveManagedConnections(groups: ManagedConnectionInput[]): Prom
     console.log(`[ConfigCollector][managed-connections] resolving ${groups.length} oauth group(s):`,
         groups.map((g) => ({ library: g.library, authType: g.authType })));
 
-    const registry = await fetchManagedLibraries();
-    const entriesByLibrary = new Map<string, ManagedLibraryEntry>(
-        registry.libraries.map((e) => [e.library, e])
-    );
-
-    const experimentalEnabled = extension.ballerinaExtInstance.enabledExperimentalFeatures();
-
-    for (const [index, group] of groups.entries()) {
-        const entry = entriesByLibrary.get(group.library);
-        const option = entry?.authOptions.find(
-            (o) => o.grant === group.authType && (!o.beta || experimentalEnabled)
+    try {
+        const registry = await fetchManagedLibraries();
+        const entriesByLibrary = new Map<string, ManagedLibraryEntry>(
+            registry.libraries.map((e) => [e.library, e])
         );
 
-        // `vendor` cannot be the key — two clients of one connector share a provider, and several
-        // libraries can too. The index disambiguates and is stable for a metadata payload.
-        const id = `${group.library}#${index}`;
+        const experimentalEnabled = extension.ballerinaExtInstance.enabledExperimentalFeatures();
 
-        if (option) {
-            const vendor = option.provider;
-            console.log(`[ConfigCollector][managed-connections] '${group.library}' (${group.authType}) → MANAGED (provider: '${vendor}', id: '${id}')`);
-            if (group.authType === "oauth2RefreshToken") {
-                result.metas.push({
-                    id,
-                    vendor,
-                    authType: "oauth2RefreshToken",
-                    variables: [
-                        { name: group.clientId, credentialField: "clientId", description: "Client ID", secret: true },
-                        { name: group.clientSecret, credentialField: "clientSecret", description: "Client Secret", secret: true },
-                        { name: group.refreshToken, credentialField: "refreshToken", description: "Refresh Token", secret: true },
-                    ],
-                    refreshUrlVar: group.refreshUrl,
-                });
-                result.managedVariables.push(
-                    { name: group.clientId, description: "Client ID", type: "string", secret: true },
-                    { name: group.clientSecret, description: "Client Secret", type: "string", secret: true },
-                    { name: group.refreshToken, description: "Refresh Token", type: "string", secret: true },
-                    // Must be collected so it reaches Config.toml (the writer only writes declared
-                    // variables), but it is not in meta.variables, so the form renders it as an
-                    // ordinary editable field rather than a proxied secret.
-                    { name: group.refreshUrl, description: "Refresh URL", type: "string", secret: false },
-                );
+        for (const [index, group] of groups.entries()) {
+            const entry = entriesByLibrary.get(group.library);
+            const option = entry?.authOptions.find(
+                (o) => o.grant === group.authType && (!o.beta || experimentalEnabled)
+            );
+
+            // `vendor` cannot be the key — two clients of one connector share a provider, and several
+            // libraries can too. The index disambiguates and is stable for a metadata payload.
+            const id = `${group.library}#${index}`;
+
+            if (option) {
+                const vendor = option.provider;
+                console.log(`[ConfigCollector][managed-connections] '${group.library}' (${group.authType}) → MANAGED (provider: '${vendor}', id: '${id}')`);
+                if (group.authType === "oauth2RefreshToken") {
+                    result.metas.push({
+                        id,
+                        vendor,
+                        authType: "oauth2RefreshToken",
+                        variables: [
+                            { name: group.clientId, credentialField: "clientId", description: "Client ID", secret: true },
+                            { name: group.clientSecret, credentialField: "clientSecret", description: "Client Secret", secret: true },
+                            { name: group.refreshToken, credentialField: "refreshToken", description: "Refresh Token", secret: true },
+                        ],
+                        refreshUrlVar: group.refreshUrl,
+                    });
+                    result.managedVariables.push(
+                        { name: group.clientId, description: "Client ID", type: "string", secret: true },
+                        { name: group.clientSecret, description: "Client Secret", type: "string", secret: true },
+                        { name: group.refreshToken, description: "Refresh Token", type: "string", secret: true },
+                        // Must be collected so it reaches Config.toml (the writer only writes declared
+                        // variables), but it is not in meta.variables, so the form renders it as an
+                        // ordinary editable field rather than a proxied secret.
+                        { name: group.refreshUrl, description: "Refresh URL", type: "string", secret: false },
+                    );
+                } else {
+                    result.metas.push({
+                        id,
+                        vendor,
+                        authType: "staticToken",
+                        variables: [
+                            { name: group.token, credentialField: "token", description: "Token", secret: true },
+                        ],
+                    });
+                    result.managedVariables.push(
+                        { name: group.token, description: "Token", type: "string", secret: true },
+                    );
+                }
             } else {
-                result.metas.push({
-                    id,
-                    vendor,
-                    authType: "staticToken",
-                    variables: [
-                        { name: group.token, credentialField: "token", description: "Token", secret: true },
-                    ],
-                });
-                result.managedVariables.push(
-                    { name: group.token, description: "Token", type: "string", secret: true },
-                );
-            }
-        } else {
-            // No matching managed (library, shape) option → collect the group's field(s) manually.
-            console.warn(`[ConfigCollector][managed-connections] '${group.library}' (${group.authType}) → NOT managed; falling back to manual entry.`);
-            if (group.authType === "oauth2RefreshToken") {
-                result.degradedVariables.push(
-                    { name: group.clientId, description: "Client ID", type: "string", secret: true },
-                    { name: group.clientSecret, description: "Client Secret", type: "string", secret: true },
-                    { name: group.refreshToken, description: "Refresh Token", type: "string", secret: true },
-                    { name: group.refreshUrl, description: "Refresh URL", type: "string", secret: false },
-                );
-            } else {
-                result.degradedVariables.push(
-                    { name: group.token, description: "Token", type: "string", secret: true },
-                );
+                // No matching managed (library, shape) option → collect the group's field(s) manually.
+                console.warn(`[ConfigCollector][managed-connections] '${group.library}' (${group.authType}) → NOT managed; falling back to manual entry.`);
+                result.degradedVariables.push(...manualVariablesFor(group));
             }
         }
+    } catch (error: any) {
+        // Partial results are discarded: a half-built one would render Connect cards backed by a
+        // lookup that did not finish.
+        console.error("[ConfigCollector][managed-connections] failed to resolve managed connections — " +
+            "falling back to manual entry for all candidate groups:", error?.message || error);
+        return { metas: [], managedVariables: [], degradedVariables: groups.flatMap(manualVariablesFor) };
     }
 
     console.log(
