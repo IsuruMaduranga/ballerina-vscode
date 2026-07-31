@@ -110,6 +110,53 @@ export function upsertComponent(
 }
 
 /**
+ * Fold a `thinking_start`/`thinking_delta`/`thinking_end` event into the transcript,
+ * keyed by the reasoning-block `id`.
+ *
+ * Follows the content_block merge-into-trailing-item pattern rather than
+ * `upsertComponent`'s search-whole-transcript pattern: a reasoning block is always
+ * the item actively being appended to, never a stale one elsewhere. An event whose
+ * id doesn't match the trailing item opens a new item (also the defensive fallback
+ * for an orphaned delta after a flush).
+ *
+ * `timestamp` comes from the event itself for start/end (stamped extension-side at
+ * emit time), so both surfaces persist identical bytes and a replayed block keeps
+ * its true duration; callers fall back to local time only for orphaned deltas.
+ */
+export function upsertThinking(
+    entries: StreamEntry[],
+    id: string,
+    delta: string,
+    done: boolean,
+    timestamp: number,
+): StreamEntry[] {
+    if (entries.length > 0) {
+        const lastEntry = entries[entries.length - 1];
+        const lastItem = lastEntry.items[lastEntry.items.length - 1];
+        if (lastItem?.kind === "thinking" && lastItem.id === id) {
+            // An explicit `endedAt: undefined` serializes identically to an absent key
+            // (JSON.stringify drops it), so plain fields beat conditional spreads here.
+            const updatedItem = {
+                ...lastItem,
+                text: lastItem.text + delta,
+                done: done || lastItem.done,
+                endedAt: lastItem.endedAt ?? (done ? timestamp : undefined),
+            };
+            const items = [...lastEntry.items.slice(0, -1), updatedItem];
+            return [...entries.slice(0, -1), { ...lastEntry, items }];
+        }
+    }
+    return appendToLastEntry(entries, {
+        kind: "thinking",
+        id,
+        text: delta,
+        done,
+        startedAt: timestamp,
+        endedAt: done ? timestamp : undefined,
+    });
+}
+
+/**
  * Card items that a backend request drives through stages, keyed by `data.requestId`.
  *
  * Derived from `StreamItem` so adding a data-carrying item kind can't silently desync

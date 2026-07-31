@@ -31,6 +31,7 @@ import {
     appendToLastEntry,
     upsertComponent,
     upsertRequestCard,
+    upsertThinking,
     buildRequestCardData,
     buildPlanItem,
     applyPlanApprovalResolution,
@@ -38,6 +39,7 @@ import {
     applyTaskWriteResult,
     COMPACTION_DISABLED_NOTICE,
 } from "../../views/AIPanel/components/AIChat/utils/streamSerialization";
+import { getThinkingPreference } from "../../views/AIPanel/components/AIChat/utils/utils";
 import {
     Anchor,
     EDGE_MARGIN,
@@ -128,7 +130,8 @@ type FoldableNotify = Extract<ChatNotify, {
     | "content_block" | "content_replace" | "tool_call" | "tool_result" | "chat_component"
     | "task_approval_request" | "plan_approval_resolved" | "connector_generation_notification"
     | "configuration_collection_event" | "clarify_event" | "skill_enable_event"
-    | "abort" | "compaction_disabled";
+    | "abort" | "compaction_disabled"
+    | "thinking_start" | "thinking_delta" | "thinking_end";
 }>;
 
 type UnmodelledNotifyType =
@@ -298,6 +301,18 @@ function applyContentEvent(prevContent: string, evt: FoldableNotify): string {
     }
     if (evt.type === "skill_enable_event") {
         return serializeStream(upsertRequestCard(entries, "skill_enable", buildRequestCardData("skill_enable", evt)), prevContent);
+    }
+    if (evt.type === "thinking_start" || evt.type === "thinking_delta" || evt.type === "thinking_end") {
+        // The mini renders nothing for thinking items (record-but-don't-render, like
+        // cards) but must fold them, or a mini-witnessed turn persists a transcript
+        // with the panel's thinking segments missing. start/end use the event's
+        // extension-stamped timestamp so this fold stays byte-identical to the panel's.
+        const delta = evt.type === "thinking_delta" ? evt.content : "";
+        const timestamp = evt.type === "thinking_delta" ? Date.now() : evt.timestamp;
+        return serializeStream(
+            upsertThinking(entries, evt.thinkingId, delta, evt.type === "thinking_end", timestamp),
+            prevContent
+        );
     }
     if (evt.type === "abort") {
         return serializeStream(appendAbortMarker(entries), prevContent);
@@ -812,6 +827,9 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
             case "clarify_event":
             case "skill_enable_event":
             case "compaction_disabled":
+            case "thinking_start":
+            case "thinking_delta":
+            case "thinking_end":
                 setMsgs((prev) => reduceEvent(prev, evt, gen));
                 break;
             default: {
@@ -837,7 +855,11 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
         setStreaming(true);
         rpcClient
             ?.getAiPanelRpcClient()
-            .generateAgent(buildMiniChatGenerationRequest(promptContext, prompt));
+            // Send-time read of THIS webview's localStorage (default ON). The AI panel's
+            // Settings toggle writes the panel webview's storage, which does not reach
+            // here — mini-chat runs stay default-ON until the preference moves to an
+            // extension-side setting (like enableMcpTools).
+            .generateAgent({ ...buildMiniChatGenerationRequest(promptContext, prompt), thinking: getThinkingPreference() });
     };
 
     useEffect(() => {

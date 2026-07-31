@@ -47,6 +47,7 @@ import {
     appendToLastEntry,
     upsertComponent,
     upsertRequestCard,
+    upsertThinking,
     buildRequestCardData,
     buildPlanItem,
     applyPlanApprovalResolution,
@@ -351,5 +352,71 @@ describe("appendToLastEntry", () => {
         expect(out).toHaveLength(2);
         expect(out[0]).toBe(first);
         expect(out[1].items).toHaveLength(2);
+    });
+});
+
+describe("upsertThinking", () => {
+    it("start → delta → delta → end merges into one done item with concatenated text", () => {
+        let entries: StreamEntry[] = [];
+        entries = upsertThinking(entries, "r1", "", false, 1000);
+        entries = upsertThinking(entries, "r1", "First, ", false, 1500);
+        entries = upsertThinking(entries, "r1", "then.", false, 2000);
+        entries = upsertThinking(entries, "r1", "", true, 4000);
+        expect(entries).toHaveLength(1);
+        expect(entries[0].items).toEqual([
+            { kind: "thinking", id: "r1", text: "First, then.", done: true, startedAt: 1000, endedAt: 4000 },
+        ]);
+    });
+
+    it("both surfaces' identical call sequences serialize byte-identically", () => {
+        // The panel and the mini fold from the same events; the store is
+        // last-writer-wins, so the bytes must match.
+        const fold = () => {
+            let entries: StreamEntry[] = [floating([{ kind: "text", text: "before" }])];
+            entries = upsertThinking(entries, "r1", "", false, 1000);
+            entries = upsertThinking(entries, "r1", "reason", false, 1200);
+            entries = upsertThinking(entries, "r1", "", true, 3000);
+            return serializeStream(entries, "");
+        };
+        expect(fold()).toBe(fold());
+    });
+
+    it("a different id opens a new item instead of merging", () => {
+        let entries: StreamEntry[] = [];
+        entries = upsertThinking(entries, "r1", "one", true, 1000);
+        entries = upsertThinking(entries, "r2", "two", false, 2000);
+        expect(kindsOf(entries)).toEqual(["thinking", "thinking"]);
+        const items = entries.flatMap((e) => e.items) as any[];
+        expect(items[0].id).toBe("r1");
+        expect(items[1].id).toBe("r2");
+    });
+
+    it("an orphaned delta (no trailing match) appends defensively rather than corrupting", () => {
+        // A tool_call landed after the block opened (interleaved thinking) — the
+        // delta must not merge into it or into an unrelated earlier thinking item.
+        let entries: StreamEntry[] = [];
+        entries = upsertThinking(entries, "r1", "early", true, 1000);
+        entries = appendToLastEntry(entries, { kind: "tool_call", toolCallId: "t1", toolName: "file_read" });
+        entries = upsertThinking(entries, "r1", "late", false, 2000);
+        const items = entries.flatMap((e) => e.items) as any[];
+        expect(items.map((i) => i.kind)).toEqual(["thinking", "tool_call", "thinking"]);
+        expect(items[0].text).toBe("early");
+        expect(items[2].text).toBe("late");
+    });
+
+    it("a repeated end keeps the first endedAt (duration is fixed at close time)", () => {
+        let entries: StreamEntry[] = [];
+        entries = upsertThinking(entries, "r1", "x", false, 1000);
+        entries = upsertThinking(entries, "r1", "", true, 2000);
+        entries = upsertThinking(entries, "r1", "", true, 9000); // e.g. flush replayed after real end
+        const item = entries[0].items[0] as any;
+        expect(item.done).toBe(true);
+        expect(item.endedAt).toBe(2000);
+    });
+
+    it("round-trips through serialize/parse", () => {
+        let entries: StreamEntry[] = [];
+        entries = upsertThinking(entries, "r1", "thought", true, 1000);
+        expect(parseStream(serializeStream(entries, ""))).toEqual(entries);
     });
 });
