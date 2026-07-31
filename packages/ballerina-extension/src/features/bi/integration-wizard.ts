@@ -16,10 +16,10 @@
  * under the License.
  */
 
-import * as crypto from "crypto";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
+import { randomUUID } from "crypto";
+import { promises, existsSync, mkdirSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
     AddIntegrationArtifactRequest,
     CreateIntegrationRequest,
@@ -53,7 +53,7 @@ const WIZARD_CAPABILITIES_VERSION = 2;
  * staging directory — a fixed shared name let one window's cleanup delete another's
  * in-progress staging package.
  */
-const STAGING_PARENT = path.join(os.tmpdir(), `wso2-integration-wizard-${process.pid}-${crypto.randomUUID()}`);
+const STAGING_PARENT = join(tmpdir(), `wso2-integration-wizard-${process.pid}-${randomUUID()}`);
 /** Package name of the staging package (irrelevant to the artifact models it serves). */
 const STAGING_PACKAGE = "integration";
 
@@ -68,7 +68,7 @@ let activeStagingRoot: string | undefined;
 async function cleanupStaging(): Promise<void> {
     activeStagingRoot = undefined;
     try {
-        await fs.promises.rm(STAGING_PARENT, { recursive: true, force: true });
+        await promises.rm(STAGING_PARENT, { recursive: true, force: true });
     } catch (error) {
         console.warn("[IntegrationWizard] Failed to remove staging package:", error);
     }
@@ -76,13 +76,13 @@ async function cleanupStaging(): Promise<void> {
 
 /** Creates (or reuses) the staging package the Configure step resolves its LS model against. */
 export async function scaffoldIntegrationProject(): Promise<ScaffoldIntegrationProjectResponse> {
-    if (activeStagingRoot && fs.existsSync(path.join(activeStagingRoot, "Ballerina.toml"))) {
+    if (activeStagingRoot && existsSync(join(activeStagingRoot, "Ballerina.toml"))) {
         return { projectRoot: activeStagingRoot };
     }
 
     // Start from a clean slate — discard any stale staging left by a prior run.
     await cleanupStaging();
-    fs.mkdirSync(STAGING_PARENT, { recursive: true });
+    mkdirSync(STAGING_PARENT, { recursive: true });
 
     // Org/version omitted (defaults apply); the name is irrelevant to the models it serves.
     const stagingRequest: ProjectRequest = {

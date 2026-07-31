@@ -127,6 +127,9 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
     const orgNameInitialized = useRef(false);
     const defaultPathInitialized = useRef(false);
     const libraryNameTouchedRef = useRef(false);
+    // The location `takenNames` currently describes, so the refresh effect below can skip
+    // the path the seed already fetched (and re-fetch whenever the user retargets).
+    const takenNamesPathRef = useRef<string | null>(null);
     const [packageNameTouched, setPackageNameTouched] = useState(false);
     const dirCoupling = useDirectoryNameCoupling(() => sanitizePackageName(DEFAULT_LIBRARY_NAME), sanitizePackageName);
     const { directoryName, dirTouched } = dirCoupling;
@@ -185,6 +188,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
                 } catch {
                     // Best effort — fall back to the un-indexed default on failure.
                 }
+                takenNamesPathRef.current = dp;
                 setTakenNames(taken);
                 // Resolve the indexed default name/folder BEFORE committing the path so
                 // the fields show the final values immediately (like the wizard).
@@ -257,6 +261,39 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
             setEditablePath(formData.path || defaultPath);
         }
     }, [formData.path, defaultPath, pathTouched]);
+
+    // The collision list describes one location, but Browse / editing the path can retarget
+    // it (standalone variant only — the embedded flow hides the path field). Without this the
+    // snapshot stays pinned to the seeded folder, so a name that is free in the newly chosen
+    // project keeps being rejected. Keyed on `editablePath` (the base dir the path validation
+    // hook also watches) and debounced to match it; the name-validation effect above already
+    // depends on `takenNames`, so the diagnostic self-corrects once this lands.
+    useEffect(() => {
+        const targetPath = editablePath.trim();
+        if (!targetPath || targetPath === takenNamesPathRef.current) {
+            return;
+        }
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            let taken = emptyTakenNames();
+            try {
+                taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: targetPath }));
+            } catch {
+                // Fail open: an empty list only defers collision reporting to submit-time
+                // validation, whereas keeping the previous location's list would block
+                // names that are actually free here.
+            }
+            if (cancelled) {
+                return;
+            }
+            takenNamesPathRef.current = targetPath;
+            setTakenNames(taken);
+        }, 300);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [wsClient, editablePath]);
 
     useRealtimeProjectPathValidation({
         wsClient,

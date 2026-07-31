@@ -133,6 +133,9 @@ export function CreateIntegrationWizard({
     // Set the moment the user edits the name field, so the async seed below (which can
     // resolve after the user has already started typing) never clobbers it.
     const nameTouchedRef = useRef(false);
+    // The location `takenNames` currently describes, so the refresh effect below can skip
+    // the path the seed already fetched (and re-fetch whenever the user retargets).
+    const takenNamesPathRef = useRef<string | null>(null);
 
     useLayoutEffect(() => {
         // The embedding chrome sizes its wrappers with `min-height`, so no ancestor has a
@@ -262,13 +265,17 @@ export function CreateIntegrationWizard({
 
             seedBaseDir
                 .then(async (seedPath: string) => {
-                    // Fetched once: picks a collision-free default and flags collisions live.
+                    // Resolved here (not in the refresh effect below) so the indexed default
+                    // name/folder is committed together with the path — no render pairs a real
+                    // path with an un-indexed default. The effect below keeps it current if the
+                    // user later retargets the location.
                     let taken = emptyTakenNames();
                     try {
                         taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: seedPath }));
                     } catch (error) {
                         console.error(">>> Error fetching existing component names", error);
                     }
+                    takenNamesPathRef.current = seedPath;
                     setTakenNames(taken);
                     const { name, directoryName } = resolveDefaultNameAndDirectory(DEFAULT_INTEGRATION_NAME, taken, sanitizePackageName);
                     setBasicInfo((prev) => {
@@ -292,6 +299,55 @@ export function CreateIntegrationWizard({
             .then((res) => setTriggers(res))
             .catch((error: unknown) => console.error(">>> Error fetching trigger models", error));
     }, [wsClient, projectContext?.workspacePath, isExistingPackage]);
+
+    // The collision list describes one location, but Browse / editing the path can retarget
+    // it (standalone mounts only — the embedded flow hides the path field). Without this the
+    // snapshot stays pinned to the seed folder, so a name that is free in the newly chosen
+    // project keeps being rejected — and, because `nameError` disables both footer buttons,
+    // there is no way past it except renaming. Debounced to match the path validation hook,
+    // which is keyed on the same value.
+    useEffect(() => {
+        const targetPath = basicInfo.baseDir.trim();
+        if (isExistingPackage || !targetPath || targetPath === takenNamesPathRef.current) {
+            return;
+        }
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            let taken = emptyTakenNames();
+            try {
+                taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: targetPath }));
+            } catch (error) {
+                // Fail open: an empty list only defers collision reporting to submit-time
+                // validation, whereas keeping the previous location's list would block
+                // names that are actually free here.
+                console.error(">>> Error refreshing existing component names", error);
+            }
+            if (cancelled) {
+                return;
+            }
+            takenNamesPathRef.current = targetPath;
+            setTakenNames(taken);
+        }, 300);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [wsClient, basicInfo.baseDir, isExistingPackage]);
+
+    // Re-run the name check whenever the collision list changes: unlike the path
+    // diagnostics (owned by the hook above), `nameError` is set imperatively by
+    // `handleNameChange`, so a refreshed list would otherwise leave a stale error on
+    // screen — and the buttons disabled — until the user edited the name again.
+    useEffect(() => {
+        if (!basicInfo.integrationName.trim()) {
+            // Leave a pending "name is required" in place; typing recomputes it.
+            return;
+        }
+        setNameError(
+            validateComponentName(basicInfo.integrationName, false) ||
+            resolveNameCollisionMessage(basicInfo.integrationName, takenNames, sanitizePackageName)
+        );
+    }, [takenNames, basicInfo.integrationName]);
 
     useEffect(() => {
         // Best-effort discard; the mount-time sweep is the race-free backstop.
