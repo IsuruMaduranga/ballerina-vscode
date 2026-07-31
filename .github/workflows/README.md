@@ -14,7 +14,7 @@ workflow because the extension manifest owns the shared extension/LS version.
 |---|---|---|
 | `reusable-build.yml` | `workflow_call` only | Reusable build pipeline (ballerina-only) |
 | `devBuild.yml` | manual + `workflow_call` | Builds a custom branch as a timestamped pre-release VSIX. It creates workflow artifacts only: no GitHub release and no marketplace publication. `schedule.yml` reuses this workflow after stamping the nightly branch. |
-| `schedule.yml` | nightly cron | Syncs the `builds/nightly` branch, runs the LS multi-branch pack/test/Windows-build matrix, calls `devBuild.yml`, and moves the `nightly` tag after every job passes. The VSIX remains a workflow artifact; no GitHub Release is created. See [Versioning](#versioning) and [The nightly branch](#the-nightly-branch). |
+| `schedule.yml` | nightly cron + manual | Syncs the `builds/nightly` branch, runs the LS multi-branch pack/test/Windows-build matrix, calls `devBuild.yml`, and moves the `nightly` tag after every job passes. Manual runs can select a source branch and otherwise behave exactly like scheduled nightlies, including notifications. The VSIX remains a workflow artifact; no GitHub Release is created. See [Versioning](#versioning) and [The nightly branch](#the-nightly-branch). |
 | `pull-request.yml` | PRs + manual | Detects changes with `dorny/paths-filter`; if anything build-relevant changed, runs `reusable-build.yml` which builds the entire chain (LS via Gradle, then all TS packages and the extension VSIX via rush) in a single job. Windows LS coverage runs in `schedule.yml` only. |
 | `release-pre-release.yml` | manual dispatch | Builds either a timestamped pre-release or the release version authored in the extension manifest. Its `githubRelease` input creates a GitHub Release with the VSIX and LS jar and publishes the matching `io.ballerina:ballerina-language-server` package. Real releases also perform the release branch/PR handling. |
 | `publish-vsix.yml` | manual dispatch | Publishes a built VSIX (passed by `workflowRunId`) to VSCode Marketplace + OpenVSX |
@@ -157,13 +157,14 @@ where one repo held several extensions and each needed its own stable trunk
 
 ## The nightly branch
 
-`schedule.yml` builds from a `builds/nightly` branch that it maintains itself: every run
-resets it to `origin/main`, commits the timestamped version, and force-pushes. So
-`git diff main builds/nightly` is always exactly the version bump, and every nightly VSIX has
-one commit that pins both its source and its version.
+`schedule.yml` builds from a `builds/nightly` branch that it maintains itself. Scheduled
+runs reset it to `origin/main`; manual runs reset it to the selected `sourceBranch`, which
+defaults to `main`. The workflow then commits the timestamped version and force-pushes the
+branch. Therefore `git diff origin/<sourceBranch> builds/nightly` is exactly the version
+bump, and every nightly VSIX has one commit that pins both its source and its version.
 
 - **Never open a PR against `builds/nightly` and never merge it anywhere** — it is discarded
-  and recreated daily.
+  and recreated on every run.
 - The extension build is pinned to the nightly *commit SHA*, not the branch name, so a
   concurrent run cannot swap the tree mid-build. The build does not re-stamp the
   version; the commit is authoritative (re-deriving the timestamp would produce a

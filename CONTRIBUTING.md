@@ -299,9 +299,9 @@ monorepo. If you want them to land here, push them upstream to
 - `alpha` — staging for alpha builds; concrete version, set by hand.
 - `migrate/*` — long-lived migration work
 - `builds/nightly` — **machine-managed, do not touch.** `schedule.yml` resets it to
-  `origin/main` and force-pushes it every night, so it is always `main` plus a single
-  version commit. Never target it with a PR and never merge it anywhere; anything
-  committed to it is gone by the next run.
+  `origin/main` for scheduled runs or the selected source branch for manual runs, then
+  force-pushes it with a single version commit. Never target it with a PR and never merge
+  it anywhere; anything committed to it is gone by the next run.
 
 PR → `main` triggers `pull-request.yml` (extension build + tests, LS build if you
 touched LS code). PR → a `X.Y.x` release line is intended to add the bal E2E suite
