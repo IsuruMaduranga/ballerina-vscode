@@ -321,11 +321,17 @@ public class AvailableNodesGenerator {
                     .items(getAiNodes(disableBallerinaAiNodes))
                     .stepOut();
 
-            // The client-side workflow verbs, right after AI so they are easy to reach;
-            // durable agents additionally enable the agent interaction nodes.
-            this.rootBuilder.stepIn(Category.Name.WORKFLOW)
-                    .items(getWorkflowNodes(false, true, projectHasDurableAgents()))
-                    .stepOut();
+            // The client-side workflow verbs, right after AI so they are easy to reach:
+            // shown only when the integration defines the matching artifacts — workflow
+            // functions enable Run Workflow / Send Data Event, durable agents enable the
+            // agent interaction nodes.
+            boolean hasWorkflows = projectHasWorkflows();
+            boolean hasDurableAgents = projectHasDurableAgents();
+            if (hasWorkflows || hasDurableAgents) {
+                this.rootBuilder.stepIn(Category.Name.WORKFLOW)
+                        .items(getWorkflowNodes(false, hasWorkflows, hasDurableAgents))
+                        .stepOut();
+            }
         }
 
         // Inside a workflow function the Workflow section leads the palette — it holds the
@@ -382,6 +388,14 @@ public class AvailableNodesGenerator {
                         .stepOut();
 
         }
+    }
+
+    /**
+     * Returns {@code true} when the current package declares at least one {@code @workflow:Workflow}
+     * function.
+     */
+    private boolean projectHasWorkflows() {
+        return this.semanticModel.moduleSymbols().stream().anyMatch(WorkflowUtil::isWorkflowFunction);
     }
 
     /**
