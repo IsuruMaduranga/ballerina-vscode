@@ -29,9 +29,7 @@ runs:
       uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
     - name: Set Up Ballerina
-      uses: ballerina-platform/setup-ballerina@97fd67111e3c3ecdfafff96fc24d95ad909ab299 # v1.1.4
-      with:
-        version: 2201.13.4
+      uses: ./.github/actions/setup-ballerina
 
     # The build resolves Ballerina packages into a build-owned home
     # (build/ballerina_dependencies/home) rather than ~/.ballerina, and the

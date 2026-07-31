@@ -1,4 +1,4 @@
-name: Build
+name: Reusable Build
 
 on:
   workflow_call:
@@ -9,11 +9,22 @@ on:
       awsRunnerId:
         default: 'codebuild-ballerina-vscode-${{ github.run_id }}-${{ github.run_attempt }}'
         type: string
+      ref:
+        description: >-
+          Git ref (branch, tag or SHA) to build. Defaults to the calling
+          workflow's ref. The scheduled build pins the nightly commit SHA here.
+        type: string
+        required: false
+        default: ''
       isPreRelease:
         default: true
         type: boolean
-      snapshot:
-        description: Stamp the extension version as '<version>-SNAPSHOT' (nightly builds)
+      nightly:
+        description: >-
+          Nightly build — stamp the version derived from the extension package.json's
+          '-SNAPSHOT' version (major.(minor-1).<minutes since 2020-01-01 UTC>). Independent of
+          isPreRelease, which selects 'vsce package --pre-release'; a nightly
+          passes both.
         default: false
         type: boolean
       enableCache:
@@ -25,6 +36,7 @@ on:
         required: false
         default: false
       version:
+        description: Explicit version override, or N/A to derive it from the extension package.json
         default: 'N/A'
         type: string
         required: false
@@ -48,21 +60,13 @@ on:
         type: boolean
         required: false
         default: false
-      lsSource:
-        description: LS source — local (build from source) or download (fetch from release tag)
-        type: string
+    secrets:
+      COPILOT_ROOT_URL:
         required: false
-        default: 'local'
-      ballerinaLsTag:
-        description: Release tag to download the LS from when lsSource=download (latest, prerelease, v1.5.0)
-        type: string
+      COPILOT_DEV_ROOT_URL:
         required: false
-        default: ''
-
-env:
-  ballerina_version: 2201.13.2
-  ballerina_zip_url: https://github.com/ballerina-platform/ballerina-distribution/releases/download/v2201.13.2/ballerina-2201.13.2-swan-lake.zip
-  ballerina_deb_url: https://dist.ballerina.io/downloads/2201.13.2/ballerina-2201.13.2-swan-lake-linux-x64.deb
+      APPINSIGHTS_INSTRUMENTATION_KEY:
+        required: false
 
 jobs:
   Build_Stage:
@@ -71,9 +75,15 @@ jobs:
     runs-on: ${{ inputs.runOnAWS && inputs.awsRunnerId || 'ubuntu-latest' }}
     outputs:
       runBalExtTests: ${{ steps.testMatrix.outputs.runBalExtTests }}
+      ballerinaVersion: ${{ steps.build.outputs.ballerinaVersion }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          # A reusable workflow always resolves its own definition from the caller's
+          # ref, but the tree it builds is whatever is checked out here. The daily
+          # build passes the nightly commit SHA so the VSIX is built from that exact
+          # commit, not from wherever the schedule happens to run.
+          ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 2
           submodules: recursive
 
@@ -107,14 +117,12 @@ jobs:
           echo "runBalExtTests=${{ steps.diff.outputs.hasBalDiff }}" >> $GITHUB_OUTPUT
 
       - name: Build
+        id: build
         uses: ./.github/actions/build
         with:
           isPreRelease: ${{ inputs.isPreRelease }}
-          snapshot: ${{ inputs.snapshot }}
-          lsSource: ${{ inputs.lsSource }}
-          ballerinaLsTag: ${{ inputs.ballerinaLsTag }}
+          nightly: ${{ inputs.nightly }}
           enableCache: ${{ inputs.enableCache }}
-          enableLSCache: ${{ !inputs.isReleaseBuild }}
           ballerina: ${{ inputs.ballerina }}
           version: ${{ inputs.version }}
           COPILOT_ROOT_URL: ${{ secrets.COPILOT_ROOT_URL }}
@@ -147,7 +155,7 @@ jobs:
     needs: Build_Stage
     if: false
     # Re-enable once unit tests are stable in CI:
-    # if: ${{ inputs.runTests || (inputs.isReleaseBuild && inputs.ballerina) || needs.Build_Stage.outputs.runBalExtTests == 'true' || github.base_ref == 'stable/ballerina' }}
+    # if: ${{ inputs.runTests || (inputs.isReleaseBuild && inputs.ballerina) || needs.Build_Stage.outputs.runBalExtTests == 'true' || endsWith(github.base_ref, '.x') }}
     timeout-minutes: 45
     runs-on: ${{ inputs.runOnAWS && inputs.awsRunnerId || 'ubuntu-latest' }}
     steps:
@@ -174,9 +182,10 @@ jobs:
         run: |
           cd packages/ballerina-extension
           mkdir extractedDistribution
-          wget ${{ env.ballerina_zip_url }}
-          unzip -qq ./ballerina-${{ env.ballerina_version }}-swan-lake.zip -d ./extractedDistribution
-          rm ballerina-${{ env.ballerina_version }}-swan-lake.zip
+          ballerinaVersion="${{ needs.Build_Stage.outputs.ballerinaVersion }}"
+          wget "https://github.com/ballerina-platform/ballerina-distribution/releases/download/v${ballerinaVersion}/ballerina-${ballerinaVersion}-swan-lake.zip"
+          unzip -qq "./ballerina-${ballerinaVersion}-swan-lake.zip" -d ./extractedDistribution
+          rm "ballerina-${ballerinaVersion}-swan-lake.zip"
           balVersion=$(ls ./extractedDistribution)
           balHome=./extractedDistribution/$balVersion
           echo "balVersion=$balVersion" >> $GITHUB_OUTPUT
@@ -281,9 +290,7 @@ jobs:
           rush-install: true
 
       - name: Install Ballerina distribution
-        uses: ballerina-platform/setup-ballerina@8a64987be305edb95f32092f64916ff973f40824 # v1
-        with:
-          version: ${{ env.ballerina_version }}
+        uses: ./.github/actions/setup-ballerina
 
       - name: Check for previous test results
         shell: bash
@@ -377,6 +384,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ inputs.ref || github.ref }}
           persist-credentials: false
 
       - name: Run LS tests
