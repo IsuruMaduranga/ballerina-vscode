@@ -307,7 +307,9 @@ monorepo. If you want them to land here, push them upstream to
   committed to it is gone by the next run.
 
 PR → `main` triggers `pull-request.yml` (extension build + tests, LS build if you
-touched LS code). PR → a `X.Y.x` release line adds the bal E2E suite automatically.
+touched LS code). PR → a `X.Y.x` release line is intended to add the bal E2E suite
+automatically, but that suite is currently disabled and does not run until the
+`ExtTest_Ballerina` job is re-enabled.
 
 The version lives in **`packages/ballerina-extension/package.json`** — that is the single
 source of truth — and on `main` it always names the *next* release as a snapshot, e.g.

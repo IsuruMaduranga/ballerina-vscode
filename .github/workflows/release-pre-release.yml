@@ -1,5 +1,8 @@
 name: Release / Pre-release Build
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
     inputs:
@@ -80,9 +83,7 @@ jobs:
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
       - name: Set up Ballerina for language-server publication
-        uses: ballerina-platform/setup-ballerina@97fd67111e3c3ecdfafff96fc24d95ad909ab299 # v1.1.4
-        with:
-          version: 2201.13.4
+        uses: ./.github/actions/setup-ballerina
 
       # This job runs only when githubRelease is selected. Publish the matching
       # Maven package after the complete build/test workflow succeeds and before
@@ -240,7 +241,7 @@ jobs:
       - name: Create PR and notify
         uses: ./.github/actions/pr
         with:
-          isPreRelease: ${{ github.event.inputs.isPreRelease }}
+          isPreRelease: ${{ inputs.isPreRelease }}
           ref_name: ${{ github.ref_name }}
           chatAPI: ${{ secrets.EDITOR_TEAM_CHAT_API }}
           threadKey: ballerina-release-${{ github.run_id }}

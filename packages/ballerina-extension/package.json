@@ -1430,7 +1430,7 @@
     },
     "main": "./dist/extension",
     "scripts": {
-        "clean": "del-cli ./dist ./out ./ballerina-*.vsix ./vsix ./coverage ./.nyc_output",
+        "clean": "del-cli ./dist ./out ./ballerina-*.vsix ./vsix ./ls ./coverage ./.nyc_output",
         "compile": "webpack --mode production",
         "watch-ballerina": "webpack --mode none --watch",
         "test-compile": "tsc -p ./ && copyfiles -u 1 \"src/**/*.md\" out/src",

@@ -24,8 +24,9 @@ inputs:
       Nightly build. Uses the same derivation as a pre-release —
       major.(minor-1).<minutes since 2020-01-01 UTC> from the extension '-SNAPSHOT' version, see
       common/scripts/nightly-version.js — but is a separate input because it selects
-      only the version. Packaging is isPreRelease's job, and a nightly passes both:
-      it is a pre-release, so it is packaged as one.
+      only the version. Packaging is isPreRelease's job. Build callers must pass
+      both for a nightly; version-only callers such as schedule.yml may stamp with
+      nightly alone.
     default: 'false'
 outputs:
   version:

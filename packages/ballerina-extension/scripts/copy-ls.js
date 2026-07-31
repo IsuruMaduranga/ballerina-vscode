@@ -20,6 +20,7 @@ const PROJECT_ROOT = path.join(__dirname, '..');
 const LS_DEST = path.join(PROJECT_ROOT, 'ls');
 const LS_BUILD_DIR = path.join(PROJECT_ROOT, '..', 'ballerina-language-server', 'build');
 
+/** Return the newest locally packed language-server jar, or null when none exists. */
 function findPackJar() {
     if (!fs.existsSync(LS_BUILD_DIR)) return null;
     // The `pack` Gradle task writes to build/ballerina-language-server-<version>.jar
@@ -32,6 +33,7 @@ function findPackJar() {
     return candidates[0];
 }
 
+/** Remove stale language-server jars from the extension destination. */
 function clearDest() {
     if (!fs.existsSync(LS_DEST)) return;
     for (const f of fs.readdirSync(LS_DEST)) {
@@ -41,6 +43,7 @@ function clearDest() {
     }
 }
 
+/** Copy the newest packed jar into the extension and report whether one was found. */
 function copyLocal() {
     const jar = findPackJar();
     if (!jar) return false;

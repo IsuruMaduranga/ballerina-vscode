@@ -87,6 +87,7 @@ function deriveNightlyVersion(extensionVersion, stamp) {
   return `${major}.${minor - 1}.${stamp}`;
 }
 
+/** Validate CLI arguments, derive the version, and print it for workflow callers. */
 function main() {
   const args = process.argv.slice(2);
   const flagIndex = args.indexOf('--timestamp');

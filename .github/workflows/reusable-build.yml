@@ -61,11 +61,6 @@ on:
         required: false
         default: false
 
-env:
-  ballerina_version: 2201.13.2
-  ballerina_zip_url: https://github.com/ballerina-platform/ballerina-distribution/releases/download/v2201.13.2/ballerina-2201.13.2-swan-lake.zip
-  ballerina_deb_url: https://dist.ballerina.io/downloads/2201.13.2/ballerina-2201.13.2-swan-lake-linux-x64.deb
-
 jobs:
   Build_Stage:
     name: Build repo
@@ -73,6 +68,7 @@ jobs:
     runs-on: ${{ inputs.runOnAWS && inputs.awsRunnerId || 'ubuntu-latest' }}
     outputs:
       runBalExtTests: ${{ steps.testMatrix.outputs.runBalExtTests }}
+      ballerinaVersion: ${{ steps.build.outputs.ballerinaVersion }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -114,6 +110,7 @@ jobs:
           echo "runBalExtTests=${{ steps.diff.outputs.hasBalDiff }}" >> $GITHUB_OUTPUT
 
       - name: Build
+        id: build
         uses: ./.github/actions/build
         with:
           isPreRelease: ${{ inputs.isPreRelease }}
@@ -178,9 +175,10 @@ jobs:
         run: |
           cd packages/ballerina-extension
           mkdir extractedDistribution
-          wget ${{ env.ballerina_zip_url }}
-          unzip -qq ./ballerina-${{ env.ballerina_version }}-swan-lake.zip -d ./extractedDistribution
-          rm ballerina-${{ env.ballerina_version }}-swan-lake.zip
+          ballerinaVersion="${{ needs.Build_Stage.outputs.ballerinaVersion }}"
+          wget "https://github.com/ballerina-platform/ballerina-distribution/releases/download/v${ballerinaVersion}/ballerina-${ballerinaVersion}-swan-lake.zip"
+          unzip -qq "./ballerina-${ballerinaVersion}-swan-lake.zip" -d ./extractedDistribution
+          rm "ballerina-${ballerinaVersion}-swan-lake.zip"
           balVersion=$(ls ./extractedDistribution)
           balHome=./extractedDistribution/$balVersion
           echo "balVersion=$balVersion" >> $GITHUB_OUTPUT
@@ -285,9 +283,7 @@ jobs:
           rush-install: true
 
       - name: Install Ballerina distribution
-        uses: ballerina-platform/setup-ballerina@8a64987be305edb95f32092f64916ff973f40824 # v1
-        with:
-          version: ${{ env.ballerina_version }}
+        uses: ./.github/actions/setup-ballerina
 
       - name: Check for previous test results
         shell: bash

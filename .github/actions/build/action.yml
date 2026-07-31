@@ -27,16 +27,17 @@ inputs:
     description: Explicit version override, or N/A to derive it from the extension package.json
     required: false
     default: 'N/A'
-  balVersion:
-    description: Ballerina distribution version
-    required: false
-    default: '2201.13.2'
   COPILOT_ROOT_URL:
     required: false
   COPILOT_DEV_ROOT_URL:
     required: false
   APPINSIGHTS_INSTRUMENTATION_KEY:
     required: false
+
+outputs:
+  ballerinaVersion:
+    description: The Ballerina distribution version used by the build
+    value: ${{ steps.ballerina.outputs.version }}
 
 runs:
   using: "composite"
@@ -62,10 +63,16 @@ runs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
-    - uses: ballerina-platform/setup-ballerina@8a64987be305edb95f32092f64916ff973f40824 # v1
-      name: Install Ballerina
-      with:
-        version: ${{ inputs.balVersion }}
+    - name: Install Ballerina
+      id: ballerina
+      uses: ./.github/actions/setup-ballerina
+
+    - name: Validate build mode
+      if: ${{ inputs.nightly == 'true' && inputs.isPreRelease != 'true' }}
+      shell: bash
+      run: |
+        echo "::error::A nightly build must set isPreRelease=true so its VSIX is packaged with --pre-release."
+        exit 1
 
     - name: Cache Ballerina dependencies (LS gradle)
       if: ${{ inputs.enableCache == 'true' }}

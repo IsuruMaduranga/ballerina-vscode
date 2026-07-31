@@ -8,8 +8,9 @@ inputs:
     description: 'File name'
     required: true
   chatAPI:
-    description: 'Google chat API'
-    required: true
+    description: 'Google chat API. When empty, the notification is skipped.'
+    required: false
+    default: ''
   threadKey:
     description: 'Google Chat thread key for grouping release notifications'
     required: false
@@ -135,12 +136,19 @@ runs:
         branch="${{ steps.refs.outputs.branch }}"
         git diff --staged --quiet || git commit -m "Update version to ${{ steps.refs.outputs.version }}"
 
-        # Reused rather than recreated, so re-running a release (or a branch someone cut by
-        # hand to carry a fix) does not fail on an existing ref. In that case the tag has to
-        # follow the branch that is actually there: tagging the local commit would name a
-        # commit the remote does not have, and the releases API would reject it.
+        # A re-run may reuse the branch only when it contains exactly the tree this
+        # invocation intends to release. Adopting a different tree would make the tag
+        # disagree with the VSIX that was just built.
         if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
           sha=$(git ls-remote --heads origin "${branch}" | cut -f1)
+          git fetch --depth=1 origin "${branch}"
+          localTree=$(git rev-parse "HEAD^{tree}")
+          remoteTree=$(git rev-parse "${sha}^{tree}")
+          if [ "${remoteTree}" != "${localTree}" ]; then
+            echo "::error::${branch} already exists at ${sha}, but its tree does not match the release being built."
+            echo "::error::Expected tree ${localTree}; found ${remoteTree}. Refusing to tag an incompatible branch."
+            exit 1
+          fi
           echo "::notice::${branch} already exists at ${sha}; leaving it untouched."
         else
           sha=$(git rev-parse HEAD)
@@ -181,7 +189,6 @@ runs:
         CURL_API=(curl -sS --connect-timeout 15 --max-time 60)
         CURL_UPLOAD=(curl -sS --connect-timeout 15 --max-time 900)
 
-        existingAssets="[]"
         createResponse=$("${CURL_API[@]}" -X POST \
           -H "Accept: application/vnd.github.v3+json" \
           -H "Authorization:token ${GH_TOKEN}" \
@@ -194,8 +201,34 @@ runs:
             '{tag_name: $tag, target_commitish: $commit, draft: false, name: $name, prerelease: $prerelease}')")
         id=$(echo "${createResponse}" | jq -r '.id // empty')
         if [ -z "${id}" ]; then
-          echo "Failed to create release:" >&2
-          echo "${createResponse}" >&2
+          tagAlreadyExists=$(echo "${createResponse}" | jq -r \
+            'any(.errors[]?; .code == "already_exists" and .field == "tag_name")')
+          if [ "${tagAlreadyExists}" != "true" ]; then
+            echo "Failed to create release:" >&2
+            echo "${createResponse}" >&2
+            exit 1
+          fi
+
+          existingRelease=$("${CURL_API[@]}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization:token ${GH_TOKEN}" \
+            "${API}/releases/tags/${TAG}")
+          id=$(echo "${existingRelease}" | jq -r '.id // empty')
+          if [ -z "${id}" ]; then
+            echo "The release tag already exists, but its GitHub Release could not be loaded:" >&2
+            echo "${existingRelease}" >&2
+            exit 1
+          fi
+          echo "::notice::Reusing existing release ${id} for ${TAG}."
+        fi
+
+        existingAssets=$("${CURL_API[@]}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization:token ${GH_TOKEN}" \
+          "${API}/releases/${id}/assets?per_page=100")
+        if ! echo "${existingAssets}" | jq -e 'type == "array"' >/dev/null; then
+          echo "Failed to load assets for release ${id}:" >&2
+          echo "${existingAssets}" >&2
           exit 1
         fi
 

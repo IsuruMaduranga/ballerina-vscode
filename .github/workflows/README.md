@@ -66,7 +66,7 @@ resolves the VSIX to install by newest mtime across those folders
 the winner is undefined and a run can install a months-old build.
 
 Its glob is `ballerina-[0-9]*.vsix`, requiring a digit after the dash so it can never match
-`ballerina-integrator-*.vsix` — which really can sit in `vsix/`, because the e2e prerelease
+`ballerina-integrator-*.vsix` — which really can sit in `vsix/`, because the e2e pre-release
 path downloads it there (`test.list.ts`). `setup.ts` makes the same exclusion.
 
 `.github/actions/updateVersion` is the only workflow code that mutates the version, and the
@@ -146,7 +146,8 @@ affect the nightly's version, which is already committed on the `nightly` branch
 | `release/X.Y.Z` | inherited from the branch it was cut from | `release-pre-release.yml`, non-pre-release only |
 
 A release dispatched with `isPreRelease: false` commits the packaged version, pushes
-`release/<version>` (reusing it if it already exists), and opens a PR from it into `X.Y.x`.
+`release/<version>` (reusing it only when its tree is identical), and opens a PR from it
+into `X.Y.x`.
 The commit matters: `updateVersion` writes the version into the *working tree* during the
 build, so without it the released version would exist in no commit anywhere — and the
 `v<version>` tag is pinned to that commit, not to the dispatched one, so the tagged tree
@@ -257,6 +258,7 @@ configured.
 | Action | Used by |
 |---|---|
 | `build` | `reusable-build.yml` — runs rush install + `rush build --to ballerina` |
+| `setup-ballerina` | Build and LS workflows — installs the distribution version declared by the LS `gradle.properties` |
 | `updateVersion` | `build`, `schedule.yml` — resolves and writes the version in the extension manifest |
 | `release` | `release-pre-release.yml` — owns everything that materialises a release: the version commit, `release/<version>`, the tag, the GitHub release and its assets |
 | `pr` | `release-pre-release.yml` — opens the follow-up pull requests (release PR into `X.Y.x`, next-snapshot PR into `main`) + Google Chat notification |

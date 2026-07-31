@@ -91,9 +91,10 @@ jobs:
             echo PRE_RELEASE=false >> $GITHUB_ENV
           fi
 
-      # Selects the commit the release tag will point at. It no longer mutates anything:
-      # the version is owned by the extension manifest, so this branch is identical to
-      # the ref the workflow was dispatched on.
+      # Selects the commit the release tag will point at. An existing
+      # release-${BASE_VERSION} branch can differ from the dispatched ref; the explicit
+      # -Pversion=${VERSION} below keeps the build aligned with the version resolved
+      # from the dispatched ref.
       - name: Check out the release branch
         env:
           GITHUB_TOKEN: ${{ secrets.BALLERINA_BOT_TOKEN }}
@@ -125,9 +126,7 @@ jobs:
       # tag created by 'gh release create'.
 
       - name: Set up Ballerina
-        uses: ballerina-platform/setup-ballerina@97fd67111e3c3ecdfafff96fc24d95ad909ab299 # v1.1.4
-        with:
-          version: 2201.13.4
+        uses: ./.github/actions/setup-ballerina
 
       # -Pversion is required: without it this builds at whatever gradle.properties
       # says, which previously happened to be right only because the deleted 'release'
