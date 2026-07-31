@@ -355,10 +355,11 @@ public class PackageUtil {
      * @param org         the organization name of the target package
      * @param packageName the package name of the target package
      * @param moduleName  the module name of the target package
-     * @return an Optional containing the semantic model if a matching sibling project is found
+     * @return an Optional containing the semantic model and package if a matching sibling project is found
      */
-    public static Optional<SemanticModel> getSemanticModelFromWorkspace(Project project, String org,
-                                                                        String packageName, String moduleName) {
+    public static Optional<WorkspacePackageResolution> getSemanticModelFromWorkspace(Project project, String org,
+                                                                                      String packageName,
+                                                                                      String moduleName) {
         BallerinaCompilerApi compilerApi = BallerinaCompilerApi.getInstance();
         Optional<Project> workspaceProject = compilerApi.getWorkspaceProject(project);
         if (workspaceProject.isEmpty()) {
@@ -376,16 +377,21 @@ public class PackageUtil {
 
             ModuleId moduleId = currentPackage.getDefaultModule().moduleId();
             if (moduleName == null || moduleName.isEmpty() || currentPackageName.equals(moduleName)) {
-                return Optional.of(getCompilation(childProject).getSemanticModel(moduleId));
+                return Optional.of(new WorkspacePackageResolution(
+                        getCompilation(childProject).getSemanticModel(moduleId), currentPackage));
             }
             for (Module mod : currentPackage.modules()) {
                 if (mod.moduleName().toString().equals(moduleName)) {
-                    return Optional.of(getCompilation(childProject).getSemanticModel(mod.moduleId()));
+                    return Optional.of(new WorkspacePackageResolution(
+                            getCompilation(childProject).getSemanticModel(mod.moduleId()), currentPackage));
                 }
             }
             return Optional.empty();
         }
         return Optional.empty();
+    }
+
+    public record WorkspacePackageResolution(SemanticModel semanticModel, Package resolvedPackage) {
     }
 
     public static ModuleInfo fetchVersionIfNotExists(ModuleInfo moduleInfo) {

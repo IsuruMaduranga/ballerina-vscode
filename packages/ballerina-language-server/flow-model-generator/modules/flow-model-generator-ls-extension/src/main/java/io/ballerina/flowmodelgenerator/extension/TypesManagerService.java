@@ -634,7 +634,8 @@ public class TypesManagerService implements ExtendedLanguageServerService {
         try {
             Project project = workspaceManager.loadProject(filePath);
             Optional<SemanticModel> workspaceModel = PackageUtil.getSemanticModelFromWorkspace(
-                    project, org, packageName, moduleName);
+                            project, org, packageName, moduleName)
+                    .map(PackageUtil.WorkspacePackageResolution::semanticModel);
             if (workspaceModel.isPresent()) {
                 semanticModelCache.put(keyWithoutPath, workspaceModel.get());
                 return workspaceModel;

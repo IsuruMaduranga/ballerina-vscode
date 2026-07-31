@@ -303,10 +303,11 @@ public class FunctionDataBuilder {
         // package can also exist in the cache, but that copy may be stale and resolvedPackage() initially selects
         // its default module. In particular, this would make a function in a sibling package's submodule invisible.
         if (project != null) {
-            Optional<SemanticModel> workspaceSemanticModel = PackageUtil.getSemanticModelFromWorkspace(project,
-                    moduleInfo.org(), moduleInfo.packageName(), moduleInfo.moduleName());
-            if (workspaceSemanticModel.isPresent()) {
-                semanticModel(workspaceSemanticModel.get());
+            Optional<PackageUtil.WorkspacePackageResolution> workspaceResolution =
+                    PackageUtil.getSemanticModelFromWorkspace(project,
+                            moduleInfo.org(), moduleInfo.packageName(), moduleInfo.moduleName());
+            if (workspaceResolution.isPresent()) {
+                applyWorkspaceResolution(workspaceResolution.get());
                 return;
             }
         }
@@ -366,7 +367,7 @@ public class FunctionDataBuilder {
         // replace their project while resolving local data.
         if (semanticModel == null && project != null) {
             PackageUtil.getSemanticModelFromWorkspace(project, moduleInfo.org(), moduleInfo.packageName(),
-                    moduleInfo.moduleName()).ifPresent(this::semanticModel);
+                    moduleInfo.moduleName()).ifPresent(this::applyWorkspaceResolution);
         }
 
         // Check the index before attempting external package resolution.
@@ -551,6 +552,18 @@ public class FunctionDataBuilder {
                 getParameters(paramSymbol, documentationMap, paramForTypeInfer, union)));
         functionData.setParameters(parameters);
         return functionData;
+    }
+
+    private void applyWorkspaceResolution(PackageUtil.WorkspacePackageResolution workspaceResolution) {
+        semanticModel(workspaceResolution.semanticModel());
+        this.resolvedPackage = workspaceResolution.resolvedPackage();
+        Symbol targetSymbol = functionSymbol != null ? functionSymbol : semanticModel.moduleSymbols().stream()
+                .filter(symbol -> symbol instanceof FunctionSymbol && symbol.nameEquals(functionName))
+                .findFirst()
+                .orElse(null);
+        this.document = targetSymbol == null ? null : targetSymbol.getLocation()
+                .map(location -> CommonUtils.getDocument(resolvedPackage.project(), location))
+                .orElse(null);
     }
 
     private void checkLocalModule() {
