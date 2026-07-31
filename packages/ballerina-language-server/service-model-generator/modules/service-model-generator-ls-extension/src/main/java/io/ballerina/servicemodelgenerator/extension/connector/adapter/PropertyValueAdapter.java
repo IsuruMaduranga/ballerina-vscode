@@ -33,19 +33,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Recursive converter between the unified TriggerUISchemaModel's {@link TriggerUISchemaModel.Property} tree and the
- * wire {@link Value} tree the Integrator UI edits. The two shapes are structurally aligned; the
- * mapping preserves the fields the schema-driven flows depend on:
- *
- * <ul>
- *   <li><b>codedata roles</b> — {@code type}/{@code field}/{@code optional}
- *       (annotation trees: COMPLEX_FUNCTION_ANNOTATION → MAPPING_FIELD → FIELD_VALUE_CHOICE …) and
- *       {@code template}/{@code defaultType}/{@code boundType}/{@code bindable}/{@code modifier}/
- *       {@code targetParam} (payload composition: PAYLOAD_TYPE / PAYLOAD_MODIFIER / METADATA_FLAG);</li>
- *   <li><b>field types</b> — mapped into the wire enum where a constant exists; open-vocabulary UI
- *       markers with no wire constant fall back to the closest widget (METADATA_FLAG → FLAG) since
- *       their behaviour is driven by {@code codedata.type}, not the widget.</li>
- * </ul>
+ * Recursive converter between {@link TriggerUISchemaModel.Property} trees and the wire {@link Value}
+ * trees the Integrator UI edits.
  *
  * @since 1.9.0
  */
@@ -90,8 +79,6 @@ public final class PropertyValueAdapter {
         if (property.items() != null) {
             builder.setItems(new ArrayList<>(property.items()));
         }
-        // Validations now live on the type members (see toPropertyType); the property-level slot is
-        // no longer populated by connector models.
         Value value = builder.build();
         if (property.choices() != null) {
             List<Value> choices = new ArrayList<>();
@@ -180,7 +167,6 @@ public final class PropertyValueAdapter {
         return builder.build();
     }
 
-    /** Converts the model's validation rules into their wire form (passed through untouched). */
     private static List<ValidationRule> toWireValidations(List<TriggerUISchemaModel.ValidationRule> modelRules) {
         List<ValidationRule> validations = new ArrayList<>();
         for (TriggerUISchemaModel.ValidationRule rule : modelRules) {
@@ -193,11 +179,8 @@ public final class PropertyValueAdapter {
         return validations;
     }
 
-    /**
-     * Maps an open-vocabulary fieldType string onto the wire enum. METADATA_FLAG (a read-only
-     * informational marker with no wire constant) renders as a FLAG checkbox — the UI derives its
-     * disabled state from {@code codedata.type}, so the widget downgrade is lossless.
-     */
+    /** METADATA_FLAG has no wire constant; it downgrades to a FLAG checkbox since its behaviour is
+     *  driven by {@code codedata.type}, not the widget. */
     private static Value.FieldType wireFieldType(String fieldType) {
         if (fieldType == null) {
             return null;
@@ -249,11 +232,7 @@ public final class PropertyValueAdapter {
                 cd.getValueQualifier(), null, null, cd.getNameEditable());
     }
 
-    /**
-     * A leaf's value normalized for source generation: string templates typed in the UI (e.g.
-     * {@code string `x`}) collapse to their literal form via {@link Value#getValue()}; non-string
-     * values (booleans of FLAG/choice state) pass through raw so enable/checked semantics survive.
-     */
+    /** String values collapse to their literal form; non-string values pass through raw. */
     private static Object leafValue(Value value) {
         Object raw = value.getValueAsObject();
         if (raw instanceof String) {

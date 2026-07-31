@@ -33,14 +33,9 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * Discovers event-integration <b>trigger</b> packages on Ballerina Central for the "Search more"
- * flow. This complements the locally-bundled trigger index ({@code getTriggerModels}) with a live
- * Central search, so a connector that ships its trigger models can be found and added without a
- * language-server release.
- *
- * <p>Central returns generic package results; a package is treated as a trigger when its keywords
- * signal a listener/trigger, or its module name uses the {@code trigger.*} convention. The pure
- * predicate/mapping helpers are package-visible for unit testing without a network call.
+ * Discovers event-integration trigger packages on Ballerina Central for the "Search more" flow,
+ * complementing the locally-bundled trigger index. A package is treated as a trigger when its keywords
+ * signal a listener/trigger, or its module name uses the {@code trigger.*} convention.
  *
  * @since 1.8.0
  */
@@ -49,11 +44,9 @@ public final class TriggerSearchUtil {
     private static final int DEFAULT_LIMIT = 30;
     private static final String EVENT_TYPE = "event";
     private static final String DEFAULT_QUERY = "trigger";
-    // Keyword/name signals that a Central package is an event-integration trigger.
     private static final Set<String> TRIGGER_KEYWORDS = Set.of("trigger", "listener", "event");
     private static final String TRIGGER_MODULE_PREFIX = "trigger.";
-    // Upper bound on the authoritative (but network-bound) "does this package export a Listener?" checks
-    // per search, so a broad query cannot fan out into hundreds of Central calls.
+    // Caps network-bound listener-export checks so a broad query can't fan out into hundreds of calls.
     private static final int MAX_LISTENER_LOOKUPS = 30;
 
     private TriggerSearchUtil() {
@@ -72,9 +65,7 @@ public final class TriggerSearchUtil {
             queryMap.put("limit", String.valueOf(limit == null || limit <= 0 ? DEFAULT_LIMIT : limit));
             queryMap.put("offset", String.valueOf(offset == null || offset < 0 ? 0 : offset));
             PackageResponse response = central.searchPackages(queryMap);
-            // Authoritative fallback: a package that exports a Listener is an event trigger even when it
-            // is not tagged with an 'event'/'trigger'/'listener' keyword (e.g. activemq, aws.sqs, smb).
-            // Only consulted for packages the cheap keyword check misses, and bounded by MAX_LISTENER_LOOKUPS.
+            // Listener-export check is an authoritative fallback for packages the keyword check misses.
             int[] budget = {MAX_LISTENER_LOOKUPS};
             Predicate<PackageResponse.Package> exportsListener = pkg -> {
                 if (budget[0] <= 0) {
@@ -96,8 +87,7 @@ public final class TriggerSearchUtil {
 
     /**
      * Filters a Central package response to trigger packages and maps them to {@link TriggerBasicInfo},
-     * skipping any already present locally. A package qualifies if the cheap keyword/name heuristic
-     * matches, or {@code exportsListener} confirms it exports a Listener.
+     * skipping any already present locally.
      */
     static List<TriggerBasicInfo> toTriggerResults(PackageResponse response, Set<String> existingKeys,
                                                    Predicate<PackageResponse.Package> exportsListener) {
@@ -113,7 +103,6 @@ public final class TriggerSearchUtil {
             if (known.contains(key(pkg.organization(), pkg.name()))) {
                 continue;
             }
-            // Keyword check first (cheap, short-circuits before any Central listener lookup).
             if (!isTriggerPackage(pkg.keywords(), pkg.name())
                     && !(exportsListener != null && exportsListener.test(pkg))) {
                 continue;
@@ -136,10 +125,7 @@ public final class TriggerSearchUtil {
         }
     }
 
-    /**
-     * Whether a Central package is an event-integration trigger, based on its keywords or the
-     * {@code trigger.*} module-name convention.
-     */
+    /** Whether a Central package is an event-integration trigger, by keywords or module-name convention. */
     static boolean isTriggerPackage(List<String> keywords, String name) {
         if (name != null && name.toLowerCase(Locale.US).startsWith(TRIGGER_MODULE_PREFIX)) {
             return true;

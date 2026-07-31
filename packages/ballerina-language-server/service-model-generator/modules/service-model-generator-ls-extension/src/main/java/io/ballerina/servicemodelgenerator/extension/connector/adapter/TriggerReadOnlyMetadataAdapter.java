@@ -38,27 +38,8 @@ import java.util.Map;
 /**
  * Builds the schema-driven service model's {@code readOnlyMetadata} property — the read-only summary
  * chips ("Monitored Path", "Queue Name", ...) the designer renders in the service-card header, resolved
- * from the user's source.
- *
- * <p>The chip definitions ship in the unified {@link TriggerUISchemaModel}'s {@code readOnlyMetadata} list
- * ({@code key}/{@code displayName}/{@code kind}/{@code path}); this resolves each one's value(s) from
- * the service declaration and packs them into a {@code READONLY} {@link Value} whose {@code value} is a
- * map of {@code displayName -> resolved values}, matching the DB-backed builders'
- * {@link io.ballerina.servicemodelgenerator.extension.util.ServiceModelUtils#getReadonlyMetadata} shape.
- * Resolution is delegated to the shared extractors:
- * <ul>
- *   <li>{@code SERVICE_ANNOTATION} &rarr; {@link AnnotationExtractor} (the {@code path}'s trailing field,
- *       e.g. {@code ServiceConfig.path} &rarr; {@code path});</li>
- *   <li>{@code LISTENER_PARAM} &rarr; {@link ListenerParamExtractor} (the listener constructor argument
- *       named {@code key});</li>
- *   <li>{@code STRING_LITERAL} &rarr; the service's string-literal attach point;</li>
- *   <li>{@code SERVICE_DESCRIPTION} / {@code SERVICE_BASE_PATH} &rarr; {@link ServiceDescriptionExtractor}
- *       (e.g. Salesforce's {@code serviceType} off the service's type descriptor, {@code basePath} off
- *       its attach point/base path — {@code service <type> <basePath> on ...}).</li>
- * </ul>
- *
- * A definition whose value cannot be resolved simply contributes no values (its display name stays with
- * an empty array); unknown kinds are skipped.
+ * from the user's source via the shared extractors ({@link AnnotationExtractor},
+ * {@link ListenerParamExtractor}, {@link ServiceDescriptionExtractor}).
  *
  * @since 1.9.0
  */
@@ -81,19 +62,14 @@ public final class TriggerReadOnlyMetadataAdapter {
     private TriggerReadOnlyMetadataAdapter() {
     }
 
-    /**
-     * Builds the {@code readOnlyMetadata} wire {@link Value} from the trigger model's chip definitions,
-     * resolving each chip's value(s) from the source. Returns {@code null} when the model ships no
-     * definitions, so callers can leave the property off entirely.
-     */
+    /** Returns {@code null} when the model ships no definitions, so callers can leave the property off. */
     public static Value build(List<TriggerUISchemaModel.ReadOnlyMetadata> definitions, Service serviceModel,
                               ServiceDeclarationNode serviceNode, ModelFromSourceContext context) {
         if (definitions == null || definitions.isEmpty()) {
             return null;
         }
 
-        // LinkedHashMap: preserve the model's declaration order; aggregate values sharing a display name
-        // (e.g. the two "Queue Name" definitions RabbitMQ ships) under a single chip.
+        // Aggregates values sharing a display name (e.g. RabbitMQ's two "Queue Name" definitions).
         Map<String, List<String>> resolved = new LinkedHashMap<>();
         for (TriggerUISchemaModel.ReadOnlyMetadata definition : definitions) {
             if (definition == null) {
@@ -135,10 +111,7 @@ public final class TriggerReadOnlyMetadataAdapter {
         };
     }
 
-    /**
-     * The annotation field the value lives in: the trailing segment of {@code path} (e.g.
-     * {@code ServiceConfig.path} &rarr; {@code path}) when present, otherwise the definition {@code key}.
-     */
+    /** The trailing segment of {@code path} (e.g. {@code ServiceConfig.path} to {@code path}), or {@code key}. */
     private static String annotationField(TriggerUISchemaModel.ReadOnlyMetadata definition) {
         String path = definition.path();
         if (path != null && !path.isBlank()) {

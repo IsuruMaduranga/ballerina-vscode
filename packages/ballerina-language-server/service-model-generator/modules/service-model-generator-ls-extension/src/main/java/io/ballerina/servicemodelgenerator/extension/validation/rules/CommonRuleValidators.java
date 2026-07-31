@@ -36,11 +36,8 @@ import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 
 /**
- * Server-side implementations of the {@code common.*} rule catalog — the authoritative re-check of
- * the same rules the webview runs while typing. The client is untrusted (and a model may be
- * submitted by another client entirely), so these run again before any source is generated.
- *
- * <p>Every validator here is pure: value plus args are enough, no project context is consulted.
+ * Server-side implementations of the {@code common.*} rule catalog — the authoritative re-check of the
+ * same rules the webview runs while typing, since the client is untrusted. Every validator is pure.
  *
  * @since 1.8.0
  */
@@ -94,19 +91,16 @@ public final class CommonRuleValidators {
     }
 
     /**
-     * Rejects a string field whose <b>content</b> is empty. Distinct from {@code required}, which
-     * only sees whether the node holds a value at all: a text field holds its value as a string
-     * literal, so an empty entry arrives as {@code ""} (or {@code string ``}) — two characters that
-     * {@code required} happily accepts while the generated source binds an empty string.
+     * Rejects a string field whose literal content is empty (e.g. {@code ""}), distinct from
+     * {@code required} which only checks whether the node holds a value at all.
      */
     private static Optional<String> nonEmpty(Value node) {
         return stringContent(text(node)).isEmpty() ? Optional.of("{label} cannot be empty") : Optional.empty();
     }
 
     /**
-     * The content carried by a string literal — {@code "x"} and {@code string `x`} both yield
-     * {@code x}. A value that is not a literal (a raw path, or an expression) is returned as-is, so
-     * this stays a pure unwrap rather than a validity judgement.
+     * Unwraps a string literal's content ({@code "x"} / {@code string `x`} &rarr; {@code x}); non-literals pass
+     * through unchanged.
      */
     private static String stringContent(String raw) {
         String trimmed = raw.trim();
@@ -150,9 +144,7 @@ public final class CommonRuleValidators {
             return Optional.empty();
         }
         String failure = "{label} has an invalid format";
-        // Multi-value fields (TEXT_SET/EXPRESSION_SET) are checked per item, matching how the client
-        // and the legacy type-level `pattern` behave — matching the comma-joined form would be
-        // meaningless. A scalar's emptiness is `required`'s concern, so it is skipped here.
+        // Multi-value fields are checked per item — the comma-joined form would be meaningless.
         List<String> items = multiValues(node);
         if (items != null) {
             return items.stream().anyMatch(item -> !compiled.matcher(item == null ? "" : item).matches())
@@ -199,8 +191,7 @@ public final class CommonRuleValidators {
         if (number >= min && number <= max) {
             return Optional.empty();
         }
-        // The bounds are baked into the message rather than left as {min}/{max} placeholders: they
-        // usually come from this rule's own defaults, and the engine can only interpolate model args.
+        // Bounds are baked into the message since they may come from defaults, not model args.
         return Optional.of("{label} must be a valid port (%s–%s)".formatted(plain(min), plain(max)));
     }
 
@@ -351,11 +342,7 @@ public final class CommonRuleValidators {
         return valueString == null ? "" : valueString.trim();
     }
 
-    /**
-     * The individual entries of a multi-value node (TEXT_SET/EXPRESSION_SET), or {@code null} when
-     * the node holds a single scalar value. Per-item rules use this to check each entry rather than
-     * the meaningless comma-joined form {@link #text} produces.
-     */
+    /** Entries of a multi-value node, or {@code null} for a scalar — avoids {@link #text}'s comma-joined form. */
     private static List<String> multiValues(Value node) {
         if (node == null) {
             return null;

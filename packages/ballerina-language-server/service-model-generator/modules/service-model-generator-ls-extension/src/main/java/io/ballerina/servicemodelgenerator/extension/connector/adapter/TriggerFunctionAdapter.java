@@ -38,20 +38,8 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_R
 
 /**
  * Adapts a unified {@link TriggerUISchemaModel.FunctionModel} into the wire {@link Function} POJOs the
- * Integrator understands ({@code Value}-wrapped name/type/return). In the unified model a
- * parameter's {@code type} and {@code name} are already {@code Property} sub-nodes, so this reads
- * their value/rendering directly instead of wrapping flat strings.
- *
- * <p><b>Variant expansion.</b> A handler with a {@code VARIANT} parameter (a {@code
- * VARIATION_SELECTOR} type whose sub-forms fix the emitted function name — e.g. FTP/SMB's
- * onFileCsv/onFileJson/… file formats) fans out into one self-contained wire {@link Function} per
- * variant. Each carries the catalog fields ({@code group}/{@code variantLabel}/{@code addLabel}/
- * {@code repeatable}), the variant's composed payload parameter (typed by {@link PayloadComposer},
- * with the composition inputs — template/defaultType/boundType/bindable — on its {@code codedata} so
- * the UI can recompose on stream/schema edits), its composition flags (PAYLOAD_MODIFIER /
- * METADATA_FLAG siblings) as wire properties, and the function-level annotation tree. The generic
- * front-end handler form and the existing wire source emitter both consume this shape without
- * per-connector code.
+ * Integrator understands. A handler with a {@code VARIANT} parameter (e.g. FTP/SMB's file-format
+ * handlers) fans out into one wire {@link Function} per variant.
  *
  * @since 1.9.0
  */
@@ -65,10 +53,7 @@ public final class TriggerFunctionAdapter {
     private TriggerFunctionAdapter() {
     }
 
-    /**
-     * Converts one unified function model into its wire {@link Function}(s) — one per format variant
-     * when the handler carries a VARIANT parameter, else a single function.
-     */
+    /** One wire {@link Function} per format variant when the handler carries a VARIANT parameter, else one. */
     public static List<Function> toFunctions(TriggerUISchemaModel.FunctionModel model) {
         TriggerUISchemaModel.Parameter variantParameter = findVariantParameter(model);
         if (variantParameter == null || variantParameter.type() == null
@@ -84,7 +69,6 @@ public final class TriggerFunctionAdapter {
         return functions;
     }
 
-    /** Converts one unified function model into a single wire {@link Function} (no variant fan-out). */
     public static Function toFunction(TriggerUISchemaModel.FunctionModel model) {
         return toFunction(model, null, null);
     }
@@ -100,10 +84,6 @@ public final class TriggerFunctionAdapter {
                 && notBlank(variant.codedata().originalName())
                         ? variant.codedata().originalName() : model.name();
         String variantLabel = variantLabel(model, variant);
-        // The name field's own label/description, when the schema wants the rename prompt to read
-        // differently from the handler's own metadata (e.g. MCP's "Function Name" / "The name of the
-        // function" vs. the catalog card's "Tool" / "Define a tool function..."). Falls back to the
-        // handler's own label/description, matching every schema authored before this field existed.
         String nameLabel = model.nameMetadata() != null && notBlank(model.nameMetadata().label())
                 ? model.nameMetadata().label() : (variantLabel != null ? variantLabel : label);
         String nameDescription = model.nameMetadata() != null && notBlank(model.nameMetadata().description())
@@ -125,9 +105,6 @@ public final class TriggerFunctionAdapter {
         if (KIND_RESOURCE.equalsIgnoreCase(model.kind()) && model.accessor() != null) {
             builder.accessor(identifierValue(model.accessor(), model.accessor(), description));
         }
-        // A user-editable doc-comment (e.g. MCP's "Tool Description") rides the same
-        // Function.documentation the generic emitter already turns into a `# ...` doc comment — no
-        // new emission path needed, just a Value built from the schema's own template.
         if (model.documentationSchema() != null) {
             builder.documentation(PropertyValueAdapter.toValue(model.documentationSchema()));
         }
@@ -142,16 +119,7 @@ public final class TriggerFunctionAdapter {
         return function;
     }
 
-    /**
-     * Converts the addable-parameter templates ({@code canAddParameters}'s backing data) into the
-     * wire {@code Function.schema} the front-end's generic {@code ParamManager} reads — one entry per
-     * kind (e.g. {@code parameter}, {@code header}), each a fully-formed template {@link Parameter}
-     * (editable {@code type}/{@code name}, plus {@code defaultValue}/{@code documentation}/
-     * {@code headerName} where the kind uses them). Cloning one of these per user "+ Add" click, then
-     * appending the clone to the function's own {@code parameters}, is exactly how
-     * {@code functions/http_resource.json}'s non-schema-driven {@code schema} map already works —
-     * this generalizes the same mechanism into the unified {@link TriggerUISchemaModel}.
-     */
+    /** Converts the {@code canAddParameters} templates into the wire {@code Function.schema} map. */
     private static Map<String, Parameter> toParameterSchema(
             Map<String, TriggerUISchemaModel.Parameter> parameterSchema) {
         if (parameterSchema == null || parameterSchema.isEmpty()) {
@@ -183,11 +151,6 @@ public final class TriggerFunctionAdapter {
                 .build();
     }
 
-    /**
-     * Normalizes the unified model's open function-kind vocabulary onto the wire vocabulary the
-     * generic emitter derives qualifiers from (e.g. {@code COMPLEX_REMOTE_FUNCTION} — a remote
-     * handler with a composed payload — emits the {@code remote} qualifier).
-     */
     private static String wireKind(String kind) {
         if (kind == null) {
             return null;
@@ -226,11 +189,6 @@ public final class TriggerFunctionAdapter {
         return notBlank(model.variantLabel()) ? model.variantLabel() : null;
     }
 
-    /**
-     * The wire function's properties: the function-level tree (annotations such as {@code
-     * functionConfig}) plus, for an expanded variant, its composition flags (the PAYLOAD_MODIFIER
-     * {@code stream} toggle, METADATA_FLAG markers) so the UI can render/toggle them.
-     */
     private static Map<String, Value> toWireProperties(TriggerUISchemaModel.FunctionModel model,
                                                        TriggerUISchemaModel.Property variant) {
         Map<String, Value> properties = new LinkedHashMap<>();
@@ -239,15 +197,10 @@ public final class TriggerFunctionAdapter {
                     properties.put(key, PropertyValueAdapter.toValue(property)));
         }
         if (variant != null) {
-            // Fanned-out variant (VARIATION_SELECTOR): the composition siblings live on the selected
-            // variant sub-form.
             addCompositionSiblings(variant, properties);
         } else if (model.parameters() != null) {
-            // Variant-less payload param(s) — e.g. FTP's onFileCsv, whose `content` is a
-            // COMPLEX_PAYLOAD directly rather than under a VARIATION_SELECTOR. The composition
-            // siblings (the `stream` PAYLOAD_MODIFIER toggle, the `rows` METADATA_FLAG marker) live
-            // on the parameter's own type tree and must surface as wire properties just as a
-            // variant's do — otherwise the handler form drops the toggle/marker entirely.
+            // Variant-less payload param (e.g. FTP's onFileCsv) surfaces its composition siblings
+            // from the parameter's own type tree instead of a variant sub-form.
             for (TriggerUISchemaModel.Parameter parameter : model.parameters()) {
                 if (PayloadComposer.payloadNode(parameter.type()) != null) {
                     addCompositionSiblings(parameter.type(), properties);
@@ -274,8 +227,7 @@ public final class TriggerFunctionAdapter {
             if (parameter == variantParameter && variant != null) {
                 result.add(toPayloadParameter(parameter, variant));
             } else if (PayloadComposer.payloadNode(parameter.type()) != null) {
-                // Variant-less payload param (e.g. kafka's consumer records): same composition
-                // ride-along as a variant's, sourced from the parameter's own type tree.
+                // Variant-less payload param (e.g. kafka's consumer records).
                 result.add(toPayloadParameter(parameter, parameter.type()));
             } else {
                 result.add(toParameter(parameter));
@@ -284,12 +236,6 @@ public final class TriggerFunctionAdapter {
         return result;
     }
 
-    /**
-     * The composed payload parameter of a variant sub-form or a variant-less DATA_BINDING type tree.
-     * The rendered type comes from the composition algorithm; the inputs of that composition (base
-     * template, default/bound element type, bindability) ride on the type's {@code codedata} so the
-     * UI can recompose when the user toggles a modifier or binds a custom schema.
-     */
     private static Parameter toPayloadParameter(TriggerUISchemaModel.Parameter model,
                                                  TriggerUISchemaModel.Property payloadTree) {
         TriggerUISchemaModel.Property payload = PayloadComposer.payloadNode(payloadTree);
@@ -305,8 +251,8 @@ public final class TriggerFunctionAdapter {
         String defaultType = PayloadComposer.defaultComposedType(payloadTree);
         boolean bindable = payloadCodedata != null && Boolean.TRUE.equals(payloadCodedata.bindable());
 
-        // Preserve the payload marker as shipped: PAYLOAD_TYPE_INCLUDED_RECORD additionally tells the
-        // save flow to generate a wrapper record in types.bal instead of binding the type directly.
+        // PAYLOAD_TYPE_INCLUDED_RECORD tells the save flow to generate a wrapper record in types.bal
+        // instead of binding the type directly.
         Codedata typeCodedata = new Codedata(payloadCodedata != null && notBlank(payloadCodedata.type())
                 ? payloadCodedata.type() : "PAYLOAD_TYPE");
         typeCodedata.setBindable(bindable);
@@ -342,11 +288,7 @@ public final class TriggerFunctionAdapter {
                 .build();
     }
 
-    /**
-     * An included-record hint (payload field name / wrapper type identifier) declared either directly
-     * on the payload {@code codedata} or inside its {@code modifiers} map, checked under the given
-     * keys (the schema's historical {@code typeIndentidier} spelling included).
-     */
+    /** Checks the payload {@code codedata}, then its {@code modifiers} map, under each given key. */
     private static String includedRecordHint(TriggerUISchemaModel.Codedata payloadCodedata, String direct,
                                               String... keys) {
         if (notBlank(direct)) {
@@ -363,11 +305,7 @@ public final class TriggerFunctionAdapter {
         return null;
     }
 
-    /**
-     * Normalizes a wrap template onto the {@code {{type}}} placeholder the front-end recomposer
-     * understands — the included-record form (kafka) declares its wrap as a standalone {@code T}
-     * (e.g. {@code T[]}), which only the LS-side composer accepts.
-     */
+    /** Kafka's included-record form declares its wrap as a standalone {@code T} (e.g. {@code T[]}). */
     private static String normalizeTemplate(String template) {
         if (template == null || template.isBlank() || template.contains("{{type}}")) {
             return template;
@@ -390,12 +328,8 @@ public final class TriggerFunctionAdapter {
                 .editable(false)
                 .enabled(true)
                 .optional(true);
-        // A fixed parameter type from a module other than the connector's own (e.g. MCP's `http:Request`)
-        // declares that module on its own codedata; ride it along as a wire import so the generic emitter
-        // (Utils#generateFunctionParamListSource) adds the missing `import` whenever this parameter is
-        // enabled — on initial add or when toggled on later on an already-existing function. Same principle
-        // FunctionForm/ResourceForm already use for a user-picked type's import, just server-populated here
-        // since this type is fixed by the schema rather than chosen through the type editor.
+        // A fixed type from another module (e.g. MCP's `http:Request`) needs its import riding along
+        // so the generic emitter adds it whenever this parameter is enabled.
         TriggerUISchemaModel.Codedata typeCodedata = model.type() == null ? null : model.type().codedata();
         if (typeCodedata != null && notBlank(typeCodedata.moduleName()) && notBlank(typeCodedata.orgName())) {
             typeBuilder.addImport(typeCodedata.moduleName(),
@@ -446,8 +380,6 @@ public final class TriggerFunctionAdapter {
     }
 
     private static String paramTypeText(TriggerUISchemaModel.Parameter parameter) {
-        // The effective type: plain value for TYPE, ballerinaType for FLAG, or the composed
-        // payload type (element + template + active modifier) for DATA_BINDING / VARIANT / PAYLOAD_TYPE.
         return PayloadComposer.effectiveType(parameter.type());
     }
 

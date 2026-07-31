@@ -32,24 +32,10 @@ import java.util.regex.Pattern;
 
 /**
  * The import prefixes one code-generation operation will emit, resolved <b>once</b> against the target
- * file and then reused at every emission site.
- *
- * <p>Connector models author every module reference against a module's <i>natural</i> prefix — its last
- * dot-segment ({@code twilio:CallStatusEventWrapper}, {@code @ftp:FunctionConfig}, {@code cdc:Service}).
- * That prefix is not always what the file can bind the module to: a dotted module collides with its
- * single-segment sibling ({@code ballerinax/trigger.twilio} vs {@code ballerinax/twilio}), and even a
- * plain module collides when the file already bound that prefix elsewhere
- * ({@code import ballerina/file as ftp;}). Resolving this per emission site is what made the listener,
- * descriptor, parameter, and annotation paths each drift out of agreement; a single context keeps them
- * consistent by construction.
- *
- * <p>One operation generally spans <b>several</b> modules — MSSQL CDC references its own {@code mssql}
- * (listener type) and {@code ballerinax/cdc} (service type + annotations) — so this is a map, not a
- * single "self" prefix. Register each module with {@link #prefixFor}, then use {@link #requalify} to map
- * model-authored text onto the resolved prefixes and {@link #pendingImports} to emit the imports the
- * file is still missing.
- *
- * <p>Not thread-safe; build one per operation.
+ * file and then reused at every emission site (an operation may span several modules, e.g. MSSQL CDC's
+ * own {@code mssql} plus {@code ballerinax/cdc}). Register each module with {@link #prefixFor}, then use
+ * {@link #requalify} to map model-authored text onto the resolved prefixes and {@link #pendingImports}
+ * to emit the imports still missing. Not thread-safe; build one per operation.
  *
  * @since 1.9.0
  */
@@ -61,7 +47,7 @@ public final class ModulePrefixContext {
     private final Map<String, String> byModule = new LinkedHashMap<>();
     /** natural prefix -> resolved prefix, driving {@link #requalify}. */
     private final Map<String, String> naturalToEmitted = new LinkedHashMap<>();
-    /** Natural prefixes claimed by more than one registered module, so no longer able to identify one. */
+    /** Natural prefixes claimed by more than one registered module. */
     private final Set<String> ambiguousNaturals = new HashSet<>();
     /** {@code org/module} -> resolved prefix, for modules the file does not import yet. */
     private final Map<String, String> pendingImports = new LinkedHashMap<>();
@@ -80,17 +66,9 @@ public final class ModulePrefixContext {
     }
 
     /**
-     * The prefix to emit for {@code org/module}, resolved once and cached.
-     *
-     * <p>An import already in the file wins outright — its prefix is authoritative, so anything this
-     * operation emits lines up with what is already there (including a prefix the user hand-edited).
-     * Otherwise a free prefix is allocated (the module's natural prefix when free, else its generated
-     * alias, else that alias numerically disambiguated against everything already claimed) and recorded
-     * in {@link #pendingImports} — see {@link #allocate}.
-     *
-     * @param org    organization name; blank matches any org
-     * @param module module name
-     * @return the prefix, or the module itself when it cannot be resolved
+     * The prefix to emit for {@code org/module}, resolved once and cached. An import already in the
+     * file wins outright; otherwise a free prefix is allocated via {@link #allocate} and recorded in
+     * {@link #pendingImports}.
      */
     public String prefixFor(String org, String module) {
         if (module == null || module.isBlank()) {
@@ -113,8 +91,7 @@ public final class ModulePrefixContext {
         }
         claimed.add(resolved);
         byModule.put(key, resolved);
-        // Two distinct modules sharing a natural prefix (ballerina/ftp and ballerina/abc.ftp) make that
-        // prefix useless as an identifier; record it so bare-prefix lookups decline to guess.
+        // Two modules sharing a natural prefix make it ambiguous as an identifier.
         String previous = naturalToEmitted.putIfAbsent(natural, resolved);
         if (previous != null && !previous.equals(resolved)) {
             ambiguousNaturals.add(natural);
@@ -122,11 +99,7 @@ public final class ModulePrefixContext {
         return resolved;
     }
 
-    /**
-     * A free prefix for a module not yet imported in this file: its natural prefix (last dot-segment)
-     * when free, else the generated alias (unique to the dotted path, so it cannot collide with the
-     * sibling package that just claimed the natural one), else that alias numerically disambiguated.
-     */
+    /** A free prefix for a module not yet imported: natural prefix, else generated alias, else numbered. */
     private String allocate(String module) {
         String natural = ModuleAliasResolver.selfPrefix(module);
         if (!claimed.contains(natural)) {
@@ -146,13 +119,8 @@ public final class ModulePrefixContext {
 
     /**
      * Maps every registered module's natural prefix in {@code text} onto its resolved prefix, e.g.
-     * {@code twilio:CallStatusEventWrapper} &rarr; {@code triggerTwilio:CallStatusEventWrapper}.
-     *
-     * <p>Only standalone module qualifiers are rewritten: a prefix must be followed by {@code :} and not
-     * be preceded by an identifier character or a dot. So this reaches every position a type can occupy
-     * in a union, array or nilable expression ({@code int|twilio:Foo[]?}) and an annotation qualifier
-     * ({@code @ftp:FunctionConfig}), while leaving unregistered modules ({@code http:Request}), longer
-     * identifiers ({@code mytwilio:Foo}), and dotted paths untouched.
+     * {@code twilio:Foo} &rarr; {@code triggerTwilio:Foo}. Only standalone module qualifiers are
+     * rewritten; unregistered modules, longer identifiers, and dotted paths are left untouched.
      */
     public String requalify(String text) {
         if (text == null || text.isEmpty() || naturalToEmitted.isEmpty()) {
@@ -186,12 +154,8 @@ public final class ModulePrefixContext {
     }
 
     /**
-     * The prefix to emit for a qualifier that may or may not carry module identity.
-     *
-     * <p>When {@code moduleName} is present the module is identified exactly and resolved as such. When
-     * it is absent the qualifier is only a bare prefix, which does <b>not</b> identify a module on its
-     * own — {@code ballerina/ftp} and {@code ballerina/abc.ftp} both present as {@code ftp} — so it is
-     * resolved by natural prefix and left alone if that is ambiguous or unknown.
+     * The prefix to emit for a qualifier that may or may not carry module identity. Resolved exactly
+     * when {@code moduleName} is present; otherwise treated as a bare, possibly-ambiguous natural prefix.
      */
     public String prefixForQualifier(String org, String moduleName, String qualifier) {
         if (moduleName != null && !moduleName.isBlank()) {
@@ -201,14 +165,9 @@ public final class ModulePrefixContext {
     }
 
     /**
-     * The resolved prefix for a bare natural prefix, for references that name a module by its prefix
-     * alone rather than by {@code org/module} — chiefly {@code codedata.valueQualifier}, which qualifies
-     * an enum literal ({@code ftp:FTP}, {@code ftp:DELETE}).
-     *
-     * <p>A prefix is not a module identity, so this can only answer when exactly one registered module
-     * claims it. An unregistered prefix, or one claimed by two registered modules, is returned unchanged:
-     * emitting the authored text is recoverable, whereas silently retargeting a reference at the wrong
-     * module is not.
+     * The resolved prefix for a bare natural prefix (chiefly {@code codedata.valueQualifier} enum
+     * literals). Returned unchanged when unregistered or claimed by more than one registered module,
+     * since a prefix alone isn't a reliable module identity.
      */
     public String resolveNatural(String naturalPrefix) {
         if (naturalPrefix == null || naturalPrefix.isBlank() || ambiguousNaturals.contains(naturalPrefix)) {
@@ -217,10 +176,7 @@ public final class ModulePrefixContext {
         return naturalToEmitted.getOrDefault(naturalPrefix, naturalPrefix);
     }
 
-    /**
-     * The modules that still need an import statement, as {@code org/module} -> resolved prefix, in
-     * registration order. A module the file already imports is absent.
-     */
+    /** The modules that still need an import statement, as {@code org/module} -> resolved prefix. */
     public Map<String, String> pendingImports() {
         return Map.copyOf(pendingImports);
     }

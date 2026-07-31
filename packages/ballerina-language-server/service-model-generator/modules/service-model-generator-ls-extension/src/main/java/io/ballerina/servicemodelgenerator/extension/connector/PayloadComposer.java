@@ -26,19 +26,15 @@ import java.util.Map;
 
 /**
  * Computes the effective Ballerina type text of a parameter from its {@code type} {@link
- * TriggerUISchemaModel.Property} tree — the payload-composition algorithm of the phase-6 spec:
+ * TriggerUISchemaModel.Property} tree:
  *
  * <pre>
  *   element = codedata.boundType (if set) else codedata.defaultType
  *   base    = codedata.template applied to element   ({{type}} / T -> element)
- *   result  = the highest-precedence active PAYLOAD_MODIFIER sibling's template (value == true,
- *             supersedes base), else base
+ *   result  = the highest-precedence active PAYLOAD_MODIFIER sibling's template, else base
  * </pre>
  *
- * Handles the widget nesting: a plain {@code TYPE} field yields its value; a {@code FLAG} field
- * (framework caller/context) yields its {@code ballerinaType}; a {@code DATA_BINDING} /
- * {@code COMPLEX_PAYLOAD} field descends to its {@code PAYLOAD_TYPE} child (+ modifier siblings); a
- * {@code VARIATION_SELECTOR} descends to the selected variant's payload. Pure and unit-testable.
+ * Pure and unit-testable.
  *
  * @since 1.9.0
  */
@@ -56,20 +52,17 @@ public final class PayloadComposer {
         }
         String fieldType = selectedFieldType(typeProp);
         if ("FLAG".equals(fieldType)) {
-            // Framework param (caller/context): the type is the widget's ballerinaType.
             String ballerinaType = selectedBallerinaType(typeProp);
             return ballerinaType == null ? "" : ballerinaType;
         }
 
         Located located = locatePayload(typeProp);
         if (located == null) {
-            // Plain TYPE (or anything without a payload node): the field value is the type.
             return stringValue(typeProp.value());
         }
 
         TriggerUISchemaModel.Codedata cd = located.payload.codedata();
         String element = element(cd);
-        // An active modifier (a checked FLAG sibling tagged PAYLOAD_MODIFIER) supersedes the base wrap.
         if (located.siblings != null) {
             for (TriggerUISchemaModel.Property sibling : located.siblings) {
                 TriggerUISchemaModel.Codedata sc = sibling.codedata();
@@ -153,13 +146,10 @@ public final class PayloadComposer {
         }
         String fieldType = selectedFieldType(node);
         Map<String, TriggerUISchemaModel.Property> children = node.properties();
-        // VARIATION_SELECTOR: descend into the selected (by value) or enabled variant sub-form.
         if ("VARIATION_SELECTOR".equals(fieldType) && children != null) {
             TriggerUISchemaModel.Property variant = selectedVariant(node, children);
             return variant == null ? null : locatePayload(variant);
         }
-        // DATA_BINDING / COMPLEX_PAYLOAD / VARIANT sub-form: the payload is a child; the rest are
-        // its modifier siblings.
         if (children != null) {
             TriggerUISchemaModel.Property payload = null;
             for (TriggerUISchemaModel.Property child : children.values()) {
@@ -237,7 +227,6 @@ public final class PayloadComposer {
         }
         String safe = element == null ? "" : element;
         String result = template.contains(BRACED) ? template.replace(BRACED, safe) : template;
-        // Replace a standalone T (word-boundary) used by the included-record form (e.g. "T[]").
         result = result.replaceAll("\\bT\\b", java.util.regex.Matcher.quoteReplacement(safe));
         return result;
     }

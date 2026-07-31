@@ -34,15 +34,9 @@ import java.util.Optional;
 
 /**
  * Reads the LS's bundled {@code trigger-artifact} metadata for its hardcoded entry-point modules — a
- * small, display-only sibling of the (much larger) {@code trigger-ui-schema.json}, keyed by module name.
- *
- * <p>All bundled entries live in a single classpath resource, {@code bundled_trigger_artifact.json},
- * parsed once and cached in memory. This is a phase-6 deliberate simplification: reading a connector's
- * <i>own</i> shipped {@code resources/trigger-artifact.json} from its resolved {@code .bala} is not
- * supported in this phase (a non-bundled connector simply has no metadata) — only the LS's own bundled
- * set is consulted. The lookup is a pure classpath read keyed by module name — no bala-cache resolution
- * or network access — so it is safe to call from hot paths such as project-tree / artifact-tree
- * generation, which runs on every rebuild of the component tree.
+ * small, display-only sibling of {@code trigger-ui-schema.json}, keyed by module name. Only the LS's
+ * own bundled classpath resource is consulted (a non-bundled connector has no metadata); this makes the
+ * lookup safe to call from hot paths such as project-tree / artifact-tree generation.
  *
  * @since 1.9.0
  */

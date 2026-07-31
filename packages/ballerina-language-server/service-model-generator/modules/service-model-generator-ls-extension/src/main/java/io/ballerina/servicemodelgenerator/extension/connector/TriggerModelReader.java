@@ -55,35 +55,17 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Reads the unified {@code trigger-ui-schema.json} for a connector, either from a bundled classpath
- * resource shipped in this jar, or -- on a miss -- resolved from a connector's own shipped
- * {@code resources/trigger-ui-schema.json}, or -- on a further miss -- synthesized at request time from
- * a connector's own shipped {@code resources/trigger-metadata.json} plus semantic-API introspection of
- * its compiled {@code .bala}.
- *
- * <p>The bundled path (registered in {@code bundled_trigger_models.json}) is the entry point of the
- * schema-driven trigger path for connectors curated (or {@code generate-trigger-model}-authored) into
- * this jar; {@link #getBundledTriggerModel} / {@link #hasBundledTriggerModel} consult only that
- * classpath registry, keyed by bare {@code moduleName} (a small curated set, so no org/version is
- * needed to disambiguate). {@link #getSchemaDrivenTriggerModel(String, String)} /
- * {@link #hasSchemaDrivenModel(String, String)} are the org-aware superset: they check the bundled
- * registry first (unchanged, zero regression); on a miss they resolve the module's own
- * {@code trigger-ui-schema.json} (via {@link LibraryMetadataReader#getTriggerUISchemaModel}), needing no
- * synthesis at all; and on a further miss they resolve its {@code trigger-metadata.json} (via
- * {@link LibraryMetadataReader#getTriggerMetadataModel}), introspect its compiled
- * {@link SemanticModel} (via {@link TriggerLibraryIntrospector}), and synthesize a
- * {@link TriggerUISchemaModel} (via
- * {@link io.ballerina.servicemodelgenerator.extension.connector.TriggerModelSynthesizer}) -- caching
- * the result per {@code orgName/moduleName} so the resolve+introspect+synthesize cost is paid at most
- * once per module. A module with none of a bundled schema, a shipped UI schema, or a resolvable
- * {@code trigger-metadata.json} resolves to {@link Optional#empty()}, so the routers fall back to the
- * existing hardcoded builder path exactly as before.
+ * Reads the unified {@code trigger-ui-schema.json} for a connector: from a bundled classpath resource
+ * shipped in this jar, or (on a miss) a connector's own shipped {@code resources/trigger-ui-schema.json},
+ * or (on a further miss) synthesized from its {@code resources/trigger-metadata.json} plus semantic-API
+ * introspection of its compiled {@code .bala}. A module matching none of these resolves to
+ * {@link Optional#empty()}, so routers fall back to the existing hardcoded builder path.
  *
  * @since 1.8.0
  */
-public class ConnectorModelReader {
+public class TriggerModelReader {
 
-    private static final ConnectorModelReader INSTANCE = new ConnectorModelReader();
+    private static final TriggerModelReader INSTANCE = new TriggerModelReader();
 
     private static final List<String> INIT_IDENTITY_KEYS = List.of(
             "id", "displayName", "description", "orgName", "packageName", "moduleName", "version", "type", "icon");
@@ -96,9 +78,8 @@ public class ConnectorModelReader {
     /**
      * One version-gated variant of a connector's bundled schema.
      *
-     * @param minVersion the lowest connector version this document describes; a variant without one
-     *                   matches any version and so acts as the floor
-     * @param resource   the classpath resource path of the schema document
+     * @param minVersion the lowest connector version this variant applies to
+     * @param resource   the classpath resource holding this variant's schema
      */
     private record ModelVariant(String minVersion, String resource) {
 
@@ -109,45 +90,27 @@ public class ConnectorModelReader {
             try {
                 return SemanticVersion.from(version).greaterThanOrEqualTo(SemanticVersion.from(minVersion));
             } catch (RuntimeException e) {
-                // An unparsable version can't be gated on -> treat the variant as a match, which
-                // (given declaration order) resolves to the newest document.
+                // Unparsable version: treat as a match, resolving to the newest document.
                 return true;
             }
         }
     }
 
     /**
-     * Modules for which a {@code trigger-ui-schema.json} is bundled as a classpath resource in this
-     * jar. This lets a connector with a hardcoded Java builder (e.g. RabbitMQ, Kafka, Solace) migrate
-     * onto the schema-driven path without needing a Central release. Keyed by moduleName to line up
-     * with the routers' {@code CONSTRUCTOR_MAP}s.
-     *
-     * <p>Loaded from {@code bundled_trigger_models.json} (a resource sibling of
-     * {@code trigger_properties.json}) rather than hardcoded, so onboarding a new bundled trigger model
-     * is a data edit, not a Java edit. Falls back to an empty registry (no bundled models resolve) if
-     * the resource is missing or malformed, so a broken/absent file degrades to the legacy-index
-     * fallback rather than failing the class to load.
-     *
-     * <p>An entry is either a single resource path
-     * <pre>{@code "kafka": "trigger-models/kafka.json"}</pre>
-     * or, for a connector whose UI surface changed across releases, an array of variants <b>ordered
-     * newest first</b>, each gated by the lowest connector version it describes:
+     * Modules for which a {@code trigger-ui-schema.json} is bundled as a classpath resource, keyed by
+     * moduleName. Loaded from {@code bundled_trigger_models.json}; an entry is either a bare resource
+     * path or an array of version-gated variants ordered newest first, e.g.
      * <pre>{@code
      * "mcp": [
      *   { "minVersion": "1.2.0", "resource": "trigger-models/mcp.json" },
      *   { "resource": "trigger-models/mcp_1.0.3.json" }
      * ]}</pre>
-     * The first variant whose {@code minVersion} the resolved connector version satisfies wins; the
-     * unconstrained trailing entry is the floor. Callers with no version in hand get the first
-     * (newest) variant — see {@link #getBundledTriggerModel(String)}.
-     *
-     * <p>The registry's resource paths are rooted at {@code trigger-models/}.
      */
     private static final Map<String, List<ModelVariant>> BUNDLED_TRIGGER_MODEL_RESOURCES =
             loadBundledTriggerModelRegistry();
 
     private static Map<String, List<ModelVariant>> loadBundledTriggerModelRegistry() {
-        try (InputStream is = ConnectorModelReader.class.getClassLoader()
+        try (InputStream is = TriggerModelReader.class.getClassLoader()
                 .getResourceAsStream(BUNDLED_TRIGGER_MODEL_REGISTRY_RESOURCE)) {
             if (is == null) {
                 return Map.of();
@@ -203,24 +166,18 @@ public class ConnectorModelReader {
     private final Gson gson = new Gson();
     private final Map<String, Optional<TriggerUISchemaModel>> bundledTriggerCache = new ConcurrentHashMap<>();
     private final Map<String, Optional<ServiceInitModel>> bundledInitCache = new ConcurrentHashMap<>();
-    // Keyed by "orgName/moduleName" -- the resolve(-shipped-schema)+introspect+synthesize path, cached
-    // separately from the bundled caches above since a resolved model's source (a resolved .bala)
-    // differs entirely from a bundled classpath resource.
+    // Keyed by "orgName/moduleName"; kept separate from the bundled caches since its source is a
+    // resolved .bala rather than a classpath resource.
     private final Map<String, Optional<TriggerUISchemaModel>> schemaDrivenTriggerCache = new ConcurrentHashMap<>();
 
-    private ConnectorModelReader() {
+    private TriggerModelReader() {
     }
 
-    public static ConnectorModelReader getInstance() {
+    public static TriggerModelReader getInstance() {
         return INSTANCE;
     }
 
-    /**
-     * Derives the add-trigger init form from a parsed {@code trigger-ui-schema.json} document by
-     * remapping {@code initProperties -> properties} at the JSON level. The wire model expects identity
-     * fields + a top-level {@code properties} map, so this remaps at the JSON level and lets Gson
-     * deserialize the (already {@code Value}-shaped) init-form nodes.
-     */
+    /** Derives the add-trigger init form by remapping {@code initProperties -> properties} at the JSON level. */
     private Optional<ServiceInitModel> buildServiceInitModelFromJson(JsonElement parsed) {
         if (!parsed.isJsonObject()) {
             return Optional.empty();
@@ -241,24 +198,13 @@ public class ConnectorModelReader {
     }
 
     // --- bundled trigger models (classpath resources shipped in this jar) ---
-    // Lets a connector with a hardcoded Java builder migrate onto the schema-driven path without a
-    // Central release: the schema is bundled here instead of being resolved from a .bala.
 
-    /**
-     * Cheap presence check for a bundled schema, used by the routers at dispatch time. Deliberately
-     * version-free: it only decides <i>which builder</i> handles the module, and every variant of a
-     * connector's schema is served by the same schema-driven builder.
-     */
+    /** Cheap presence check for a bundled schema, used by the routers at dispatch time. */
     public boolean hasBundledTriggerModel(String moduleName) {
         return getBundledTriggerModel(moduleName).isPresent();
     }
 
-    /**
-     * Reads and caches the bundled {@code trigger-ui-schema.json} for {@code moduleName}, if any,
-     * choosing the newest variant. For a connector whose schema is version-gated, prefer
-     * {@link #getBundledTriggerModel(String, String)} wherever the version the project actually
-     * resolves is known — the newest variant may describe types the project's version does not have.
-     */
+    /** Reads and caches the newest bundled {@code trigger-ui-schema.json} variant for {@code moduleName}. */
     public Optional<TriggerUISchemaModel> getBundledTriggerModel(String moduleName) {
         return getBundledTriggerModel(moduleName, null);
     }
@@ -289,10 +235,8 @@ public class ConnectorModelReader {
     }
 
     /**
-     * The resource path of the variant describing {@code moduleName} at {@code version}: the first
-     * declared variant the version satisfies. When no version is supplied the newest (first) variant
-     * wins; when the version is below every declared floor the oldest (last) variant is the closest
-     * fit — a model authored without an unconstrained trailing entry still resolves to something.
+     * The resource path of the variant describing {@code moduleName} at {@code version}. No version
+     * selects the newest variant; a version below every declared floor falls back to the oldest.
      */
     private static Optional<String> resolveResource(String moduleName, String version) {
         if (moduleName == null) {
@@ -327,38 +271,21 @@ public class ConnectorModelReader {
     // --- schema-driven trigger models (bundled-by-name, falling back to shipped-schema, falling back
     // to metadata+introspection synthesis) ---
 
-    /**
-     * Cheap presence check across all tiers: the bundled classpath registry, then (on a miss, and only
-     * when {@code orgName} is known) a connector-shipped {@code trigger-ui-schema.json} or a resolved,
-     * synthesized model.
-     */
+    /** Cheap presence check across all tiers (bundled, shipped-schema, synthesized). */
     public boolean hasSchemaDrivenModel(String orgName, String moduleName) {
         return getSchemaDrivenTriggerModel(orgName, moduleName).isPresent();
     }
 
     /**
-     * The connector's {@link TriggerUISchemaModel} -- bundled-by-name first (unchanged, zero
-     * regression); then, on a miss, the connector's own shipped {@code resources/trigger-ui-schema.json}
-     * read straight off its resolved {@code .bala} (no synthesis needed); then, on a further miss, one
-     * synthesized from its shipped {@code resources/trigger-metadata.json} plus semantic introspection of
-     * its compiled {@code .bala}, via {@link TriggerModelSynthesizer} -- caching the resolved result per
-     * {@code orgName/moduleName}. {@code orgName == null} short-circuits to the bundled-only result --
-     * some call sites (e.g. a request DTO with no org field) genuinely have no org to resolve a
-     * {@code .bala} with. Equivalent to {@link #getSchemaDrivenTriggerModel(String, String, String)}
-     * with a {@code null} version -- the newest bundled variant.
+     * The connector's {@link TriggerUISchemaModel}: bundled-by-name first, then the connector's own
+     * shipped {@code trigger-ui-schema.json}, then one synthesized via {@link TriggerModelSynthesizer}.
+     * {@code orgName == null} short-circuits to the bundled-only result.
      */
     public Optional<TriggerUISchemaModel> getSchemaDrivenTriggerModel(String orgName, String moduleName) {
         return getSchemaDrivenTriggerModel(orgName, moduleName, null);
     }
 
-    /**
-     * Version-aware counterpart of {@link #getSchemaDrivenTriggerModel(String, String)}: the bundled
-     * variant that describes {@code moduleName} at {@code version} (see
-     * {@link #getBundledTriggerModel(String, String)}), falling back to the same shipped-schema/
-     * synthesis tiers on a miss. The synthesis tier is version-agnostic -- it resolves the connector's
-     * actual compiled {@code .bala}, which already IS the requested version -- so only the bundled tier
-     * needs the version threaded through.
-     */
+    /** Version-aware counterpart of {@link #getSchemaDrivenTriggerModel(String, String)}. */
     public Optional<TriggerUISchemaModel> getSchemaDrivenTriggerModel(String orgName, String moduleName,
                                                                        String version) {
         Optional<TriggerUISchemaModel> bundled = getBundledTriggerModel(moduleName, version);
@@ -369,12 +296,8 @@ public class ConnectorModelReader {
                 ignored -> resolveSchemaDrivenTriggerModel(orgName, moduleName));
     }
 
-    /**
-     * The connector's add-trigger init form -- the {@link #getSchemaDrivenTriggerModel} counterpart of
-     * {@link #getBundledServiceInitModel}, remapping a resolved model's {@code initProperties} the same
-     * way {@link #buildServiceInitModelFromJson} does for a bundled one. Equivalent to
-     * {@link #getSchemaDrivenServiceInitModel(String, String, String)} with a {@code null} version.
-     */
+    /** The connector's add-trigger init form; the {@link #getSchemaDrivenTriggerModel} counterpart of
+     * {@link #getBundledServiceInitModel}. */
     public Optional<ServiceInitModel> getSchemaDrivenServiceInitModel(String orgName, String moduleName) {
         return getSchemaDrivenServiceInitModel(orgName, moduleName, null);
     }
@@ -391,16 +314,10 @@ public class ConnectorModelReader {
     }
 
     /**
-     * Resolves a {@link TriggerUISchemaModel} for a non-bundled module: tries the connector's own
-     * shipped {@code trigger-ui-schema.json} (via {@link LibraryMetadataReader}, which owns resolving
-     * the connector's package and reading its JSON -- this class never does either itself) before
-     * falling back to synthesis from its {@code trigger-metadata.json}.
-     *
-     * <p>Wrapped in a blanket {@code catch (Throwable)}: resolving the package for compilation/
-     * introspection below can throw for an org/module Central has never heard of, or when offline --
-     * this method runs on the hot {@code useSchemaDrivenPath} path for every unrecognized module, so any
-     * such failure must degrade to "not schema-driven," not propagate and break routing for every
-     * service/function request.
+     * Resolves a {@link TriggerUISchemaModel} for a non-bundled module via {@link LibraryMetadataReader},
+     * falling back to synthesis from {@code trigger-metadata.json}. Wrapped in {@code catch (Throwable)}
+     * because this runs on the hot dispatch path for every unrecognized module and must degrade to
+     * "not schema-driven" rather than break routing.
      */
     private Optional<TriggerUISchemaModel> resolveSchemaDrivenTriggerModel(String orgName, String moduleName) {
         try {
@@ -414,13 +331,11 @@ public class ConnectorModelReader {
         ModuleInfo moduleInfo = new ModuleInfo(orgName, moduleName, moduleName, null);
         LibraryMetadataReader metadataReader = LibraryMetadataReader.getInstance();
 
-        // Tier: the connector ships a full trigger-ui-schema.json directly -- no synthesis needed.
         Optional<TriggerUISchemaModel> shipped = metadataReader.getTriggerUISchemaModel(moduleInfo);
         if (shipped.isPresent()) {
             return shipped;
         }
 
-        // Tier: synthesize from the connector's trigger-metadata.json plus semantic introspection.
         Optional<TriggerMetadataModel> metadata = metadataReader.getTriggerMetadataModel(moduleInfo);
         if (metadata.isEmpty()) {
             return Optional.empty();
@@ -436,12 +351,8 @@ public class ConnectorModelReader {
         String resolvedOrg = descriptor.org().value();
         String resolvedPackageName = descriptor.name().value();
         String resolvedVersion = descriptor.version().value().toString();
-        // No "home" module: every type signature the introspector produces is emitted into a
-        // *different* file (the user's own service file, which has the connector only as an imported
-        // dependency), so even a reference to the connector's own type (e.g. a handler's Event payload,
-        // or the listener's own ListenerConfig) needs its module prefix (e.g. "calendar:Event") --
-        // never bare. Passing null means CommonUtils.getTypeSignature never strips a prefix, only
-        // shortens a dotted module part to its last segment (the connector's natural import alias).
+        // null "home" module: types are emitted into the user's own file, which only imports the
+        // connector, so references must keep their module prefix rather than render bare.
         TriggerLibraryFacts facts = TriggerLibraryIntrospector.introspect(semanticModel, null);
 
         Listener listenerModel = resolveListenerModel(metadata.get(), semanticModel, resolvedOrg,
@@ -455,15 +366,8 @@ public class ConnectorModelReader {
     }
 
     /**
-     * Resolves the listener init-form template for the metadata schema's declared listener class via
-     * {@link ListenerUtil#getListenerModelByName} -- the same utility the non-schema-driven "add
-     * listener" flow already uses, so init params (including record-typed/union-typed ones) get their
-     * widget correctly resolved without this reader/synthesizer duplicating that logic. {@code null}
-     * "userModuleInfo" is deliberate: there is no specific target file here (this model is cached and
-     * reused across every file that might add a service for this connector), so every type keeps its
-     * full module-qualified form rather than being stripped bare for a particular file's own module.
-     * Returns {@code null} (not a thrown exception) on any resolution failure -- the caller still
-     * renders a listener choice, just with no init params beyond its name.
+     * Resolves the listener init-form template via {@link ListenerUtil#getListenerModelByName}.
+     * Returns {@code null} on any resolution failure rather than throwing.
      */
     private static Listener resolveListenerModel(TriggerMetadataModel metadata, SemanticModel semanticModel,
                                                  String orgName, String packageName, String moduleName,

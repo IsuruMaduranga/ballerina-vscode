@@ -35,51 +35,24 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_LISTENER_CONFIG;
+
 /**
- * Synthesizes a {@link TriggerUISchemaModel} at request time from a connector's own hand-authored
- * {@link TriggerMetadataModel} (its {@code resources/trigger-metadata.json} — presence rules,
- * {@code oneOf} relationships, identifier semantics, non-concrete handler shapes),
- * {@link TriggerLibraryFacts} introspected from its compiled {@code SemanticModel} (real declared
- * service-type methods, real annotation declarations), and a listener init-form template already
- * resolved by {@code ListenerUtil#getListenerModelByName} (real init params, already correctly
- * widget-typed — records, unions, numbers — for the connector's declared listener class).
+ * Synthesizes a {@link TriggerUISchemaModel} at request time from a connector's own
+ * {@link TriggerMetadataModel} ({@code resources/trigger-metadata.json}), {@link TriggerLibraryFacts}
+ * introspected from its compiled {@code SemanticModel}, and a listener init-form template resolved by
+ * {@code ListenerUtil#getListenerModelByName}.
  *
- * <p>The output is deliberately the <b>same</b> {@link TriggerUISchemaModel} class the hand-authored and
- * {@code generate-trigger-model}-produced connectors already use, so it flows through
- * {@code SchemaDrivenServiceBuilder}, {@code SchemaDrivenFunctionBuilder}, {@code TriggerServiceAdapter},
- * {@code TriggerSourceMerger}, and {@link SchemaDrivenSourceGenerator} completely unmodified — every
- * existing init/create/view/add-handler code path (and the whole TypeScript/extension layer, which is
- * generic over {@code TriggerUISchemaModel} already) works on a synthesized model exactly as it does on a
- * hand-curated one.
+ * <p>The output is the same {@link TriggerUISchemaModel} class hand-authored connectors use, so it
+ * flows through {@code SchemaDrivenServiceBuilder}, {@code SchemaDrivenFunctionBuilder},
+ * {@code TriggerServiceAdapter}, {@code TriggerSourceMerger}, and {@link SchemaDrivenSourceGenerator}
+ * unmodified.
  *
- * <h2>What this class does NOT attempt</h2>
- * <ul>
- *   <li><b>Listener init-param widget selection.</b> Deliberately not reimplemented here: a listener's
- *       record-typed/union-typed/etc. init parameters are already correctly resolved by
- *       {@code ListenerUtil#getListenerModelByName} (the same utility the non-schema-driven "add
- *       listener" flow uses) -- this class only enriches that result with the schema-specific
- *       {@code argType}/{@code position} codedata {@link SchemaDrivenSourceGenerator} needs, per
- *       {@link #enrichListenerParam}.</li>
- *   <li><b>Copy-quality labels/descriptions.</b> A hand-authored model's field labels
- *       ("Bootstrap Servers") and prose descriptions are human copywriting that exists in neither
- *       input document. This synthesizer humanizes identifiers for labels
- *       ({@link #humanize(String)}) and reuses a symbol's own doc comment (via
- *       {@link TriggerLibraryFacts}, which already carries it) for descriptions where introspection
- *       found one — functionally correct, not copy-edited.</li>
- *   <li><b>Granular per-field annotation composition.</b> A hand-authored model renders a service
- *       annotation as a field-by-field {@code MAPPING_CONSTRUCTOR} tree (see the
- *       {@code generate-trigger-model} skill). This synthesizer renders the whole annotation as one
- *       {@code RECORD_MAP_EXPRESSION} field the user fills as a single expression — the same
- *       fallback shape {@code ServiceModelUtils#getAnnotationAttachmentProperty} already uses for the
- *       non-schema-driven default builders, so it is a recognized fidelity tier in this codebase, not
- *       a new one.</li>
- *   <li><b>The general {@code oneOf} choice UX.</b> Per the agreed v1 rule, a
- *       {@code serviceTypes[].rules[]} entry of type {@code oneOf} is resolved by rendering only its
- *       {@code preferred} member (or the first member if none is marked preferred) and silently
- *       dropping the alternative(s) — e.g. RabbitMQ's queue-name-via-annotation-or-via-identifier
- *       renders the annotation field only. Revisit if a real connector needs the actual either/or
- *       surfaced.</li>
- * </ul>
+ * <p>Notably does not attempt: listener init-param widget selection (delegated to
+ * {@code ListenerUtil#getListenerModelByName}), copy-quality labels/descriptions (identifiers are
+ * humanized instead), granular per-field annotation composition (rendered as one
+ * {@code RECORD_MAP_EXPRESSION} field), or the general {@code oneOf} choice UX (only the preferred
+ * member is rendered).
  *
  * @since 1.10.0
  */
@@ -96,26 +69,9 @@ public final class TriggerModelSynthesizer {
     }
 
     /**
-     * Synthesizes a {@link TriggerUISchemaModel} for one connector.
-     *
-     * @param authoring     the connector's own {@code resources/trigger-metadata.json}
-     * @param facts         the service-type/annotation facts introspected from the connector's
-     *                      compiled {@code SemanticModel} (see {@link TriggerLibraryFacts})
-     * @param listenerModel the listener init-form template resolved via
-     *                      {@code ListenerUtil#getListenerModelByName} for the connector's declared
-     *                      listener class; {@code null} if that resolution failed (the listener
-     *                      choice still renders, just with no init params beyond its name)
-     * @param id            the catalog identifier to stamp on the result (caller's choice; this class
-     *                      has no catalog of its own)
-     * @param displayName   the connector's display name (e.g. from {@code TriggerArtifactResolver})
-     * @param icon          the connector's icon URL (e.g. from {@code TriggerArtifactResolver})
-     * @param kind          the entry-point kind bucket (e.g. {@code event}/{@code file}/{@code http})
-     * @param orgName       the connector's organization
-     * @param packageName   the connector's package name
-     * @param moduleName    the connector's module name
-     * @param version       the connector's version
-     * @return the synthesized model, or {@link Optional#empty()} if the authoring model declares no
-     *     listeners or no service types (a malformed/empty document nothing can be built from)
+     * Synthesizes a {@link TriggerUISchemaModel} for one connector. Returns {@link Optional#empty()}
+     * if the authoring model declares no listeners or no service types. A {@code null} listenerModel
+     * still renders the listener choice, just with no init params beyond its name.
      */
     public static Optional<TriggerUISchemaModel> synthesize(TriggerMetadataModel authoring, TriggerLibraryFacts facts,
                                                      Listener listenerModel,
@@ -159,7 +115,7 @@ public final class TriggerModelSynthesizer {
     /**
      * The connector's own coordinates, threaded to wherever a same-module type/annotation needs qualifying.
      *
-     * @param orgName     the connector's organization
+     * @param orgName     the connector's organization name
      * @param packageName the connector's package name
      * @param moduleName  the connector's module name
      * @param version     the connector's version
@@ -170,45 +126,39 @@ public final class TriggerModelSynthesizer {
     // ---- Codedata helpers (25-field record; centralized here so every call site is counted once) ----
 
     private static TriggerUISchemaModel.Codedata cd() {
-        return new TriggerUISchemaModel.Codedata(null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        return TriggerUISchemaModel.Codedata.builder().build();
     }
 
     private static TriggerUISchemaModel.Codedata cdType(String type) {
-        return new TriggerUISchemaModel.Codedata(type, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        return TriggerUISchemaModel.Codedata.builder().type(type).build();
     }
 
     private static TriggerUISchemaModel.Codedata cdListenerParam(String argType, Integer position, String path) {
-        return new TriggerUISchemaModel.Codedata(null, argType, null, null, null, null, position, path, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        return TriggerUISchemaModel.Codedata.builder().argType(argType).position(position).path(path).build();
     }
 
     private static TriggerUISchemaModel.Codedata cdFunction(String originalName, String moduleName) {
-        return new TriggerUISchemaModel.Codedata("FUNCTION", null, originalName, moduleName, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null);
+        return TriggerUISchemaModel.Codedata.builder().type("FUNCTION").originalName(originalName)
+                .moduleName(moduleName).build();
     }
 
     private static TriggerUISchemaModel.Codedata cdServiceType(String originalName, String moduleName) {
-        return new TriggerUISchemaModel.Codedata("SERVICE_TYPE_DESCRIPTOR", null, originalName, moduleName, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null);
+        return TriggerUISchemaModel.Codedata.builder().type("SERVICE_TYPE_DESCRIPTOR").originalName(originalName)
+                .moduleName(moduleName).build();
     }
 
     private static TriggerUISchemaModel.Codedata cdAnnotation(String codedataType, String originalName,
                                                        String moduleName, String orgName, String packageName,
                                                        boolean optional) {
-        return new TriggerUISchemaModel.Codedata(codedataType, null, originalName, moduleName, orgName,
-                packageName, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                optional, null, null, null, null, null);
+        return TriggerUISchemaModel.Codedata.builder().type(codedataType).originalName(originalName)
+                .moduleName(moduleName).orgName(orgName).packageName(packageName).optional(optional).build();
     }
 
     private static TriggerUISchemaModel.Codedata cdPayload(String type, String defaultType, String template,
                                                     String field, String typeConstraint) {
-        return new TriggerUISchemaModel.Codedata(type, null, null, null, null, null, null, null, defaultType, "", true,
-                "USER_SELECTED", typeConstraint, template, null, null, null, null, field, null, null, null,
-                null, null, true);
+        return TriggerUISchemaModel.Codedata.builder().type(type).defaultType(defaultType).boundType("")
+                .bindable(true).bindingKind("USER_SELECTED").typeConstraint(typeConstraint).template(template)
+                .field(field).nameEditable(true).build();
     }
 
     // ---- listener init form --------------------------------------------------
@@ -216,20 +166,11 @@ public final class TriggerModelSynthesizer {
     private static final String LISTENER_CONFIG_GROUP_KEY = "listenerConfig";
 
     /**
-     * Builds the {@code listener} CHOICE (create-new / use-existing) per the {@code generate-trigger-model}
-     * skill's default: a connector-shipped model always offers both branches unless a developer directive
-     * says otherwise -- this synthesizer has no such directive channel, so it always includes the choice.
-     *
-     * <p>Every create-new field -- the listener name plus each init param, one property each -- is
-     * nested inside one {@code listenerConfig} {@code GROUP_SECTION} (a single flat level, not
-     * recursively nested groups), matching how a connector with many init params (e.g. SMB's dozen
-     * listener config fields) should render: one titled box, not a long unlabelled list of fields
-     * bleeding directly into the "Create New Listener" choice branch. Each field's actual widget
-     * (record editor, number, text, ...) is never rebuilt here -- it is looked up by name from
-     * {@code listenerModel}, already correctly resolved by {@code ListenerUtil#getListenerModelByName}
-     * (see {@link #enrichListenerParam}). {@code listenerFacts} supplies only the piece that utility's
-     * generic result cannot: the <b>structure</b> needed to assign correct {@code argType}/position
-     * codedata -- see {@link #walkListenerParams}.
+     * Builds the {@code listener} CHOICE (create-new / use-existing); always includes both branches.
+     * Every create-new field is nested inside one {@code listenerConfig} {@code GROUP_SECTION}. Each
+     * field's widget is looked up by name from {@code listenerModel} (see {@link #enrichListenerParam})
+     * rather than rebuilt; {@code listenerFacts} supplies only the structure needed to assign correct
+     * {@code argType}/position codedata (see {@link #walkListenerParams}).
      */
     private static void buildListenerChoice(TriggerLibraryFacts.Listener listenerFacts, Listener listenerModel,
                                             String moduleName,
@@ -262,7 +203,7 @@ public final class TriggerModelSynthesizer {
                 new TriggerUISchemaModel.Metadata("Listener", "The listener this service attaches to", null, null, null,
                         null, null, null),
                 true, true, false, false, null, null, List.of(choiceType), null,
-                List.of(createNew, useExisting), null, cdType("LISTENER_CONFIG"), null);
+                List.of(createNew, useExisting), null, cdType(CD_TYPE_LISTENER_CONFIG), null);
         initProperties.put(LISTENER_KEY, choice);
     }
 
@@ -288,24 +229,9 @@ public final class TriggerModelSynthesizer {
     /**
      * Walks the listener's init params in declaration order, assigning each the {@code argType}/
      * position codedata {@link SchemaDrivenSourceGenerator} needs to place it as a constructor
-     * argument -- while sourcing every field's actual widget from {@code listenerModel} (see
-     * {@link #enrichListenerParam}), never rebuilding one:
-     *
-     * <ul>
-     *   <li>An {@code INCLUDED_RECORD} {@code *Type} spread consumes <b>no</b> positional slot of its
-     *       own -- {@code ListenerUtil} already flattens its fields into independently-named
-     *       top-level entries in {@code listenerModel}, each looked up by field name and given
-     *       {@code LISTENER_PARAM_INCLUDED_FIELD}/{@code _INCLUDED_DEFAULTABLE_FIELD} with no
-     *       position (they are named args, not one record literal).</li>
-     *   <li>Any other param (scalar, union, or a plain non-spread record type like Google Calendar's
-     *       {@code ListenerConfig listenerConfig}) occupies exactly one positional/named slot --
-     *       looked up by its own name and given {@code LISTENER_PARAM_REQUIRED} at the current
-     *       position, which is then incremented.</li>
-     * </ul>
-     *
-     * A param whose name has no corresponding entry in {@code listenerModel} (should not happen in
-     * practice -- {@code ListenerUtil} derives its properties from the same compiled listener class)
-     * is skipped defensively rather than emitting a broken field.
+     * argument. An {@code INCLUDED_RECORD} spread consumes no positional slot (its fields are already
+     * flattened into named top-level entries by {@code ListenerUtil}); any other param occupies one
+     * positional/named slot.
      */
     private static void walkListenerParams(List<TriggerLibraryFacts.Param> initParams, Listener listenerModel,
                                            int startPosition,
@@ -322,8 +248,6 @@ public final class TriggerModelSynthesizer {
                             ? "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD" : "LISTENER_PARAM_INCLUDED_FIELD";
                     createNewProps.put(field.name(), enrichListenerParam(fieldValue, argType, null));
                 }
-                // An included-record spread contributes no positional slot of its own; position is
-                // only ever consumed by a genuine top-level parameter (see the other branch below).
                 continue;
             }
             Value paramValue = listenerModel.getProperty(param.name());
@@ -336,18 +260,11 @@ public final class TriggerModelSynthesizer {
     }
 
     /**
-     * Converts one listener init-param {@link Value} (from {@code ListenerUtil.getListenerModelByName})
-     * into a {@link TriggerUISchemaModel.Property} via a JSON round-trip -- the two classes are designed as
-     * JSON-shape-compatible siblings throughout this codebase (the same pattern
-     * {@code ConnectorModelReader#buildServiceInitModelFromJson} already relies on) -- keeping its
-     * already-correct {@code metadata}/{@code types}/{@code placeholder}/{@code value}/{@code optional}
-     * exactly as resolved (never rebuilt), and only replacing {@code codedata} and {@code advanced}:
-     * the generic {@code LISTENER_INIT_PARAM}/{@code originalName} pair that utility stamps (meaningful
-     * for reading an already-declared listener back) is swapped for the {@code argType}/{@code position}
-     * pair {@link SchemaDrivenSourceGenerator} actually reads to place this value as a listener
-     * constructor argument; {@code advanced} is forced to {@code false} since this codebase's real
-     * precedent (e.g. HubSpot's {@code listenOn}) keeps every listener init param visible by default,
-     * never tucked behind an "Advanced" toggle.
+     * Converts one listener init-param {@link Value} into a {@link TriggerUISchemaModel.Property} via
+     * a JSON round-trip, keeping its resolved {@code metadata}/{@code types}/{@code placeholder}/
+     * {@code value}/{@code optional} as-is and only replacing {@code codedata} (with the
+     * {@code argType}/{@code position} pair {@link SchemaDrivenSourceGenerator} reads) and forcing
+     * {@code advanced} to {@code false}.
      */
     private static TriggerUISchemaModel.Property enrichListenerParam(Value value, String argType, Integer position) {
         TriggerUISchemaModel.Property property = GSON.fromJson(GSON.toJsonTree(value),
@@ -490,12 +407,7 @@ public final class TriggerModelSynthesizer {
         return null;
     }
 
-    /**
-     * The introspected listener whose simple name matches the authoring schema's declared listener
-     * type -- e.g. {@code {"type": {"name": "Listener"}}} matches an introspected {@code "Listener"}
-     * class. Falls back to the first introspected listener when there is no exact name match (a
-     * single-listener connector's own name may differ slightly in casing/spelling from the schema).
-     */
+    /** The introspected listener matching the authoring schema's declared type, or the first one on a miss. */
     private static TriggerLibraryFacts.Listener findListener(TriggerMetadataModel.Listener listener,
                                                               TriggerLibraryFacts facts) {
         if (facts.listeners() == null || facts.listeners().isEmpty()) {
@@ -546,12 +458,7 @@ public final class TriggerModelSynthesizer {
                 true, editable, false, false, name, name, List.of(type), null, null, null, null, null);
     }
 
-    /**
-     * An addable/locked handler built entirely from the authoring schema's own {@code HandlerOption}
-     * (never from introspection -- a non-concrete service type declares no methods of its own, so
-     * there is nothing to introspect; the option's {@code params}/{@code returns} are already fully
-     * resolved {@link TypeRef}s).
-     */
+    /** An addable/locked handler built entirely from the authoring schema's own {@code HandlerOption}. */
     private static TriggerUISchemaModel.FunctionModel buildFunctionFromAuthoring(
             TriggerMetadataModel.ServiceType.HandlerOption option, String addMode, TriggerMetadataModel authoring,
             String moduleName, TriggerLibraryFacts facts, ConnectorIdentity identity) {
@@ -580,12 +487,8 @@ public final class TriggerModelSynthesizer {
     }
 
     /**
-     * Renders each of a handler's {@code attachPoint: "function"} annotations (referenced by id from
-     * {@code HandlerOption#annotations()}) the same way a service-level one renders (see
-     * {@link #buildAnnotationProperty}) -- one whole-value {@code RECORD_MAP_EXPRESSION} field per
-     * annotation, keyed by its schema id, added to the handler's own {@code properties} -- so a
-     * connector-declared handler annotation (e.g. a per-handler config record) is editable in the add/
-     * update-handler form and emitted above the function by {@code AnnotationEmitter#annotationsOf}.
+     * Renders each of a handler's {@code attachPoint: "function"} annotations the same way a
+     * service-level one renders (see {@link #buildAnnotationProperty}), keyed by schema id.
      */
     private static Map<String, TriggerUISchemaModel.Property> buildFunctionAnnotations(List<String> annotationIds,
                                                                                 TriggerMetadataModel authoring,
@@ -609,12 +512,9 @@ public final class TriggerModelSynthesizer {
     }
 
     /**
-     * Builds one handler parameter. A non-data-bound, <b>optional</b>, <b>named</b> parameter (e.g.
-     * FTP's {@code caller}/{@code fileInfo}, Kafka's {@code caller}) is a framework-injected object the
-     * handler may opt into, not a value the user supplies -- rendered as a {@code FLAG} checkbox with a
-     * fixed (non-editable) identifier, matching the real hand-authored convention for this exact shape
-     * (see the {@code generate-trigger-model} skill's "Framework param (caller/context)" rule). Every
-     * other parameter (required, data-bound, or unnamed/positional) renders as a normal typed field.
+     * Builds one handler parameter. A non-data-bound, optional, named parameter (e.g. FTP's
+     * {@code caller}) is a framework-injected object rendered as a {@code FLAG} checkbox; every other
+     * parameter renders as a normal typed field.
      */
     private static TriggerUISchemaModel.Parameter buildParameterFromAuthoring(
             TriggerMetadataModel.ServiceType.Param param, TriggerMetadataModel authoring, String moduleName) {
@@ -640,12 +540,7 @@ public final class TriggerModelSynthesizer {
                 optional, false, false, cdType("FUNCTION_PARAM"), null);
     }
 
-    /**
-     * A framework-injected opt-in parameter (e.g. {@code Caller}, {@code FileInfo}): a checkbox to
-     * include it (type {@code FLAG}, unchecked/{@code false} by default) plus a fixed, non-editable
-     * identifier. Not included by default and tucked behind "advanced" -- matching Kafka's real
-     * {@code caller} parameter, the corpus's only concrete precedent for this shape.
-     */
+    /** A framework-injected opt-in parameter (e.g. {@code Caller}): a checkbox plus a fixed identifier. */
     private static TriggerUISchemaModel.Parameter buildFlagParameter(String name, String qualifiedType) {
         String label = humanize(name);
         TriggerUISchemaModel.PropertyType flagType = new TriggerUISchemaModel.PropertyType(
@@ -674,13 +569,10 @@ public final class TriggerModelSynthesizer {
 
     /**
      * The {@code PAYLOAD_TYPE}/{@code PAYLOAD_TYPE_INCLUDED_RECORD} composition for a data-bound
-     * parameter, per {@code TriggerMetadataModel.DataBindingRule}'s {@code direct}/{@code includedRecord} modes.
-     * When the rule ALSO declares a {@code streamable} mode (e.g. a CSV/array binding that may be read
-     * either as {@code T[]} or {@code stream<T, error?>}), the payload is nested one level under a
-     * {@code COMPLEX_PAYLOAD} container alongside a {@code stream} {@code PAYLOAD_MODIFIER} toggle --
-     * the same composed shape FTP's real {@code onFileCsv} uses (see {@link PayloadComposer}) -- so a
-     * connector whose data-binding rule models both cardinalities gets the identical large-file
-     * streaming UX for free, generically, without per-connector code.
+     * parameter, per {@code TriggerMetadataModel.DataBindingRule}'s {@code direct}/{@code includedRecord}
+     * modes. A rule that also declares {@code streamable} nests the payload under a
+     * {@code COMPLEX_PAYLOAD} container alongside a {@code stream} {@code PAYLOAD_MODIFIER} toggle
+     * (see {@link PayloadComposer}).
      */
     private static TriggerUISchemaModel.Property dataBindingTypeProperty(TriggerMetadataModel.DataBindingRule rule,
                                                                   String typeName, String moduleName,
@@ -736,18 +628,14 @@ public final class TriggerModelSynthesizer {
                 List.of(complexType), null, null, children, cd(), null);
     }
 
-    /**
-     * The {@code stream} toggle FTP's {@code onFileCsv} uses to switch a bound payload's wrap from the
-     * base array template ({@code T[]}) to {@code stream<T, error?>} for large files -- unchecked by
-     * default, so the array form remains the default composition.
-     */
+    /** The {@code stream} toggle that switches a bound payload's wrap from {@code T[]} to {@code stream<T, error?>}. */
     private static TriggerUISchemaModel.Property buildStreamModifierProperty(String targetParam) {
         String template = "stream<{{type}}, error?>";
         TriggerUISchemaModel.PropertyType flagType = new TriggerUISchemaModel.PropertyType(
                 "FLAG", true, null, null, null, template, null, null);
-        TriggerUISchemaModel.Codedata modifierCodedata = new TriggerUISchemaModel.Codedata(
-                "PAYLOAD_MODIFIER", null, null, null, null, null, null, null, null, null, null, null, null,
-                template, "stream", List.of("base"), targetParam, null, null, null, null, null, null, null, null);
+        TriggerUISchemaModel.Codedata modifierCodedata = TriggerUISchemaModel.Codedata.builder()
+                .type("PAYLOAD_MODIFIER").template(template).modifier("stream").supersedes(List.of("base"))
+                .targetParam(targetParam).build();
         return new TriggerUISchemaModel.Property(
                 new TriggerUISchemaModel.Metadata("Stream (Large Files)", "Process the file content in chunks", null,
                         null, null, null, null, null),
@@ -786,9 +674,9 @@ public final class TriggerModelSynthesizer {
     // ---- service-level annotations ------------------------------------------------
 
     /**
-     * Every {@code service}-attached annotation applicable to {@code serviceType} -- shared by the
-     * init-form field ({@link #buildInitServiceAnnotations}) and the service-type's own view/update
-     * properties ({@link #buildServiceAnnotations}), so the two stay in lockstep by construction.
+     * Every {@code service}-attached annotation applicable to {@code serviceType}; shared by
+     * {@link #buildInitServiceAnnotations} and {@link #buildServiceAnnotations} so the two stay in
+     * lockstep.
      */
     private static List<TriggerMetadataModel.Annotation> applicableServiceAnnotations(
             TriggerMetadataModel.ServiceType serviceType, TriggerMetadataModel authoring) {
@@ -810,12 +698,9 @@ public final class TriggerModelSynthesizer {
 
     /**
      * Renders every {@code service}-attached annotation applicable to {@code serviceType} as a single
-     * {@code RECORD_MAP_EXPRESSION} field the user fills as one expression -- the same fidelity tier
-     * {@code ServiceModelUtils#getAnnotationAttachmentProperty} already uses for the non-schema-driven
-     * default builders (not a granular per-field {@code MAPPING_CONSTRUCTOR} tree; see the class javadoc).
-     * These live on the service type's own {@code properties} -- consulted by the view/update-service
-     * path (e.g. {@code Utils#getAnnotationEdits(Service, ModulePartNode)}), distinct from the add-time
-     * copy {@link #buildInitServiceAnnotations} places directly in the init form.
+     * {@code RECORD_MAP_EXPRESSION} field, on the service type's own {@code properties} (consulted by
+     * the view/update-service path). Distinct from the add-time copy {@link #buildInitServiceAnnotations}
+     * places in the init form.
      */
     private static Map<String, TriggerUISchemaModel.Property> buildServiceAnnotations(
             TriggerMetadataModel.ServiceType serviceType, TriggerMetadataModel authoring, TriggerLibraryFacts facts,
@@ -829,12 +714,9 @@ public final class TriggerModelSynthesizer {
     }
 
     /**
-     * Places a copy of every applicable service-level annotation directly in the add-trigger init form
-     * (right after the listener choice), keyed by its schema id -- e.g. SMB's {@code serviceConfig} --
-     * so it is visible and fillable at creation time, not only once a service already exists. Uses the
-     * {@code SERVICE_ANNOTATION} codedata role (rather than {@code ANNOTATION_ATTACHMENT}), the role
-     * {@code SchemaDrivenSourceGenerator#buildServiceAnnotations} actually scans the filled init form
-     * for at add-time.
+     * Places a copy of every applicable service-level annotation directly in the add-trigger init form,
+     * keyed by schema id, using the {@code SERVICE_ANNOTATION} codedata role that
+     * {@code SchemaDrivenSourceGenerator#buildServiceAnnotations} scans for at add-time.
      */
     private static void buildInitServiceAnnotations(TriggerMetadataModel.ServiceType serviceType,
                                                     TriggerMetadataModel authoring, TriggerLibraryFacts facts,
@@ -847,14 +729,9 @@ public final class TriggerModelSynthesizer {
     }
 
     /**
-     * The declared {@code type.name} in {@code trigger-metadata.json} references the annotation's own
-     * introspected name (e.g. {@code "ServiceConfig"} -- {@link TriggerLibraryFacts.Annotation#name()}
-     * is literally {@code AnnotationSymbol.getName()}), NOT its backing record type's name (which can
-     * legitimately differ, e.g. SMB's {@code annotation SmbServiceConfig ServiceConfig on service;}).
-     * Looking the fact up by that name resolves the record's real field list (for the value skeleton)
-     * and its real package coordinates (for {@code typeMembers}) -- {@code buildAnnotationProperty}
-     * degrades to an empty skeleton and same-module coordinates when introspection has nothing (should
-     * not happen for a genuinely declared annotation).
+     * Looks up introspected annotation facts by the annotation's own name (not its backing record
+     * type's name, which can legitimately differ, e.g. SMB's
+     * {@code annotation SmbServiceConfig ServiceConfig on service;}).
      */
     private static TriggerLibraryFacts.Annotation findAnnotationFacts(String name, TriggerLibraryFacts facts) {
         if (facts.annotations() == null) {
@@ -869,11 +746,8 @@ public final class TriggerModelSynthesizer {
     }
 
     /**
-     * Builds one annotation attachment field -- a single {@code RECORD_MAP_EXPRESSION} the user fills
-     * as one expression -- shared by every attachment point (service-level init/view, function-level
-     * handler); only the emitted {@code codedata.type} differs per caller, since each consumer scans for
-     * its own role ({@code SERVICE_ANNOTATION} for the init form, {@code ANNOTATION_ATTACHMENT}
-     * elsewhere).
+     * Builds one annotation attachment field, shared by every attachment point; only the emitted
+     * {@code codedata.type} differs per caller.
      */
     private static TriggerUISchemaModel.Property buildAnnotationProperty(TriggerMetadataModel.Annotation annotation,
                                                                   TriggerLibraryFacts facts,
@@ -897,8 +771,7 @@ public final class TriggerModelSynthesizer {
                 "RECORD_MAP_EXPRESSION", true, aliasOf(pkgModule) + ":" + recordTypeName, null, List.of(member),
                 null, null, null);
         boolean optional = TriggerMetadataModel.Annotation.PRESENCE_OPTIONAL.equals(annotation.presence());
-        // Deliberately no per-field skeleton (e.g. "{topic: \"\"}") -- the LS does not need to guess
-        // field defaults; an empty "{}" record is enough for the user to fill in via the record editor.
+        // No per-field skeleton: an empty "{}" record is enough for the user to fill via the record editor.
         return new TriggerUISchemaModel.Property(
                 new TriggerUISchemaModel.Metadata(humanize(annotation.id()), "Configuration for this service", null,
                         null, null, null, null, null),
@@ -908,10 +781,7 @@ public final class TriggerModelSynthesizer {
 
     // ---- shared helpers ------------------------------------------------------------
 
-    /**
-     * Joins a union of {@link TypeRef}s into one type-signature string, qualifying each member (see
-     * {@link #qualifyTypeRef}) before joining -- so the result is always ready to emit as-is.
-     */
+    /** Joins a union of {@link TypeRef}s into one type-signature string, qualifying each member. */
     private static String typeRefName(List<TypeRef> refs, String moduleName) {
         if (refs == null || refs.isEmpty()) {
             return "anydata";
@@ -921,15 +791,9 @@ public final class TriggerModelSynthesizer {
     }
 
     /**
-     * Qualifies a {@link TypeRef} for emission into the <b>user's</b> file: {@code trigger-metadata.json}
-     * never restates a same-module reference's prefix ({@code packageInfo: null} means "same module as
-     * this connector's own types" -- see {@link TypeRef}'s own javadoc), but the generated source lands
-     * in a different file where the connector is only an imported dependency, so even the connector's
-     * own types need a module prefix to be valid Ballerina (matching how {@code TriggerLibraryIntrospector}
-     * already renders introspected facts with a prefix, never bare). A builtin/composite type signature
-     * (lowercase-leading, e.g. {@code string}, {@code error}, {@code ()}, {@code record {}}) is never
-     * qualified; heuristically, a Ballerina user-defined type name always starts with an uppercase
-     * letter by convention, which is what distinguishes the two cases here.
+     * Qualifies a {@link TypeRef} for emission into the user's file, since even a same-module reference
+     * needs a module prefix there. Relies on the convention that a user-defined type name starts
+     * uppercase, unlike a builtin/composite signature (e.g. {@code string}, {@code ()}).
      */
     private static String qualifyTypeRef(TypeRef ref, String moduleName) {
         String name = ref.name();

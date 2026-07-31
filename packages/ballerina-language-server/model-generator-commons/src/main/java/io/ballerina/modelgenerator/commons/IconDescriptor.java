@@ -19,28 +19,16 @@
 package io.ballerina.modelgenerator.commons;
 
 /**
- * A structured, multi-representation icon descriptor for a trigger/service artifact, per the Phase-6
- * <i>Icon &amp; Label Resolution</i> architecture. It carries every representation the resolver could
- * determine so each surface can pick the best one it can render and always has a guaranteed default.
+ * Icon descriptor for a trigger/service artifact, carrying every representation a resolver could
+ * determine so a surface can pick the best one it can render.
  *
- * <p>Ownership: the <b>Language Server</b> fills {@link #url} (a connector-declared icon or the derived
- * Ballerina Central URL), {@link #kind}, {@link #source}, and — when the connector declared them in its
- * trigger metadata — {@link #glyph}/{@link #color}. The <b>IDE</b> completes any missing
- * {@code glyph}/{@code color} from its brand-icon registry and applies the {@code kind} default, then
- * picks the representation for its surface.
- *
- * @param url    a directly renderable image URL (connector-declared, a package resource served as a
- *               {@code data:} URI, or the derived Central PNG); {@code null} when none is known
- * @param glyph  the IDE brand-glyph key (e.g. {@code "bi-rabbitmq"}); {@code null} when not declared
- * @param color  optional tint for a monochrome {@link #glyph} (e.g. {@code "#f60"}); {@code null} when
- *               not declared
- * @param kind   semantic bucket ({@code event | file | http | graphql | ai | listener}) that drives the
- *               guaranteed default icon; {@code null} only when the module declares no metadata
- * @param source provenance of {@link #url}: {@code declared | package | central | derived}
- * @param light  a theme-specific image for light themes (connector-declared package resource served as
- *               a {@code data:} URI); paired with {@link #dark} so a surface can switch per theme;
- *               {@code null} when the connector ships no light/dark pair
- * @param dark   the dark-theme counterpart of {@link #light}; {@code null} when none
+ * @param url    the icon URL for this entry
+ * @param glyph  the icon font glyph name, if any
+ * @param color  the icon's display color, if any
+ * @param kind   {@code event | file | http | graphql | ai | listener}
+ * @param source {@code declared | package | central | derived}
+ * @param light  the icon URL for light themes, if any
+ * @param dark   the icon URL for dark themes, if any
  * @since 1.9.0
  */
 public record IconDescriptor(String url, String glyph, String color, String kind, String source,

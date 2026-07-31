@@ -36,20 +36,9 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Resolves the display-label data for an entry-point artifact (a trigger/service module), replacing
- * what used to be a hardcoded, per-connector {@code Map} in the architecture-model-generator.
- *
- * <p>Metadata is resolved per module through {@link #metadata(ModuleID)}: the LS's bundled
- * classpath resource first (the hardcoded entry-point modules), then — for a <b>non-bundled</b>
- * connector — the {@code resources/trigger-artifact.json} the connector ships inside its own package,
- * read from its resolved package root. Without this second step non-bundled triggers silently lose
- * their declared display name and label fields in the artifact tree.
- *
- * <p>This class supplies <b>data</b>: the {@link IconDescriptor} ({@link #resolveIcon}), the display
- * name, and which annotation fields to consult for an instance-label suffix. The caller keeps doing its
- * own annotation-field extraction (already available where it's needed) — no syntax-tree walking lives
- * here. Icon {@code glyph}/{@code color} the connector did not declare are completed by the IDE's
- * brand-icon registry.
+ * Resolves the display-label data — icon, display name, and instance-label annotation fields — for an
+ * entry-point artifact (a trigger/service module), replacing a hardcoded per-connector map. Only the
+ * LS's bundled classpath metadata is consulted; a non-bundled connector has none.
  *
  * @since 1.9.0
  */
@@ -68,10 +57,8 @@ public final class TriggerArtifactResolver {
     }
 
     /**
-     * The trigger metadata for a module: the LS's bundled classpath resource only. Reading a
-     * connector's own shipped {@code resources/trigger-artifact.json} from its resolved {@code .bala}
-     * is not supported in this phase — a non-bundled connector simply has no metadata (no display name,
-     * no label-field suffix).
+     * The trigger metadata for a module: the LS's bundled classpath resource only. A non-bundled
+     * connector's own shipped {@code resources/trigger-artifact.json} is not read in this phase.
      */
     private static Optional<TriggerArtifactModel> metadata(String orgName, String packageName, String moduleName,
                                                       String version) {
@@ -112,20 +99,18 @@ public final class TriggerArtifactResolver {
     }
 
     /**
-     * Resolves the {@link IconDescriptor} for a module. The {@code url} comes from (1) a connector
-     * declared absolute URL, (2) a connector-declared package-relative resource served from the
-     * {@code .bala} as a {@code data:} URI, or (3) the derived Ballerina Central PNG — with
-     * {@code source} stamped accordingly. Declared {@code glyph}/{@code color}/{@code kind} pass
-     * through; the IDE completes any missing {@code glyph}/{@code color} from its brand-icon registry.
+     * Resolves the {@link IconDescriptor} for a module. The {@code url} comes from (1) a declared
+     * absolute URL, (2) a declared package-relative resource served as a {@code data:} URI, or (3) the
+     * derived Ballerina Central PNG. Declared {@code glyph}/{@code color}/{@code kind} pass through;
+     * the IDE completes any missing ones from its brand-icon registry.
      */
     public static IconDescriptor resolveIcon(ModuleID moduleId) {
         return resolveIcon(moduleId.orgName(), moduleId.packageName(), moduleId.moduleName(), moduleId.version());
     }
 
     /**
-     * Coordinate-based overload of {@link #resolveIcon(ModuleID)} for callers that hold the package
-     * coordinates directly (e.g. the service-designer catalog) rather than a compiler {@code ModuleID},
-     * so the Add page / designer resolve icons through the exact same chain as the artifact tree.
+     * Coordinate-based overload of {@link #resolveIcon(ModuleID)} for callers that hold package
+     * coordinates directly (e.g. the service-designer catalog) rather than a compiler {@code ModuleID}.
      */
     public static IconDescriptor resolveIcon(String orgName, String packageName, String moduleName, String version) {
         IconDescriptor declared = metadata(orgName, packageName, moduleName, version)

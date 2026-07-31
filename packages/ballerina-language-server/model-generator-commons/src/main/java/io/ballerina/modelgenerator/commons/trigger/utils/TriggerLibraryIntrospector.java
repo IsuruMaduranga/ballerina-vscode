@@ -38,7 +38,6 @@ import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.UnionTypeSymbol;
 import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
-import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerLibraryFacts;
 
 import java.util.ArrayList;
@@ -50,26 +49,13 @@ import java.util.Set;
 
 /**
  * Resolves the {@link TriggerLibraryFacts} a {@code TriggerUISchemaModel} synthesizer needs from a
- * connector's compiled {@link SemanticModel}: a listener's init-parameter <b>structure</b>, service
- * object types (with their remote/resource functions), and declared annotations -- the introspectable
- * counterpart to a connector's hand-authored {@link TriggerMetadataModel}.
+ * connector's compiled {@link SemanticModel}: listener init-parameter structure, service object types
+ * (with their remote/resource functions), and declared annotations. Ported from the
+ * {@code library-introspector} CLI tool so the LS can resolve the same facts at request time directly
+ * from a {@link SemanticModel} it already has, with no CLI shell-out.
  *
- * <p>Ported from the {@code library-introspector} tool (used offline by the
- * {@code generate-trigger-model} authoring workflow to hand-curate the heavier
- * {@code trigger-ui-schema.json}) so the language server can resolve the same facts at request time,
- * directly from a {@link SemanticModel} it already has (e.g. via
- * {@link PackageUtil#getSemanticModel(ModuleInfo)}) -- no CLI shell-out, no separate
- * {@code BuildProject} of its own. The original tool's CLI entry point, argument parsing, and
- * {@code --listeners}/{@code --service-type} filtering flags are dropped: this method always
- * resolves the full set and lets the caller filter.
- *
- * <p>Unlike the original tool, the listener param facts resolved here are consumed for
- * <b>structure only</b> (which params exist, in what order, whether one is an
- * {@code INCLUDED_RECORD} spread with named-only fields versus a plain record-typed parameter): a
- * synthesizer still resolves each parameter's actual rendered widget via
- * {@code ListenerUtil#getListenerModelByName} rather than this class reimplementing type-to-widget
- * selection (records, unions, numbers, ...) a second time with worse fidelity. See
- * {@link TriggerLibraryFacts}'s class javadoc.
+ * <p>Listener param facts are resolved for structure only; a synthesizer still resolves each
+ * parameter's rendered widget via {@code ListenerUtil#getListenerModelByName}.
  *
  * @since 1.10.0
  */
@@ -85,13 +71,10 @@ public final class TriggerLibraryIntrospector {
      * Resolves every listener (structure only), service type, and annotation declared in
      * {@code semanticModel}'s module.
      *
-     * @param semanticModel the connector's compiled semantic model
-     * @param moduleInfo    the connector's own module coordinates -- every type signature this method
-     *                      produces is rendered relative to it (via {@link CommonUtils#getTypeSignature
-     *                      (TypeSymbol, ModuleInfo)}), so a same-module reference renders as a bare
-     *                      simple name (or the connector's own natural import prefix), never the
-     *                      compiler's fully-qualified {@code org/module:version:Type} form -- emitting
-     *                      that verbatim is not valid Ballerina source
+     * @param moduleInfo type signatures are rendered relative to this module (via
+     *                   {@link CommonUtils#getTypeSignature}), so a same-module reference renders as a
+     *                   bare name rather than the compiler's fully-qualified form, which is not valid
+     *                   Ballerina source
      */
     public static TriggerLibraryFacts introspect(SemanticModel semanticModel, ModuleInfo moduleInfo) {
         List<TriggerLibraryFacts.Listener> listeners = new ArrayList<>();
@@ -153,11 +136,8 @@ public final class TriggerLibraryIntrospector {
     }
 
     /**
-     * Expands the fields of a record type (recursively, depth-capped) so a synthesizer can build
-     * nested config fields. A union of record types (e.g. a listener config that is
-     * {@code SoapConfig|RestConfig}) is expanded by merging every member's fields -- first
-     * occurrence wins on name clashes -- so every branch's fields are visible even though no single
-     * member describes the whole union.
+     * Expands the fields of a record type (recursively, depth-capped). A union of record types is
+     * expanded by merging every member's fields -- first occurrence wins on name clashes.
      */
     private static List<TriggerLibraryFacts.Param> recordFields(TypeSymbol type, int depth, ModuleInfo moduleInfo) {
         if (depth >= MAX_FIELD_DEPTH) {

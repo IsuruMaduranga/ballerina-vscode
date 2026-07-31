@@ -21,13 +21,12 @@ package io.ballerina.modelgenerator.commons.trigger.models;
 import java.util.List;
 
 /**
- * A requiredness + closed-vocabulary pair for a resource-kind handler's own syntactic slots: HTTP's
- * {@code method} (the legal verbs) and GraphQL's {@code accessor} ({@code "get"} for a query field,
- * {@code "subscribe"} for a subscription). Sibling of {@link PresenceForm}, which is used where the
- * legal shapes are structural forms rather than a closed set of literal values.
+ * A requiredness + closed-vocabulary pair for a resource-kind handler's syntactic slots (e.g. HTTP's
+ * {@code method}, GraphQL's {@code accessor}). Sibling of {@link PresenceForm}, used where the legal
+ * shapes are a closed set of literal values rather than structural forms.
  *
- * @param presence {@code "required"} or {@code "optional"}
- * @param values   the closed set of legal literal values for this slot
+ * @param presence {@code required} or {@code optional} for the slot
+ * @param values   the closed set of legal literal values
  * @since 1.10.0
  */
 public record PresenceValues(String presence, List<String> values) {

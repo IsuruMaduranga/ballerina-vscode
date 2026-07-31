@@ -22,54 +22,32 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Deserialization target for a connector-shipped <b>Trigger UI Schema</b>
- * ({@code resources/trigger-ui-schema.json}). This is the single unified model that supersedes the
- * earlier two-model design ({@code service-creation.json} + {@code service-metadata.json}): one
- * document unifies the add-trigger init form ({@code initProperties}) with the service type(s) and
- * their handler functions ({@code serviceTypes}).
+ * Deserialization target for a connector-shipped Trigger UI Schema
+ * ({@code resources/trigger-ui-schema.json}), unifying the add-trigger init form with the service
+ * type(s) and their handler functions.
  *
- * <p>It mirrors the authoring spec ({@code spec.bal}) one-to-one. The core principle is that
- * everything configurable is a {@link Property} that is BOTH a UI widget ({@code types[].fieldType})
- * and a code-generation instruction ({@code codedata}); a {@link Parameter} carries its {@code type}
- * and {@code name} as {@code Property} sub-nodes.
- *
- * <p>These are plain Gson DTOs (records). Gson 2.10+ deserializes records via their canonical
- * constructor and ignores unknown JSON fields, which preserves the schema's forward-compatible
- * {@code additionalProperties: true} contract (unknown {@code fieldType}/{@code codedata} roles and
- * the leading {@code $comment} key degrade gracefully). Adapters translate these into the wire POJOs
- * ({@code Service}/{@code Function}/{@code Value}).
- *
- * <p>Open-vocabulary and dual-typed fields are kept as {@code String}/{@code Object}: {@code fieldType}
- * is an open string; {@code PropertyType.template} is a {@code Property}-or-{@code String} union;
- * {@code Property.value} is an arbitrary JSON scalar. These are resolved by the generator/adapters,
- * not here.
- *
- * @param schemaVersion    the {@code trigger-ui-schema.json} schema version this document conforms to
- * @param id               the connector's catalog identifier
- * @param displayName      the human-readable connector name shown in the designer
- * @param description      the connector's summary description
- * @param orgName          the Ballerina organization that owns the connector package
- * @param packageName      the Ballerina package name
- * @param moduleName       the Ballerina module name
- * @param version          the connector package version
- * @param type             the entry-point kind bucket used for icon/category fallback (e.g.
- *                         {@code event}/{@code file}/{@code http}/{@code graphql}/{@code ai})
- * @param icon             the connector's icon URL
- * @param kind             the connector's document kind as declared by the authoring spec (mirrors
- *                         {@code spec.bal})
- * @param listenerKind     the listener property's widget in the designer (a {@code Value.FieldType}
- *                         name, e.g. {@code SINGLE_SELECT_LISTENER} / {@code MULTIPLE_SELECT_LISTENER}):
- *                         whether a service may bind one or several listeners of this connector's type.
- *                         Defaults to {@code SINGLE_SELECT_LISTENER} when a model omits it.
- * @param initProperties   the add-trigger init form's fields, keyed by property name
- * @param serviceTypes     the connector's service-object type(s) and their handler functions
- * @param readOnlyMetadata the read-only summary chips shown in the service-card header
- * @param importStatements additional raw import statements the generated source must include
- * @param importPrefix     optional override for the import prefix the connector's own module is
- *                         referenced under in generated source. Absent/blank -> the generator computes
- *                         one (a camelCase join of a dotted module name, e.g. {@code trigger.twilio} ->
- *                         {@code triggerTwilio}, so it cannot clash with a base {@code ballerinax/twilio}
- *                         import; a single-segment module keeps its natural prefix, unaliased).
+ * @param schemaVersion    the trigger UI schema format version
+ * @param id               the trigger's unique identifier
+ * @param displayName      the trigger's human-readable name
+ * @param description      a short summary of the trigger
+ * @param orgName          the organization publishing the connector
+ * @param packageName      the connector's package name
+ * @param moduleName       the connector's module name
+ * @param version          the connector's version
+ * @param type         the entry-point kind bucket used for icon/category fallback (e.g.
+ *                     {@code event}/{@code file}/{@code http}/{@code graphql}/{@code ai})
+ * @param icon             the icon reference shown for this trigger
+ * @param kind             the trigger's category (e.g. listener-based vs. service-based)
+ * @param listenerKind the listener property's widget (a {@code Value.FieldType} name, e.g.
+ *                     {@code SINGLE_SELECT_LISTENER} / {@code MULTIPLE_SELECT_LISTENER}); defaults to
+ *                     {@code SINGLE_SELECT_LISTENER} when a model omits it
+ * @param initProperties   the init/listener form fields, keyed by property name
+ * @param serviceTypes     the service type(s) this trigger offers
+ * @param readOnlyMetadata read-only summary chips shown on the service card
+ * @param importStatements extra import statements required by generated code
+ * @param importPrefix optional override for the import prefix the connector's own module is
+ *                     referenced under. Absent/blank -> the generator computes one (a camelCase join
+ *                     of a dotted module name, e.g. {@code trigger.twilio} -> {@code triggerTwilio})
  * @since 1.9.0
  */
 public record TriggerUISchemaModel(
@@ -92,20 +70,19 @@ public record TriggerUISchemaModel(
         String importPrefix) {
 
     /**
-     * A service-object type and its handler functions. {@code functions} are present/locked
-     * handlers; {@code schemaFunctions} are addable templates. {@code properties} carries
-     * service-level config / annotations. For multi-type connectors {@code enabled} marks the
-     * selected type.
+     * A service-object type and its handler functions. {@code functions} are present/locked handlers;
+     * {@code schemaFunctions} are addable templates. For a multi-type connector, {@code enabled}
+     * marks the selected type.
      *
      * @param metadata        display metadata for this service type
-     * @param name            the service type's identifier (e.g. the {@code ServiceType} name)
-     * @param description     the service type's description
-     * @param enabled         for a multi-type connector, whether this is the selected type
-     * @param editable        whether the service type selection may be changed
-     * @param properties      service-level config / annotation fields, keyed by property name
+     * @param name            the service type's identifier
+     * @param description     a short summary of this service type
+     * @param enabled         whether this service type is the selected one
+     * @param editable        whether this service type may be edited
+     * @param properties      the service type's own configurable properties
      * @param functions       the present/locked handler functions
-     * @param schemaFunctions the still-addable handler templates
-     * @param codedata        source-generation semantics for this service type
+     * @param schemaFunctions the addable handler function templates
+     * @param codedata        source-generation metadata for this service type
      */
     public record ServiceTypeModel(
             Metadata metadata,
@@ -120,24 +97,22 @@ public record TriggerUISchemaModel(
     }
 
     /**
-     * The recursive building block of every form. The four boolean markers
-     * ({@code enabled}/{@code editable}/{@code optional}/{@code advanced}) are required by the schema.
-     * Leaves carry {@code types} + {@code value}; containers carry {@code properties}; choices carry
-     * {@code choices}.
+     * The recursive building block of every form. Leaves carry {@code types} + {@code value};
+     * containers carry {@code properties}; choices carry {@code choices}.
      *
      * @param metadata    display metadata for this field
-     * @param enabled     whether this field is currently active/included
+     * @param enabled     whether this field is currently active
      * @param editable    whether the user may change this field's value
-     * @param optional    whether this field may be omitted/disabled
-     * @param advanced    whether this field is tucked behind an "advanced" toggle in the form
-     * @param placeholder the placeholder/default rendering shown when {@code value} is unset
-     * @param value       this field's current value (an arbitrary JSON scalar)
-     * @param types       the candidate rendering descriptors; the {@code selected:true} one is active
-     * @param items       enumerated option values, for a list-typed field
-     * @param choices     the alternative sub-forms, for a CHOICE-typed field
-     * @param properties  nested fields, for a container field
-     * @param codedata    source-generation semantics for this field
-     * @param validations the named validation rules bound to this field
+     * @param optional    whether this field may be left unset
+     * @param advanced    whether this field is hidden behind an advanced toggle
+     * @param placeholder placeholder text shown when the field is empty
+     * @param value       the field's current value
+     * @param types       the candidate rendering descriptors for this field
+     * @param items       fixed item values, when applicable
+     * @param choices     the selectable sub-properties, for a choice field
+     * @param properties  the nested sub-properties, for a container field
+     * @param codedata    source-generation metadata for this field
+     * @param validations the validation rules applied to this field
      */
     public record Property(
             Metadata metadata,
@@ -156,20 +131,18 @@ public record TriggerUISchemaModel(
     }
 
     /**
-     * A candidate rendering descriptor. The entry with {@code selected:true} is the active widget.
-     * {@code template} is a {@code Property} (REPEATABLE_LIST element clone) OR a {@code String}
-     * type-wrap (e.g. {@code "{{type}}[]"}), hence {@code Object}.
+     * A candidate rendering descriptor; the entry with {@code selected:true} is the active widget.
+     * {@code template} is either a {@code Property} (REPEATABLE_LIST element clone) or a type-wrap
+     * {@code String} (e.g. {@code "{{type}}[]"}), hence {@code Object}.
      *
-     * @param fieldType     the widget kind (an open string, e.g. {@code TEXT}/{@code CHOICE}/
-     *                      {@code REPEATABLE_LIST})
-     * @param selected      whether this is the currently active rendering
-     * @param ballerinaType the Ballerina type this widget produces/expects
-     * @param options       the selectable options, for an enum-like widget
-     * @param typeMembers   the selectable record/union members, for a TYPE / RECORD_MAP_EXPRESSION field
-     * @param template      the element clone (a {@code Property}) or type-wrap string (e.g.
-     *                      {@code "{{type}}[]"}) this rendering composes onto the bound value
-     * @param formats       the data-binding definition formats offered, for a PAYLOAD_TYPE field
-     * @param validations   the named validation rules bound to this rendering
+     * @param fieldType     the widget kind used to render this candidate
+     * @param selected      whether this candidate is the active widget
+     * @param ballerinaType the Ballerina type this candidate binds to
+     * @param options       the inline selectable options, when applicable
+     * @param typeMembers   the selectable record/union members, when applicable
+     * @param template      the composition template applied to the bound element
+     * @param formats       the data-binding formats offered, when applicable
+     * @param validations   the validation rules applied to this candidate
      */
     public record PropertyType(
             String fieldType,
@@ -183,52 +156,34 @@ public record TriggerUISchemaModel(
     }
 
     /**
-     * A trigger handler / resource definition. Rich enough to render the add/edit-function dialog
-     * and generate the Ballerina function source.
+     * A trigger handler / resource definition, rich enough to render the add/edit-function dialog and
+     * generate the Ballerina function source.
      *
-     * @param metadata            display metadata for this handler
-     * @param name                the emitted function name
-     * @param nameEditable        whether the emitted name may be changed when adding this handler
-     * @param nameMetadata        display metadata for the name field itself when {@code nameEditable}
-     *                            is {@code true} (e.g. {@code "Function Name"} / {@code "The name of
-     *                            the function"}) — falls back to {@code metadata} when absent, so
-     *                            existing schemas need no change
-     * @param kind                the function's syntax kind (e.g. {@code REMOTE}/{@code RESOURCE})
-     * @param accessor            the resource accessor (e.g. {@code get}), for a resource function
-     * @param qualifiers          the function's source qualifiers (e.g. {@code remote}/{@code resource})
-     * @param group               the handler-catalog group this variant belongs to, if any (see
-     *                            {@link Repeatable})
-     * @param variantLabel        this variant's label within its {@code group}
-     * @param enabled             whether this handler is currently present/enabled
-     * @param editable            whether this handler's fields may be edited
-     * @param optional            whether this handler may be removed once present
-     * @param canAddParameters    whether the user may append extra parameters beyond the schema's own
-     *                            (see {@code parameterSchema})
-     * @param repeatable          how this handler may be added to the addable catalog (see
-     *                            {@link Repeatable})
-     * @param documentation       the handler's doc-comment text emitted above the generated function,
-     *                            for a fixed (non-editable) handler
-     * @param documentationSchema when present, makes the handler's doc-comment a user-editable field
-     *                            (e.g. MCP's "Tool Description") driven by this template's own
-     *                            label/placeholder/description, instead of the fixed
-     *                            {@code documentation} string — layered onto the same
-     *                            {@code Function.documentation} the generic emitter
-     *                            ({@code Utils#getDocumentationEdits}) already renders as a
-     *                            {@code # ...} doc comment, so no new emission logic is needed
-     * @param parameters          the handler's parameters
-     * @param parameterSchema     the addable parameter template(s) offered when {@code canAddParameters}
-     *                            is {@code true}, keyed by kind (e.g. {@code parameter} for a plain
-     *                            user-typed parameter, {@code header} for an individually bound
-     *                            {@code @http:Header} parameter) — the schema-driven counterpart of a
-     *                            non-schema-driven builder's hardcoded {@code Function.schema} (see e.g.
-     *                            {@code functions/http_resource.json}'s {@code schema} map). A
-     *                            {@code header} template's own {@code documentation} sub-property is
-     *                            optional — HTTP's header form has none; a connector that needs one per
-     *                            header (e.g. MCP) declares it and the header editor picks it up.
-     * @param properties          the handler's annotation / composition fields, keyed by property name
-     * @param returnType          the handler's return type
-     * @param codedata            source-generation semantics for this handler
-     * @param validations         the named validation rules bound to this handler
+     * @param metadata            display metadata for this function
+     * @param nameEditable        whether this function's name may be renamed
+     * @param nameMetadata        display metadata for the name field when {@code nameEditable} is
+     *                            {@code true}; falls back to {@code metadata} when absent
+     * @param kind                this function's handler kind (e.g. resource/remote)
+     * @param accessor            the resource accessor, when {@code kind} is resource-based
+     * @param qualifiers          the function's qualifiers (e.g. {@code isolated}, {@code remote})
+     * @param group               the logical group this function is listed under
+     * @param variantLabel        the label shown when this function is one of several variants
+     * @param enabled             whether this function is currently active
+     * @param editable            whether this function's definition may be edited
+     * @param optional            whether this function may be omitted from the service
+     * @param canAddParameters    whether extra parameters may be appended beyond {@code parameterSchema}
+     * @param repeatable          whether this function may be added more than once
+     * @param documentationSchema when present, makes the doc-comment a user-editable field instead of
+     *                            the fixed {@code documentation} string
+     * @param parameters          this function's current parameter list
+     * @param parameterSchema     the addable parameter template(s) offered when
+     *                            {@code canAddParameters} is {@code true}, keyed by kind (e.g.
+     *                            {@code header} for an individually bound {@code @http:Header}
+     *                            parameter)
+     * @param properties          additional configurable properties for this function
+     * @param returnType          this function's return type descriptor
+     * @param codedata            source-generation metadata for this function
+     * @param validations         the validation rules applied to this function
      */
     public record FunctionModel(
             Metadata metadata,
@@ -256,34 +211,29 @@ public record TriggerUISchemaModel(
     }
 
     /**
-     * A function parameter whose {@code type} and {@code name} are {@link Property} sub-nodes, so a
-     * parameter is rendered and generated with the same generic walk as any form field. Also doubles
-     * as an addable-parameter <b>template</b> when it appears under a {@link FunctionModel}'s
-     * {@code parameterSchema} rather than its {@code parameters} — {@code defaultValue}/
-     * {@code documentation}/{@code headerName} are meaningful in that role (a plain {@code parameters}
-     * entry normally leaves them unset).
+     * A function parameter whose {@code type} and {@code name} are {@link Property} sub-nodes. Also
+     * doubles as an addable-parameter template under a {@link FunctionModel}'s
+     * {@code parameterSchema}, where {@code defaultValue}/{@code documentation}/{@code headerName}
+     * become meaningful.
      *
      * @param metadata      display metadata for this parameter
-     * @param kind          the parameter's kind (e.g. {@code REQUIRED}/{@code OPTIONAL}/
-     *                      {@code DATA_BINDING})
-     * @param type          the parameter's type, as a {@code Property} sub-node
-     * @param name          the parameter's identifier, as a {@code Property} sub-node
-     * @param defaultValue  the parameter's default value, as a {@code Property} sub-node (template use)
-     * @param documentation the parameter's doc text, as a {@code Property} sub-node (template use)
+     * @param kind          this parameter's binding kind
+     * @param type          the parameter's type sub-node
+     * @param name          the parameter's name sub-node
+     * @param defaultValue  the parameter's default value sub-node
+     * @param documentation the parameter's doc-comment sub-node
      * @param headerName    the wire HTTP header name, when it differs from {@code name}'s identifier
-     *                      (template use — pairs with {@code httpParamType == HEADER}); left unset, the
-     *                      header name is derived from the identifier at emit time
+     *                      (template use, pairs with {@code httpParamType == HEADER}); unset derives
+     *                      the header name from the identifier at emit time
      * @param httpParamType marks this as an HTTP-bound parameter template ({@code HEADER} is the only
-     *                      value currently emitted by the schema-driven path — {@code QUERY}/
-     *                      {@code PAYLOAD} are HTTP-resource-only concepts today), mirroring
-     *                      {@code functions/http_resource.json}'s {@code schema.*.httpParamType}
-     * @param enabled       whether this parameter is currently included in the emitted signature
-     * @param editable      whether the user may change this parameter's fields
-     * @param optional      whether this parameter may be omitted from the emitted signature
-     * @param advanced      whether this parameter is tucked behind an "advanced" toggle in the form
-     * @param hidden        whether this parameter is fixed/internal and not shown to the user
-     * @param codedata      source-generation semantics for this parameter
-     * @param validations   the named validation rules bound to this parameter
+     *                      value currently emitted by the schema-driven path)
+     * @param enabled       whether this parameter is currently active
+     * @param editable      whether this parameter may be edited
+     * @param optional      whether this parameter may be left unset
+     * @param advanced      whether this parameter is hidden behind an advanced toggle
+     * @param hidden        whether this parameter is hidden from the UI entirely
+     * @param codedata      source-generation metadata for this parameter
+     * @param validations   the validation rules applied to this parameter
      */
     public record Parameter(
             Metadata metadata,
@@ -307,18 +257,17 @@ public record TriggerUISchemaModel(
      * The return type of a handler. {@code enabled:false} = returns {@code ()}; {@code optional} =
      * nilable ({@code T?}); {@code hasError} = error union.
      *
-     * @param metadata         display metadata for the return type field
-     * @param type             the rendered return type text
-     * @param typeEditable     whether the user may change the return type
-     * @param typeConstraint   the type constraint the user's chosen type must satisfy, if any
-     * @param enabled          whether a return type is emitted at all ({@code false} = returns
-     *                         {@code ()})
-     * @param editable         whether the user may edit this field
-     * @param optional         whether the return type is nilable ({@code T?})
-     * @param hasError         whether the return type includes an error union
-     * @param importStatements additional import statements the return type requires
-     * @param codedata         source-generation semantics for the return type
-     * @param validations      the named validation rules bound to the return type
+     * @param metadata        display metadata for the return type field
+     * @param type            the return type's Ballerina type
+     * @param typeEditable    whether {@code type} may be changed by the user
+     * @param typeConstraint  a type constraint narrowing {@code type}
+     * @param enabled         whether the handler returns a value at all
+     * @param editable        whether this return type may be edited
+     * @param optional        whether the return type is nilable
+     * @param hasError        whether the return type includes an error union member
+     * @param importStatements extra import statements required by the return type
+     * @param codedata        source-generation metadata for this return type
+     * @param validations     the validation rules applied to this return type
      */
     public record ReturnType(
             Metadata metadata,
@@ -336,54 +285,43 @@ public record TriggerUISchemaModel(
 
     /**
      * Source-generation semantics for a node. Fields are used selectively per {@code type} role;
-     * {@code type}/{@code argType} are open strings. {@code modifiers} is an open object. A leaf's
-     * rendered value kind (e.g. string quoting) is derived from the node's {@code types[]}
-     * ({@code fieldType}/{@code ballerinaType}), not carried here.
+     * {@code type}/{@code argType} are open strings interpreted per-role by the generator/adapters.
      *
-     * @param type           the node's semantic role (an open string, e.g. {@code PAYLOAD_TYPE}/
-     *                       {@code FUNCTION_PARAM}/{@code LISTENER_VAR_NAME}); interpreted per-role by
-     *                       the generator/adapters
-     * @param argType        how a listener-config field is placed as a constructor argument (an open
-     *                       string, e.g. {@code LISTENER_PARAM_REQUIRED}/
-     *                       {@code LISTENER_PARAM_INCLUDED_FIELD})
+     * @param type           the node's structural role/type discriminator (e.g. {@code PAYLOAD_MODIFIER})
+     * @param argType        the parameter/argument kind this node maps to
      * @param originalName   the field/annotation's real name in the underlying Ballerina API, when it
      *                       differs from the display key
-     * @param moduleName     the Ballerina module this node's type/annotation belongs to
-     * @param orgName        the Ballerina organization this node's type/annotation belongs to
-     * @param packageName    the Ballerina package this node's type/annotation belongs to
-     * @param position       this node's positional slot among a listener's constructor arguments
+     * @param moduleName     the Ballerina module this construct belongs to
+     * @param orgName        the organization publishing the module
+     * @param packageName    the package containing the module
+     * @param position       the zero-based positional index among siblings
      * @param path           a dotted path (e.g. {@code auth.credentials.username}) nesting this leaf
      *                       into a record literal at code-generation time
      * @param defaultType    the payload's default bound type when the user has not selected a custom
      *                       one
      * @param boundType      the payload's user-selected bound type, overriding {@code defaultType}
-     * @param bindable       whether this PAYLOAD_TYPE field may be data-bound to a user-selected type
+     * @param bindable       whether this node may be bound to a real Ballerina construct
      * @param bindingKind    how the bound type was determined (e.g. user-selected vs. schema-inferred)
-     * @param typeConstraint the type constraint a bound/chosen type must satisfy
+     * @param typeConstraint a type constraint narrowing {@code type}/{@code boundType}
      * @param template       the composition template applied to the bound element (e.g.
      *                       {@code "{{type}}[]"}, {@code "stream<{{type}}, error?>"})
      * @param modifier       the PAYLOAD_MODIFIER's short name (e.g. {@code stream})
      * @param supersedes     the other PAYLOAD_MODIFIER names this modifier takes precedence over when
      *                       multiple are active
      * @param targetParam    the parameter this PAYLOAD_MODIFIER's composition applies to
-     * @param modifiers      open, node-specific source-generation options not covered by the named
-     *                       fields above
-     * @param field          the record field name this node binds to (e.g. the included-record
-     *                       wrapper's payload field)
-     * @param optional       whether this node's presence in the generated source is optional
+     * @param modifiers      open payload-modifier metadata attached to this node
+     * @param field          the underlying record field this node maps to
+     * @param optional       whether this node's binding is optional
      * @param value          an open literal value used when rendering this node (e.g. an ENUM_LITERAL's
      *                       source text)
      * @param valueQualifier the module/type qualifier prefixed onto {@code value} when rendering (e.g.
      *                       {@code ftp} for {@code ftp:FTPS})
-     * @param group          the handler-catalog group this node belongs to, mirroring
-     *                       {@link FunctionModel#group}
-     * @param variantLabel   this node's variant label within its {@code group}
-     * @param nameEditable   whether the bound parameter's identifier (e.g. kafka's {@code records}, the
-     *                       CDC {@code before}/{@code after}) may be renamed in the edit UI. Some
-     *                       connectors bind to a fixed, structural identifier the generated code and its
-     *                       surrounding annotations refer to by name — only the bound type is
-     *                       user-selected there. Unset defaults to editable ({@code true}), matching
-     *                       FTP's genuinely user-named payload.
+     * @param group          the logical group this node is rendered under
+     * @param variantLabel   the label shown when this node is one of several variants
+     * @param nameEditable   whether the bound parameter's identifier may be renamed in the edit UI;
+     *                       some connectors bind to a fixed, structural identifier referred to by name
+     *                       elsewhere, so only the bound type is user-selected. Defaults to editable
+     *                       when unset.
      */
     public record Codedata(
             String type,
@@ -411,6 +349,174 @@ public record TriggerUISchemaModel(
             String group,
             String variantLabel,
             Boolean nameEditable) {
+
+        public static Builder builder() {
+            return new Builder();
+        }
+
+        /** Builds a {@link Codedata} field-by-field, leaving every unset field {@code null}. */
+        public static final class Builder {
+            private String type;
+            private String argType;
+            private String originalName;
+            private String moduleName;
+            private String orgName;
+            private String packageName;
+            private Integer position;
+            private String path;
+            private String defaultType;
+            private String boundType;
+            private Boolean bindable;
+            private String bindingKind;
+            private String typeConstraint;
+            private String template;
+            private String modifier;
+            private List<String> supersedes;
+            private String targetParam;
+            private Object modifiers;
+            private String field;
+            private Boolean optional;
+            private String value;
+            private String valueQualifier;
+            private String group;
+            private String variantLabel;
+            private Boolean nameEditable;
+
+            private Builder() {
+            }
+
+            public Builder type(String type) {
+                this.type = type;
+                return this;
+            }
+
+            public Builder argType(String argType) {
+                this.argType = argType;
+                return this;
+            }
+
+            public Builder originalName(String originalName) {
+                this.originalName = originalName;
+                return this;
+            }
+
+            public Builder moduleName(String moduleName) {
+                this.moduleName = moduleName;
+                return this;
+            }
+
+            public Builder orgName(String orgName) {
+                this.orgName = orgName;
+                return this;
+            }
+
+            public Builder packageName(String packageName) {
+                this.packageName = packageName;
+                return this;
+            }
+
+            public Builder position(Integer position) {
+                this.position = position;
+                return this;
+            }
+
+            public Builder path(String path) {
+                this.path = path;
+                return this;
+            }
+
+            public Builder defaultType(String defaultType) {
+                this.defaultType = defaultType;
+                return this;
+            }
+
+            public Builder boundType(String boundType) {
+                this.boundType = boundType;
+                return this;
+            }
+
+            public Builder bindable(Boolean bindable) {
+                this.bindable = bindable;
+                return this;
+            }
+
+            public Builder bindingKind(String bindingKind) {
+                this.bindingKind = bindingKind;
+                return this;
+            }
+
+            public Builder typeConstraint(String typeConstraint) {
+                this.typeConstraint = typeConstraint;
+                return this;
+            }
+
+            public Builder template(String template) {
+                this.template = template;
+                return this;
+            }
+
+            public Builder modifier(String modifier) {
+                this.modifier = modifier;
+                return this;
+            }
+
+            public Builder supersedes(List<String> supersedes) {
+                this.supersedes = supersedes;
+                return this;
+            }
+
+            public Builder targetParam(String targetParam) {
+                this.targetParam = targetParam;
+                return this;
+            }
+
+            public Builder modifiers(Object modifiers) {
+                this.modifiers = modifiers;
+                return this;
+            }
+
+            public Builder field(String field) {
+                this.field = field;
+                return this;
+            }
+
+            public Builder optional(Boolean optional) {
+                this.optional = optional;
+                return this;
+            }
+
+            public Builder value(String value) {
+                this.value = value;
+                return this;
+            }
+
+            public Builder valueQualifier(String valueQualifier) {
+                this.valueQualifier = valueQualifier;
+                return this;
+            }
+
+            public Builder group(String group) {
+                this.group = group;
+                return this;
+            }
+
+            public Builder variantLabel(String variantLabel) {
+                this.variantLabel = variantLabel;
+                return this;
+            }
+
+            public Builder nameEditable(Boolean nameEditable) {
+                this.nameEditable = nameEditable;
+                return this;
+            }
+
+            public Codedata build() {
+                return new Codedata(type, argType, originalName, moduleName, orgName, packageName, position, path,
+                        defaultType, boundType, bindable, bindingKind, typeConstraint, template, modifier, supersedes,
+                        targetParam, modifiers, field, optional, value, valueQualifier, group, variantLabel,
+                        nameEditable);
+            }
+        }
     }
 
     /**
@@ -418,7 +524,7 @@ public record TriggerUISchemaModel(
      *
      * @param label      the option's display text
      * @param value      the option's underlying value
-     * @param helperText supplementary explanatory text shown alongside the option
+     * @param helperText supplementary text shown alongside the option
      */
     public record Option(
             String label,
@@ -429,11 +535,11 @@ public record TriggerUISchemaModel(
     /**
      * A selectable record/union member offered by a TYPE / RECORD_MAP_EXPRESSION field.
      *
-     * @param type        the member's type name
+     * @param type        the member's Ballerina type
      * @param packageInfo the member's declaring package, in {@code org:package:version} form
      * @param packageName the member's declaring package name
-     * @param kind        the member's type kind (e.g. {@code RECORD_TYPE})
-     * @param selected    whether this member is the currently selected one
+     * @param kind        the member's kind (e.g. record/union member)
+     * @param selected    whether this member is currently selected
      */
     public record TypeMember(
             String type,
@@ -446,9 +552,9 @@ public record TriggerUISchemaModel(
     /**
      * How a data-binding type may be defined by the user (offered by a PAYLOAD_TYPE field).
      *
-     * @param supported     the definition formats offered (e.g. {@code schema}/{@code browse}/
-     *                      {@code json}/{@code xml})
-     * @param defaultFormat the format selected by default
+     * @param supported the definition formats offered (e.g. {@code schema}/{@code browse}/
+     *                  {@code json}/{@code xml})
+     * @param defaultFormat the format selected when the user has not chosen one
      */
     public record PayloadFormat(
             List<String> supported,
@@ -458,13 +564,12 @@ public record TriggerUISchemaModel(
     /**
      * A read-only summary chip in the service-card header (derived from source).
      *
-     * @param key         the chip's identifying key
-     * @param displayName the chip's display label
-     * @param kind        how the value is extracted from the source (an open string; interpreted by
-     *                    the matching extractor)
-     * @param paramKind   the source parameter kind to resolve the value from, when {@code kind} needs
-     *                    one
-     * @param path        a dotted path narrowing the value within the resolved source construct
+     * @param key         the metadata chip's unique identifier
+     * @param displayName the metadata chip's display label
+     * @param kind      how the value is extracted from the source (an open string; interpreted by
+     *                  the matching extractor)
+     * @param paramKind the source parameter kind to resolve the value from, when {@code kind} needs one
+     * @param path      a dotted path narrowing the value within the resolved source construct
      */
     public record ReadOnlyMetadata(
             String key,
@@ -478,9 +583,9 @@ public record TriggerUISchemaModel(
      * A reference to a named validation rule.
      *
      * @param rule     the validation rule's name
-     * @param args     the rule's arguments, keyed by parameter name
-     * @param message  the message shown when this rule fails, overriding the rule's own default
-     * @param severity the diagnostic severity reported when this rule fails
+     * @param args     the arguments passed to the rule
+     * @param message  the message shown when the rule fails
+     * @param severity the failure's severity level
      */
     public record ValidationRule(
             String rule,
@@ -492,16 +597,14 @@ public record TriggerUISchemaModel(
     /**
      * Display metadata for any UI node.
      *
-     * @param label       the display name shown for this node
-     * @param description the explanatory text shown alongside the label
-     * @param notice      an optional callout message (e.g. a deprecation notice)
-     * @param icon        an optional icon identifier for the front end to render next to the label
-     * @param subLabel    optional secondary text shown beneath the label
-     * @param addLabel    the label shown on the affordance that adds this node (e.g. a handler's
-     *                    "Add ..." button text)
-     * @param groupName   the display name of the {@code group} this node's handler-catalog entry
-     *                    belongs to
-     * @param badge       a short category tag rendered as a chip before the node's label
+     * @param label       the node's display label
+     * @param description a short summary of the node
+     * @param notice      a callout message shown alongside the node
+     * @param icon        the icon reference shown for the node
+     * @param subLabel    secondary text shown under {@code label}
+     * @param addLabel    the label used when offering to add this node
+     * @param groupName   the logical group this node is listed under
+     * @param badge       a short badge tag shown on the node
      */
     public record Metadata(
             String label,

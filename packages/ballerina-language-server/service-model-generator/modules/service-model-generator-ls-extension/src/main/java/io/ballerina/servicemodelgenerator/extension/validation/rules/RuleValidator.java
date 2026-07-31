@@ -25,13 +25,9 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * One named validation rule.
- *
- * <p>A validator returns {@link Optional#empty()} to pass — which also covers <i>skipping</i>, for
- * a rule that cannot meaningfully judge the value (a port rule against a listener expression, an
- * arg-less rule missing its required arg). On failure it returns its <b>default message template</b>,
- * uninterpolated; the engine substitutes the placeholders and lets a model-supplied {@code message}
- * override the text.
+ * One named validation rule. {@link Optional#empty()} means pass or skip (e.g. a rule that cannot
+ * meaningfully judge the value); on failure it returns an uninterpolated default message template,
+ * which the engine substitutes and a model-supplied {@code message} may override.
  *
  * @since 1.8.0
  */
@@ -39,10 +35,8 @@ import java.util.Optional;
 public interface RuleValidator {
 
     /**
-     * @param node    the form node being validated
-     * @param args    the rule's arguments, never {@code null} (empty when the model supplied none)
+     * @param args    never {@code null}; empty when the model supplied none
      * @param context project context; {@code common.*} validators ignore it
-     * @return the default message template on failure, empty to pass or skip
      */
     Optional<String> validate(Value node, Map<String, Object> args, ValidationContext context);
 }

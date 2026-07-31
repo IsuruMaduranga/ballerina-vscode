@@ -24,16 +24,14 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * The outcome of a live {@code validateProperty} call.
+ * The outcome of a live {@code validateProperty} call. {@code version} echoes the request's, so a client
+ * that has typed on since issuing the call can drop a now-stale answer.
  *
- * <p>{@code version} echoes the request's, so a client that has typed on since issuing the call can
- * drop the answer instead of rendering a verdict about a value the user has already replaced.
- *
- * @param propertyPath     the node that was validated
- * @param version          the request's version, echoed unchanged
+ * @param propertyPath     the path of the property this result answers for
+ * @param version          echoes the request's version so stale answers can be dropped
  * @param validationErrors the failures found; empty when the value is acceptable
  * @param errorMsg         set only when the call itself failed, never for a validation failure
- * @param stacktrace       the stacktrace behind {@code errorMsg}
+ * @param stacktrace       the failing call's stack trace, when {@code errorMsg} is set
  * @since 1.8.0
  */
 public record ValidatePropertyResponse(String propertyPath, int version, List<ValidationResult> validationErrors,

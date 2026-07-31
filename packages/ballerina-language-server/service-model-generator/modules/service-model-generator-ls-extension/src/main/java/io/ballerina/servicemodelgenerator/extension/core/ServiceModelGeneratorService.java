@@ -47,7 +47,7 @@ import io.ballerina.projects.Package;
 import io.ballerina.projects.Project;
 import io.ballerina.servicemodelgenerator.extension.builder.FunctionBuilderRouter;
 import io.ballerina.servicemodelgenerator.extension.builder.ServiceBuilderRouter;
-import io.ballerina.servicemodelgenerator.extension.connector.ConnectorModelReader;
+import io.ballerina.servicemodelgenerator.extension.connector.TriggerModelReader;
 import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.Function;
 import io.ballerina.servicemodelgenerator.extension.model.Listener;
@@ -1158,7 +1158,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
      * <p>Package-visible for unit testing without a full LS bootstrap.
      */
     Optional<TriggerBasicInfo> getTriggerBasicInfoByName(String orgName, String name) {
-        Optional<TriggerUISchemaModel> schemaDriven = ConnectorModelReader.getInstance()
+        Optional<TriggerUISchemaModel> schemaDriven = TriggerModelReader.getInstance()
                 .getSchemaDrivenTriggerModel(orgName, name);
         if (schemaDriven.isPresent()) {
             return schemaDriven.map(this::toTriggerBasicInfo);

@@ -32,22 +32,8 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_R
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.MCP;
 
 /**
- * Fills in the display badge ({@code metadata.badge}) — the short category chip the service designer
- * renders before each function name.
- *
- * <p>Trigger handlers carry their badge from the trigger model JSON (e.g. FTP's {@code onCreate} /
- * {@code onDelete} / {@code onError}); this fills in the badge for the structural function kinds by
- * their wire kind and the owning service module:
- * <ul>
- *   <li>the {@code init} function &rarr; {@code INIT};</li>
- *   <li>an HTTP resource &rarr; its accessor method ({@code GET} / {@code POST} / ...);</li>
- *   <li>an MCP tool (a remote method on an {@code mcp} service) &rarr; {@code Tool};</li>
- *   <li>a plain function &rarr; {@code FUNC}.</li>
- * </ul>
- *
- * A function that already carries a badge is left untouched, and anything this cannot classify (e.g.
- * a plain event handler such as RabbitMQ's {@code onMessage}) is left without one, so the front end
- * applies its own default ({@code "Event"}).
+ * Fills in the display badge ({@code metadata.badge}) shown before each function name in the service
+ * designer, for function kinds not already covered by a trigger-supplied badge.
  *
  * @since 1.9.0
  */

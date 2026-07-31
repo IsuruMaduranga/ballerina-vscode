@@ -37,35 +37,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The abstract, connector-agnostic entry point for reading the trigger model family. Any LS extension
- * that needs one of these -- today service-model-generator-ls-extension, in the future
- * flow-model-generator-ls-extension's copilot surface, or any extension after that -- calls this class
- * rather than resolving a connector's package or reading its shipped JSON itself; that resolution and
- * parsing is this class's job alone, not a caller's.
- *
- * <p>Exposes exactly three reads, each keyed by {@link ModuleInfo} and returning an {@code Optional}:
- * <ul>
- *   <li>{@link #getTriggerMetadataModel} -- a connector's own shipped
- *       {@code resources/trigger-metadata.json} (the authoring-rules overlay), resolved from its
- *       {@code .bala}.</li>
- *   <li>{@link #getTriggerUISchemaModel} -- a connector's own {@code resources/trigger-ui-schema.json}
- *       (the full UI-ready form/handler tree), resolved from its {@code .bala}. Reading a connector's
- *       own UI schema bundled directly in the LS jar (as opposed to shipped by the connector itself) is
- *       deliberately not this class's job: that curated, per-connector registry
- *       ({@code bundled_trigger_models.json}) is specific to the schema-driven trigger feature and stays
- *       in service-model-generator-ls-extension's own {@code ConnectorModelReader}.</li>
- *   <li>{@link #getPackagedTriggerMetadataModel} -- the LS's own bundled
- *       {@code trigger-metadata-models/<moduleName>/trigger-metadata.json} classpath resource, for
- *       modules whose metadata is curated directly into this jar rather than shipped by the connector.
- *       Independent of {@link #getTriggerMetadataModel} -- a caller decides for itself whether/how to
- *       combine the two, this class does not silently prefer one over the other.</li>
- * </ul>
- *
- * <p>A connector's package root is resolved via
- * {@link PackageUtil#getModulePackage(io.ballerina.projects.directory.BuildProject, String, String)}'s
- * version-less overload (org + module name only) and cached by that pair, since both connector-owned
- * reads may need the same root; the packaged classpath lookup needs no package resolution at all and is
- * cached separately, keyed by bare module name.
+ * Connector-agnostic entry point for reading the trigger model family (metadata JSON, UI schema JSON,
+ * and the LS's own bundled trigger metadata), shared by every LS extension that needs one.
  *
  * @since 1.10.0
  */
@@ -78,16 +51,9 @@ public final class LibraryMetadataReader {
 
     private static final LibraryMetadataReader INSTANCE = new LibraryMetadataReader();
 
-    // Shared by getTriggerMetadataModel/getTriggerUISchemaModel -- both may resolve the same connector
-    // package root, so a repeated lookup pays bala-cache resolution at most once per module. Kept
-    // separate from TriggerArtifactResolver's own PACKAGE_ROOT_CACHE (icon resolution): the two are
-    // read on unrelated schedules and neither needs the other's cache.
     private final Map<String, Optional<Path>> packageRootCache = new ConcurrentHashMap<>();
     private final Map<String, Optional<TriggerMetadataModel>> packagedMetadataCache = new ConcurrentHashMap<>();
 
-    // A connector's trigger-ui-schema.json carries no TypeRef-or-union slots (unlike
-    // trigger-metadata.json), so it needs no custom deserializer -- a plain Gson suffices, matching
-    // ConnectorModelReader's existing plain-Gson parse of the same shape.
     private final Gson plainGson = new Gson();
 
     private LibraryMetadataReader() {
@@ -109,8 +75,7 @@ public final class LibraryMetadataReader {
 
     /**
      * The LS's bundled {@code trigger-metadata-models/<moduleName>/trigger-metadata.json} classpath
-     * resource, if any. Keyed by bare module name only -- this is a small, curated set the LS ships
-     * directly, so no org/version is needed to disambiguate (mirrors {@code TriggerArtifactReader}).
+     * resource, if any.
      */
     public Optional<TriggerMetadataModel> getPackagedTriggerMetadataModel(ModuleInfo moduleInfo) {
         if (moduleInfo == null || moduleInfo.moduleName() == null) {
@@ -133,10 +98,6 @@ public final class LibraryMetadataReader {
         }
     }
 
-    /**
-     * Resolves and parses {@code resources/trigger-metadata.json} relative to {@code packageRoot}.
-     * Private -- reading the JSON off a resolved package is this class's own job, never a caller's.
-     */
     private Optional<TriggerMetadataModel> readTriggerMetadataModel(Path packageRoot) {
         return readResourceFile(packageRoot, TRIGGER_METADATA_RESOURCE_PATH).flatMap(json -> {
             try {
@@ -147,7 +108,6 @@ public final class LibraryMetadataReader {
         });
     }
 
-    /** {@code Path}-rooted counterpart of {@link #readTriggerMetadataModel}, for the UI-schema shape. */
     private Optional<TriggerUISchemaModel> readTriggerUISchemaModel(Path packageRoot) {
         return readResourceFile(packageRoot, TRIGGER_UI_SCHEMA_RESOURCE_PATH).flatMap(json -> {
             try {
@@ -158,13 +118,8 @@ public final class LibraryMetadataReader {
         });
     }
 
-    /**
-     * Resolves a connector's package root by {@code org}/{@code moduleName} alone, cached by that pair.
-     * Wrapped in a blanket {@code catch (Throwable)}: {@link PackageUtil#getModulePackage}'s version-less
-     * overload falls through to a live Central version lookup on an offline-metadata miss, which
-     * <b>throws</b> (rather than returning empty) for an org/module that doesn't exist there or when
-     * offline -- any such failure must degrade to "no metadata," not propagate to the caller.
-     */
+    // catch(Throwable): PackageUtil#getModulePackage's version-less overload throws (rather than
+    // returning empty) on an offline-metadata miss, and that must degrade to "no metadata" here.
     private Optional<Path> packageRoot(ModuleInfo moduleInfo) {
         if (moduleInfo == null || moduleInfo.org() == null || moduleInfo.moduleName() == null) {
             return Optional.empty();

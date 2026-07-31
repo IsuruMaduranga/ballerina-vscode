@@ -24,9 +24,9 @@ import io.ballerina.servicemodelgenerator.extension.model.Value;
 /**
  * A request to validate a single form node while the user types.
  *
- * @param filePath     the file the form is editing
- * @param propertyPath dot path of the node, echoed back on every result so the client can route it
- * @param property     the node itself, carrying the current value and the rules to run
+ * @param filePath     the absolute path of the file being validated
+ * @param propertyPath echoed back on every result so the client can route it
+ * @param property     the current value of the field under validation
  * @param moduleName   the connector module, needed by the listener-compatibility rule
  * @param codedata     locates the enclosing service for service-scoped rules; may be {@code null}
  * @param version      the client's per-field revision, echoed back so stale responses can be dropped

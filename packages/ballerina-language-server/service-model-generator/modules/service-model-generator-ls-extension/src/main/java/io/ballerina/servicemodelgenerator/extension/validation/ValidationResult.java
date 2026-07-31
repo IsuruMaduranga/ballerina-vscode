@@ -20,12 +20,11 @@ package io.ballerina.servicemodelgenerator.extension.validation;
 
 /**
  * A single rule failure. {@code propertyPath} is the dot path from the model root through
- * {@code properties}/{@code choices} keys, which is how the client maps the failure back onto the
- * field that produced it.
+ * {@code properties}/{@code choices} keys, matching how the client maps it back onto the field.
  *
- * @param propertyPath dot path to the failing node
- * @param rule         the rule id that failed
- * @param message      the interpolated, user-facing message
+ * @param propertyPath the dot path from the model root to the offending field
+ * @param rule         the identifier of the rule that failed
+ * @param message      a human-readable description of the failure
  * @param severity     ERROR blocks generation; WARNING does not
  * @since 1.8.0
  */

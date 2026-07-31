@@ -23,23 +23,13 @@ import io.ballerina.modelgenerator.commons.IconDescriptor;
 import java.util.List;
 
 /**
- * Deserialization target for a connector's <b>Trigger Artifact</b> metadata
- * ({@code resources/trigger-artifact.json}) — a small, display-only sibling of the (much larger)
- * {@code trigger-ui-schema.json}. It carries what a project-tree / left-panel renderer needs to show an
- * entry-point artifact: its display name, an {@link IconDescriptor} (any of url/glyph/color/kind), and
- * the annotation field(s) (in preference order) that supply the instance-label suffix (e.g.
- * {@code "FTP Integration - /home/in"}).
+ * Deserialization target for a connector's {@code resources/trigger-artifact.json} — display-only
+ * metadata for painting a project-tree entry, kept separate from the larger {@code trigger-ui-schema.json}.
  *
- * <p>Deliberately kept separate from {@code TriggerUISchemaModel}: reading the full form/service-type/
- * handler schema just to paint a tree node would mean deserializing a document an order of magnitude
- * larger than what the tree actually needs.
- *
- * @param displayName  the label shown for the artifact, e.g. {@code "RabbitMQ Event Integration"}
- * @param icon         the connector-declared {@link IconDescriptor} (any of {@code url}, {@code glyph},
- *                     {@code color}, {@code kind}); all fields optional. The resolver fills {@code url}
- *                     (Central/package) and {@code source} when absent. {@code null} when undeclared.
- * @param labelFields  service-annotation field names to try, in order, for the instance-label suffix
- *                     (e.g. {@code ["queueName", "topicName"]}); {@code null}/empty means no suffix
+ * @param displayName the human-readable name for the project-tree entry
+ * @param icon        the icon to render for the project-tree entry
+ * @param labelFields service-annotation field names to try, in order, for the instance-label suffix;
+ *                    {@code null}/empty means no suffix
  * @since 1.9.0
  */
 public record TriggerArtifactModel(String displayName, IconDescriptor icon, List<String> labelFields) {

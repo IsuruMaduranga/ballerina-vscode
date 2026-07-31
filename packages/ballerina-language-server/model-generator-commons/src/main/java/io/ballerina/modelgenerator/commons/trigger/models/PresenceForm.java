@@ -21,15 +21,11 @@ package io.ballerina.modelgenerator.commons.trigger.models;
 import java.util.List;
 
 /**
- * A requiredness + legal-shape pair shared by several slots in a {@link TriggerMetadataModel}
- * document that describe a syntactic form rather than a Ballerina type: a service type's own
- * {@code identifier} (the string/path after {@code service}), and a resource-kind handler's
- * {@code path}/{@code fieldName} extras. {@code form} enumerates the legal shapes for the slot, e.g.
- * {@code "basePath"}, {@code "stringLiteral"}, {@code "identifierSegment"}.
+ * A requiredness + legal-shape pair for a syntactic slot (e.g. a service type's {@code identifier}, or
+ * a handler's {@code path}/{@code fieldName}); {@code form} lists the legal shapes for the slot.
  *
- * @param presence {@code "required"} or {@code "optional"}
- * @param form     the legal shapes for this slot; more than one entry means either is syntactically
- *                 valid
+ * @param presence {@code required} or {@code optional} for the slot
+ * @param form     the legal shapes for the slot
  * @since 1.10.0
  */
 public record PresenceForm(String presence, List<String> form) {

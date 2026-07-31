@@ -31,7 +31,7 @@ import io.ballerina.servicemodelgenerator.extension.builder.function.GraphqlFunc
 import io.ballerina.servicemodelgenerator.extension.builder.function.HttpFunctionBuilder;
 import io.ballerina.servicemodelgenerator.extension.builder.function.SchemaDrivenFunctionBuilder;
 import io.ballerina.servicemodelgenerator.extension.builder.function.SolaceFunctionBuilder;
-import io.ballerina.servicemodelgenerator.extension.connector.ConnectorModelReader;
+import io.ballerina.servicemodelgenerator.extension.connector.TriggerModelReader;
 import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.Function;
 import io.ballerina.servicemodelgenerator.extension.model.ServiceMetadata;
@@ -62,7 +62,7 @@ import static io.ballerina.servicemodelgenerator.extension.util.ServiceModelUtil
  */
 public class FunctionBuilderRouter {
     // FTP/KAFKA/RABBITMQ/MSSQL/POSTGRESQL/MYSQL/MCP are deliberately absent: each now ships a bundled
-    // TriggerUISchemaModel schema (see ConnectorModelReader.BUNDLED_TRIGGER_MODEL_RESOURCES), so
+    // TriggerUISchemaModel schema (see TriggerModelReader.BUNDLED_TRIGGER_MODEL_RESOURCES), so
     // useSchemaDrivenPath always routes them to SchemaDrivenFunctionBuilder before this map is
     // consulted — a hardcoded entry here would be dead code. HTTP/GRAPHQL/SOLACE are not (yet)
     // schema-driven and keep their dedicated builders.
@@ -80,7 +80,7 @@ public class FunctionBuilderRouter {
      * Returns {@code true} when the connector's schema is bundled as a classpath resource in this jar,
      * or -- on a miss, when {@code orgName} is known -- synthesizable from the connector's own shipped
      * {@code resources/trigger-authoring.json} plus semantic-API introspection of its {@code .bala}
-     * (see {@link ConnectorModelReader#getSchemaDrivenTriggerModel}). Mirrors
+     * (see {@link TriggerModelReader#getSchemaDrivenTriggerModel}). Mirrors
      * {@code ServiceBuilderRouter} (the hardcoded builder still wins whenever neither source has a
      * model). {@code orgName == null} degrades to the bundled-only check -- {@link #getModelTemplate}
      * has no org field to resolve a {@code .bala} with.
@@ -89,7 +89,7 @@ public class FunctionBuilderRouter {
         if (moduleName == null) {
             return false;
         }
-        return ConnectorModelReader.getInstance().hasSchemaDrivenModel(orgName, moduleName);
+        return TriggerModelReader.getInstance().hasSchemaDrivenModel(orgName, moduleName);
     }
 
     public static Optional<Function> getModelTemplate(String moduleName, String functionType) {
