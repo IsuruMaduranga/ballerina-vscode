@@ -335,7 +335,11 @@ public class TriggerModelReader {
         if (metadata.isEmpty()) {
             return Optional.empty();
         }
-        Optional<Package> pkg = PackageUtil.getModulePackage(PackageUtil.getSampleProject(), orgName, moduleName);
+        // Offline only: if the connector isn't already resolvable locally, this degrades to "not
+        // schema-driven" rather than silently pulling it from Central -- the LS's existing pull flow
+        // (Utils.resolveModule / the compiler's own unresolved-import diagnostic) owns that responsibility.
+        Optional<Package> pkg = PackageUtil.getModulePackageOffline(PackageUtil.getSampleProject(), orgName,
+                moduleName);
         if (pkg.isEmpty()) {
             return Optional.empty();
         }

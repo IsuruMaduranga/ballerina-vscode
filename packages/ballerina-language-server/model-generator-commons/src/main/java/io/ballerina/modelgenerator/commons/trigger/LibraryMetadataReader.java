@@ -118,8 +118,9 @@ public final class LibraryMetadataReader {
         });
     }
 
-    // catch(Throwable): PackageUtil#getModulePackage's version-less overload throws (rather than
-    // returning empty) on an offline-metadata miss, and that must degrade to "no metadata" here.
+    // Offline only, so a connector-owned resource read never silently pulls from Central -- a genuine
+    // miss just degrades to "no metadata" here. catch(Throwable) defensively covers any unexpected
+    // compiler-API failure (e.g. a corrupted local bala), which must not propagate.
     private Optional<Path> packageRoot(ModuleInfo moduleInfo) {
         if (moduleInfo == null || moduleInfo.org() == null || moduleInfo.moduleName() == null) {
             return Optional.empty();
@@ -127,7 +128,7 @@ public final class LibraryMetadataReader {
         String key = moduleInfo.org() + "/" + moduleInfo.moduleName();
         return packageRootCache.computeIfAbsent(key, ignored -> {
             try {
-                Optional<Package> pkg = PackageUtil.getModulePackage(PackageUtil.getSampleProject(),
+                Optional<Package> pkg = PackageUtil.getModulePackageOffline(PackageUtil.getSampleProject(),
                         moduleInfo.org(), moduleInfo.moduleName());
                 return pkg.map(aPackage -> aPackage.project().sourceRoot());
             } catch (Throwable e) {
