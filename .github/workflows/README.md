@@ -14,7 +14,7 @@ workflow because the extension manifest owns the shared extension/LS version.
 |---|---|---|
 | `reusable-build.yml` | `workflow_call` only | Reusable build pipeline (ballerina-only) |
 | `devBuild.yml` | manual + `workflow_call` | Builds a custom branch as a timestamped pre-release VSIX. It creates workflow artifacts only: no GitHub release and no marketplace publication. `schedule.yml` reuses this workflow after stamping the nightly branch. |
-| `schedule.yml` | nightly cron | Syncs the `nightly` branch, runs the LS multi-branch pack/test/Windows-build matrix, calls `devBuild.yml`, and moves the `nightly` tag after every job passes. The VSIX remains a workflow artifact; no GitHub Release is created. See [Versioning](#versioning) and [The nightly branch](#the-nightly-branch). |
+| `schedule.yml` | nightly cron | Syncs the `builds/nightly` branch, runs the LS multi-branch pack/test/Windows-build matrix, calls `devBuild.yml`, and moves the `nightly` tag after every job passes. The VSIX remains a workflow artifact; no GitHub Release is created. See [Versioning](#versioning) and [The nightly branch](#the-nightly-branch). |
 | `pull-request.yml` | PRs + manual | Detects changes with `dorny/paths-filter`; if anything build-relevant changed, runs `reusable-build.yml` which builds the entire chain (LS via Gradle, then all TS packages and the extension VSIX via rush) in a single job. Windows LS coverage runs in `schedule.yml` only. |
 | `release-pre-release.yml` | manual dispatch | Builds either a timestamped pre-release or the release version authored in the extension manifest. Its `githubRelease` input creates a GitHub Release with the VSIX and LS jar and publishes the matching `io.ballerina:ballerina-language-server` package. Real releases also perform the release branch/PR handling. |
 | `publish-vsix.yml` | manual dispatch | Publishes a built VSIX (passed by `workflowRunId`) to VSCode Marketplace + OpenVSX |
@@ -123,7 +123,7 @@ strict semver).
 passes `isPreRelease: true` for exactly that reason — a nightly *is* a pre-release, its
 derived version already sits on the odd-minor pre-release channel, and the two paths should
 differ only in how they are branched and tagged, never in how they are packaged. It does not
-affect the nightly's version, which is already committed on the `nightly` branch:
+affect the nightly's version, which is already committed on the `builds/nightly` branch:
 `updateVersion` is gated on the `ballerina` input. `schedule.yml` passes `false` through
 `devBuild.yml` because its nightly commit has already been stamped.
 
@@ -132,7 +132,7 @@ affect the nightly's version, which is already committed on the `nightly` branch
 | Branch | Extension version | Created by |
 |---|---|---|
 | `main` | `X.Y.0-SNAPSHOT`, **Y even** | — |
-| `nightly` | `X.(Y-1).<minutes since 2020-01-01 UTC>` | `schedule.yml`, force-pushed every run |
+| `builds/nightly` | `X.(Y-1).<minutes since 2020-01-01 UTC>` | `schedule.yml`, force-pushed every run |
 | `X.Y.x` — `5.14.x`, `5.16.x` | concrete, never `-SNAPSHOT` | **by hand**, when a line opens |
 | `alpha` | concrete, set by hand | **by hand** |
 | `release/X.Y.Z` | inherited from the branch it was cut from | `release-pre-release.yml`, non-pre-release only |
@@ -157,12 +157,12 @@ where one repo held several extensions and each needed its own stable trunk
 
 ## The nightly branch
 
-`schedule.yml` builds from a `nightly` branch that it maintains itself: every run
+`schedule.yml` builds from a `builds/nightly` branch that it maintains itself: every run
 resets it to `origin/main`, commits the timestamped version, and force-pushes. So
-`git diff main nightly` is always exactly the version bump, and every nightly VSIX has
+`git diff main builds/nightly` is always exactly the version bump, and every nightly VSIX has
 one commit that pins both its source and its version.
 
-- **Never open a PR against `nightly` and never merge it anywhere** — it is discarded
+- **Never open a PR against `builds/nightly` and never merge it anywhere** — it is discarded
   and recreated daily.
 - The extension build is pinned to the nightly *commit SHA*, not the branch name, so a
   concurrent run cannot swap the tree mid-build. The build does not re-stamp the
@@ -175,6 +175,8 @@ one commit that pins both its source and its version.
 - After every validation job passes, the workflow force-moves the `nightly` Git tag to
   that exact stamped commit. The tag is not a GitHub Release and has no release assets;
   the VSIX remains available from the workflow run.
+- The machine branch is named `builds/nightly`, while the stable public marker remains
+  the `nightly` tag. Keeping separate names avoids ambiguous Git ref resolution.
 - On the first run after this migration, the tag job removes the legacy `nightly`
   GitHub Release before moving the tag. That release currently contains an old
   `5.12.0-SNAPSHOT` VSIX; retaining it would attach a stale asset to every new tag target.

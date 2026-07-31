@@ -298,7 +298,7 @@ monorepo. If you want them to land here, push them upstream to
   `X.Y.x` line.
 - `alpha` — staging for alpha builds; concrete version, set by hand.
 - `migrate/*` — long-lived migration work
-- `nightly` — **machine-managed, do not touch.** `schedule.yml` resets it to
+- `builds/nightly` — **machine-managed, do not touch.** `schedule.yml` resets it to
   `origin/main` and force-pushes it every night, so it is always `main` plus a single
   version commit. Never target it with a PR and never merge it anywhere; anything
   committed to it is gone by the next run.

@@ -8,7 +8,7 @@ permissions:
   contents: read
   packages: read
 
-# The nightly branch is force-pushed by sync-nightly, so delayed or re-run schedules
+# The builds/nightly branch is force-pushed by sync-nightly, so delayed or re-run schedules
 # must not interleave: the second would move the branch out from under the first's build.
 concurrency:
   group: nightly-build
@@ -16,16 +16,16 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
-  # Nightly branch — always main plus a single version commit
+  # builds/nightly branch — always main plus a single version commit
   #
   # The branch is reset to the source branch (main, on the schedule) every run and
   # force-pushed, so it is never a merge target and never accumulates history:
-  # `git diff main nightly` is always exactly the version bump. Its purpose is to
+  # `git diff main builds/nightly` is always exactly the version bump. Its purpose is to
   # give every nightly VSIX an inspectable commit that pins both the source and
   # the version it was built at.
   #
   # Note that .github/actions/* used by the downstream jobs resolve from the
-  # checked-out nightly tree, so a change to them only takes effect once it is on main.
+  # checked-out builds/nightly tree, so a change to them only takes effect once it is on main.
   #
   # The version is derived from the extension package.json — the single source of truth,
   # which on main always reads 'major.minor.patch-SNAPSHOT' — as
@@ -36,7 +36,7 @@ jobs:
   # common/scripts/nightly-version.js.
   # ─────────────────────────────────────────────────────────────────────────
   sync-nightly:
-    name: Sync nightly branch
+    name: Sync builds/nightly branch
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -49,13 +49,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Reset nightly to the source branch
+      - name: Reset builds/nightly to the source branch
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git checkout -B nightly origin/main
+          git checkout -B builds/nightly origin/main
 
       - name: Stamp nightly version
         id: stamp
@@ -76,10 +76,10 @@ jobs:
           # that already carries this version) instead of failing on an empty commit.
           git diff --staged --quiet || git commit -m "Nightly build ${{ steps.stamp.outputs.version }}"
           # Force-push both creates the branch on the very first run and discards
-          # yesterday's version commit, so nightly stays a single commit ahead of
+          # yesterday's version commit, so builds/nightly stays a single commit ahead of
           # main. Pushes made with GITHUB_TOKEN do not trigger workflows, so this
           # cannot re-enter the nightly build.
-          git push --force origin nightly
+          git push --force origin HEAD:refs/heads/builds/nightly
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   # ─────────────────────────────────────────────────────────────────────────
@@ -113,23 +113,25 @@ jobs:
           # version, so its lines are the repo's lines.
           latest_branch=$(git ls-remote --heads origin | awk -F'/' '/refs\/heads\/[0-9]+\.[0-9]+\.x$/ { print $NF }' | sort -V | tail -n 1)
           if [ -z "${latest_branch}" ]; then
-            echo "No X.Y.x release branch found on origin; building from nightly only." >&2
+            echo "No X.Y.x release branch found on origin; building from builds/nightly only." >&2
           fi
 
           timestamp=$(date '+%Y%m%d-%H%M%S')
           targets='[]'
 
-          # 'nightly' rather than 'main': it is main plus the version commit, so the
+          # 'builds/nightly' rather than 'main': it is main plus the version commit, so the
           # LS verified here is the same tree the extension build packages.
-          branches="nightly"
+          branches="builds/nightly"
           if [ -n "${latest_branch}" ]; then
-            branches="nightly ${latest_branch}"
+            branches="builds/nightly ${latest_branch}"
           fi
 
           for branch in ${branches}; do
-            git fetch --depth=1 origin "${branch}:refs/remotes/origin/${branch}"
+            # Matrix inputs always mean branches, so keep the namespace explicit.
+            git fetch --depth=1 origin \
+              "refs/heads/${branch}:refs/remotes/origin/${branch}"
 
-            if [ "${branch}" = "nightly" ]; then
+            if [ "${branch}" = "builds/nightly" ]; then
               # The nightly branch already carries the timestamped version in the extension
               # manifest. Reusing it here
               # means this verification build and the jar attached to the nightly release
@@ -178,7 +180,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ matrix.branch }}
+          ref: refs/heads/${{ matrix.branch }}
           persist-credentials: false
 
       - name: Set up JDK 21
@@ -226,7 +228,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ matrix.branch }}
+          ref: refs/heads/${{ matrix.branch }}
           persist-credentials: false
 
       # Resolved from the matrix.branch checkout — the action file must
@@ -264,7 +266,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ matrix.branch }}
+          ref: refs/heads/${{ matrix.branch }}
           persist-credentials: false
 
       - name: Set up JDK 21
@@ -310,7 +312,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ matrix.branch }}
+          ref: refs/heads/${{ matrix.branch }}
           persist-credentials: false
 
       - name: Set up JDK 21
