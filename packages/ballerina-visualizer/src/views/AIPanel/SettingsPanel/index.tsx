@@ -20,10 +20,11 @@ import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { Button, Codicon, Icon } from "@wso2/ui-toolkit";
 
-import { AIChatView, DangerActionButton, PrimaryActionButton, SuccessActionButton } from "../styles";
+import { AIChatView, DangerActionButton, PrimaryActionButton, SuccessActionButton, ToggleSwitch } from "../styles";
 import { AIMachineEventType, AgentsMdFileInfoDTO, McpServerStatusDTO, SkillEntry } from "@wso2/ballerina-core";
 import { CustomizeRow, CustomizeEntry } from "./CustomizeRow";
 import type { PanelRoute } from "../components/AIChat";
+import { getThinkingPreference, setThinkingPreference } from "../components/AIChat/utils/utils";
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
@@ -216,6 +217,7 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
     const [mcpServers, setMcpServers] = useState<McpServerStatusDTO[]>([]);
     const [skills, setSkills] = useState<SkillEntry[]>([]);
     const [agentsMdInfo, setAgentsMdInfo] = useState<AgentsMdFileInfoDTO | null>(null);
+    const [thinkingEnabled, setThinkingEnabled] = useState<boolean>(() => getThinkingPreference());
     // TODO(auto-memory): memory UI state temporarily disabled for this release — restore once the memory feature is refined.
     // const [clearing, setClearing] = React.useState<'workspace' | 'all' | null>(null);
     // const [clearError, setClearError] = React.useState<string | null>(null);
@@ -377,6 +379,33 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
                                 Authorize
                             </PrimaryActionButton>
                         )}
+                    </SettingRow>
+                </Section>
+
+                {/* Thinking */}
+                <Section>
+                    <SectionHeader>Thinking</SectionHeader>
+                    <SettingRow>
+                        <SettingInfo>
+                            <SettingLabel>Thinking Mode</SettingLabel>
+                            <SettingDescription>
+                                Let the Copilot reason before responding on harder requests.
+                                Disable if it overthinks or feels slow on simple requests.
+                            </SettingDescription>
+                        </SettingInfo>
+                        <ToggleSwitch
+                            type="button"
+                            $on={thinkingEnabled}
+                            role="switch"
+                            aria-checked={thinkingEnabled}
+                            aria-label="Thinking Mode"
+                            title={thinkingEnabled ? "Disable thinking" : "Enable thinking"}
+                            onClick={() => {
+                                const next = !thinkingEnabled;
+                                setThinkingEnabled(next);
+                                setThinkingPreference(next);
+                            }}
+                        />
                     </SettingRow>
                 </Section>
 
