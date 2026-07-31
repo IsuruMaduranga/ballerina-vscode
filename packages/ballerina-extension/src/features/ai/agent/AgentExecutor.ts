@@ -20,7 +20,7 @@ import { AICommandExecutor, AICommandConfig, AIExecutionResult } from '../execut
 import { Command, GenerateAgentCodeRequest, ProjectSource, ExecutionContext, SemanticDiff, ReviewModeData, PROJECT_KIND, LoginMethod } from '@wso2/ballerina-core';
 import { StateMachine } from '../../../stateMachine';
 import { ModelMessage, stepCountIs, streamText, TextStreamPart } from 'ai';
-import { getAnthropicClient, getProviderCacheControl, addCacheControlToMessages, ANTHROPIC_SONNET_4 } from '../utils/ai-client';
+import { getAnthropicClient, getProviderCacheControl, getProviderModelOptions, addCacheControlToMessages, ANTHROPIC_SONNET } from '../utils/ai-client';
 import { populateHistoryForAgent, getErrorMessage, getErrorCode, buildChatError } from '../utils/ai-utils';
 import { sendAgentDidOpenForFreshProjects } from '../utils/project/ls-schema-notifications';
 import { getSystemPrompt, getUserPrompt } from './prompts';
@@ -290,7 +290,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
 
             // Resolve model and login method
             const loginMethod = await getLoginMethod();
-            const model = await getAnthropicClient(ANTHROPIC_SONNET_4);
+            const model = await getAnthropicClient(ANTHROPIC_SONNET);
 
             const projectRootPath = this.config.executionContext.workspacePath || this.config.executionContext.projectPath || '';
             const agentsMd = await prepareAgentsMdForTurn(workspaceId || '', threadId);
@@ -317,10 +317,14 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const floorTokens = estimateFloorTokens(systemPromptText, JSON.stringify(userMessageContent));
 
 
-            const providerOptions = buildCompactionProviderOptions(loginMethod, floorTokens);
-            if (supportsCompaction(loginMethod) && providerOptions === undefined) {
+            const compactionOptions = buildCompactionProviderOptions(loginMethod, floorTokens);
+            if (supportsCompaction(loginMethod) && compactionOptions === undefined) {
                 warnCompactionDisabledOnce(projectRootPath, this.config.eventHandler);
             }
+            const modelOptions = await getProviderModelOptions('xhigh');
+            const providerOptions = compactionOptions
+                ? { anthropic: { ...(modelOptions as { anthropic?: object }).anthropic, ...compactionOptions.anthropic } }
+                : modelOptions;
 
             // Ensure the pre-edit snapshot exists before any tool can run.
             await chatStateStorage.waitForCheckpointCapture(this.config.generationId);
@@ -390,7 +394,6 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const { fullStream, response, usage, totalUsage } = streamText({
                 model,
                 maxOutputTokens: 8192,
-                temperature: 0,
                 messages: allMessages,
                 tools,
                 abortSignal: this.config.abortController.signal,
@@ -452,7 +455,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         );
                         this.config.eventHandler({
                             type: "usage_metrics",
-                            model: ANTHROPIC_SONNET_4,
+                            model: ANTHROPIC_SONNET,
                             usage: {
                                 inputTokens,
                                 cacheCreationInputTokens: cacheWriteTokens,
@@ -868,7 +871,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         );
 
         const totalCost = calculateTotalCost(
-            ANTHROPIC_SONNET_4,
+            ANTHROPIC_SONNET,
             { inputTokens, outputTokens, cacheReadTokens: totalCacheRead, cacheWriteTokens: totalCacheWrite },
             context.toolModelUsage
         );
