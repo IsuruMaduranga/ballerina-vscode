@@ -157,6 +157,9 @@
       "serialize-javascript": "7.0.5",
       "shell-quote": "1.9.0",
       "tmp": "0.2.7",
+      // No 5.x release fixes the flagged advisories, so the transitive 5.x copy
+      // (@ai-sdk/provider-utils) has to move up a major; 6.27.0 covers all of them.
+      "undici@>=5 <6": "6.27.0",
       // CVE-2026-12151/6734/9697/9678/9679/11525/6733: 7.28.0 is the 7.x fix
       // line covering all flagged undici advisories.
       "undici@>=7 <8": "7.28.0",
