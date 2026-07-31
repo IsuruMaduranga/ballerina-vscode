@@ -78,6 +78,9 @@ import {
     promptForLogin,
     promptGithubAuthorize,
     provideConfiguration,
+    createManagedConnection,
+    cancelManagedConnection,
+    CreateManagedConnectionRequest,
     provideConnectorSpec,
     RequirementSpecification,
     restoreCheckpoint,
@@ -197,6 +200,8 @@ export function registerAiPanelRpcHandlers(messenger: Messenger) {
     messenger.onRequest(cancelConnectorSpec, (args: ConnectorSpecCancelRequest) => rpcManger.cancelConnectorSpec(args));
     messenger.onRequest(provideConfiguration, (args: ConfigurationProvideRequest) => rpcManger.provideConfiguration(args));
     messenger.onRequest(cancelConfiguration, (args: ConfigurationCancelRequest) => rpcManger.cancelConfiguration(args));
+    messenger.onRequest(createManagedConnection, (args: CreateManagedConnectionRequest) => rpcManger.createManagedConnection(args));
+    messenger.onNotification(cancelManagedConnection, () => rpcManger.cancelManagedConnection());
     messenger.onRequest(getChatMessages, () => rpcManger.getChatMessages());
     messenger.onRequest(getCheckpoints, () => rpcManger.getCheckpoints());
     messenger.onRequest(restoreCheckpoint, (args: RestoreCheckpointRequest) => rpcManger.restoreCheckpoint(args));

@@ -84,6 +84,8 @@ import {
     SwitchThreadRequest,
     DeleteThreadRequest,
     HasPendingReviewRequest,
+    CreateManagedConnectionRequest,
+    CreateManagedConnectionResponse,
     // TODO(auto-memory): temporarily disabled for this release.
     // ClearMemoryRequest,
     // OpenMemoryRequest,
@@ -127,6 +129,8 @@ import { enhancePrompt as enhancePromptService } from "../../features/ai/service
 import { StateMachine, updateView } from "../../stateMachine";
 import { isInDevant, isInWI } from "../../utils";
 import { getLoginMethod, isPlatformExtensionAvailable, loginGithubCopilot } from "../../utils/ai/auth";
+import { cancelConnectionCallback, createConnectionState, waitForConnectionCallback } from "../../utils/uri-handlers";
+import { exchangeManagedConnection, initiateManagedConnection } from "../platform-ext/managed-connections";
 import { normalizeCodeContext } from "../../views/ai-panel/codeContextUtils";
 import { resolveActiveFilePath } from "../../views/ai-panel/activeFileContext";
 import { refreshDataMapper } from "../data-mapper/utils";
@@ -181,6 +185,8 @@ function validateMcpServerConfig(cfg: any): string | null {
 function getActiveThreadId(projectRootPath?: string): string {
     return chatStateStorage.getActiveThreadId(projectRootPath ?? resolveProjectRootPath());
 }
+
+const OAUTH_CALLBACK_TIMEOUT_MS = 3 * 60 * 1_000;
 
 export class AiPanelRpcManager implements AIPanelAPI {
 
@@ -617,6 +623,132 @@ User reverted the last made changes. The files have been restored to the state b
 
     async cancelConfiguration(params: { requestId: string; comment?: string }): Promise<void> {
         approvalManager.resolveConfiguration(params.requestId, false, undefined, params.comment);
+    }
+
+    async createManagedConnection(params: CreateManagedConnectionRequest): Promise<CreateManagedConnectionResponse> {
+        console.log(`[ManagedConnection] start — vendor='${params.vendor}'`);
+
+        // Unreachable in practice — no managed group means no button — but guard anyway.
+        if (!extension.ballerinaExtInstance.enabledExperimentalFeatures()) {
+            console.log("[ManagedConnection] experimental features are off — managed connections are unavailable. Aborting.");
+            return { success: false, error: "Managed connections are an experimental feature." };
+        }
+
+        try {
+            // 1. Ask the service which URL to open. `params.vendor` is already the backend
+            //    provider key, resolved from the managed registry.
+            //
+            // The redirect URI carries a per-flow nonce (see uri-handlers). NOTE: this makes it
+            // carry a query string, so the service's allow-listed redirect check must tolerate
+            // the extra `state` param and append its own id with '&'.
+            const connectionState = createConnectionState();
+            const redirectUri = `${vscode.env.uriScheme}://wso2.ballerina/oauth-callback?state=${connectionState}`;
+            console.log(`[ManagedConnection] step 1 — initiate: provider='${params.vendor}', redirectUri='${redirectUri}'`);
+            const initiate = await initiateManagedConnection({ provider: params.vendor, redirectUri });
+            console.log(`[ManagedConnection] step 1 done — next='${initiate?.next}'`);
+
+            // `next` decides which URL to open. "select" means the org already has a connection
+            // for this provider, so the service offers the selection page to reuse it rather than
+            // authorizing a duplicate; that page delivers a connection id to the same redirect,
+            // so from here both branches are identical.
+            const nextUrl = initiate?.next === "select" ? initiate.selectionUrl : initiate?.authorizeUrl;
+            if (!nextUrl) {
+                console.log(`[ManagedConnection] initiate returned next='${initiate?.next}' with no matching URL. Aborting.`);
+                return { success: false, error: `Could not start a managed connection for '${params.vendor}'.` };
+            }
+
+            // 2. Open the browser and wait for the redirect callback carrying the connection id.
+            //    The service 302s back to redirectUri with the id appended.
+            //
+            //    The waiter is registered before the browser opens: a callback that arrives with
+            //    no flow pending is dropped, and the service can redirect straight back.
+            console.log(`[ManagedConnection] step 2 — opening ${initiate.next === "select" ? "connection selection" : "vendor consent"} and waiting for oauth-callback...`);
+            const callback = waitForConnectionCallback(connectionState, OAUTH_CALLBACK_TIMEOUT_MS);
+            let browserOpened = false;
+            try {
+                browserOpened = await vscode.env.openExternal(vscode.Uri.parse(nextUrl));
+            } catch (err) {
+                console.error("[ManagedConnection] step 2 — openExternal threw:", (err as Error)?.message ?? err);
+            }
+            if (!browserOpened) {
+                // Release the waiter, otherwise the user sits out the full timeout and is told the
+                // OAuth flow timed out when it never started.
+                cancelConnectionCallback();
+                return { success: false, error: "Could not open a browser to complete the connection." };
+            }
+
+            const connectionId = await callback;
+            if (!connectionId) {
+                console.log(`[ManagedConnection] step 2 — callback NOT received within ${OAUTH_CALLBACK_TIMEOUT_MS}ms. Aborting.`);
+                return { success: false, error: "Timed out waiting for OAuth flow to complete. Please try again." };
+            }
+            console.log(`[ManagedConnection] step 2 done — received connectionId='${connectionId}'.`);
+
+            // 3. Exchange the connection id for the credentials.
+            console.log("[ManagedConnection] step 3 — exchange...");
+            const credentials = await exchangeManagedConnection(connectionId);
+            console.log(`[ManagedConnection] step 3 done — kind='${credentials?.kind}'.`);
+
+            // Never write bot-token creds into a refresh config (or vice-versa) if the group was
+            // mislabeled upstream.
+            const expectedKind = params.authType === "staticToken" ? "bearer"
+                : params.authType === "oauth2RefreshToken" ? "oauth2_refresh"
+                    : undefined;
+            if (expectedKind && credentials.kind !== expectedKind) {
+                console.log(`[ManagedConnection] kind mismatch — expected '${expectedKind}', got '${credentials.kind}'. Aborting.`);
+                return { success: false, error: `Expected ${expectedKind} credentials but the service returned '${credentials.kind}'.` };
+            }
+
+            if (credentials.kind === "oauth2_refresh") {
+                if (!credentials.clientId || !credentials.clientSecret || !credentials.refreshToken || !credentials.tokenEndpoint) {
+                    console.log("[ManagedConnection] incomplete refresh credentials in exchange response. Aborting.");
+                    return { success: false, error: "Managed token service returned incomplete OAuth credentials." };
+                }
+                console.log("[ManagedConnection] success — returning refresh credentials to the config collector.");
+                return {
+                    success: true,
+                    credentials: {
+                        clientId: credentials.clientId,
+                        clientSecret: credentials.clientSecret,
+                        refreshToken: credentials.refreshToken,
+                        // The proxy /token endpoint the connector uses to refresh — returned by
+                        // the service per connection rather than hardcoded.
+                        refreshUrl: credentials.tokenEndpoint,
+                    },
+                };
+            }
+
+            if (credentials.kind === "bearer") {
+                if (!credentials.accessToken) {
+                    console.log("[ManagedConnection] empty bearer token in exchange response. Aborting.");
+                    return { success: false, error: "Managed token service returned an empty static token." };
+                }
+                console.log("[ManagedConnection] success — returning static token to the config collector.");
+                return {
+                    success: true,
+                    credentials: {
+                        // Auto-fills the connector's single token configurable (bot/bearer/static).
+                        token: credentials.accessToken,
+                    },
+                };
+            }
+
+            console.log(`[ManagedConnection] unsupported credential kind '${credentials.kind}'. Aborting.`);
+            return { success: false, error: `Unsupported credential kind '${credentials.kind}'.` };
+        } catch (err) {
+            // managed-connections.ts has already logged the URL, HTTP status and response body — the
+            // detail the bare message drops. What surfaces here is the user-facing summary.
+            console.error("[ManagedConnection] flow failed:", (err as Error)?.message ?? err);
+            return { success: false, error: (err as Error).message };
+        }
+    }
+
+    cancelManagedConnection(): void {
+        // The user closed the consent tab (or gave up). Release the waiting
+        // createManagedConnection immediately instead of holding them for the full callback
+        // timeout; it returns a failure the webview discards as a user-initiated cancel.
+        console.log("[ManagedConnection] cancelled by user — abandoning the pending callback wait.");
+        cancelConnectionCallback();
     }
 
     async approveWebTool(params: WebToolApprovalRequest): Promise<void> {

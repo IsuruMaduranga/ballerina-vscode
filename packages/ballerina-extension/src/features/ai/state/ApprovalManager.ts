@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Task, MACHINE_VIEW, ClarifyQuestion } from "@wso2/ballerina-core/lib/state-machine-types";
+import { Task, MACHINE_VIEW, ClarifyQuestion, ManagedConnectionGroup } from "@wso2/ballerina-core/lib/state-machine-types";
 import { SkillEnableStage } from "@wso2/ballerina-core";
 import { CopilotEventHandler } from "../utils/events";
 import { ConfigVariable } from "../../../utils/toml-utils";
@@ -365,9 +365,10 @@ export class ApprovalManager {
         existingValues: Record<string, string>,
         eventHandler: CopilotEventHandler,
         isTestConfig?: boolean,
-        message?: string
+        message?: string,
+        managedConnections?: ManagedConnectionGroup[]
     ): Promise<ConfigurationResponse> {
-        console.log(`[ApprovalManager] Requesting ${isTestConfig ? 'test ' : ''}configuration: ${requestId}`);
+        console.log(`[ApprovalManager] Requesting ${isTestConfig ? 'test ' : ''}configuration: ${requestId}${managedConnections?.length ? ` (OAuth vendors: ${managedConnections.map(g => g.vendor).join(', ')})` : ''}`);
 
         // Use provided message or generate default
         const displayMessage = message || `Please provide ${variables.length} configuration value(s)`;
@@ -399,6 +400,7 @@ export class ApprovalManager {
                         existingValues,
                         message: displayMessage,
                         isTestConfig,
+                        managedConnections,
                     },
                 },
             }

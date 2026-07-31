@@ -105,6 +105,10 @@ import {
     promptForLogin,
     promptGithubAuthorize,
     provideConfiguration,
+    createManagedConnection,
+    cancelManagedConnection,
+    CreateManagedConnectionRequest,
+    CreateManagedConnectionResponse,
     provideConnectorSpec,
     restoreCheckpoint,
     showSignInAlert,
@@ -331,6 +335,14 @@ export class AiPanelRpcClient implements AIPanelAPI {
 
     cancelConfiguration(params: ConfigurationCancelRequest): Promise<void> {
         return this._messenger.sendRequest(cancelConfiguration, HOST_EXTENSION, params);
+    }
+
+    createManagedConnection(params: CreateManagedConnectionRequest): Promise<CreateManagedConnectionResponse> {
+        return this._messenger.sendRequest(createManagedConnection, HOST_EXTENSION, params);
+    }
+
+    cancelManagedConnection(): void {
+        return this._messenger.sendNotification(cancelManagedConnection, HOST_EXTENSION);
     }
 
     getChatMessages(): Promise<UIChatMessage[]> {

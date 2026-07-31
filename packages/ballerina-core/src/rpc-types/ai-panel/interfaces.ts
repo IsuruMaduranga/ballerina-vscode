@@ -479,6 +479,26 @@ export interface ConfigurationCancelRequest {
     comment?: string;
 }
 
+export interface CreateManagedConnectionRequest {
+    vendor: string;
+    // Expected grant shape, used to verify the service returned a matching credential kind.
+    authType?: "oauth2RefreshToken" | "staticToken";
+}
+
+export interface CreateManagedConnectionResponse {
+    success: boolean;
+    // Populated per grant shape: refresh fills clientId/clientSecret/refreshToken/refreshUrl,
+    // static fills token.
+    credentials?: {
+        clientId?: string;
+        clientSecret?: string;
+        refreshToken?: string;
+        refreshUrl?: string;
+        token?: string;
+    };
+    error?: string;
+}
+
 export interface WebToolApprovalRequest {
     requestId: string;
 }
