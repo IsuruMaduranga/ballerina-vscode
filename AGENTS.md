@@ -118,6 +118,12 @@ Running that exact command locally is the closest reproduction.
 - `BALLERINA_LS_TAG=<tag>` — pin a specific release
 - *(default)* — prefer the local pack output, fall back to download
 
+**The version is authored in exactly one file:
+`packages/ballerina-extension/package.json`.** `vsce` reads it directly, and the
+language-server Gradle build reads the same manifest at configuration time. To change the
+extension and LS version, edit that field and nothing else. `-Pversion=<v>` remains
+available for a one-off Gradle build without changing the manifest.
+
 ### "Add a dependency to a package"
 
 1. Edit the package's `package.json`.
