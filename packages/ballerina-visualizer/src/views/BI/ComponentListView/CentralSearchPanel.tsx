@@ -46,6 +46,9 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     const { rpcClient } = useRpcContext();
     const [searching, setSearching] = useState<boolean>(true);
     const [results, setResults] = useState<ServiceModel[]>([]);
+    const [localRepositoryResults, setLocalRepositoryResults] = useState<ServiceModel[]>([]);
+    // Experimental, opt-in via a VS Code setting — read once per mount rather than per keystroke.
+    const [localCentralSearchEnabled, setLocalCentralSearchEnabled] = useState<boolean>(false);
 
     const isMountedRef = useRef(true);
     // The most recently *dispatched* search query. Debounce only coalesces rapid keystrokes into
@@ -62,6 +65,17 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
         };
     }, []);
 
+    useEffect(() => {
+        rpcClient
+            .getCommonRpcClient()
+            .localCentralSearchEnabled()
+            .then((enabled) => {
+                if (isMountedRef.current) {
+                    setLocalCentralSearchEnabled(enabled);
+                }
+            });
+    }, [rpcClient]);
+
     // Debounced so we don't hit Central on every keystroke.
     const runSearch = useMemo(
         () =>
@@ -70,12 +84,13 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                 setSearching(true);
                 rpcClient
                     .getServiceDesignerRpcClient()
-                    .searchTriggers({ query: searchQuery })
+                    .searchTriggers({ query: searchQuery, includeLocalRepository: localCentralSearchEnabled })
                     .then((res) => {
                         if (!isMountedRef.current || latestQueryRef.current !== searchQuery) {
                             return;
                         }
                         setResults(res?.local ?? []);
+                        setLocalRepositoryResults(res?.localRepositoryResults ?? []);
                     })
                     .finally(() => {
                         if (isMountedRef.current && latestQueryRef.current === searchQuery) {
@@ -83,7 +98,7 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                         }
                     });
             }, SEARCH_DEBOUNCE_MS),
-        [rpcClient]
+        [rpcClient, localCentralSearchEnabled]
     );
 
     useEffect(() => {
@@ -91,7 +106,7 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
         return () => runSearch.cancel();
     }, [props.query, runSearch]);
 
-    const handleSelect = async (model: ServiceModel) => {
+    const handleSelect = async (model: ServiceModel, isLocalRepository: boolean) => {
         await rpcClient.getVisualizerRpcClient().openView({
             type: EVENT_TYPE.OPEN_VIEW,
             location: {
@@ -100,7 +115,8 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                     org: model.orgName,
                     packageName: model.packageName,
                     moduleName: model.moduleName,
-                    version: model.version
+                    version: model.version,
+                    isLocalRepository
                 }
             },
         });
@@ -109,33 +125,61 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     // Central may echo a package already available locally; the local sections already show those.
     const localTriggerIds = new Set(props.triggers.local.map((t) => `${t.orgName}/${t.packageName}`));
     const visibleResults = results.filter((item) => !localTriggerIds.has(`${item.orgName}/${item.packageName}`));
+    // Never deduped against Central/bundled results: the same org/name resolved from the local
+    // repository is a distinct artifact (a different, in-development version) worth showing separately.
+    const visibleLocalRepositoryResults = localRepositoryResults;
 
     return (
-        <PanelViewMore>
-            <TitleWrapper>
-                <Title variant="h2">More on Ballerina Central</Title>
-                <BodyText>
-                    Integrations published on Ballerina Central that match your search.
-                </BodyText>
-            </TitleWrapper>
-            <CardGrid>
-                {searching && <RelativeLoader />}
-                {!searching && visibleResults.length === 0 && (
-                    <BodyText>No matching integrations found on Ballerina Central.</BodyText>
-                )}
-                {!searching &&
-                    visibleResults.map((item) => (
-                        <ButtonCard
-                            id={`central-trigger-${item.moduleName.replace(/\./g, '-')}`}
-                            key={`${item.orgName}/${item.packageName}`}
-                            title={item.name}
-                            icon={getEntryNodeIcon(item)}
-                            onClick={() => handleSelect(item)}
-                            isBeta={isBetaModule(item.moduleName)}
-                        />
-                    ))}
-            </CardGrid>
-        </PanelViewMore>
+        <>
+            <PanelViewMore>
+                <TitleWrapper>
+                    <Title variant="h2">More on Ballerina Central</Title>
+                    <BodyText>
+                        Integrations published on Ballerina Central that match your search.
+                    </BodyText>
+                </TitleWrapper>
+                <CardGrid>
+                    {searching && <RelativeLoader />}
+                    {!searching && visibleResults.length === 0 && (
+                        <BodyText>No matching integrations found on Ballerina Central.</BodyText>
+                    )}
+                    {!searching &&
+                        visibleResults.map((item) => (
+                            <ButtonCard
+                                id={`central-trigger-${item.moduleName.replace(/\./g, '-')}`}
+                                key={`${item.orgName}/${item.packageName}`}
+                                title={item.name}
+                                icon={getEntryNodeIcon(item)}
+                                onClick={() => handleSelect(item, false)}
+                                isBeta={isBetaModule(item.moduleName)}
+                            />
+                        ))}
+                </CardGrid>
+            </PanelViewMore>
+            {localCentralSearchEnabled && !searching && visibleLocalRepositoryResults.length > 0 && (
+                <PanelViewMore>
+                    <TitleWrapper>
+                        <Title variant="h2">Local Central Search Results</Title>
+                        <BodyText>
+                            Packages found in your local Ballerina repository (~/.ballerina/repositories/local)
+                            that match your search.
+                        </BodyText>
+                    </TitleWrapper>
+                    <CardGrid>
+                        {visibleLocalRepositoryResults.map((item) => (
+                            <ButtonCard
+                                id={`local-repo-trigger-${item.moduleName.replace(/\./g, '-')}`}
+                                key={`local/${item.orgName}/${item.packageName}`}
+                                title={item.name}
+                                icon={getEntryNodeIcon(item)}
+                                onClick={() => handleSelect(item, true)}
+                                isBeta={isBetaModule(item.moduleName)}
+                            />
+                        ))}
+                    </CardGrid>
+                </PanelViewMore>
+            )}
+        </>
     );
 }
 

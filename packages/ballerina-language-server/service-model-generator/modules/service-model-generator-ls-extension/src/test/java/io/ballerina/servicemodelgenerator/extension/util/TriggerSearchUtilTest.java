@@ -29,22 +29,129 @@ import io.ballerina.centralconnector.response.PackageResponse;
 import io.ballerina.centralconnector.response.SymbolResponse;
 import io.ballerina.servicemodelgenerator.extension.model.TriggerBasicInfo;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * Unit tests for {@link TriggerSearchUtil}: the Central trigger-identification heuristic and the
  * package -> {@link TriggerBasicInfo} mapping/filtering, exercised without a network call.
  *
+ * <p>{@link #testSearchLocalRepository()} is the exception: {@code searchLocalRepository} resolves
+ * against the real, machine-wide {@code ~/.ballerina/repositories/local} directory (there is no
+ * injectable/fake repository root), so that one test writes small fixture packages directly there
+ * ({@code @BeforeClass}) and removes them afterward ({@code @AfterClass}).
+ *
  * @since 1.8.0
  */
 public class TriggerSearchUtilTest {
+
+    private static final String LOCAL_ORG = "triggersearchutiltest";
+    private static final String WITH_SCHEMA_PACKAGE = "hasschema";
+    private static final String WITHOUT_SCHEMA_PACKAGE = "noschema";
+    private static final String LOCAL_VERSION = "0.1.0";
+
+    private static Path localRepoOrgDir() {
+        return Path.of(System.getProperty("user.home"), ".ballerina", "repositories", "local", "bala", LOCAL_ORG);
+    }
+
+    @BeforeClass
+    public void setUpLocalRepositoryFixtures() throws IOException {
+        writeFixturePackage(WITH_SCHEMA_PACKAGE, true);
+        writeFixturePackage(WITHOUT_SCHEMA_PACKAGE, false);
+    }
+
+    @AfterClass
+    public void tearDownLocalRepositoryFixtures() throws IOException {
+        Path orgDir = localRepoOrgDir();
+        if (!Files.exists(orgDir)) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(orgDir)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException ignored) {
+                    // best-effort cleanup of a test-owned fixture directory
+                }
+            });
+        }
+    }
+
+    private static void writeFixturePackage(String packageName, boolean withTriggerSchema) throws IOException {
+        Path root = localRepoOrgDir().resolve(packageName).resolve(LOCAL_VERSION).resolve("any");
+        Files.createDirectories(root.resolve("modules").resolve(packageName));
+        Files.createDirectories(root.resolve("docs"));
+        Files.writeString(root.resolve("package.json"), """
+                {
+                  "organization": "%s",
+                  "name": "%s",
+                  "version": "%s",
+                  "export": ["%s"],
+                  "ballerina_version": "2201.13.4",
+                  "implementation_vendor": "WSO2",
+                  "language_spec_version": "2024R1",
+                  "platform": "any",
+                  "graalvmCompatible": true,
+                  "template": false,
+                  "readme": "docs/README.md"
+                }""".formatted(LOCAL_ORG, packageName, LOCAL_VERSION, packageName));
+        Files.writeString(root.resolve("bala.json"), """
+                {
+                  "bala_version": "3.0.0",
+                  "built_by": "WSO2"
+                }""");
+        Files.writeString(root.resolve("dependency-graph.json"), """
+                {
+                  "packages": [
+                    {"org": "%s", "name": "%s", "version": "%s", "transitive": false,
+                     "dependencies": [], "modules": []}
+                  ],
+                  "modules": [
+                    {"org": "%s", "package_name": "%s", "version": "%s", "module_name": "%s",
+                     "dependencies": []}
+                  ]
+                }""".formatted(LOCAL_ORG, packageName, LOCAL_VERSION, LOCAL_ORG, packageName, LOCAL_VERSION,
+                packageName));
+        Files.writeString(root.resolve("docs").resolve("README.md"), "# " + packageName);
+        Files.writeString(root.resolve("modules").resolve(packageName).resolve("main.bal"),
+                "public function main() {\n}\n");
+        if (withTriggerSchema) {
+            Files.createDirectories(root.resolve("resources"));
+            Files.writeString(root.resolve("resources").resolve("trigger-ui-schema.json"), """
+                    {"schemaVersion": "1.0", "listenerKind": "SINGLE_SELECT_LISTENER"}""");
+        }
+    }
+
+    @Test
+    public void testSearchLocalRepository() {
+        List<TriggerBasicInfo> results = TriggerSearchUtil.searchLocalRepository(Set.of());
+
+        Assert.assertTrue(results.stream().anyMatch(r -> LOCAL_ORG.equals(r.orgName())
+                        && WITH_SCHEMA_PACKAGE.equals(r.packageName())),
+                "a local-repository package shipping trigger-ui-schema.json must be found");
+        Assert.assertTrue(results.stream().noneMatch(r -> LOCAL_ORG.equals(r.orgName())
+                        && WITHOUT_SCHEMA_PACKAGE.equals(r.packageName())),
+                "a local-repository package with no trigger schema file must be excluded");
+
+        List<TriggerBasicInfo> excludingKnown = TriggerSearchUtil.searchLocalRepository(
+                Set.of(LOCAL_ORG + "/" + WITH_SCHEMA_PACKAGE));
+        Assert.assertTrue(excludingKnown.stream().noneMatch(r -> LOCAL_ORG.equals(r.orgName())
+                        && WITH_SCHEMA_PACKAGE.equals(r.packageName())),
+                "a package already known locally (existingKeys) must be excluded");
+    }
 
     @Test
     public void testIsTriggerPackage() {

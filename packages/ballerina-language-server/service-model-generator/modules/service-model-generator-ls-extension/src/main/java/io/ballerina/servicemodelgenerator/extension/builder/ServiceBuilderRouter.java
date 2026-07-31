@@ -90,7 +90,21 @@ public class ServiceBuilderRouter {
      * whenever neither source has a model, so an unrecognized connector's behavior is unchanged.
      */
     private static boolean useSchemaDrivenPath(String orgName, String moduleName) {
-        return TriggerModelReader.getInstance().hasSchemaDrivenModel(orgName, moduleName);
+        return useSchemaDrivenPath(orgName, moduleName, null, false);
+    }
+
+    /**
+     * {@code isLocalRepository} variant: when {@code true}, checks the Ballerina local repository
+     * ({@code ~/.ballerina/repositories/local}) instead of Central/bundled sources -- for a connector
+     * picked from a local-repository search result, which by definition is never bundled and may not
+     * exist on Central at all. Requires {@code version}: local-repository resolution has no "latest"
+     * convention to fall back to (unlike Central), so this check would otherwise always report "not
+     * found" for a local connector.
+     */
+    private static boolean useSchemaDrivenPath(String orgName, String moduleName, String version,
+                                               boolean isLocalRepository) {
+        return TriggerModelReader.getInstance()
+                .hasSchemaDrivenModel(orgName, moduleName, version, isLocalRepository);
     }
 
     public static Optional<Service> getModelTemplate(String orgName, String moduleName) {
@@ -157,9 +171,10 @@ public class ServiceBuilderRouter {
                                                        SemanticModel semanticModel, Document document) {
         GetServiceInitModelContext context = new GetServiceInitModelContext(
                 request.orgName(), request.pkgName(), request.moduleName(), request.version(),
-                project, semanticModel, document);
+                project, semanticModel, document, request.isLocalRepository());
         ServiceNodeBuilder serviceBuilder =
-                useSchemaDrivenPath(request.orgName(), request.moduleName())
+                useSchemaDrivenPath(request.orgName(), request.moduleName(), request.version(),
+                        request.isLocalRepository())
                         ? new SchemaDrivenServiceBuilder()
                         : getServiceBuilder(request.moduleName());
         return serviceBuilder.getServiceInitModel(context);
@@ -174,7 +189,8 @@ public class ServiceBuilderRouter {
         AddServiceInitModelContext context = new AddServiceInitModelContext(serviceInitModel, semanticModel, project,
                 workspaceManager, filePath, document);
         ServiceNodeBuilder serviceBuilder = useSchemaDrivenPath(
-                        serviceInitModel.getOrgName(), serviceInitModel.getModuleName())
+                        serviceInitModel.getOrgName(), serviceInitModel.getModuleName(),
+                        serviceInitModel.getVersion(), serviceInitModel.isLocalRepository())
                         ? new SchemaDrivenServiceBuilder()
                         : getServiceBuilder(serviceInitModel.getModuleName());
         return serviceBuilder.addServiceInitSource(context);

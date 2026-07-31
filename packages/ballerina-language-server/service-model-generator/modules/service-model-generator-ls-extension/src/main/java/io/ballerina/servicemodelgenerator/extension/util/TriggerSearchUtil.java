@@ -20,6 +20,8 @@ package io.ballerina.servicemodelgenerator.extension.util;
 
 import io.ballerina.centralconnector.CentralAPI;
 import io.ballerina.centralconnector.response.PackageResponse;
+import io.ballerina.modelgenerator.commons.ModuleInfo;
+import io.ballerina.modelgenerator.commons.trigger.LibraryMetadataReader;
 import io.ballerina.servicemodelgenerator.extension.model.TriggerBasicInfo;
 
 import java.util.ArrayList;
@@ -96,6 +98,54 @@ public final class TriggerSearchUtil {
         } catch (Throwable e) {
             return List.of();
         }
+    }
+
+    /**
+     * Searches the Ballerina local repository ({@code ~/.ballerina/repositories/local}) for packages
+     * shipping a {@code trigger-metadata.json} or {@code trigger-ui-schema.json} directly, excluding
+     * those already known locally ({@code existingKeys}, each {@code org/name}). Only ever called when
+     * the request opted in via {@code includeLocalRepository} -- callers must not invoke this
+     * unconditionally, since it touches the filesystem. Presence of either resource file is itself the
+     * authoritative trigger signal here: local packages carry no Central keywords to check against, and
+     * this is a cheap file-stat per candidate, not a network call, so full enumeration is acceptable for
+     * a typically-small local repository. Returns an empty list on any failure -- never throws.
+     */
+    public static List<TriggerBasicInfo> searchLocalRepository(Set<String> existingKeys) {
+        try {
+            LibraryMetadataReader reader = LibraryMetadataReader.getInstance();
+            Set<String> known = existingKeys == null ? Set.of() : existingKeys;
+            List<TriggerBasicInfo> results = new ArrayList<>();
+            for (ModuleInfo moduleInfo : reader.listLocalRepositoryModules()) {
+                if (known.contains(key(moduleInfo.org(), moduleInfo.packageName()))) {
+                    continue;
+                }
+                boolean hasTriggerFiles = reader.getTriggerUISchemaModelFromLocalRepository(moduleInfo).isPresent()
+                        || reader.getTriggerMetadataModelFromLocalRepository(moduleInfo).isPresent();
+                if (!hasTriggerFiles) {
+                    continue;
+                }
+                results.add(toLocalRepositoryTriggerBasicInfo(moduleInfo));
+            }
+            return results;
+        } catch (Throwable e) {
+            return List.of();
+        }
+    }
+
+    private static TriggerBasicInfo toLocalRepositoryTriggerBasicInfo(ModuleInfo moduleInfo) {
+        String protocol = ServiceModelUtils.getProtocol(moduleInfo.packageName());
+        return new TriggerBasicInfo(
+                0,
+                moduleInfo.packageName(),
+                moduleInfo.org(),
+                moduleInfo.packageName(),
+                moduleInfo.moduleName(),
+                moduleInfo.version(),
+                EVENT_TYPE,
+                displayName(moduleInfo.packageName()),
+                "",
+                protocol,
+                "");
     }
 
     /**

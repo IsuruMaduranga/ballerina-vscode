@@ -167,7 +167,8 @@
           "optional": false,
           "advanced": true
         }
-      }
+      },
+      "isLocalRepository": false
     }
   }
 }

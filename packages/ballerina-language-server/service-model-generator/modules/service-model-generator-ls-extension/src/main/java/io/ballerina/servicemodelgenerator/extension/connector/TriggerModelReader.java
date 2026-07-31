@@ -279,9 +279,25 @@ public class TriggerModelReader {
         }
     }
 
-    /** Cheap presence check across all tiers (bundled, shipped-schema, synthesized). */
+    /**
+     * Cheap presence check across all tiers: the bundled classpath registry, then (on a miss, and only
+     * when {@code orgName} is known) a connector-shipped {@code trigger-ui-schema.json} or a resolved,
+     * synthesized model.
+     */
     public boolean hasSchemaDrivenModel(String orgName, String moduleName) {
-        return getSchemaDrivenTriggerModel(orgName, moduleName).isPresent();
+        return getSchemaDrivenTriggerModel(orgName, moduleName, null, false).isPresent();
+    }
+
+    /**
+     * {@code isLocalRepository} variant: when {@code true}, checks the Ballerina local repository
+     * instead of the bundled registry/Central -- see {@link #getSchemaDrivenTriggerModel(String, String,
+     * String, boolean)}. Requires {@code version} (unlike the Central-only overload above): local
+     * repository resolution has no "latest" convention to fall back to, so a routing check without a
+     * version would always report "not found" -- exactly the bug this overload exists to avoid.
+     */
+    public boolean hasSchemaDrivenModel(String orgName, String moduleName, String version,
+                                        boolean isLocalRepository) {
+        return getSchemaDrivenTriggerModel(orgName, moduleName, version, isLocalRepository).isPresent();
     }
 
     /**
@@ -300,6 +316,22 @@ public class TriggerModelReader {
      */
     public Optional<TriggerUISchemaModel> getSchemaDrivenTriggerModel(String orgName, String moduleName,
                                                                        String version) {
+        return getSchemaDrivenTriggerModel(orgName, moduleName, version, false);
+    }
+
+    /**
+     * {@code isLocalRepository} variant: when {@code true}, resolves the connector via the Ballerina
+     * local repository ({@code ~/.ballerina/repositories/local}) instead of the bundled registry/Central
+     * -- for a connector picked from a local-repository search result, which by definition is never
+     * bundled and may not exist on Central at all. Requires a non-null {@code version} (unlike the
+     * Central path, local-repository resolution has no "latest" convention to fall back to). Deliberately
+     * <b>not cached</b> -- see {@link #resolveSchemaDrivenTriggerModelFromLocalRepository}.
+     */
+    public Optional<TriggerUISchemaModel> getSchemaDrivenTriggerModel(String orgName, String moduleName,
+                                                                       String version, boolean isLocalRepository) {
+        if (isLocalRepository) {
+            return resolveSchemaDrivenTriggerModelFromLocalRepository(orgName, moduleName, version);
+        }
         Optional<TriggerUISchemaModel> bundled = getBundledTriggerModel(moduleName, version);
         if (bundled.isPresent() || orgName == null || moduleName == null) {
             return bundled;
@@ -343,12 +375,72 @@ public class TriggerModelReader {
     /** Version-aware counterpart of {@link #getSchemaDrivenServiceInitModel(String, String)}. */
     public Optional<ServiceInitModel> getSchemaDrivenServiceInitModel(String orgName, String moduleName,
                                                                        String version) {
+        return getSchemaDrivenServiceInitModel(orgName, moduleName, version, false);
+    }
+
+    /**
+     * {@code isLocalRepository} variant -- see {@link #getSchemaDrivenTriggerModel(String, String,
+     * String, boolean)}. The returned model has {@link ServiceInitModel#setLocalRepository} already set,
+     * so {@code addServiceAndListener}'s round-trip (client echoes the model back in
+     * {@code ServiceInitSourceRequest}) preserves the source without the client needing to know about it.
+     */
+    public Optional<ServiceInitModel> getSchemaDrivenServiceInitModel(String orgName, String moduleName,
+                                                                       String version, boolean isLocalRepository) {
+        if (isLocalRepository) {
+            return getSchemaDrivenTriggerModel(orgName, moduleName, version, true)
+                    .flatMap(model -> buildServiceInitModelFromJson(gson.toJsonTree(model)))
+                    .map(initModel -> {
+                        initModel.setLocalRepository(true);
+                        return initModel;
+                    });
+        }
         Optional<ServiceInitModel> bundled = getBundledServiceInitModel(moduleName, version);
         if (bundled.isPresent() || orgName == null || moduleName == null) {
             return bundled;
         }
         return getSchemaDrivenTriggerModel(orgName, moduleName, version)
                 .flatMap(model -> buildServiceInitModelFromJson(gson.toJsonTree(model)));
+    }
+
+    /**
+     * Resolves a {@link TriggerUISchemaModel} for a connector via the Ballerina local repository, mirroring
+     * {@link #doResolveSchemaDrivenTriggerModel}'s two Central tiers exactly: the connector-shipped
+     * {@code trigger-ui-schema.json} first (via
+     * {@link LibraryMetadataReader#getTriggerUISchemaModelFromLocalRepository}), then -- on a miss --
+     * synthesis from its {@code trigger-metadata.json} plus semantic introspection of its local-repository
+     * -resolved {@code .bala} (via {@link LibraryMetadataReader#getCompiledPackageFromLocalRepository}).
+     * A local connector shipping only a search-time signal (neither file) has already been filtered out by
+     * {@code TriggerSearchUtil.searchLocalRepository}'s own presence check, so reaching here with neither
+     * is not expected, but still degrades to empty rather than throwing. Deliberately <b>not cached</b>,
+     * unlike the Central tier below: the target user is actively iterating (edit connector -> pack -> push
+     * --repository=local -> try again), so caching a miss here would mask a subsequent push for the rest
+     * of the session.
+     */
+    private Optional<TriggerUISchemaModel> resolveSchemaDrivenTriggerModelFromLocalRepository(
+            String orgName, String moduleName, String version) {
+        try {
+            ModuleInfo moduleInfo = new ModuleInfo(orgName, moduleName, moduleName, version);
+            LibraryMetadataReader metadataReader = LibraryMetadataReader.getInstance();
+
+            Optional<TriggerUISchemaModel> shipped = metadataReader
+                    .getTriggerUISchemaModelFromLocalRepository(moduleInfo);
+            if (shipped.isPresent()) {
+                return shipped;
+            }
+
+            Optional<TriggerMetadataModel> metadata = metadataReader
+                    .getTriggerMetadataModelFromLocalRepository(moduleInfo);
+            if (metadata.isEmpty()) {
+                return Optional.empty();
+            }
+            Optional<Package> pkg = metadataReader.getCompiledPackageFromLocalRepository(moduleInfo);
+            if (pkg.isEmpty()) {
+                return Optional.empty();
+            }
+            return synthesizeTriggerModel(metadata.get(), pkg.get(), moduleName);
+        } catch (Throwable e) {
+            return Optional.empty();
+        }
     }
 
     /**
@@ -370,6 +462,7 @@ public class TriggerModelReader {
         ModuleInfo moduleInfo = new ModuleInfo(orgName, moduleName, moduleName, null);
         LibraryMetadataReader metadataReader = LibraryMetadataReader.getInstance();
 
+        // Tier: the connector ships a full trigger-ui-schema.json directly -- no synthesis needed.
         Optional<TriggerUISchemaModel> shipped = metadataReader.getTriggerUISchemaModel(moduleInfo);
         if (shipped.isPresent()) {
             return Resolution.of(shipped);
@@ -391,10 +484,22 @@ public class TriggerModelReader {
         if (pkg.isEmpty()) {
             return Resolution.UNRESOLVED;
         }
-        SemanticModel semanticModel = PackageUtil.getCompilation(pkg.get())
-                .getSemanticModel(pkg.get().getDefaultModule().moduleId());
+        return Resolution.of(synthesizeTriggerModel(metadata.get(), pkg.get(), moduleName));
+    }
 
-        PackageDescriptor descriptor = pkg.get().descriptor();
+    /**
+     * Synthesizes a {@link TriggerUISchemaModel} from a connector's {@code trigger-metadata.json} plus
+     * semantic-API introspection of its compiled {@code .bala} -- shared by the Central tier
+     * ({@link #doResolveSchemaDrivenTriggerModel}) and the local-repository tier
+     * ({@link #resolveSchemaDrivenTriggerModelFromLocalRepository}), which differ only in how {@code pkg}
+     * was resolved.
+     */
+    private Optional<TriggerUISchemaModel> synthesizeTriggerModel(TriggerMetadataModel metadata, Package pkg,
+                                                                  String moduleName) {
+        SemanticModel semanticModel = PackageUtil.getCompilation(pkg)
+                .getSemanticModel(pkg.getDefaultModule().moduleId());
+
+        PackageDescriptor descriptor = pkg.descriptor();
         String resolvedOrg = descriptor.org().value();
         String resolvedPackageName = descriptor.name().value();
         String resolvedVersion = descriptor.version().value().toString();
@@ -402,14 +507,14 @@ public class TriggerModelReader {
         // connector, so references must keep their module prefix rather than render bare.
         TriggerLibraryFacts facts = TriggerLibraryIntrospector.introspect(semanticModel, null);
 
-        Listener listenerModel = resolveListenerModel(metadata.get(), semanticModel, resolvedOrg,
+        Listener listenerModel = resolveListenerModel(metadata, semanticModel, resolvedOrg,
                 resolvedPackageName, moduleName, resolvedVersion);
 
         String displayName = TriggerModelSynthesizer.humanize(moduleName);
         String icon = CommonUtils.generateIcon(resolvedOrg, resolvedPackageName, resolvedVersion);
 
-        return Resolution.of(TriggerModelSynthesizer.synthesize(metadata.get(), facts, listenerModel, moduleName,
-                displayName, icon, "event", resolvedOrg, resolvedPackageName, moduleName, resolvedVersion));
+        return TriggerModelSynthesizer.synthesize(metadata, facts, listenerModel, moduleName, displayName,
+                icon, "event", resolvedOrg, resolvedPackageName, moduleName, resolvedVersion);
     }
 
     /**

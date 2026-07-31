@@ -338,5 +338,9 @@ export interface ServiceInitModel {
     type: string;
     icon: string;
     properties: { [key: string]: PropertyModel };
+    // Set by the LS when this model was resolved via the Ballerina local repository rather than
+    // Central. Round-tripped back to the server (unchanged) when addServiceAndListener is called with
+    // this model, so it doesn't need to be re-supplied by the client.
+    isLocalRepository?: boolean;
 }
 

@@ -1556,6 +1556,20 @@ public final class Utils {
      */
     public static void resolveModule(String orgName, String packageName, String moduleName, String version,
                                      LSClientLogger lsClientLogger) {
+        resolveModule(orgName, packageName, moduleName, version, false, lsClientLogger);
+    }
+
+    /**
+     * {@code isLocalRepository} variant: a connector picked from a Ballerina local-repository
+     * ({@code ~/.ballerina/repositories/local}) search result is already fully present on disk the
+     * moment {@code bal push --repository=local} succeeded -- there is no Central "pull" step for it, so
+     * this is a no-op rather than reaching Central for an org/package that may not even exist there.
+     */
+    public static void resolveModule(String orgName, String packageName, String moduleName, String version,
+                                     boolean isLocalRepository, LSClientLogger lsClientLogger) {
+        if (isLocalRepository) {
+            return;
+        }
         if (BALLERINA.equals(orgName) && DISTRIBUTION_MODULES.contains(packageName)) {
             return;
         }

@@ -1406,10 +1406,15 @@ export interface TriggerModelsRequest {
     packageName?: string;
     query?: string;
     keyWord?: string;
+    includeLocalRepository?: boolean;
 }
 
 export interface TriggerModelsResponse {
     local: ServiceModel[];
+    // Matches found in the Ballerina local repository when includeLocalRepository was set - kept
+    // separate from `local`, never merged, since the same org/name may resolve differently from
+    // Central vs. the local repository.
+    localRepositoryResults?: ServiceModel[];
 }
 
 // <-------- Trigger Related ------->
@@ -1460,6 +1465,7 @@ export interface ServiceModelRequest {
     pkgName?: string;
     version?: string;
     projectPath?: string;
+    isLocalRepository?: boolean;
 }
 export interface ServiceModelResponse {
     service: ServiceModel;

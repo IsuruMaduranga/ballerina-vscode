@@ -28,12 +28,23 @@ import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
 import io.ballerina.modelgenerator.commons.trigger.utils.TriggerMetadataGson;
 import io.ballerina.projects.Package;
+import io.ballerina.projects.PackageDescriptor;
+import io.ballerina.projects.PackageName;
+import io.ballerina.projects.PackageOrg;
+import io.ballerina.projects.PackageVersion;
+import io.ballerina.projects.environment.PackageRepository;
+import io.ballerina.projects.environment.ResolutionOptions;
+import io.ballerina.projects.environment.ResolutionRequest;
+import io.ballerina.projects.internal.environment.BallerinaUserHome;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -94,6 +105,97 @@ public final class LibraryMetadataReader {
             return Optional.empty();
         }
         return packagedMetadataCache.get(moduleInfo.moduleName(), this::readPackagedMetadata);
+    }
+
+    /**
+     * The connector's own {@code resources/trigger-metadata.json}, resolved from the Ballerina
+     * <b>local</b> repository ({@code ~/.ballerina/repositories/local}) rather than Central -- for a
+     * connector under active local development (packed/pushed via {@code bal pack}/
+     * {@code bal push --repository=local}) that may not exist on Central at all. {@code moduleInfo} must
+     * be {@link ModuleInfo#isComplete()} -- unlike the Central reads above, local-repository resolution
+     * has no "latest version" fallback to resolve an incomplete request against.
+     */
+    public Optional<TriggerMetadataModel> getTriggerMetadataModelFromLocalRepository(ModuleInfo moduleInfo) {
+        return localPackageRoot(moduleInfo).flatMap(this::readTriggerMetadataModel);
+    }
+
+    /**
+     * The connector's own {@code resources/trigger-ui-schema.json}, resolved from the Ballerina
+     * <b>local</b> repository. See {@link #getTriggerMetadataModelFromLocalRepository} for why this is a
+     * separate read from the Central-resolving {@link #getTriggerUISchemaModel}.
+     */
+    public Optional<TriggerUISchemaModel> getTriggerUISchemaModelFromLocalRepository(ModuleInfo moduleInfo) {
+        return localPackageRoot(moduleInfo).flatMap(this::readTriggerUISchemaModel);
+    }
+
+    /**
+     * Every {@code org/name/version} present in the Ballerina local repository
+     * ({@code ~/.ballerina/repositories/local}), as {@link ModuleInfo} (module name defaults to the
+     * package name, matching the common single-module-package convention -- this is enough to drive
+     * {@link #getTriggerMetadataModelFromLocalRepository}/{@link #getTriggerUISchemaModelFromLocalRepository},
+     * which only need the package root, not a specific submodule). Returns an empty list if the local
+     * repository is empty or unreadable -- never throws.
+     */
+    public List<ModuleInfo> listLocalRepositoryModules() {
+        List<ModuleInfo> modules = new ArrayList<>();
+        try {
+            Map<String, List<String>> packagesByOrg = localRepository().getPackages();
+            for (Map.Entry<String, List<String>> entry : packagesByOrg.entrySet()) {
+                String org = entry.getKey();
+                for (String nameAndVersion : entry.getValue()) {
+                    String[] parts = nameAndVersion.split(":");
+                    if (parts.length != 2) {
+                        continue;
+                    }
+                    modules.add(new ModuleInfo(org, parts[0], parts[0], parts[1]));
+                }
+            }
+        } catch (Throwable e) {
+            return List.of();
+        }
+        return modules;
+    }
+
+    /**
+     * The connector's compiled {@link Package}, resolved via the local repository -- for callers that
+     * need to compile/introspect it (e.g. synthesizing a {@code TriggerUISchemaModel} from
+     * {@code trigger-metadata.json} plus semantic-API introspection, the same way the Central path
+     * falls back to synthesis when a connector doesn't ship a full {@code trigger-ui-schema.json}).
+     * Deliberately <b>not cached</b> (unlike {@link #packageRoot}, which amortizes an expensive Central
+     * network round-trip): this is a cheap filesystem read, and the target user for local-repository
+     * resolution is actively iterating (edit connector -> {@code bal pack} ->
+     * {@code bal push --repository=local} -> try again in the IDE) -- caching a miss here would silently
+     * persist a stale "not found" across that whole loop until an LS/extension restart, which is worse
+     * than the cost of re-resolving each call.
+     */
+    public Optional<Package> getCompiledPackageFromLocalRepository(ModuleInfo moduleInfo) {
+        if (moduleInfo == null || !moduleInfo.isComplete()) {
+            return Optional.empty();
+        }
+        try {
+            PackageDescriptor descriptor = PackageDescriptor.from(
+                    PackageOrg.from(moduleInfo.org()), PackageName.from(moduleInfo.packageName()),
+                    PackageVersion.from(moduleInfo.version()));
+            ResolutionRequest request = ResolutionRequest.from(descriptor);
+            return localRepository().getPackage(request, ResolutionOptions.builder().setOffline(true).build());
+        } catch (Throwable e) {
+            return Optional.empty();
+        }
+    }
+
+    /** {@code Path}-rooted counterpart of {@link #getCompiledPackageFromLocalRepository}. */
+    private Optional<Path> localPackageRoot(ModuleInfo moduleInfo) {
+        return getCompiledPackageFromLocalRepository(moduleInfo).map(pkg -> pkg.project().sourceRoot());
+    }
+
+    /**
+     * The Ballerina local repository ({@code ~/.ballerina/repositories/local}), resolved via a throwaway
+     * sample project purely to obtain an {@link io.ballerina.projects.environment.Environment} -- mirrors
+     * {@link PackageUtil#getSampleProject()}'s existing use of the same trick for Central resolution.
+     */
+    private PackageRepository localRepository() {
+        return BallerinaUserHome.from(PackageUtil.getSampleProject().projectEnvironmentContext().environment())
+                .localPackageRepository();
     }
 
     private Optional<TriggerMetadataModel> readPackagedMetadata(String moduleName) {

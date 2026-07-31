@@ -347,12 +347,27 @@ public class ListenerUtil {
 
     public static Optional<Listener> getListenerModelByName(Codedata codedata, SemanticModel semanticModel,
                                                             ModuleInfo moduleInfo) {
-        return getListenerModelByName(codedata, semanticModel, moduleInfo, true);
+        // `semanticModel` here is the connector's own package semantic model (see
+        // ConnectorModelReader#synthesizeTriggerModel), not a user file's -- passing it through to the
+        // builder is what lets a local-repository connector's "Listener" class resolve at all, since it
+        // isn't Central-indexed for FunctionDataBuilder's own moduleInfo-based derivation to find.
+        return getListenerModelByName(codedata, semanticModel, moduleInfo, true, semanticModel);
     }
 
     public static Optional<Listener> getListenerModelByName(Codedata codedata, SemanticModel semanticModel,
                                                             ModuleInfo moduleInfo,
                                                             boolean removeDeprecated) {
+        // Caller passes its own current file's semantic model here (see ServiceModelGeneratorService
+        // #getListenerModel) -- that model doesn't contain the target listener's module, so the parent
+        // symbol must be derived from `moduleInfo` (FunctionDataBuilder's own Central-index lookup)
+        // instead of being searched for in the wrong semantic model.
+        return getListenerModelByName(codedata, semanticModel, moduleInfo, removeDeprecated, null);
+    }
+
+    private static Optional<Listener> getListenerModelByName(Codedata codedata, SemanticModel semanticModel,
+                                                            ModuleInfo moduleInfo,
+                                                            boolean removeDeprecated,
+                                                            SemanticModel parentSymbolSemanticModel) {
         String listenerType = codedata.getType() == null ? "Listener" : codedata.getType();
         FunctionDataBuilder functionDataBuilder = new FunctionDataBuilder()
                 .parentSymbolType(listenerType)
@@ -360,8 +375,11 @@ public class ListenerUtil {
                 .moduleInfo(new ModuleInfo(codedata.getOrgName(), codedata.getPackageName(), codedata.getModuleName(),
                         codedata.getVersion()))
                 .lsClientLogger(null) // Set the LS Client Logger
-                .functionResultKind(FunctionData.Kind.LISTENER_INIT)
-                .userModuleInfo(moduleInfo);
+                .functionResultKind(FunctionData.Kind.LISTENER_INIT);
+        if (parentSymbolSemanticModel != null) {
+            functionDataBuilder.semanticModel(parentSymbolSemanticModel);
+        }
+        functionDataBuilder.userModuleInfo(moduleInfo);
 
         FunctionData functionData = functionDataBuilder.build();
         Listener listener = createBaseListenerModel(functionData);

@@ -90,6 +90,7 @@ export interface ServiceCreationViewProps {
     packageName: string;
     moduleName: string;
     version?: string;
+    isLocalRepository?: boolean;
 }
 
 interface HeaderInfo {
@@ -106,7 +107,7 @@ enum PullingStatus {
 
 export function ServiceCreationView(props: ServiceCreationViewProps) {
 
-    const { projectPath, orgName, packageName, moduleName, version } = props;
+    const { projectPath, orgName, packageName, moduleName, version, isLocalRepository } = props;
     const { rpcClient } = useRpcContext();
 
     const [headerInfo, setHeaderInfo] = useState<HeaderInfo>(null);
@@ -135,7 +136,7 @@ export function ServiceCreationView(props: ServiceCreationViewProps) {
                 .getServiceDesignerRpcClient()
                 .getServiceInitModel({
                     filePath: "", orgName: orgName, pkgName: packageName, moduleName: moduleName,
-                    listenerName: "", version: version
+                    listenerName: "", version: version, isLocalRepository: isLocalRepository
                 });
 
             let timer: ReturnType<typeof setTimeout> | null = null;
@@ -293,23 +294,34 @@ export function ServiceCreationView(props: ServiceCreationViewProps) {
                     )}
                     {pullingStatus === PullingStatus.PULLING && (
                         <StatusCard>
-                            <DownloadIcon color={ThemeColors.ON_SURFACE} />
+                            {isLocalRepository ? (
+                                <Icon name="bi-spinner" sx={{ color: ThemeColors.ON_SURFACE, fontSize: "18px" }} />
+                            ) : (
+                                <DownloadIcon color={ThemeColors.ON_SURFACE} />
+                            )}
                             <StatusText variant="body2">
-                                Please wait while the {packageName} package is being pulled...
+                                {isLocalRepository
+                                    ? `Please wait while the ${packageName} package is being loaded from your `
+                                        + "local repository..."
+                                    : `Please wait while the ${packageName} package is being pulled...`}
                             </StatusText>
                         </StatusCard>
                     )}
                     {pullingStatus === PullingStatus.SUCCESS && (
                         <StatusCard>
                             <Icon name="bi-success" sx={{ color: ThemeColors.PRIMARY, fontSize: "18px" }} />
-                            <StatusText variant="body2">Package pulled successfully.</StatusText>
+                            <StatusText variant="body2">
+                                {isLocalRepository ? "Package loaded successfully." : "Package pulled successfully."}
+                            </StatusText>
                         </StatusCard>
                     )}
                     {pullingStatus === PullingStatus.ERROR && (
                         <StatusCard>
                             <Icon name="bi-error" sx={{ color: ThemeColors.ERROR, fontSize: "18px" }} />
                             <StatusText variant="body2">
-                                Failed to pull the package. Please try again.
+                                {isLocalRepository
+                                    ? "Failed to load the package from your local repository. Please try again."
+                                    : "Failed to pull the package. Please try again."}
                             </StatusText>
                             <Button appearance="secondary" onClick={fetchData}>Retry</Button>
                         </StatusCard>

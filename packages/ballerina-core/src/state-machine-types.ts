@@ -158,6 +158,9 @@ export interface ArtifactInfo {
     packageName?: string;
     moduleName?: string;
     version?: string;
+    // Whether this artifact was picked from a Ballerina local-repository (~/.ballerina/repositories/local)
+    // search result rather than Central.
+    isLocalRepository?: boolean;
 }
 
 export interface ManagedCredentialMapping {

@@ -422,7 +422,8 @@
           "optional": false,
           "advanced": false
         }
-      }
+      },
+      "isLocalRepository": false
     }
   }
 }

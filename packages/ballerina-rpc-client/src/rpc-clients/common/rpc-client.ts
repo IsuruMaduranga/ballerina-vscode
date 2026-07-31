@@ -55,6 +55,7 @@ import {
     goToSource,
     hasCentralPATConfigured,
     isNPSupported,
+    localCentralSearchEnabled,
     openExternalUrl,
     publishToCentral,
     runBackgroundTerminalCommand,
@@ -124,6 +125,10 @@ export class CommonRpcClient implements CommonRPCAPI {
 
     experimentalEnabled(): Promise<boolean> {
         return this._messenger.sendRequest(experimentalEnabled, HOST_EXTENSION);
+    }
+
+    localCentralSearchEnabled(): Promise<boolean> {
+        return this._messenger.sendRequest(localCentralSearchEnabled, HOST_EXTENSION);
     }
 
     isNPSupported(): Promise<boolean> {
