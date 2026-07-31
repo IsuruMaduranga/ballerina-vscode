@@ -41,6 +41,8 @@ import {
     ConnectorSpecCancelRequest,
     ConfigurationProvideRequest,
     ConfigurationCancelRequest,
+    CreateManagedConnectionRequest,
+    CreateManagedConnectionResponse,
     UIChatMessage,
     CheckpointInfo,
     AbortAIGenerationRequest,
@@ -127,6 +129,8 @@ export const provideConnectorSpec: RequestType<ConnectorSpecRequest, void> = { m
 export const cancelConnectorSpec: RequestType<ConnectorSpecCancelRequest, void> = { method: `${_preFix}/cancelConnectorSpec` };
 export const provideConfiguration: RequestType<ConfigurationProvideRequest, void> = { method: `${_preFix}/provideConfiguration` };
 export const cancelConfiguration: RequestType<ConfigurationCancelRequest, void> = { method: `${_preFix}/cancelConfiguration` };
+export const createManagedConnection: RequestType<CreateManagedConnectionRequest, CreateManagedConnectionResponse> = { method: `${_preFix}/createManagedConnection` };
+export const cancelManagedConnection: NotificationType<void> = { method: `${_preFix}/cancelManagedConnection` };
 export const getChatMessages: NotificationType<void> = { method: `${_preFix}/getChatMessages` };
 export const getCheckpoints: NotificationType<void> = { method: `${_preFix}/getCheckpoints` };
 export const restoreCheckpoint: RequestType<RestoreCheckpointRequest, void> = { method: `${_preFix}/restoreCheckpoint` };

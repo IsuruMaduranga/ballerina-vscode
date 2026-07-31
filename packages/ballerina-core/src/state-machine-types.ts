@@ -160,6 +160,23 @@ export interface ArtifactInfo {
     version?: string;
 }
 
+export interface ManagedCredentialMapping {
+    name: string;
+    credentialField: "clientId" | "clientSecret" | "refreshToken" | "token";
+    description: string;
+    secret?: boolean;
+}
+
+export interface ManagedConnectionGroup {
+    // Stable per-payload identity. `vendor` is not unique across groups, so the form keys off this.
+    id: string;
+    vendor: string;
+    authType: "oauth2RefreshToken" | "staticToken";
+    variables: ManagedCredentialMapping[];
+    // Refresh grant only.
+    refreshUrlVar?: string;
+}
+
 export interface ConfigurationCollectorMetadata {
     requestId: string;
     variables: Array<{
@@ -171,6 +188,7 @@ export interface ConfigurationCollectorMetadata {
     existingValues?: Record<string, string>;
     message: string;
     isTestConfig?: boolean;
+    managedConnections?: ManagedConnectionGroup[];
 }
 
 export interface AgentMetadata {

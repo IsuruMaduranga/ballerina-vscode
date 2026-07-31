@@ -39,6 +39,8 @@ import {
     ConnectorSpecCancelRequest,
     ConfigurationProvideRequest,
     ConfigurationCancelRequest,
+    CreateManagedConnectionRequest,
+    CreateManagedConnectionResponse,
     UIChatMessage,
     CheckpointInfo,
     AbortAIGenerationRequest,
@@ -136,6 +138,8 @@ export interface AIPanelAPI {
     cancelConnectorSpec: (params: ConnectorSpecCancelRequest) => Promise<void>;
     provideConfiguration: (params: ConfigurationProvideRequest) => Promise<void>;
     cancelConfiguration: (params: ConfigurationCancelRequest) => Promise<void>;
+    createManagedConnection: (params: CreateManagedConnectionRequest) => Promise<CreateManagedConnectionResponse>;
+    cancelManagedConnection: () => void;
     // ==================================
     // Chat State Management
     // ==================================
