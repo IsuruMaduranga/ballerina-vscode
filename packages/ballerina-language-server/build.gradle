@@ -32,6 +32,7 @@ if (!extensionVersion) {
     throw new GradleException("No version found in ${extensionManifest}")
 }
 def buildVersion = providers.gradleProperty("version").getOrElse(extensionVersion)
+def publicationArtifact = providers.gradleProperty("publicationArtifact")
 
 allprojects {
     group = project.group
@@ -435,8 +436,17 @@ task buildCommons {
 publishing {
     publications {
         mavenJava(MavenPublication) { publication ->
-            publication.artifact(tasks.pack) {
-                classifier = ''
+            if (publicationArtifact.isPresent()) {
+                // Release workflows pass the exact jar already bundled in the VSIX.
+                // Publishing that immutable file makes the GitHub Release asset,
+                // bundled server, and Maven package one canonical artifact.
+                publication.artifact(file(publicationArtifact.get())) {
+                    classifier = ''
+                }
+            } else {
+                publication.artifact(tasks.pack) {
+                    classifier = ''
+                }
             }
         }
     }

@@ -174,10 +174,10 @@ jobs:
           # so the two assets can never disagree about what was built.
           extraAssets: packages/ballerina-extension/ls/ballerina-language-server-*.jar
 
-      # Publish only after the GitHub Release and its assets exist. On a job re-run,
-      # Maven correctly rejects the immutable version with HTTP 409; that means this
-      # exact package was already published, so continue to the recoverable downstream
-      # notification and PR steps.
+      # Publish only after the GitHub Release and its assets exist. Publication uses
+      # the exact jar already bundled in the VSIX and uploaded to the release. On a
+      # rerun, a Maven 409 is accepted only after downloading the existing package
+      # and proving that its SHA-256 matches this canonical jar.
       - name: Publish language server to GitHub Packages
         working-directory: packages/ballerina-language-server
         env:
@@ -191,10 +191,16 @@ jobs:
           fi
 
           version=$(node -p "require('../ballerina-extension/package.json').version")
+          canonicalJar="../ballerina-extension/ls/ballerina-language-server-${version}.jar"
+          if [ ! -f "${canonicalJar}" ]; then
+            echo "::error::Canonical language-server jar is missing: ${canonicalJar}"
+            exit 1
+          fi
           echo "Publishing io.ballerina:ballerina-language-server:${version} to GitHub Packages"
 
           set +e
           ./gradlew -Pversion="${version}" \
+            -PpublicationArtifact="${canonicalJar}" \
             publishMavenJavaPublicationToGitHubPackagesRepository \
             -x check -x test 2>&1 | tee publish.log
           publishStatus=${PIPESTATUS[0]}
@@ -204,7 +210,25 @@ jobs:
             exit 0
           fi
           if grep -Eq 'status code 409|409 Conflict' publish.log; then
-            echo "::notice::Language-server package ${version} already exists; continuing this release re-run."
+            existingJar=$(mktemp "${RUNNER_TEMP}/ballerina-language-server.XXXXXX.jar")
+            packageUrl="https://maven.pkg.github.com/ballerina-platform/ballerina-language-server/io/ballerina/ballerina-language-server/${version}/ballerina-language-server-${version}.jar"
+            if ! curl --fail --silent --show-error --location \
+              --user "${packageUser}:${packagePAT}" \
+              --output "${existingJar}" \
+              "${packageUrl}"; then
+              echo "::error::The package version exists, but its jar could not be downloaded for identity verification."
+              exit "${publishStatus}"
+            fi
+
+            canonicalHash=$(sha256sum "${canonicalJar}" | cut -d ' ' -f 1)
+            existingHash=$(sha256sum "${existingJar}" | cut -d ' ' -f 1)
+            if [ "${canonicalHash}" != "${existingHash}" ]; then
+              echo "::error::Existing language-server package ${version} does not match the canonical release jar."
+              echo "::error::Canonical SHA-256: ${canonicalHash}; package SHA-256: ${existingHash}"
+              exit 1
+            fi
+
+            echo "::notice::Language-server package ${version} already exists and matches the canonical release jar."
             exit 0
           fi
           exit "${publishStatus}"

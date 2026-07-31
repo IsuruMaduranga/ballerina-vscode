@@ -221,26 +221,35 @@ missing, the copy command fails rather than silently substituting one.
 
 When `githubRelease` is selected, `release-pre-release.yml` publishes
 `io.ballerina:ballerina-language-server` to GitHub Packages at the same version after
-creating the GitHub release or pre-release and uploading both assets. A rerun treats
-GitHub Packages' HTTP 409 for that immutable version as confirmation that publication
-already succeeded. The workflow sends its completion announcement only after both
-operations finish. There is no independent LS publication workflow because the extension
-manifest owns the shared version. This path publishes only Gradle's `mavenJava`
-publication and does not run Gradle's `release` task: that task rewrote the `version=`
-key in `gradle.properties`, which no longer exists now that the extension manifest owns
-the version.
+creating the GitHub release or pre-release and uploading both assets. Gradle publishes
+the exact jar from `packages/ballerina-extension/ls/` that was bundled in the VSIX and
+uploaded as the release asset, rather than rebuilding a second candidate. On a rerun,
+GitHub Packages' HTTP 409 is accepted only after the workflow downloads the existing
+Maven jar and verifies that its SHA-256 equals the canonical release jar. A missing or
+mismatched package fails the release. The workflow sends its completion announcement
+only after both operations finish. There is no independent LS publication workflow
+because the extension manifest owns the shared version. This path publishes only
+Gradle's `mavenJava` publication and does not run Gradle's `release` task: that task
+rewrote the `version=` key in `gradle.properties`, which no longer exists now that the
+extension manifest owns the version.
 
-## Required GitHub secrets
+## Required GitHub secrets for publishing and notifications
 
-- `BALLERINA_BOT_USERNAME` / `BALLERINA_BOT_TOKEN` — publish the LS Maven package to GitHub Packages
-- `VSCE_TOKEN` — publish-vsix → VSCode Marketplace
-- `OPENVSX_TOKEN` — publish-vsix → OpenVSX
-- `EDITOR_TEAM_CHAT_API` — every chat notification: threaded release progress, the release
-  announcement, nightly build success, and build/sync failures
-- `CLOUD_EDITOR_BUILDER_REPO` / `CLOUD_EDITOR_BUILDER_REPO_TOKEN` — optional cross-repo dispatch on stable release (publish-vsix)
+- `BALLERINA_BOT_USERNAME` / `BALLERINA_BOT_TOKEN` — `release-pre-release.yml`, when
+  `githubRelease` is selected: publish and verify the LS Maven package in GitHub Packages.
+- `VSCE_TOKEN` — `publish-vsix.yml`: publish to VS Code Marketplace.
+- `OPENVSX_TOKEN` — `publish-vsix.yml`: publish to OpenVSX.
+- `EDITOR_TEAM_CHAT_API` — `release-pre-release.yml`, `schedule.yml`,
+  `sync-main-with-releases.yml`, and failure-notification actions: release progress,
+  nightly success, and build/sync failure notifications.
+
+## Optional GitHub secrets
+
+- `CLOUD_EDITOR_BUILDER_REPO` / `CLOUD_EDITOR_BUILDER_REPO_TOKEN` —
+  `publish-vsix.yml`: optional cross-repository dispatch after a stable release.
 - `COPILOT_ROOT_URL` / `COPILOT_DEV_ROOT_URL` / `APPINSIGHTS_INSTRUMENTATION_KEY` —
-  passed explicitly to trusted nightly, custom-development, and release builds. Pull-request
-  builds receive none of these secrets.
+  `schedule.yml`, `devBuild.yml`, and `release-pre-release.yml`: optional build-time
+  endpoint and telemetry configuration. Pull-request builds receive none of these secrets.
 
 Configure these in the new repo's settings before triggering anything.
 
