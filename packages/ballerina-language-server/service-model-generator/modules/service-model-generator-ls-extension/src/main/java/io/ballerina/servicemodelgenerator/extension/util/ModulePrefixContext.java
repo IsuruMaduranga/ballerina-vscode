@@ -20,15 +20,11 @@ package io.ballerina.servicemodelgenerator.extension.util;
 
 import io.ballerina.compiler.syntax.tree.ModulePartNode;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * The import prefixes one code-generation operation will emit, resolved <b>once</b> against the target
@@ -86,7 +82,7 @@ public final class ModulePrefixContext {
         if (existing.isPresent()) {
             resolved = existing.get();
         } else {
-            resolved = allocate(module);
+            resolved = ModuleAliasResolver.allocate(module, null, claimed);
             pendingImports.put(key, resolved);
         }
         claimed.add(resolved);
@@ -99,58 +95,15 @@ public final class ModulePrefixContext {
         return resolved;
     }
 
-    /** A free prefix for a module not yet imported: natural prefix, else generated alias, else numbered. */
-    private String allocate(String module) {
-        String natural = ModuleAliasResolver.selfPrefix(module);
-        if (!claimed.contains(natural)) {
-            return natural;
-        }
-        String fallback = ModuleAliasResolver.defaultAlias(module);
-        if (!fallback.equals(natural) && !claimed.contains(fallback)) {
-            return fallback;
-        }
-        String base = fallback.equals(natural) ? natural : fallback;
-        int suffix = 2;
-        while (claimed.contains(base + suffix)) {
-            suffix++;
-        }
-        return base + suffix;
-    }
-
     /**
      * Maps every registered module's natural prefix in {@code text} onto its resolved prefix, e.g.
      * {@code twilio:Foo} &rarr; {@code triggerTwilio:Foo}. Only standalone module qualifiers are
      * rewritten; unregistered modules, longer identifiers, and dotted paths are left untouched.
      */
     public String requalify(String text) {
-        if (text == null || text.isEmpty() || naturalToEmitted.isEmpty()) {
-            return text == null ? "" : text;
-        }
-        List<String> changing = new ArrayList<>();
-        for (Map.Entry<String, String> entry : naturalToEmitted.entrySet()) {
-            if (!entry.getKey().equals(entry.getValue()) && !entry.getKey().isBlank()
-                    && !ambiguousNaturals.contains(entry.getKey())) {
-                changing.add(entry.getKey());
-            }
-        }
-        if (changing.isEmpty()) {
-            return text;
-        }
-        StringBuilder alternation = new StringBuilder();
-        for (String natural : changing) {
-            if (!alternation.isEmpty()) {
-                alternation.append('|');
-            }
-            alternation.append(Pattern.quote(natural));
-        }
-        Pattern qualifier = Pattern.compile("(?<![\\w.])(" + alternation + ")(?=:)");
-        Matcher matcher = qualifier.matcher(text);
-        StringBuilder out = new StringBuilder();
-        while (matcher.find()) {
-            matcher.appendReplacement(out, Matcher.quoteReplacement(naturalToEmitted.get(matcher.group(1))));
-        }
-        matcher.appendTail(out);
-        return out.toString();
+        Map<String, String> effective = new LinkedHashMap<>(naturalToEmitted);
+        effective.keySet().removeAll(ambiguousNaturals);
+        return ModuleAliasResolver.requalify(text, effective);
     }
 
     /**

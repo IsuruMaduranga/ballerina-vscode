@@ -29,10 +29,12 @@ import io.ballerina.servicemodelgenerator.extension.model.Value;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_LISTENER_CONFIG;
@@ -106,10 +108,49 @@ public final class TriggerModelSynthesizer {
 
         String listenerKind = primary.multipleListenersAllowed()
                 ? "MULTIPLE_SELECT_LISTENER" : "SINGLE_SELECT_LISTENER";
+        List<String> importStatements = collectImportStatements(authoring, identity);
 
         return Optional.of(new TriggerUISchemaModel(
                 SCHEMA_VERSION, id, displayName, "", orgName, packageName, moduleName, version,
-                kind, icon, kind, listenerKind, initProperties, serviceTypeModels, List.of(), List.of(), null));
+                kind, icon, kind, listenerKind, initProperties, serviceTypeModels, List.of(),
+                importStatements, null));
+    }
+
+    /**
+     * Extra imports a synthesized model needs beyond the connector's own primary import: each service
+     * type's own module (e.g. CDC's shared {@code ballerinax/cdc}, distinct from a connector like
+     * {@code ballerinax/mssql.cdc}) plus every listener's declared {@code requiredImports} (e.g. a
+     * driver package needed only for its side effect). The connector's own org/module is excluded --
+     * {@code SchemaDrivenSourceGenerator} already emits that import separately.
+     */
+    private static List<String> collectImportStatements(TriggerMetadataModel authoring, ConnectorIdentity identity) {
+        Set<String> imports = new LinkedHashSet<>();
+        for (TriggerMetadataModel.ServiceType serviceType : authoring.serviceTypes()) {
+            addImportIfCrossModule(imports, serviceType.type() == null ? null : serviceType.type().packageInfo(),
+                    identity);
+        }
+        for (TriggerMetadataModel.Listener listener : authoring.listeners()) {
+            if (listener.requiredImports() == null) {
+                continue;
+            }
+            for (TriggerMetadataModel.RequiredImport required : listener.requiredImports()) {
+                addImportIfCrossModule(imports, required.packageInfo(), identity);
+            }
+        }
+        return List.copyOf(imports);
+    }
+
+    private static void addImportIfCrossModule(Set<String> imports, TypeRef.PackageInfo packageInfo,
+                                               ConnectorIdentity identity) {
+        if (packageInfo == null || packageInfo.org() == null || packageInfo.packageName() == null) {
+            return;
+        }
+        if (packageInfo.org().equals(identity.orgName()) && packageInfo.packageName().equals(identity.packageName())) {
+            return;
+        }
+        String module = packageInfo.moduleName() != null && !packageInfo.moduleName().isBlank()
+                ? packageInfo.moduleName() : packageInfo.packageName();
+        imports.add(packageInfo.org() + "/" + module);
     }
 
     /**

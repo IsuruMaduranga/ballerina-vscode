@@ -20,6 +20,9 @@ package io.ballerina.servicemodelgenerator.extension.util;
 
 import io.ballerina.compiler.syntax.tree.ModulePartNode;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -68,8 +71,7 @@ public final class ModuleAliasResolver {
 
     /**
      * The prefix to emit for {@code org/module} in an actual file: reuses an existing import's prefix
-     * verbatim, else the natural prefix if free, else the generated alias, else a numeric suffix
-     * ({@code ftp} &rarr; {@code ftp2}).
+     * verbatim, else whatever {@link #allocate} picks against that file's already-taken prefixes.
      *
      * @param overridePrefix a model-pinned prefix to prefer over the computed one; may be null/blank
      */
@@ -77,16 +79,26 @@ public final class ModuleAliasResolver {
         if (module == null || module.isBlank()) {
             return "";
         }
-        boolean pinned = overridePrefix != null && !overridePrefix.isBlank();
-        String preferred = pinned ? overridePrefix : selfPrefix(module);
         if (rootNode == null) {
-            return preferred;
+            return overridePrefix != null && !overridePrefix.isBlank() ? overridePrefix : selfPrefix(module);
         }
         Optional<String> existing = Utils.existingImportPrefix(rootNode, org, module);
         if (existing.isPresent()) {
             return existing.get();
         }
-        Set<String> taken = Utils.importedPrefixes(rootNode);
+        return allocate(module, overridePrefix, Utils.importedPrefixes(rootNode));
+    }
+
+    /**
+     * A free prefix for {@code module} given a possibly-pinned {@code overridePrefix} and the prefixes
+     * already {@code taken}: the override/natural prefix itself if free, else the generated alias, else
+     * a numbered suffix ({@code ftp} &rarr; {@code ftp2}). Shared by {@link #resolve} (taken = one
+     * file's existing imports) and {@code ModulePrefixContext} (taken = every prefix claimed so far
+     * across several modules in one operation).
+     */
+    static String allocate(String module, String overridePrefix, Set<String> taken) {
+        boolean pinned = overridePrefix != null && !overridePrefix.isBlank();
+        String preferred = pinned ? overridePrefix : selfPrefix(module);
         if (!taken.contains(preferred)) {
             return preferred;
         }
@@ -113,11 +125,46 @@ public final class ModuleAliasResolver {
      * other modules, longer identifiers, or dotted paths. No-op when no aliasing is in effect.
      */
     public static String rewriteSelfPrefix(String text, String selfPrefix, String emitAlias) {
-        if (text == null || text.isEmpty() || selfPrefix == null || selfPrefix.isBlank()
-                || selfPrefix.equals(emitAlias)) {
+        if (selfPrefix == null || selfPrefix.isBlank()) {
             return text == null ? "" : text;
         }
-        Pattern qualifier = Pattern.compile("(?<![\\w.])" + Pattern.quote(selfPrefix) + "(?=:)");
-        return qualifier.matcher(text).replaceAll(Matcher.quoteReplacement(emitAlias));
+        return requalify(text, Map.of(selfPrefix, emitAlias == null ? selfPrefix : emitAlias));
+    }
+
+    /**
+     * Re-qualifies every standalone module qualifier in {@code text} per {@code naturalToEmitted}
+     * (natural prefix -&gt; resolved emit alias), in a single pass over the original text so a chain of
+     * aliases (one module's emitted name equal to another's natural prefix) can never cascade. An entry
+     * mapping a prefix to itself is a no-op. Shared by {@link #rewriteSelfPrefix} (one prefix) and
+     * {@code ModulePrefixContext} (every aliased module registered in one operation).
+     */
+    static String requalify(String text, Map<String, String> naturalToEmitted) {
+        if (text == null || text.isEmpty() || naturalToEmitted.isEmpty()) {
+            return text == null ? "" : text;
+        }
+        List<String> changing = new ArrayList<>();
+        for (Map.Entry<String, String> entry : naturalToEmitted.entrySet()) {
+            if (!entry.getKey().isBlank() && !entry.getKey().equals(entry.getValue())) {
+                changing.add(entry.getKey());
+            }
+        }
+        if (changing.isEmpty()) {
+            return text;
+        }
+        StringBuilder alternation = new StringBuilder();
+        for (String natural : changing) {
+            if (!alternation.isEmpty()) {
+                alternation.append('|');
+            }
+            alternation.append(Pattern.quote(natural));
+        }
+        Pattern qualifier = Pattern.compile("(?<![\\w.])(" + alternation + ")(?=:)");
+        Matcher matcher = qualifier.matcher(text);
+        StringBuilder out = new StringBuilder();
+        while (matcher.find()) {
+            matcher.appendReplacement(out, Matcher.quoteReplacement(naturalToEmitted.get(matcher.group(1))));
+        }
+        matcher.appendTail(out);
+        return out.toString();
     }
 }
