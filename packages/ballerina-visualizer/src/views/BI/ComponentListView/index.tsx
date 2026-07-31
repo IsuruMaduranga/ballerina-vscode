@@ -132,19 +132,21 @@ export function ComponentListView(props: ComponentListViewProps) {
             <ViewContent padding>
                 <Container>
                     <FilterBar>
-                        <ChipRow role="tablist" aria-label="Artifact categories">
-                            {!isLibrary && CATEGORY_CHIPS.map((chip) => (
-                                <Chip
-                                    key={chip.key}
-                                    role="tab"
-                                    aria-selected={activeCategory === chip.key}
-                                    active={activeCategory === chip.key}
-                                    onClick={() => setActiveCategory(chip.key)}
-                                >
-                                    {chip.label}
-                                </Chip>
-                            ))}
-                        </ChipRow>
+                        {!isLibrary && (
+                            <ChipRow role="tablist" aria-label="Artifact categories">
+                                {CATEGORY_CHIPS.map((chip) => (
+                                    <Chip
+                                        key={chip.key}
+                                        role="tab"
+                                        aria-selected={activeCategory === chip.key}
+                                        active={activeCategory === chip.key}
+                                        onClick={() => setActiveCategory(chip.key)}
+                                    >
+                                        {chip.label}
+                                    </Chip>
+                                ))}
+                            </ChipRow>
+                        )}
                         <SearchSlot>
                             <SearchBox
                                 value={searchQuery}

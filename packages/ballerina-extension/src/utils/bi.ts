@@ -304,6 +304,9 @@ export function validateProjectPath(
 
         // An explicit directoryName wins; otherwise derive the folder from the project name (legacy).
         const folderSegment = directoryName ?? sanitizeName(projectName);
+        if (createDirectory && !isSafePathSegment(folderSegment)) {
+            return { isValid: false, errorMessage: 'Invalid directory name', errorField: ValidateProjectFormErrorField.PATH };
+        }
         const finalPath = createDirectory ? path.join(projectPath, folderSegment) : projectPath;
 
         // If not creating a new directory, check if the target directory already has a Ballerina project
@@ -472,6 +475,9 @@ function setupProjectInfo(projectRequest: ProjectRequest): ProcessedProjectInfo 
     // directory can differ from the Ballerina package name; otherwise the folder
     // is derived from the package name (legacy behaviour).
     const folderName = projectRequest.directoryName ?? sanitizedPackageName;
+    if (projectRequest.createDirectory) {
+        assertSafePathSegment(folderName);
+    }
     const projectRoot = resolveProjectPath(
         projectRequest.projectPath,
         folderName,
@@ -765,6 +771,7 @@ function addToWorkspaceToml(workspacePath: string, packageName: string) {
  * toml), falling back to `base`. Callers holding the parsed toml should pass its `packages`.
  */
 function resolveAvailablePackageFolder(workspaceRoot: string, base: string, existingPackages?: string[]): string {
+    assertSafePathSegment(base);
     const MAX_ATTEMPTS = 50;
     const packages = existingPackages ?? readBallerinaProject(workspaceRoot)?.toml.workspace?.packages ?? [];
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -775,13 +782,14 @@ function resolveAvailablePackageFolder(workspaceRoot: string, base: string, exis
             return candidate;
         }
     }
-    return base;
+    throw new Error(`Could not find an available folder name for "${base}" in "${workspaceRoot}" after ${MAX_ATTEMPTS} attempts`);
 }
 
 /** Workspace root + collision-free package folder for a component-creation request; null when not inside a workspace. */
 function resolveExistingWorkspaceTarget(projectRequest: ProjectRequest): { workspaceRoot: string; packageFolder: string } | null {
     const sanitizedPackageName = sanitizeName(projectRequest.packageName);
     const folderName = projectRequest.directoryName?.trim() || sanitizedPackageName;
+    assertSafePathSegment(folderName);
     const finalPath = path.join(projectRequest.projectPath, folderName);
 
     // Case (a): the chosen path itself is a workspace root — the user pointed at
@@ -1273,6 +1281,28 @@ export async function handleFunctionCreation(targetFile: string, params: Compone
 // Test_Integration test_integration   Test Integration testIntegration -> testintegration
 export function sanitizeName(name: string): string {
     return name.replace(/[^a-z0-9]_./gi, '_').toLowerCase(); // Replace invalid characters with underscores
+}
+
+/**
+ * Whether `segment` is safe to `path.join` onto a trusted base directory as a single real
+ * path segment — never empty, a separator (either platform's), a NUL byte, or a `.`/`..`
+ * traversal component. Applied to both an explicit `directoryName` and any
+ * project/package-name-derived fallback, since only the latter goes through
+ * {@link sanitizeName} — an explicit `directoryName` is otherwise used verbatim.
+ */
+function isSafePathSegment(segment: string): boolean {
+    const trimmed = segment?.trim() ?? '';
+    if (trimmed === '' || trimmed === '.' || trimmed === '..') {
+        return false;
+    }
+    return !/[\\/\0]/.test(trimmed);
+}
+
+/** Throws when `segment` is not {@link isSafePathSegment} — the creation-path guard for callers that can't return a validation result. */
+function assertSafePathSegment(segment: string): void {
+    if (!isSafePathSegment(segment)) {
+        throw new Error(`Invalid directory name: "${segment}"`);
+    }
 }
 
 export async function getSuggestedProjectDefaults(isInProject: boolean): Promise<SuggestedProjectDefaultsResponse> {

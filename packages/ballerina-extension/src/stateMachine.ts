@@ -830,46 +830,70 @@ const stateMachine = createMachine<MachineContext>(
 let visualizerWebviewReady: Promise<void> = Promise.resolve();
 
 /**
- * Ensures the visualizer panel exists, revealing an open one. `waitForReady` blocks until
- * the webview reports `webviewReady`; awaiting the shared `visualizerWebviewReady` (not
- * just this call's panel) is what keeps view activation safe now that the panel is
- * usually created during startup.
+ * How long `openVisualizerPanel` waits for `webviewReady` before giving up and proceeding
+ * anyway. Bounds every call (not just the one that creates the panel) so a missing
+ * notification can never wedge the `viewActive` sub-machine — which has no `onError` for
+ * `openWebView` — permanently: without this, every later view-activation would keep
+ * awaiting the same never-resolving `visualizerWebviewReady`.
  */
-function openVisualizerPanel(context: MachineContext, waitForReady: boolean): Promise<boolean> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            if (VisualizerWebview.currentPanel) {
-                VisualizerWebview.currentPanel.getWebview()?.reveal();
-            } else {
-                await closeOrphanWebviewTabs([VisualizerWebview.viewType]);
-                let markReady: () => void = () => { };
-                visualizerWebviewReady = new Promise<void>((ready) => { markReady = ready; });
-                VisualizerWebview.currentPanel = new VisualizerWebview();
-                RPCLayer._messenger.onNotification(webviewReady, () => {
-                    history = new History();
-                    undoRedoManager = new UndoRedoManager();
-                    const webview = VisualizerWebview.currentPanel?.getWebview();
-                    if (webview && (context.isBI || context.view === MACHINE_VIEW.BIWelcome)) {
-                        const biExtension = isInWI() || extensions.getExtension('wso2.ballerina-integrator');
-                        webview.iconPath = {
-                            light: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-dark.svg' : 'ballerina.svg')),
-                            dark: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-light.svg' : 'ballerina-inverse.svg'))
-                        };
-                    }
-                    markReady();
-                });
-            }
-            if (waitForReady) {
-                await visualizerWebviewReady;
-            }
-            resolve(true);
-        } catch (e) {
-            // Never silently: a failure here means no webview appears at all, which
-            // is exactly how the startup panel regressed unnoticed before.
-            console.error("Failed to open the visualizer webview panel.", e);
-            reject(e);
+const VISUALIZER_WEBVIEW_READY_TIMEOUT_MS = 15000;
+
+/**
+ * Ensures the visualizer panel exists, revealing an open one. `waitForReady` blocks until
+ * the webview reports `webviewReady` (or the timeout above elapses); awaiting the shared
+ * `visualizerWebviewReady` (not just this call's panel) is what keeps view activation safe
+ * now that the panel is usually created during startup.
+ */
+async function openVisualizerPanel(context: MachineContext, waitForReady: boolean): Promise<boolean> {
+    try {
+        if (VisualizerWebview.currentPanel) {
+            VisualizerWebview.currentPanel.getWebview()?.reveal();
+        } else {
+            await closeOrphanWebviewTabs([VisualizerWebview.viewType]);
+            let markReady: () => void = () => { };
+            visualizerWebviewReady = new Promise<void>((ready) => { markReady = ready; });
+            VisualizerWebview.currentPanel = new VisualizerWebview();
+            const webviewPanel = VisualizerWebview.currentPanel.getWebview();
+            // `_messenger` is a single instance shared across every panel this extension ever
+            // creates, so this handler must be disposed with its own panel — otherwise closing
+            // and reopening the visualizer keeps piling up handlers that all re-run (and all
+            // fire) on every future `webviewReady`.
+            const webviewReadyDisposable = RPCLayer._messenger.onNotification(webviewReady, () => {
+                history = new History();
+                undoRedoManager = new UndoRedoManager();
+                const webview = VisualizerWebview.currentPanel?.getWebview();
+                if (webview && (context.isBI || context.view === MACHINE_VIEW.BIWelcome)) {
+                    const biExtension = isInWI() || extensions.getExtension('wso2.ballerina-integrator');
+                    webview.iconPath = {
+                        light: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-dark.svg' : 'ballerina.svg')),
+                        dark: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-light.svg' : 'ballerina-inverse.svg'))
+                    };
+                }
+                markReady();
+            });
+            webviewPanel?.onDidDispose(() => webviewReadyDisposable.dispose());
         }
-    });
+        if (waitForReady) {
+            let timer: ReturnType<typeof setTimeout>;
+            const timedOut = await Promise.race([
+                visualizerWebviewReady.then(() => false),
+                new Promise<boolean>((r) => { timer = setTimeout(() => r(true), VISUALIZER_WEBVIEW_READY_TIMEOUT_MS); }),
+            ]);
+            clearTimeout(timer);
+            if (timedOut) {
+                // Proceed rather than stall — same principle `openInitialWebView` already
+                // applies to startup. A genuinely-late notification, if it ever arrives, is
+                // a harmless no-op via `markReady()` above.
+                console.warn(`Timed out after ${VISUALIZER_WEBVIEW_READY_TIMEOUT_MS}ms waiting for the visualizer webview to report ready; continuing.`);
+            }
+        }
+        return true;
+    } catch (e) {
+        // Never silently: a failure here means no webview appears at all, which
+        // is exactly how the startup panel regressed unnoticed before.
+        console.error("Failed to open the visualizer webview panel.", e);
+        throw e;
+    }
 }
 
 // Create a service to interpret the machine

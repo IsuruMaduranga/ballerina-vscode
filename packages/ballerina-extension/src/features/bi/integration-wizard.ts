@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -35,8 +36,13 @@ import { StateMachine } from "../../stateMachine";
 /** Bumped whenever the wizard wire contract changes in a way remote hosts must detect. */
 const WIZARD_CAPABILITIES_VERSION = 1;
 
-/** Fixed OS-temp home for the wizard's throwaway staging package. */
-const STAGING_PARENT = path.join(os.tmpdir(), "wso2-integration-wizard");
+/**
+ * OS-temp home for the wizard's throwaway staging package, scoped to this extension-host
+ * process (pid + a module-load session id) so two VS Code windows never race on the same
+ * staging directory — a fixed shared name let one window's cleanup delete another's
+ * in-progress staging package.
+ */
+const STAGING_PARENT = path.join(os.tmpdir(), `wso2-integration-wizard-${process.pid}-${crypto.randomUUID()}`);
 /** Package name of the staging package (irrelevant to the artifact models it serves). */
 const STAGING_PACKAGE = "integration";
 

@@ -48,6 +48,9 @@ export const AddPanel = styled.div({
 
 export const FilterBar = styled(FilterBarBase)`
     padding: 8px 16px 12px;
+    /* Library mode omits ChipRow entirely (no categories to filter by) — without its
+       flex:1 to push against, keep the search box pinned to the right on its own. */
+    justify-content: flex-end;
 `;
 
 // Wider than the wizard's chip bar — this screen has more room to spare.

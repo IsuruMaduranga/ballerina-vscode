@@ -124,6 +124,9 @@ export function CreateIntegrationWizard({
     const scaffoldRef = useRef<ScaffoldState>(scaffold);
     scaffoldRef.current = scaffold;
     const rootRef = useRef<HTMLDivElement>(null);
+    // Set the moment the user edits the name field, so the async seed below (which can
+    // resolve after the user has already started typing) never clobbers it.
+    const nameTouchedRef = useRef(false);
 
     useLayoutEffect(() => {
         // The embedding chrome sizes its wrappers with `min-height`, so no ancestor has a
@@ -262,7 +265,18 @@ export function CreateIntegrationWizard({
                     }
                     setTakenNames(taken);
                     const { name, directoryName } = resolveDefaultNameAndDirectory(DEFAULT_INTEGRATION_NAME, taken, sanitizePackageName);
-                    setBasicInfo((prev) => (prev.baseDir ? prev : { ...prev, baseDir: seedPath, integrationName: name, directoryName }));
+                    setBasicInfo((prev) => {
+                        if (prev.baseDir) {
+                            return prev;
+                        }
+                        if (nameTouchedRef.current) {
+                            // The user already started naming their own integration while this
+                            // was in flight — the seeded default name/directory pair (computed
+                            // for DEFAULT_INTEGRATION_NAME) no longer applies; only seed the location.
+                            return { ...prev, baseDir: seedPath };
+                        }
+                        return { ...prev, baseDir: seedPath, integrationName: name, directoryName };
+                    });
                 })
                 .catch((error: unknown) => console.error(">>> Error seeding the creation path", error));
         }
@@ -310,6 +324,7 @@ export function CreateIntegrationWizard({
     /** Integration name change — also re-derives the directory segment while the
      *  user has not taken manual control of it. */
     const handleNameChange = (value: string) => {
+        nameTouchedRef.current = true;
         setBasicInfo((prev) => ({
             ...prev,
             integrationName: value,
