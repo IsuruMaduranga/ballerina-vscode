@@ -49,6 +49,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,7 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Core orchestrator for Copilot library operations.
@@ -71,22 +73,20 @@ public class CopilotLibraryManager {
     private static final String EXCLUSION_JSON_PATH = "/copilot/exclusion.json";
     private static final String TYPE_GENERIC = "generic";
 
-    // Maximum number of libraries a keyword search hands back, applied after exclusions.
-    private static final int MAX_SEARCH_RESULTS = 10;
+    // Organizations whose packages have their documentation included in the filtered response.
+    // Documentation is trusted for these orgs, so it is whitelisted at the organization level
+    // rather than per package.
+    private static final Set<String> DOC_WHITELIST_ORGS = Set.of("ballerina", "ballerinax");
 
-    // When set to "true", keyword search skips Ballerina Central and queries the bundled index only.
-    private static final String USE_LOCAL_INDEX_PROPERTY = "ballerina.copilot.librarySearch.useLocalIndex";
+    private static final String DOCS_DIR = "docs";
+    private static final String MODULES_DIR = "modules";
 
-    // Libraries for which README content should be included in the filtered response.
-    private static final Set<String> README_WHITELIST = Set.of(
-            "ballerinax/salesforce",
-            "ballerina/ai",
-            "ballerinax/cdc",
-            "ballerinax/mysql",
-            "ballerinax/postgresql",
-            "ballerina/ftp",
-            "ballerina/file"
-    );
+    // Package-level documentation file names, in order of preference. Newer packages ship
+    // README.md; older ones ship Package.md.
+    private static final List<String> PACKAGE_DOC_NAMES = List.of("README.md", "Package.md");
+
+    // Module-level documentation file names, in order of preference.
+    private static final List<String> MODULE_DOC_NAMES = List.of("README.md", "Module.md");
 
     /**
      * Loads all libraries from the database.
@@ -116,7 +116,8 @@ public class CopilotLibraryManager {
      * Loads filtered libraries using the semantic model.
      * Returns libraries with full details including clients, functions, typedefs, and services.
      * Applies exclusions and augments with instructions before returning.
-     * README content is included only for libraries in {@link #README_WHITELIST}.
+     * Documentation is included only for packages of the organizations listed in
+     * {@link #DOC_WHITELIST_ORGS}.
      *
      * @param libraryNames Array of library names in "org/package_name" format to filter
      * @return List of Library objects with complete information
@@ -184,8 +185,8 @@ public class CopilotLibraryManager {
             }
             library.setAnnotations(annotations);
 
-            if (README_WHITELIST.contains(libraryName)) {
-                readPackageReadme(pkg).ifPresent(library::setReadme);
+            if (DOC_WHITELIST_ORGS.contains(org)) {
+                readPackageDocumentation(pkg).ifPresent(library::setReadme);
             }
 
             libraries.add(library);
@@ -253,18 +254,89 @@ public class CopilotLibraryManager {
     }
 
     /**
-     * Reads the README.md content from the docs directory of a resolved .bala package.
+     * Reads the documentation of a resolved .bala package from its docs directory.
+     * <p>
+     * The package-level document is taken from the first available of
+     * {@link #PACKAGE_DOC_NAMES}, so packages that ship {@code Package.md} instead of
+     * {@code README.md} are still covered. Documentation of any submodules is appended
+     * after it, each under its own heading.
      *
      * @param pkg the resolved package
-     * @return an Optional containing the README content if present
+     * @return an Optional containing the documentation if any was found
      */
-    private Optional<String> readPackageReadme(Package pkg) {
-        Path readmePath = pkg.project().sourceRoot().resolve("docs").resolve("README.md");
-        try {
-            return Optional.of(Files.readString(readmePath, StandardCharsets.UTF_8));
+    private Optional<String> readPackageDocumentation(Package pkg) {
+        Path docsDir = pkg.project().sourceRoot().resolve(DOCS_DIR);
+        StringBuilder content = new StringBuilder();
+        readFirstAvailableDoc(docsDir, PACKAGE_DOC_NAMES).ifPresent(content::append);
+        appendModuleDocumentation(docsDir, content);
+        return content.isEmpty() ? Optional.empty() : Optional.of(content.toString());
+    }
+
+    /**
+     * Reads the first readable, non-blank file among the given candidate names.
+     *
+     * @param dir            the directory to look in
+     * @param candidateNames candidate file names, in order of preference
+     * @return an Optional containing the content of the first available candidate
+     */
+    private Optional<String> readFirstAvailableDoc(Path dir, List<String> candidateNames) {
+        for (String candidateName : candidateNames) {
+            Path docPath = dir.resolve(candidateName);
+            if (!Files.isRegularFile(docPath)) {
+                continue;
+            }
+            try {
+                String content = Files.readString(docPath, StandardCharsets.UTF_8);
+                if (!content.isBlank()) {
+                    return Optional.of(content);
+                }
+            } catch (IOException e) {
+                // Unreadable document — fall through to the next candidate.
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Appends the documentation of each submodule to the given content, if present.
+     * Modules are processed in a stable order so the result does not vary between runs.
+     *
+     * @param docsDir the docs directory of the package
+     * @param content the content to append to
+     */
+    private void appendModuleDocumentation(Path docsDir, StringBuilder content) {
+        Path modulesDir = docsDir.resolve(MODULES_DIR);
+        if (!Files.isDirectory(modulesDir)) {
+            return;
+        }
+
+        List<Path> moduleDirs;
+        try (Stream<Path> paths = Files.list(modulesDir)) {
+            // Sorted by the full path, which orders by module directory name since they
+            // all share the same parent.
+            moduleDirs = paths.filter(Files::isDirectory)
+                    .sorted(Comparator.comparing(Path::toString))
+                    .toList();
         } catch (IOException e) {
-            // README is optional — absent or unreadable yields an empty result.
-            return Optional.empty();
+            // Module documentation is optional — an unreadable directory is not an error.
+            return;
+        }
+
+        for (Path moduleDir : moduleDirs) {
+            Path moduleName = moduleDir.getFileName();
+            if (moduleName == null) {
+                continue;
+            }
+            Optional<String> moduleDoc = readFirstAvailableDoc(moduleDir, MODULE_DOC_NAMES);
+            if (moduleDoc.isEmpty()) {
+                continue;
+            }
+            if (!content.isEmpty()) {
+                content.append(System.lineSeparator()).append(System.lineSeparator());
+            }
+            content.append("## Module: ").append(moduleName)
+                    .append(System.lineSeparator()).append(System.lineSeparator())
+                    .append(moduleDoc.get());
         }
     }
 
