@@ -74,30 +74,41 @@ export function BasicInfoStep({
     hidePath = false,
 }: BasicInfoStepProps) {
     const nameFieldRef = useRef<HTMLInputElement>(null);
+    // Set on the first user edit, so the re-select below never fights their typing.
+    const nameEditedRef = useRef(false);
 
-    // Focus and select the default "Untitled" name on mount so the user can
-    // immediately overtype it. VSCodeTextField is a web component, so the real
-    // <input> is inside its shadow DOM and needs to be targeted directly. Its
-    // value sync from the `value` prop lags the initial render by a frame or
-    // two, so poll until the input actually holds the text before selecting
-    // it — selecting immediately can land while the input is still empty.
+    // Focus and select the default name so the user can immediately overtype it.
+    // Two things make this awkward:
+    //  - VSCodeTextField is a web component: the real <input> lives in its shadow
+    //    DOM (so it must be targeted directly), the element may not have upgraded
+    //    yet on the first frame, and its value sync from the `value` prop lags
+    //    render by a frame or two.
+    //  - The wizard seeds the actual default asynchronously ("Untitled" becomes
+    //    "Untitled_2" when the name is taken), so the name can change *after* the
+    //    initial select — and that later value sync collapses the selection to a
+    //    caret. Hence re-running whenever the rendered name changes.
     useEffect(() => {
-        // Normally resolves within the first frame or two, once the value has
-        // synced in. GIVE_UP_AFTER is just a backstop so a mount where the value
-        // never syncs still ends up focused, instead of polling forever.
-        const GIVE_UP_AFTER_FRAMES = 30;
+        if (nameEditedRef.current) {
+            return;
+        }
+        // Normally resolves within the first frame or two. GIVE_UP_AFTER is just a
+        // backstop so a mount where the value never syncs still ends up focused,
+        // instead of polling forever.
+        const GIVE_UP_AFTER_FRAMES = 60;
         let rafId: number;
         let attempts = 0;
         const trySelect = () => {
             const inner = (nameFieldRef.current as any)?.shadowRoot?.querySelector("input") as HTMLInputElement | null;
-            if (!inner) {
-                return;
-            }
-            const valueSynced = inner.value.length > 0;
             const gaveUp = attempts >= GIVE_UP_AFTER_FRAMES;
-            if (valueSynced || gaveUp) {
+            // Wait for the rendered value to actually reach the input: selecting any
+            // earlier either selects nothing or selects text the pending sync then
+            // replaces, which drops the selection.
+            if (inner && (inner.value === integrationName || gaveUp)) {
                 inner.focus();
                 inner.select();
+                return;
+            }
+            if (gaveUp) {
                 return;
             }
             attempts++;
@@ -105,14 +116,19 @@ export function BasicInfoStep({
         };
         rafId = requestAnimationFrame(trySelect);
         return () => cancelAnimationFrame(rafId);
-    }, []);
+    }, [integrationName]);
 
     return (
         <>
             <FieldGroup>
                 <TextField
                     ref={nameFieldRef}
-                    onTextChange={onNameChange}
+                    // `onTextChange` is wired to the element's `input` event, so it fires
+                    // only for real user edits — never for the wizard's async name seed.
+                    onTextChange={(value: string) => {
+                        nameEditedRef.current = true;
+                        onNameChange(value);
+                    }}
                     value={integrationName}
                     label="Integration Name"
                     placeholder="Enter an integration name"

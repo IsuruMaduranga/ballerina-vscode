@@ -580,7 +580,9 @@ export function CreateIntegrationWizard({
                         <StepSectionLabel>Select the type of integration to build</StepSectionLabel>
                     </StepPinnedHeader>
                 )}
-                <StepScrollArea>
+                {/* The Name step is a single field, so keep the footer next to it rather
+                    than stretched to the panel's bottom edge. */}
+                <StepScrollArea fitContent={step === NAME_STEP}>
                     {step === NAME_STEP && (
                         <BasicInfoStep
                             integrationName={basicInfo.integrationName}

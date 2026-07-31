@@ -27,7 +27,7 @@ const FooterBar = styled.div`
     justify-content: flex-end;
     align-items: center;
     gap: 8px;
-    padding: 12px 0 16px;
+    padding: 16px 0 16px;
 `;
 
 interface WizardFooterProps {

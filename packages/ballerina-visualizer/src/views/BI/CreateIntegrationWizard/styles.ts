@@ -85,15 +85,21 @@ export const StepPinnedHeader = styled.div`
 /** Section label introducing the scrolling content below the pinned fields. */
 export const StepSectionLabel = styled.div`
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--vscode-foreground);
-    margin-bottom: 12px;
+    margin-top: 4px;
+    margin-bottom: 32px;
 `;
 
 /** The single scrolling region: step content (e.g. the artifact grid) scrolls
- *  here while the stepper above and the footer below stay put. */
-export const StepScrollArea = styled.div`
-    flex: 1;
+ *  here while the stepper above and the footer below stay put.
+ *
+ *  `fitContent` opts a short step (the Name step) out of stretching, so the
+ *  footer sits directly under the field instead of being pushed to the far
+ *  bottom of the panel with a large dead gap above it — matching how the
+ *  chooser screen's footer follows its content. */
+export const StepScrollArea = styled.div<{ fitContent?: boolean }>`
+    flex: ${({ fitContent }: { fitContent?: boolean }) => (fitContent ? "0 0 auto" : 1)};
     min-height: 0;
     overflow-y: auto;
     padding-right: 4px;
