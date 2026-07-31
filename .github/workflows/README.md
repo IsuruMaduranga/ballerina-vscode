@@ -211,14 +211,16 @@ patches the label, which is now a harmless no-op for releases cut after this cha
 ## The bundled language server
 
 The jar in `packages/ballerina-extension/ls/` is **always** the `pack` output of
-`packages/ballerina-language-server` in this repo, copied by `scripts/copy-ls.js` during
-`postbuild`. There is no download fallback and no way to select a different LS: a
+`packages/ballerina-language-server` in this repo. Rush builds or restores that workspace
+dependency first, then the extension's `copyLS` command clears `ls/` and copies the jar
+whose version matches the extension manifest. There is no download fallback or way to
+select a different LS: a
 prebuilt jar from elsewhere could not carry this repo's version, so a VSIX built around
 one would ship an extension and a server claiming different versions.
 
 Consequence: building the extension requires being able to build the LS — JDK 21 and
-GitHub Packages credentials (`packageUser` / `packagePAT`). If the jar is missing,
-`copy-ls.js` fails with instructions rather than silently substituting one.
+GitHub Packages credentials (`packageUser` / `packagePAT`). If the exact versioned jar is
+missing, the copy command fails rather than silently substituting one.
 
 When `githubRelease` is selected, `release-pre-release.yml` publishes
 `io.ballerina:ballerina-language-server` to GitHub Packages at the same version before

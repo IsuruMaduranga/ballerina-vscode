@@ -184,8 +184,8 @@ jobs:
           # Attach the bundled language server too, so it is downloadable on its own —
           # debugging an LS regression, or pointing an existing install at it via the
           # ballerina.langServerPath setting. This is the exact jar inside the VSIX
-          # (copy-ls.js put it there) packed at the same version, so the two assets can
-          # never disagree about what was built.
+          # (the extension's copyLS command put it there) packed at the same version,
+          # so the two assets can never disagree about what was built.
           extraAssets: packages/ballerina-extension/ls/ballerina-language-server-*.jar
 
       - name: Release Announcement

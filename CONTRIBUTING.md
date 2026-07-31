@@ -224,10 +224,11 @@ so untested siblings of the reported bug are caught too.
 ## Working with the language server jar
 
 The extension reads its LS jar from `packages/ballerina-extension/ls/*.jar`. That jar is
-**always** the `pack` output of `packages/ballerina-language-server` in this repo: the
-`postbuild` step calls `provisionLS` (`scripts/copy-ls.js`), which copies the newest
-`build/ballerina-language-server-*.jar` into `ls/` and fails with instructions if there
-isn't one. There is no download fallback and no way to point it at a different LS.
+**always** the `pack` output of `packages/ballerina-language-server` in this repo. Rush
+builds or restores the LS first through the extension's `workspace:*` dependency; the
+extension's `postbuild` then runs `copyLS`, clears `ls/`, derives the exact expected jar
+name from the extension manifest, and copies it from the LS `build/` directory. A missing
+matching jar fails the build. There is no download fallback or alternate LS selector.
 
 The language server does not have an independently authored version. Set the version in
 `packages/ballerina-extension/package.json`; `vsce` reads it directly and Gradle reads the
@@ -238,18 +239,14 @@ This changes the published language-server artifact from its former independent 
 line to the extension's `5.x` line. Consumers pinning
 `io.ballerina:ballerina-language-server` must use the corresponding extension version.
 
-One local caveat: `copy-ls.js` picks the **newest jar by mtime**, not the one whose filename
-matches the version being built. So if you bump the extension version and package the extension
-without rebuilding the LS, the newest jar in `build/` is still the old one and it gets
-bundled under a VSIX naming a different version. CI never hits this — it builds the LS from
-scratch every run — but locally, rebuild the LS (below) after moving the extension version rather
-than only re-running the extension build.
+After changing the extension version, rebuild the LS before packaging so the exact
+versioned jar exists. A stale jar from another version is never selected.
 
 Building the extension therefore requires being able to build the LS: JDK 21 and
 GitHub Packages credentials (`packageUser` / `packagePAT` in `~/.gradle/gradle.properties`).
 
 ```bash
-# Rebuild the LS and re-provision it into the extension.
+# Rebuild the LS, then build the extension and copy the exact jar.
 rush build --to ballerina-language-server
 rush build --to ballerina
 
@@ -352,9 +349,8 @@ Release process is documented at `.github/workflows/README.md`:
 | `Dependency resolution is looking for ... JVM 17, but ... 21 or newer` | `JAVA_HOME` points at JDK 17 | `export JAVA_HOME=$(/usr/libexec/java_home -v 21)` |
 | `tracked input file` rush error | Stale `lib/`/`build/` dir in a package | Run `rush purge && rush update` and rebuild |
 | `Cannot find module '@wso2/...'` after pulling | Submodule out of date / lockfile changed | `git submodule update --init --recursive && rush update` |
-| LS jar in vsix is wrong version | A stale jar in `packages/ballerina-language-server/build/` (`copy-ls.js` picks the newest by mtime) | `rm packages/ballerina-language-server/build/ballerina-language-server-*.jar` and rebuild |
+| LS jar copy fails with `ENOENT` | The exact versioned jar is missing from `packages/ballerina-language-server/build/` | Build with Rush so it builds the LS dependency first, or run `rush build --to ballerina-language-server` |
 | VSIX has an unexpected version | The extension manifest carries the wrong version, or a stale VSIX was selected | Set the version in `packages/ballerina-extension/package.json`, remove stale VSIXes, then `rush build --to ballerina` |
-| `No locally-built LS jar found` from `provisionLS` | The LS was never built (needs JDK 21 + `packageUser`/`packagePAT`) | `rush build --to ballerina-language-server` |
 | `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND` | Missing rush project registration or submodule not initialized | Check `rush.json`; verify `submodules/wso2-vscode-extensions/` is populated |
 
 ## Where to read next

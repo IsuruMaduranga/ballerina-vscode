@@ -111,9 +111,10 @@ Running that exact command locally is the closest reproduction.
 
 ### "Change the LS jar shipped in the vsix"
 
-`packages/ballerina-extension/scripts/copy-ls.js` copies the jar into `ls/`. It is
-always the local `pack` output of `packages/ballerina-language-server` — there is no
-download path and nothing to select. To change the shipped jar, rebuild the LS
+The extension package's `copyLS` command copies the exact versioned jar into `ls/`.
+Rush builds or restores `ballerina-language-server` first through the `workspace:*`
+dependency. The jar is always that project's local `pack` output — there is no download
+path and nothing to select. To change the shipped jar, rebuild the LS
 (`rush build --to ballerina-language-server`).
 
 **The version is authored in exactly one file:

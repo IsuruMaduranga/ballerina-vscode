@@ -1453,11 +1453,11 @@
         "copyFonts": "copyfiles -f ./node_modules/@wso2/font-wso2-vscode/dist/* ./resources/font-wso2-vscode/dist/",
         "copyVSIX": "copyfiles *.vsix ./vsix",
         "copyVSIXToRoot": "copyfiles -f ./vsix/*.vsix ../../..",
-        "provisionLS": "node scripts/copy-ls.js",
+        "copyLS": "del-cli ./ls && node -e \"const fs=require('fs'),path=require('path'),version=require('./package.json').version,source=path.join('..','ballerina-language-server','build','ballerina-language-server-'+version+'.jar'),destination=path.join('ls',path.basename(source));fs.mkdirSync('ls',{recursive:true});fs.copyFileSync(source,destination);console.log('Copied '+source+' -> '+destination)\"",
         "copyGrammar": "del-cli ./grammar/ballerina-grammar && copyfiles -u 3 \"../ballerina-grammar/syntaxes/*\" ./grammar/ballerina-grammar/syntaxes/",
         "build": "pnpm run compile && pnpm run lint && pnpm run postbuild",
         "rebuild": "pnpm run clean && pnpm run compile && pnpm run postbuild",
-        "postbuild": "pnpm run provisionLS && pnpm run copyFonts && pnpm run copyJSLibs && pnpm run clearVsix && pnpm run package && pnpm run copyVSIX",
+        "postbuild": "pnpm run copyLS && pnpm run copyFonts && pnpm run copyJSLibs && pnpm run clearVsix && pnpm run package && pnpm run copyVSIX",
         "copyJSLibs": "copyfiles -f ../ballerina-visualizer/build/*.js resources/jslibs && copyfiles -f ../ballerina-visualizer/build/images/* resources/jslibs/images && copyfiles -f ../trace-visualizer/build/*.js resources/jslibs && copyfiles -f ../graphql/build/*.js resources/jslibs",
         "test:typecheck": "tsc --noEmit -p tsconfig.spec.json"
     },
