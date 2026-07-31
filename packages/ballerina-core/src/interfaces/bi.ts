@@ -55,10 +55,15 @@ export type FlowNode = {
     flags?: number;
     returning: boolean;
     suggested?: boolean;
+    diffState?: FlowNodeDiffState;
+    /** Previous source/text of a modified node, set by the review-diff merge (rendered by the note chip for COMMENT nodes). */
+    diffPreviousText?: string;
     viewState?: ViewState;
     hasBreakpoint?: boolean;
     isActiveBreakpoint?: boolean;
 };
+
+export type FlowNodeDiffState = "added" | "removed" | "modified";
 
 export type FunctionNode = {
     id: string;
@@ -547,6 +552,7 @@ export type NodeKind =
     | "DATA_MAPPER_CALL"
     | "DATA_MAPPER_DEFINITION"
     | "DATA_MAPPER_CREATION"
+    | "DIFF_HUNK"
     | "DRAFT"
     | "ELSE"
     | "EMPTY"

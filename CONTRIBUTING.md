@@ -192,7 +192,7 @@ for cfg in packages/*/jest.config.js; do ( cd "$(dirname "$cfg")" && pnpm test )
 ```
 
 CI runs the same set in the **`fast-tests`** job on every PR (it auto-discovers any
-package with a `jest.config.js` — see `.github/workflows/build.yml`).
+package with a `jest.config.js` — see `.github/workflows/reusable-build.yml`).
 
 ### Adding tests to a package
 
@@ -223,13 +223,12 @@ so untested siblings of the reported bug are caught too.
 
 ## Working with the language server jar
 
-The extension reads its LS jar from `packages/ballerina-extension/ls/*.jar`. By default
-the `postbuild` step calls `provisionLS`, which:
-
-1. If a local pack jar exists at `packages/ballerina-language-server/build/ballerina-language-server-*.jar`,
-   copies it into `ls/`.
-2. Otherwise, falls back to `scripts/download-ls.js` and downloads the latest GitHub
-   release jar (`v1.6.0` at time of writing).
+The extension reads its LS jar from `packages/ballerina-extension/ls/*.jar`. That jar is
+**always** the `pack` output of `packages/ballerina-language-server` in this repo. Rush
+builds or restores the LS first through the extension's `workspace:*` dependency; the
+extension's `postbuild` then runs `copyLS`, clears `ls/`, derives the exact expected jar
+name from the extension manifest, and copies it from the LS `build/` directory. A missing
+matching jar fails the build. There is no download fallback or alternate LS selector.
 
 The language server does not have an independently authored version. Set the version in
 `packages/ballerina-extension/package.json`; `vsce` reads it directly and Gradle reads the
@@ -240,20 +239,21 @@ This changes the published language-server artifact from its former independent 
 line to the extension's `5.x` line. Consumers pinning
 `io.ballerina:ballerina-language-server` must use the corresponding extension version.
 
-Override knobs:
+After changing the extension version, rebuild the LS before packaging so the exact
+versioned jar exists. A stale jar from another version is never selected.
+
+Building the extension therefore requires being able to build the LS: JDK 21 and
+GitHub Packages credentials (`packageUser` / `packagePAT` in `~/.gradle/gradle.properties`).
 
 ```bash
-# Force-download even if a local pack jar exists
-BALLERINA_LS_SOURCE=download rush build --to ballerina
+# Rebuild the LS, then build the extension and copy the exact jar.
+rush build --to ballerina-language-server
+rush build --to ballerina
 
-# Pin a specific release tag
-BALLERINA_LS_TAG=v1.6.0 rush build --to ballerina
-
-# Pick a specific local jar manually (delete what's in build/, then build again)
-rm packages/ballerina-language-server/build/ballerina-language-server-*.jar
+# Directly with Gradle — reads the extension manifest by default
 cd packages/ballerina-language-server && ./gradlew pack -x test
 
-# Override the extension version for a one-off Gradle build without editing files
+# Force a one-off version (does not touch any file)
 ./gradlew pack -x test -Pversion=9.9.9-local
 ```
 
@@ -290,16 +290,44 @@ monorepo. If you want them to land here, push them upstream to
 
 ## Branching and release
 
-- `main` — active development
-- `stable/ballerina*` — release branches
+- `main` — active development. Carries `X.Y.0-SNAPSHOT` with an **even** minor.
+- `X.Y.x` — release lines (`5.14.x`, `5.16.x`). Even minors are release lines, odd minors
+  are the pre-release channel. Cut by hand when a line opens; they carry a **concrete**
+  version, never `-SNAPSHOT`.
+- `release/X.Y.Z` — one branch per release, pushed by `release-pre-release.yml` and PR'd into its
+  `X.Y.x` line.
+- `alpha` — staging for alpha builds; concrete version, set by hand.
 - `migrate/*` — long-lived migration work
+- `builds/nightly` — **machine-managed, do not touch.** `schedule.yml` resets it to
+  `origin/main` for scheduled runs or the selected source branch for manual runs, then
+  force-pushes it with a single version commit. Never target it with a PR and never merge
+  it anywhere; anything committed to it is gone by the next run.
 
 PR → `main` triggers `pull-request.yml` (extension build + tests, LS build if you
-touched LS code). PR → `stable/ballerina` adds the bal E2E suite automatically.
+touched LS code). PR → a `X.Y.x` release line is intended to add the bal E2E suite
+automatically, but that suite is currently disabled and does not run until the
+`ExtTest_Ballerina` job is re-enabled.
+
+The version lives in **`packages/ballerina-extension/package.json`** — that is the single
+source of truth — and on `main` it always names the *next* release as a snapshot, e.g.
+`5.14.0-SNAPSHOT`. It is the only version anyone edits. `vsce` reads it directly, and the
+language-server Gradle build reads the same manifest during configuration.
+`-Pversion=<v>` remains available for a one-off Gradle build.
+
+`-SNAPSHOT` is never shipped: each publishable build derives a concrete version from it
+(nightlies and pre-releases become `major.(minor-1).<minutes since 2020-01-01 UTC>`, so `5.14.0-SNAPSHOT`
+ships nightly as `5.13.3458370` and releases as `5.14.0`), and the build fails
+outright if the suffix survives to packaging. Only `main` carries `-SNAPSHOT` — on a
+release line or `alpha` the authored version ships as-is, so bump those by hand between
+releases. After a release cut from `main`, the release workflow opens a PR returning `main`
+to `major.(minor+2).0-SNAPSHOT` (`+2` keeps it on an even minor); without it the next
+nightly cannot derive a version. See the Versioning section of
+`.github/workflows/README.md` for the full table.
 
 Release process is documented at `.github/workflows/README.md`:
-1. **release-vsix** workflow (manual dispatch) — builds, creates GitHub release, opens
-   version-bump PR back to `stable/ballerina`.
+1. **release-pre-release** workflow (manual dispatch) — builds, optionally creates the
+   GitHub release, pushes `release/<version>`, and opens the release PR into the `X.Y.x`
+   line (skipped with a notice if that line branch does not exist yet).
 2. **publish-vsix** workflow (manual dispatch) — takes the workflow run ID of the
    release build and publishes the VSIX to VSCode Marketplace + OpenVSX.
 
@@ -321,7 +349,8 @@ Release process is documented at `.github/workflows/README.md`:
 | `Dependency resolution is looking for ... JVM 17, but ... 21 or newer` | `JAVA_HOME` points at JDK 17 | `export JAVA_HOME=$(/usr/libexec/java_home -v 21)` |
 | `tracked input file` rush error | Stale `lib/`/`build/` dir in a package | Run `rush purge && rush update` and rebuild |
 | `Cannot find module '@wso2/...'` after pulling | Submodule out of date / lockfile changed | `git submodule update --init --recursive && rush update` |
-| LS jar in vsix is wrong version | `provisionLS` chose downloaded over local (or vice versa) | See "Working with the language server jar" above |
+| LS jar copy fails with `ENOENT` | The exact versioned jar is missing from `packages/ballerina-language-server/build/` | Build with Rush so it builds the LS dependency first, or run `rush build --to ballerina-language-server` |
+| VSIX has an unexpected version | The extension manifest carries the wrong version, or a stale VSIX was selected | Set the version in `packages/ballerina-extension/package.json`, remove stale VSIXes, then `rush build --to ballerina` |
 | `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND` | Missing rush project registration or submodule not initialized | Check `rush.json`; verify `submodules/wso2-vscode-extensions/` is populated |
 
 ## Where to read next

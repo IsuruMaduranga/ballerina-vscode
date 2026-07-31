@@ -33,6 +33,9 @@ import { approvalViewManager } from "../../features/ai/state/ApprovalViewManager
 import { StateMachinePopup } from "../../stateMachinePopup";
 import { clearFormState } from "../../rpc-managers/bi-diagram/form-state";
 import { isInWI } from "../../utils/config";
+import { chatStateStorage } from "../ai-panel/chatStateStorage";
+import { isAiTouchedFile } from "../../rpc-managers/diagram-validity";
+import { setCompanionVisualizer } from "../ai-panel/activeFileContext";
 import { getStartupIntegrationProgress } from "../../features/bi/startup-progress";
 
 /** Escapes text interpolated into the startup screen's HTML (integration names are user input). */
@@ -89,9 +92,16 @@ export class VisualizerWebview {
         }, 500);
 
         vscode.workspace.onDidChangeTextDocument(async (document) => {
+            // A Copilot generation's own live edits already save themselves (persistLiveEdit ->
+            // addToIntegration does workspace.applyEdit + saveAll) and shouldn't reset the
+            // diagram's undo/redo history on every edit — only genuine, concurrent user edits
+            // to other files should. Files the current generation hasn't touched are unaffected.
+            const isCopilotLiveEdit = chatStateStorage.hasAnyActiveExecution()
+                && isAiTouchedFile(document.document.uri.fsPath);
+
             // Save the document only if it is not already opened in a visible editor or the webview is active
             const isOpened = vscode.window.visibleTextEditors.some(editor => editor.document.uri.toString() === document.document.uri.toString());
-            if (!isOpened || this._panel?.active) {
+            if (!isCopilotLiveEdit && (!isOpened || this._panel?.active)) {
                 await document.document.save();
             }
 
@@ -99,7 +109,7 @@ export class VisualizerWebview {
             const projectPath = StateMachine.context().projectPath;
             const isDocumentUnderProject = isPathInside(projectPath, document.document.uri.fsPath);
             // Reset visualizer the undo-redo stack if user did changes in the editor
-            if (isOpened && isDocumentUnderProject && !this._panel?.active && !undoRedoManager?.isBatchInProgress()) {
+            if (!isCopilotLiveEdit && isOpened && isDocumentUnderProject && !this._panel?.active && !undoRedoManager?.isBatchInProgress()) {
                 undoRedoManager.reset();
             }
 
@@ -155,6 +165,9 @@ export class VisualizerWebview {
 
         this._panel.onDidChangeViewState(() => {
             vscode.commands.executeCommand('setContext', 'isBalVisualizerActive', this._panel?.active);
+            if (this._panel?.active) {
+                setCompanionVisualizer();
+            }
             // Refresh the webview when becomes active
             const state = StateMachine.state();
             const popupState = StateMachinePopup.state();

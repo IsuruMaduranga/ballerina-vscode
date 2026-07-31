@@ -144,6 +144,10 @@ export class BiWsClient {
             mode: bootstrap.mode,
             server: bootstrap.wsServer,
             port: bootstrap.wsPort,
+            // Presented during the websocket handshake; the host rejects the
+            // upgrade without it. Ignored in proxy mode, which does not use a
+            // socket.
+            token: bootstrap.token,
             // Reuse the already-acquired VS Code API instead of re-acquiring (which
             // throws in the native visualizer, where the main RPC client owns it).
             acquireVsCodeApi: resolveSharedVsCodeApi as () => any,
@@ -354,9 +358,6 @@ export class BiWsClient {
         const payload: WebviewWsRequest = { action };
         if (params !== undefined) {
             payload.params = params;
-        }
-        if (this.bootstrap.token) {
-            payload.token = this.bootstrap.token;
         }
         const response = await this.transport.request(payload);
         if (!response || response.type !== WEBVIEW_WS_EVENTS.WS_RESPONSE || response.action !== action) {

@@ -43,6 +43,7 @@ import { TopNavigationBar } from "../../../components/TopNavigationBar";
 import { TitleBar } from "../../../components/TitleBar";
 import { PublishToCentralButton } from "./PublishToCentralButton";
 import { LibraryOverview } from "./LibraryOverview";
+import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
 
 /** Only reachable from an empty integration, and it pulls in the whole wizard +
  *  artifact form tree — so keep it out of the overview's own chunk. */
@@ -114,13 +115,18 @@ const HeaderControls = styled.div`
     align-items: center;
 `;
 
-const MainContent = styled.div<{ fullWidth?: boolean }>`
+const MainContent = styled.div<{ fullWidth?: boolean; withHero?: boolean }>`
     padding: 16px;
     display: grid;
     grid-template-columns: ${(props: { fullWidth?: boolean }) => props.fullWidth ? '1fr' : '3fr 1fr'};
     min-height: 0; // Prevents grid blowout
     overflow: auto;
-    max-height: calc(100vh - 90px); // Adjust based on header and any margins
+    // Adjust based on header and any margins; the hero prompt row adds ~87px.
+    max-height: ${(props: { withHero?: boolean }) => props.withHero ? 'calc(100vh - 177px)' : 'calc(100vh - 90px)'};
+`;
+
+const HeroRow = styled.div`
+    margin: 16px 16px 0 16px;
 `;
 
 const DiagramPanel = styled.div<{ noPadding?: boolean, noBorder?: boolean }>`
@@ -1028,13 +1034,6 @@ export function PackageOverview(props: PackageOverviewProps) {
         }
     };
 
-    const handleGenerate = () => {
-        rpcClient.getBIDiagramRpcClient().openAIChat({
-            readme: false,
-            planMode: true,
-        });
-    };
-
     const handleGenerateWithReadme = () => {
         rpcClient.getBIDiagramRpcClient().openAIChat({
             readme: true,
@@ -1166,7 +1165,12 @@ export function PackageOverview(props: PackageOverviewProps) {
                         </HeaderControls>
                     </HeaderRow>
                 )}
-                <MainContent fullWidth={isLibrary}>
+                {!isLibrary && (
+                    <HeroRow>
+                        <CopilotHeroBox />
+                    </HeroRow>
+                )}
+                <MainContent fullWidth={isLibrary} withHero={!isLibrary}>
                     <LeftContent>
                         <DiagramPanel noPadding={true} noBorder={isLibrary}>
                             {showAlert && (
@@ -1192,9 +1196,6 @@ export function PackageOverview(props: PackageOverviewProps) {
                                     <Title variant="h2">Design</Title>
                                     {!isEmptyIntegration() && (
                                         <ActionContainer>
-                                            <Button appearance="secondary" onClick={handleGenerate}>
-                                                <Icon name="bi-ai-chat" sx={{ marginRight: 8 }} iconSx={{ width: "16px", height: "16px", fontSize: "16px" }} /> Generate with AI
-                                            </Button>
                                             <Button appearance="primary" onClick={handleAddConstruct}>
                                                 <Codicon name="add" sx={{ marginRight: 8 }} /> Add Artifact
                                             </Button>
@@ -1214,7 +1215,8 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 variant="body1"
                                                 sx={{ marginBottom: "24px", color: "var(--vscode-descriptionForeground)" }}
                                             >
-                                                Start by adding artifacts or use AI to generate your integration structure
+                                                Add an artifact to get started, or describe what you want to build in
+                                                the Copilot box above
                                             </Typography>
                                             <ButtonContainer>
                                                 {/* An empty integration means the creation wizard was
@@ -1222,9 +1224,6 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                     artifact list, so the guided flow can be resumed. */}
                                                 <Button appearance="primary" onClick={() => setShowAddIntegration(true)}>
                                                     <Codicon name="add" sx={{ marginRight: 8 }} /> Add Integration
-                                                </Button>
-                                                <Button appearance="secondary" onClick={handleGenerate}>
-                                                    <Icon name="bi-ai-chat" sx={{ marginRight: 4 }} iconSx={{ position: "relative", top: "2px" }} /> Generate with AI
                                                 </Button>
                                             </ButtonContainer>
                                         </EmptyStateContainer>

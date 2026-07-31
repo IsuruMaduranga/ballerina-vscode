@@ -54,41 +54,44 @@ jest.mock(
     { virtual: true }
 );
 
-// Mock getBoundingClientRect for canvas/diagram elements.
-Element.prototype.getBoundingClientRect = jest.fn(() => ({
-    width: 800,
-    height: 600,
-    top: 0,
-    left: 0,
-    bottom: 600,
-    right: 800,
-    x: 0,
-    y: 0,
-    toJSON: jest.fn(),
-}));
+// DOM mocks — skip in non-DOM test environments (e.g. @jest-environment node).
+if (typeof Element !== 'undefined') {
+    // Mock getBoundingClientRect for canvas/diagram elements.
+    Element.prototype.getBoundingClientRect = jest.fn(() => ({
+        width: 800,
+        height: 600,
+        top: 0,
+        left: 0,
+        bottom: 600,
+        right: 800,
+        x: 0,
+        y: 0,
+        toJSON: jest.fn(),
+    }));
 
-// Mock canvas 2d context.
-HTMLCanvasElement.prototype.getContext = jest.fn(() => ({
-    fillRect: jest.fn(),
-    clearRect: jest.fn(),
-    getImageData: jest.fn(),
-    putImageData: jest.fn(),
-    createImageData: jest.fn(),
-    setTransform: jest.fn(),
-    drawImage: jest.fn(),
-    save: jest.fn(),
-    restore: jest.fn(),
-    beginPath: jest.fn(),
-    moveTo: jest.fn(),
-    lineTo: jest.fn(),
-    closePath: jest.fn(),
-    stroke: jest.fn(),
-    fill: jest.fn(),
-    scale: jest.fn(),
-    rotate: jest.fn(),
-    translate: jest.fn(),
-    measureText: jest.fn(() => ({ width: 10 })),
-    fillStyle: '',
-    strokeStyle: '',
-    globalAlpha: 1,
-}));
+    // Mock canvas 2d context.
+    HTMLCanvasElement.prototype.getContext = jest.fn(() => ({
+        fillRect: jest.fn(),
+        clearRect: jest.fn(),
+        getImageData: jest.fn(),
+        putImageData: jest.fn(),
+        createImageData: jest.fn(),
+        setTransform: jest.fn(),
+        drawImage: jest.fn(),
+        save: jest.fn(),
+        restore: jest.fn(),
+        beginPath: jest.fn(),
+        moveTo: jest.fn(),
+        lineTo: jest.fn(),
+        closePath: jest.fn(),
+        stroke: jest.fn(),
+        fill: jest.fn(),
+        scale: jest.fn(),
+        rotate: jest.fn(),
+        translate: jest.fn(),
+        measureText: jest.fn(() => ({ width: 10 })),
+        fillStyle: '',
+        strokeStyle: '',
+        globalAlpha: 1,
+    }));
+}

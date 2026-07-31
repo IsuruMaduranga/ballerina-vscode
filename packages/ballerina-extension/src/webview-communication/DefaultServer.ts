@@ -116,7 +116,9 @@ export class DefaultServer {
     private readonly router = createRequestRouter<WebviewWsRequest, WebviewWsResponse>();
     private proxyManager: TransportManager | undefined;
     private wsManager: TransportManager | undefined;
-    private wsBootstrap: WebviewWsBootstrap | undefined;
+    /** In-flight or completed bootstrap. Cached as a promise so that concurrent
+     *  callers share one server instead of racing to create two. */
+    private wsBootstrap: Promise<WebviewWsBootstrap> | undefined;
     private readonly disposables: Disposable[] = [];
     private eventsWired = false;
 
@@ -140,24 +142,34 @@ export class DefaultServer {
 
     /** Starts (if needed) the websocket server for the embedded integrator form
      *  and returns the connection coordinates. */
-    getWsBootstrap(): WebviewWsBootstrap {
+    getWsBootstrap(): Promise<WebviewWsBootstrap> {
         if (!this.wsBootstrap) {
-            const mgr = createExtensionTransportManager<WebviewWsRequest, WebviewWsResponse>({
-                initialMode: "websocket",
-                wsPort: 0,
-                handleRequest: (request) => {
-                    if (!request || request.token !== this.token) {
-                        return this.errorResponse(request?.action ?? "unknown", "Unauthorized BI bridge request.");
-                    }
-                    return this.router.handle(request);
-                },
+            this.wsBootstrap = this.startWsServer().catch((error: unknown) => {
+                // Let a later call retry instead of caching the failure forever.
+                this.wsManager?.dispose();
+                this.wsBootstrap = undefined;
+                this.wsManager = undefined;
+                throw error;
             });
-            this.wsManager = mgr;
-            this.wireEvents();
-            const wb = mgr.getWebviewBootstrap();
-            this.wsBootstrap = { host: wb.wsServer, port: wb.wsPort, token: this.token };
         }
         return this.wsBootstrap;
+    }
+
+    private async startWsServer(): Promise<WebviewWsBootstrap> {
+        const mgr = createExtensionTransportManager<WebviewWsRequest, WebviewWsResponse>({
+            initialMode: "websocket",
+            wsPort: 0,
+            // Authenticates the handshake; upgrades without this token are refused.
+            authToken: this.token,
+            handleRequest: (request) => this.router.handle(request),
+        });
+        this.wsManager = mgr;
+        this.wireEvents();
+        // The OS assigns the port, which is only known once the server is bound,
+        // so the bootstrap must not be read before this resolves.
+        await mgr.startWebSocketServer();
+        const wb = mgr.getWebviewBootstrap();
+        return { host: wb.wsServer, port: wb.wsPort, token: this.token };
     }
 
     dispose(): void {
