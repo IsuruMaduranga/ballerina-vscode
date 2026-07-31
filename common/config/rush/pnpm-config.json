@@ -100,6 +100,14 @@
       "brace-expansion@>=1 <2": "1.1.16",
       "brace-expansion@>=2 <3": "2.1.2",
       "brace-expansion@>=5.0.0 <6": "5.0.8",
+      // Claude Sonnet 5 must be sent `thinking: {"type": "disabled"}` explicitly,
+      // because an absent `thinking` field means adaptive reasoning is ON. Only
+      // @ai-sdk/anthropic >= 3.0.104 serializes that value — earlier 3.x releases
+      // accept it and then silently drop it from the request body. google-vertex
+      // pins 3.0.63 and anthropic-aws pins 3.0.81, so both need forcing. The
+      // selector stays inside 3.x: the 4.x line implements the v4 model spec,
+      // which the pinned ai@6 core cannot consume.
+      "@ai-sdk/anthropic@>=3 <4": "3.0.104",
       // Security overrides — keep in sync with trivy findings. Bump to the
       // first fix version listed for each CVE. If a bump breaks workspace
       // consumers, narrow the selector (e.g. "pkg@<x.y.z": "x.y.z").
