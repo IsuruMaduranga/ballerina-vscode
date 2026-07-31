@@ -981,7 +981,6 @@ exports[`bi-diagram — render + snapshot from a real captured flow model matche
                     rx="5"
                     ry="5"
                     stroke="var(--vscode-dropdown-border)"
-                    stroke-dasharray="none"
                     stroke-width="1.8"
                     transform="rotate(45 28 28)"
                     width="50"
