@@ -219,7 +219,7 @@ export function activate(context: BallerinaExtension) {
             }
             if (enclosing.status === 'invalid') {
                 window.showErrorMessage(
-                    `This integration is located inside another Ballerina project (${enclosing.projectPath}), which isn't a supported layout. Move it out before converting it into a project.`
+                    `This integration is located inside another project (${enclosing.projectPath}), which isn't a supported layout. Move it out before converting it into a project.`
                 );
                 return;
             }

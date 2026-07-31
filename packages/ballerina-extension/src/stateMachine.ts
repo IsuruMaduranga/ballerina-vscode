@@ -839,6 +839,39 @@ let visualizerWebviewReady: Promise<void> = Promise.resolve();
 const VISUALIZER_WEBVIEW_READY_TIMEOUT_MS = 15000;
 
 /**
+ * In-flight panel creation, so overlapping calls join it instead of each creating a panel.
+ * Set before the first `await` inside {@link createVisualizerPanel} and cleared once it settles.
+ */
+let visualizerPanelCreation: Promise<void> | undefined;
+
+/** Creates the panel and wires its `webviewReady` handler. Only ever run one at a time — see {@link visualizerPanelCreation}. */
+async function createVisualizerPanel(context: MachineContext): Promise<void> {
+    await closeOrphanWebviewTabs([VisualizerWebview.viewType]);
+    let markReady: () => void = () => { };
+    visualizerWebviewReady = new Promise<void>((ready) => { markReady = ready; });
+    VisualizerWebview.currentPanel = new VisualizerWebview();
+    const webviewPanel = VisualizerWebview.currentPanel.getWebview();
+    // `_messenger` is a single instance shared across every panel this extension ever
+    // creates, so this handler must be disposed with its own panel — otherwise closing
+    // and reopening the visualizer keeps piling up handlers that all re-run (and all
+    // fire) on every future `webviewReady`.
+    const webviewReadyDisposable = RPCLayer._messenger.onNotification(webviewReady, () => {
+        history = new History();
+        undoRedoManager = new UndoRedoManager();
+        const webview = VisualizerWebview.currentPanel?.getWebview();
+        if (webview && (context.isBI || context.view === MACHINE_VIEW.BIWelcome)) {
+            const biExtension = isInWI() || extensions.getExtension('wso2.ballerina-integrator');
+            webview.iconPath = {
+                light: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-dark.svg' : 'ballerina.svg')),
+                dark: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-light.svg' : 'ballerina-inverse.svg'))
+            };
+        }
+        markReady();
+    });
+    webviewPanel?.onDidDispose(() => webviewReadyDisposable.dispose());
+}
+
+/**
  * Ensures the visualizer panel exists, revealing an open one. `waitForReady` blocks until
  * the webview reports `webviewReady` (or the timeout above elapses); awaiting the shared
  * `visualizerWebviewReady` (not just this call's panel) is what keeps view activation safe
@@ -849,29 +882,18 @@ async function openVisualizerPanel(context: MachineContext, waitForReady: boolea
         if (VisualizerWebview.currentPanel) {
             VisualizerWebview.currentPanel.getWebview()?.reveal();
         } else {
-            await closeOrphanWebviewTabs([VisualizerWebview.viewType]);
-            let markReady: () => void = () => { };
-            visualizerWebviewReady = new Promise<void>((ready) => { markReady = ready; });
-            VisualizerWebview.currentPanel = new VisualizerWebview();
-            const webviewPanel = VisualizerWebview.currentPanel.getWebview();
-            // `_messenger` is a single instance shared across every panel this extension ever
-            // creates, so this handler must be disposed with its own panel — otherwise closing
-            // and reopening the visualizer keeps piling up handlers that all re-run (and all
-            // fire) on every future `webviewReady`.
-            const webviewReadyDisposable = RPCLayer._messenger.onNotification(webviewReady, () => {
-                history = new History();
-                undoRedoManager = new UndoRedoManager();
-                const webview = VisualizerWebview.currentPanel?.getWebview();
-                if (webview && (context.isBI || context.view === MACHINE_VIEW.BIWelcome)) {
-                    const biExtension = isInWI() || extensions.getExtension('wso2.ballerina-integrator');
-                    webview.iconPath = {
-                        light: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-dark.svg' : 'ballerina.svg')),
-                        dark: Uri.file(path.join(extension.context.extensionPath, 'resources', 'icons', biExtension ? 'wso2-light.svg' : 'ballerina-inverse.svg'))
-                    };
-                }
-                markReady();
-            });
-            webviewPanel?.onDidDispose(() => webviewReadyDisposable.dispose());
+            // Creation is not atomic — it awaits `closeOrphanWebviewTabs` before assigning
+            // `currentPanel`, so two calls landing in that window (e.g. startup's
+            // `renderInitialView` invoke still pending when an `OPEN_VIEW` drives
+            // `viewActive`) would each build a panel: the later assignment orphans the
+            // earlier one (leaking its never-disposed `webviewReady` handler) and swaps
+            // `visualizerWebviewReady` out from under the first caller. Share one creation.
+            if (!visualizerPanelCreation) {
+                visualizerPanelCreation = createVisualizerPanel(context).finally(() => {
+                    visualizerPanelCreation = undefined;
+                });
+            }
+            await visualizerPanelCreation;
         }
         if (waitForReady) {
             let timer: ReturnType<typeof setTimeout>;
