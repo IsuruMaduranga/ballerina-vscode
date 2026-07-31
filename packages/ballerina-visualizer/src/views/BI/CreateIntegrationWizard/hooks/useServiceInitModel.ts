@@ -49,8 +49,14 @@ export function useServiceInitModel({ wsClient, projectRoot, orgName, packageNam
     const [pullingStatus, setPullingStatus] = useState<PullingStatus | undefined>(
         cachedModel ? undefined : PullingStatus.FETCHING
     );
-    // Re-entering the Configure step with the same selection must reuse the model (with the
-    // user's values already written into it), so key the fetch by module identity.
+    // Re-entering the Configure step with the same selection must reuse the model rather than
+    // refetch (and re-pull the package), so key the fetch by module identity.
+    //
+    // NOTE: the reused model carries only the user's CHOICE selections — `ServiceConfigureForm`
+    // writes those back via `updateChoiceInModel`, but every other field's value lives in
+    // `ArtifactForm`'s internal state and reaches the model only at submit
+    // (`applyFormValuesToModel`). Since stepping back unmounts the form, non-choice values are
+    // lost on re-entry and the fields fall back to their defaults.
     const fetchedForRef = useRef<string | null>(
         cachedModel ? `${orgName}/${packageName}/${moduleName}` : null
     );
