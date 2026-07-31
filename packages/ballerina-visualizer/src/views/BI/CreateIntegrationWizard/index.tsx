@@ -57,7 +57,11 @@ const ErrorBanner = styled.div`
     font-size: 13px;
 `;
 
-const WIZARD_STEPS = ["Type", "Configure"];
+/** Step indices, in order. `NAME` is skipped when the package already exists. */
+const NAME_STEP: WizardStep = 0;
+const TYPE_STEP: WizardStep = 1;
+const CONFIGURE_STEP: WizardStep = 2;
+const WIZARD_STEPS = ["Name", "Type", "Configure"];
 const DEFAULT_INTEGRATION_NAME = "Untitled";
 const REQUIRED_PATH_MESSAGE = "Path is required";
 const INVALID_PATH_MESSAGE = "Please select a valid directory";
@@ -82,7 +86,7 @@ interface CreateIntegrationWizardProps {
 }
 
 /**
- * The Create Integration wizard (Type → Configure). Runs pre-project: a staging package
+ * The Create Integration wizard (Name → Type → Configure). Runs pre-project: a staging package
  * is scaffolded when Configure is entered, and the single `vscode.openFolder` reload
  * happens only at final submit, with the artifact persisted as a pending entry generated
  * post-reload. `existingPackagePath` flips it to generate-in-place.
@@ -98,8 +102,10 @@ export function CreateIntegrationWizard({
     const { wsClient, onBack } = useBiWsContext();
     // The package exists and keeps its name/location, so name/path/creation logic is inert.
     const isExistingPackage = !!existingPackagePath;
+    // An existing package collects no name, so the Name step doesn't apply to it.
+    const firstStep = isExistingPackage ? TYPE_STEP : NAME_STEP;
 
-    const [step, setStep] = useState<WizardStep>(0);
+    const [step, setStep] = useState<WizardStep>(firstStep);
     const [basicInfo, setBasicInfo] = useState<BasicInfo>({
         integrationName: DEFAULT_INTEGRATION_NAME,
         baseDir: "",
@@ -386,7 +392,8 @@ export function CreateIntegrationWizard({
         } catch (error) {
             console.error(">>> Error validating project path", error);
             setPathError(INVALID_PATH_MESSAGE);
-            setStep(0);
+            // Both the name and the path live on the Name step.
+            setStep(NAME_STEP);
             return false;
         }
     };
@@ -417,28 +424,28 @@ export function CreateIntegrationWizard({
         }
     };
 
-    /** Type → Configure: the name and artifact type are captured together on the first
-     *  step, so validate the name (and, when standalone, the path) and require a
-     *  selection before advancing to Configure. */
-    const handleContinueToConfigure = async () => {
+    /** Name → Type: validate the name (and, when standalone, the path) before advancing. */
+    const handleContinueToType = async () => {
+        if (!basicInfo.integrationName.trim()) {
+            setNameError("Integration name is required");
+            return;
+        }
+        if (!validateBasicInfo()) {
+            return;
+        }
+        // The chooser already validated the location in the embedded flow.
+        if (!embedded && !(await validatePathForSubmit())) {
+            return;
+        }
+        setStep(TYPE_STEP);
+    };
+
+    /** Type → Configure: a type must be selected; entering Configure needs the staging package. */
+    const handleContinueToConfigure = () => {
         if (!selection) {
             return;
         }
-        // An existing package collects no name or path.
-        if (!isExistingPackage) {
-            if (!basicInfo.integrationName.trim()) {
-                setNameError("Integration name is required");
-                return;
-            }
-            if (!validateBasicInfo()) {
-                return;
-            }
-            // The chooser already validated the location in the embedded flow.
-            if (!embedded && !(await validatePathForSubmit())) {
-                return;
-            }
-        }
-        setStep(1);
+        setStep(CONFIGURE_STEP);
         void ensureScaffold();
     };
 
@@ -543,13 +550,13 @@ export function CreateIntegrationWizard({
                 </HeaderRow>
             )}
             <WizardTopBar>
-                {(step > 0 || onBackToChooser) && (
+                {(step > firstStep || onBackToChooser) && (
                     <BackButtonSlot>
                         <IconButton
                             type="button"
-                            onClick={() => (step > 0 ? setStep((step - 1) as WizardStep) : onBackToChooser?.())}
+                            onClick={() => (step > firstStep ? setStep((step - 1) as WizardStep) : onBackToChooser?.())}
                             disabled={isSubmitting}
-                            title={step > 0 ? "Previous step" : "Back"}
+                            title={step > firstStep ? "Previous step" : "Back"}
                         >
                             <Icon
                                 name="arrow-left"
@@ -560,31 +567,34 @@ export function CreateIntegrationWizard({
                         </IconButton>
                     </BackButtonSlot>
                 )}
-                <Stepper alignment="center" steps={WIZARD_STEPS} currentStep={step} />
+                <Stepper
+                    alignment="center"
+                    // The existing-package mode has no Name step, so drop it from the rail too.
+                    steps={isExistingPackage ? WIZARD_STEPS.slice(1) : WIZARD_STEPS}
+                    currentStep={step - firstStep}
+                />
             </WizardTopBar>
             <StepBody>
-                {step === 0 && (
+                {step === TYPE_STEP && (
                     <StepPinnedHeader>
-                        {/* The existing package owns its name and location, so the Type step
-                            asks only for the artifact type. */}
-                        {!isExistingPackage && (
-                            <BasicInfoStep
-                                integrationName={basicInfo.integrationName}
-                                fullPath={fullPath}
-                                nameError={nameError}
-                                pathError={pathError}
-                                existingWorkspace={existingWorkspace}
-                                onNameChange={handleNameChange}
-                                onPathChange={handlePathChange}
-                                onBrowse={handleBrowse}
-                                hidePath={embedded}
-                            />
-                        )}
                         <StepSectionLabel>Select the type of integration to build</StepSectionLabel>
                     </StepPinnedHeader>
                 )}
                 <StepScrollArea>
-                    {step === 0 && (
+                    {step === NAME_STEP && (
+                        <BasicInfoStep
+                            integrationName={basicInfo.integrationName}
+                            fullPath={fullPath}
+                            nameError={nameError}
+                            pathError={pathError}
+                            existingWorkspace={existingWorkspace}
+                            onNameChange={handleNameChange}
+                            onPathChange={handlePathChange}
+                            onBrowse={handleBrowse}
+                            hidePath={embedded}
+                        />
+                    )}
+                    {step === TYPE_STEP && (
                         <IntegrationTypeStep
                             triggers={triggers}
                             selection={selection}
@@ -597,7 +607,7 @@ export function CreateIntegrationWizard({
                             }}
                         />
                     )}
-                    {step === 1 && selection && (
+                    {step === CONFIGURE_STEP && selection && (
                         <ConfigureStep
                             wsClient={wsClient}
                             selection={selection}
@@ -610,12 +620,19 @@ export function CreateIntegrationWizard({
                     )}
                 </StepScrollArea>
                 {submitError && <ErrorBanner>{submitError}</ErrorBanner>}
-                {step === 0 && (
+                {/* Configure owns its own submit button ("Create Integration"), so the
+                    shared footer only applies to the Name and Type steps. */}
+                {step !== CONFIGURE_STEP && (
                     <WizardFooter
-                        primaryLabel="Continue"
-                        onPrimary={handleContinueToConfigure}
-                        primaryDisabled={isSubmitting || !!nameError || (!embedded && !!pathError) || !selection}
-                        // The package already exists and is empty — only Continue applies.
+                        primaryLabel="Next"
+                        onPrimary={step === NAME_STEP ? handleContinueToType : handleContinueToConfigure}
+                        primaryDisabled={
+                            isSubmitting ||
+                            !!nameError ||
+                            (!embedded && !!pathError) ||
+                            (step === TYPE_STEP && !selection)
+                        }
+                        // The package already exists and is empty — only Next applies.
                         skipLabel={isExistingPackage ? undefined : "Create Empty Integration"}
                         onSkip={() => handleCreateIntegration()}
                         skipDisabled={isSubmitting || !!nameError || (!embedded && !!pathError)}

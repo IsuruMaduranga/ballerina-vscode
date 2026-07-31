@@ -16,8 +16,9 @@
  * under the License.
  */
 
-/** The wizard's two steps: Integration Type (with the name field), then Configure. */
-export type WizardStep = 0 | 1;
+/** The wizard's three steps: Name, then Integration Type, then Configure.
+ *  (An existing package owns its name, so that mode starts at the Type step.) */
+export type WizardStep = 0 | 1 | 2;
 
 /**
  * The project a new integration/library is being created into, resolved by the
@@ -43,7 +44,7 @@ export interface ProjectContext {
     convertToWorkspace?: boolean;
 }
 
-/** Step-1 form state. */
+/** Name-step form state. */
 export interface BasicInfo {
     /** The integration display name; "Untitled" is applied only on skip. */
     integrationName: string;

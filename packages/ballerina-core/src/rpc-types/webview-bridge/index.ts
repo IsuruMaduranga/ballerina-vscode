@@ -118,7 +118,7 @@ export interface SignInResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Create Integration wizard (2-step) wire contract — shared between the
+// Create Integration wizard (3-step) wire contract — shared between the
 // `ballerina-visualizer` wizard (`BiWsClient`) and the extension server
 // (`DefaultServer` → `features/bi/integration-wizard.ts`).
 // ─────────────────────────────────────────────────────────────────────────────

@@ -31,7 +31,7 @@ const FooterBar = styled.div`
 `;
 
 interface WizardFooterProps {
-    /** Primary action label ("Continue" on steps 1–2). Omit to hide the primary button. */
+    /** Primary action label ("Next" on the Name and Type steps). Omit to hide the primary button. */
     primaryLabel?: string;
     onPrimary?: () => void;
     primaryDisabled?: boolean;

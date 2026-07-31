@@ -57,7 +57,7 @@ interface BasicInfoStepProps {
 }
 
 /**
- * Integration name and the full path the integration is created at (the Type step).
+ * Integration name and the full path the integration is created at (the Name step).
  * The path field shows the complete target directory (`<parent>/<folder>`); its
  * last segment defaults to the integration name and stays editable and
  * independent of the Ballerina package name.
