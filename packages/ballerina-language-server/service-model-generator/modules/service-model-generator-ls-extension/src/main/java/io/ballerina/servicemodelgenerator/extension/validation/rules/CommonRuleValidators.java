@@ -327,8 +327,6 @@ public final class CommonRuleValidators {
         return "{label} must be a number";
     }
 
-    // ---- value / arg extraction -------------------------------------------------------------
-
     /** The node's value as trimmed text; multi-value nodes join their entries. */
     public static String text(Value node) {
         if (node == null) {

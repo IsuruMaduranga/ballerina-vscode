@@ -169,8 +169,6 @@ public final class TriggerSourceMerger {
         return GSON.fromJson(GSON.toJson(template), Function.class);
     }
 
-    // ----- enrichment of one matched handler -----
-
     private static void enrich(Function template, Function source) {
         template.setEnabled(true);
         template.setEditable(true);
@@ -318,8 +316,6 @@ public final class TriggerSourceMerger {
         }
         return normalizedActual.substring(prefix.length(), normalizedActual.length() - suffix.length());
     }
-
-    // ----- annotation tree population from the source attachment -----
 
     private static void applyAnnotationsFromSource(Function template, Function source) {
         for (Value tree : template.getProperties().values()) {
@@ -478,8 +474,6 @@ public final class TriggerSourceMerger {
         }
         return score;
     }
-
-    // ----- small accessors -----
 
     private static String valueOf(Value value) {
         return value == null ? null : value.getValue();

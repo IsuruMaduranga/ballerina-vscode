@@ -132,8 +132,6 @@ public final class PayloadComposer {
         return siblings;
     }
 
-    // --- navigation ---------------------------------------------------------
-
     private record Located(TriggerUISchemaModel.Property payload, List<TriggerUISchemaModel.Property> siblings) {
     }
 
@@ -191,8 +189,6 @@ public final class PayloadComposer {
         return "PAYLOAD_TYPE".equals(cd.type()) || "PAYLOAD_TYPE_INCLUDED_RECORD".equals(cd.type());
     }
 
-    // --- element / template -------------------------------------------------
-
     private static String element(TriggerUISchemaModel.Codedata cd) {
         if (cd == null) {
             return "";
@@ -230,8 +226,6 @@ public final class PayloadComposer {
         result = result.replaceAll("\\bT\\b", java.util.regex.Matcher.quoteReplacement(safe));
         return result;
     }
-
-    // --- small helpers ------------------------------------------------------
 
     public static String selectedFieldType(TriggerUISchemaModel.Property property) {
         if (property == null || property.types() == null) {

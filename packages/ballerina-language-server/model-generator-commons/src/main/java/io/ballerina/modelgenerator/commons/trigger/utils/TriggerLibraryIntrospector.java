@@ -50,9 +50,7 @@ import java.util.Set;
 /**
  * Resolves the {@link TriggerLibraryFacts} a {@code TriggerUISchemaModel} synthesizer needs from a
  * connector's compiled {@link SemanticModel}: listener init-parameter structure, service object types
- * (with their remote/resource functions), and declared annotations. Ported from the
- * {@code library-introspector} CLI tool so the LS can resolve the same facts at request time directly
- * from a {@link SemanticModel} it already has, with no CLI shell-out.
+ * (with their remote/resource functions), and declared annotations.
  *
  * <p>Listener param facts are resolved for structure only; a synthesizer still resolves each
  * parameter's rendered widget via {@code ListenerUtil#getListenerModelByName}.
@@ -104,8 +102,6 @@ public final class TriggerLibraryIntrospector {
         }
         return new TriggerLibraryFacts(listeners, serviceTypes, annotations);
     }
-
-    // ---- listeners ---------------------------------------------------------
 
     /** A class is a listener if it is named {@code Listener} or type-includes a {@code Listener}. */
     private static boolean isListenerClass(ClassSymbol classSymbol) {
@@ -183,8 +179,6 @@ public final class TriggerLibraryIntrospector {
         };
     }
 
-    // ---- service types & functions ------------------------------------------
-
     private static TriggerLibraryFacts.ServiceType extractServiceType(String name, TypeDefinitionSymbol typeDef,
                                                                        ObjectTypeSymbol obj, ModuleInfo moduleInfo) {
         List<TriggerLibraryFacts.Function> functions = new ArrayList<>();
@@ -213,8 +207,6 @@ public final class TriggerLibraryIntrospector {
         return new TriggerLibraryFacts.Function(name, quals, kind, returnType, returnsError, doc(m), params);
     }
 
-    // ---- annotations ---------------------------------------------------------
-
     private static TriggerLibraryFacts.Annotation extractAnnotation(AnnotationSymbol a, ModuleInfo moduleInfo) {
         Optional<TypeSymbol> typeDescriptor = a.typeDescriptor();
         String typeConstraint = typeDescriptor.map(t -> CommonUtils.getTypeSignature(t, moduleInfo)).orElse(null);
@@ -226,8 +218,6 @@ public final class TriggerLibraryIntrospector {
         return new TriggerLibraryFacts.Annotation(a.getName().orElse(""), module, typeConstraint, points, doc(a),
                 fields);
     }
-
-    // ---- helpers ---------------------------------------------------------------
 
     private static String doc(Symbol s) {
         if (s instanceof Documentable d) {

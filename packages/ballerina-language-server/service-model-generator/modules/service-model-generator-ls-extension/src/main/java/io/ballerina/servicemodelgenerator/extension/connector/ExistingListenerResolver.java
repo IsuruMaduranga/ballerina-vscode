@@ -127,10 +127,6 @@ public final class ExistingListenerResolver {
                 .build();
     }
 
-    // ------------------------------------------------------------------
-    // Model side — derive the field template from the create-new params
-    // ------------------------------------------------------------------
-
     /** The listener-parameter field template derived from the create-new branch. */
     static final class ListenerTemplate {
         final Map<Integer, Field> positionalScalars = new LinkedHashMap<>();
@@ -203,10 +199,6 @@ public final class ExistingListenerResolver {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Mapping — parsed source args onto the template as read-only fields
-    // ------------------------------------------------------------------
-
     /**
      * A parsed {@code new(...)}: positional args (scalar or record) and named args (as a nested-record tree).
      *
@@ -250,10 +242,6 @@ public final class ExistingListenerResolver {
         }
         return fields;
     }
-
-    // ------------------------------------------------------------------
-    // Included (named) args — resolved against the create-new field tree
-    // ------------------------------------------------------------------
 
     /**
      * Walks the create-new field tree and, for every included-field leaf / CHOICE, resolves its value
@@ -512,10 +500,6 @@ public final class ExistingListenerResolver {
         recordFields.forEach((name, value) -> parts.add(name + ": " + value));
         return "{" + String.join(", ", parts) + "}";
     }
-
-    // ------------------------------------------------------------------
-    // Source side — parse a listener declaration's new(...) arguments
-    // ------------------------------------------------------------------
 
     static Optional<ParsedListener> parseListener(String listenerName, SemanticModel semanticModel, Project project) {
         try {

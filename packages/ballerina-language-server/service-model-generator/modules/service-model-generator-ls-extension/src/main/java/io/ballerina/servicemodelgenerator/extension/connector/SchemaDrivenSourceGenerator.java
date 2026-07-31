@@ -117,11 +117,8 @@ public final class SchemaDrivenSourceGenerator {
                 defaultEmitAlias(creationModel.getModuleName()));
     }
 
-    // ==================================================================
-    // Unified TriggerUISchemaModel path. The listener-arg walk below is shared across service descriptor
-    // resolution; the service descriptor and function block are sourced from the TriggerUISchemaModel.
-    // ==================================================================
-
+    // The listener-arg walk below is shared across service descriptor resolution; the service descriptor
+    // and function block are sourced from the TriggerUISchemaModel.
     /** {@code addServiceAndListener} for the unified model: import (if missing) + listener/service block. */
     public static Map<String, List<TextEdit>> buildAddServiceEditsForTrigger(ServiceInitModel filledInitForm,
                                                                    TriggerUISchemaModel triggerModel,
@@ -386,10 +383,6 @@ public final class SchemaDrivenSourceGenerator {
         return colon < 0 ? typeName : typeName.substring(colon + 1);
     }
 
-    // ------------------------------------------------------------------
-    // Self-module import alias
-    // ------------------------------------------------------------------
-
     /**
      * The alias the connector's module is referenced under: {@code TriggerUISchemaModel.importPrefix}, else the
      * generated default.
@@ -645,10 +638,6 @@ public final class SchemaDrivenSourceGenerator {
         return String.format("%s %s %s = %s (%s);", LISTENER, listenerType, args.varName, NEW, args.render());
     }
 
-    // ------------------------------------------------------------------
-    // Listener argument collection (CHOICE + GROUP_SECTION aware)
-    // ------------------------------------------------------------------
-
     private static ListenerArgs collectListenerArgs(ServiceInitModel creationModel) {
         ListenerArgs args = new ListenerArgs();
         collect(creationModel.getProperties(), args);
@@ -886,10 +875,6 @@ public final class SchemaDrivenSourceGenerator {
         }
         return "";
     }
-
-    // ------------------------------------------------------------------
-    // Small helpers
-    // ------------------------------------------------------------------
 
     private static boolean isVarName(Codedata codedata) {
         if (codedata == null) {

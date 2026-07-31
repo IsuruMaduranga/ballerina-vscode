@@ -197,8 +197,6 @@ public class TriggerModelReader {
         return Optional.ofNullable(gson.fromJson(remapped, ServiceInitModel.class));
     }
 
-    // --- bundled trigger models (classpath resources shipped in this jar) ---
-
     /** Cheap presence check for a bundled schema, used by the routers at dispatch time. */
     public boolean hasBundledTriggerModel(String moduleName) {
         return getBundledTriggerModel(moduleName).isPresent();
@@ -267,9 +265,6 @@ public class TriggerModelReader {
             return Optional.empty();
         }
     }
-
-    // --- schema-driven trigger models (bundled-by-name, falling back to shipped-schema, falling back
-    // to metadata+introspection synthesis) ---
 
     /** Cheap presence check across all tiers (bundled, shipped-schema, synthesized). */
     public boolean hasSchemaDrivenModel(String orgName, String moduleName) {

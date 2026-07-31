@@ -123,8 +123,7 @@ public final class TriggerModelSynthesizer {
     private record ConnectorIdentity(String orgName, String packageName, String moduleName, String version) {
     }
 
-    // ---- Codedata helpers (25-field record; centralized here so every call site is counted once) ----
-
+    // Codedata is a 25-field record; these factories are centralized here so every call site is counted once.
     private static TriggerUISchemaModel.Codedata cd() {
         return TriggerUISchemaModel.Codedata.builder().build();
     }
@@ -160,8 +159,6 @@ public final class TriggerModelSynthesizer {
                 .bindable(true).bindingKind("USER_SELECTED").typeConstraint(typeConstraint).template(template)
                 .field(field).nameEditable(true).build();
     }
-
-    // ---- listener init form --------------------------------------------------
 
     private static final String LISTENER_CONFIG_GROUP_KEY = "listenerConfig";
 
@@ -286,8 +283,6 @@ public final class TriggerModelSynthesizer {
                 cdType("KEY_EXISTING_LISTENER"), null);
     }
 
-    // ---- identifier / base path -----------------------------------------------
-
     /**
      * Adds an {@code identifier}/base-path field when the primary service type declares one and it is
      * not already resolved (per the v1 {@code oneOf} rule) by a preferred annotation-field alternative.
@@ -346,8 +341,6 @@ public final class TriggerModelSynthesizer {
                 .orElse(rule.members().get(0));
     }
 
-    // ---- service type selector (multi-type connectors) -------------------------
-
     private static TriggerUISchemaModel.Property buildServiceTypeSelector(
             List<TriggerMetadataModel.ServiceType> serviceTypes) {
         List<TriggerUISchemaModel.Option> options = new ArrayList<>();
@@ -362,8 +355,6 @@ public final class TriggerModelSynthesizer {
                 true, true, false, false, null, serviceTypes.get(0).id(), List.of(type), null, null, null,
                 cdType("SERVICE_TYPE_DESCRIPTOR"), null);
     }
-
-    // ---- service types & handlers ------------------------------------------------
 
     private static TriggerUISchemaModel.ServiceTypeModel buildServiceType(TriggerMetadataModel.ServiceType serviceType,
                                                                   TriggerLibraryFacts facts,
@@ -671,8 +662,6 @@ public final class TriggerModelSynthesizer {
         return buildReturnType(joined, hasError);
     }
 
-    // ---- service-level annotations ------------------------------------------------
-
     /**
      * Every {@code service}-attached annotation applicable to {@code serviceType}; shared by
      * {@link #buildInitServiceAnnotations} and {@link #buildServiceAnnotations} so the two stay in
@@ -778,8 +767,6 @@ public final class TriggerModelSynthesizer {
                 true, true, optional, false, "{}", "{}", List.of(propertyType), null, null, null,
                 cdAnnotation(codedataType, annotationName, pkgModule, pkgOrg, pkgName, optional), null);
     }
-
-    // ---- shared helpers ------------------------------------------------------------
 
     /** Joins a union of {@link TypeRef}s into one type-signature string, qualifying each member. */
     private static String typeRefName(List<TypeRef> refs, String moduleName) {
