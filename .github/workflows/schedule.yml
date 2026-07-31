@@ -3,13 +3,22 @@ name: Nightly Build
 on:
   schedule:
     - cron: '30 1 * * *'
+  workflow_dispatch:
+    inputs:
+      sourceBranch:
+        description: >-
+          Branch to run the nightly pipeline against. Defaults to main, which is
+          what the schedule always uses.
+        required: false
+        type: string
+        default: main
 
 permissions:
   contents: read
   packages: read
 
-# The builds/nightly branch is force-pushed by sync-nightly, so delayed or re-run schedules
-# must not interleave: the second would move the branch out from under the first's build.
+# The builds/nightly branch is force-pushed by sync-nightly, so scheduled, manual, delayed,
+# or re-run builds must not interleave: one would move the branch out from under another.
 concurrency:
   group: nightly-build
   cancel-in-progress: false
@@ -25,7 +34,8 @@ jobs:
   # the version it was built at.
   #
   # Note that .github/actions/* used by the downstream jobs resolve from the
-  # checked-out builds/nightly tree, so a change to them only takes effect once it is on main.
+  # checked-out builds/nightly tree, so a change to them only takes effect once it is on main
+  # or when a manual run selects its source branch.
   #
   # The version is derived from the extension package.json — the single source of truth,
   # which on main always reads 'major.minor.patch-SNAPSHOT' — as
@@ -50,12 +60,18 @@ jobs:
           fetch-depth: 0
 
       - name: Reset builds/nightly to the source branch
+        env:
+          SOURCE_BRANCH: ${{ inputs.sourceBranch || 'main' }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout -B builds/nightly origin/main
+          # Checkout fetches only the triggering ref, so fetch the requested source
+          # explicitly even though the initial checkout uses fetch-depth 0.
+          git check-ref-format --branch "${SOURCE_BRANCH}" >/dev/null
+          git fetch origin \
+            "refs/heads/${SOURCE_BRANCH}:refs/remotes/origin/${SOURCE_BRANCH}"
+          git checkout -B builds/nightly "origin/${SOURCE_BRANCH}"
 
       - name: Stamp nightly version
         id: stamp
