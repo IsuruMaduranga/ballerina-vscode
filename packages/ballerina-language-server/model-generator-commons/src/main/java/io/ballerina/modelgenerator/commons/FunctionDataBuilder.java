@@ -555,14 +555,16 @@ public class FunctionDataBuilder {
     }
 
     private void applyWorkspaceResolution(PackageUtil.WorkspacePackageResolution workspaceResolution) {
-        semanticModel(workspaceResolution.semanticModel());
-        this.resolvedPackage = workspaceResolution.resolvedPackage();
-        Symbol targetSymbol = functionSymbol != null ? functionSymbol : semanticModel.moduleSymbols().stream()
+        SemanticModel workspaceSemanticModel = workspaceResolution.semanticModel();
+        Package workspacePackage = workspaceResolution.resolvedPackage();
+        semanticModel(workspaceSemanticModel);
+        this.resolvedPackage = workspacePackage;
+        Symbol targetSymbol = functionSymbol != null ? functionSymbol : workspaceSemanticModel.moduleSymbols().stream()
                 .filter(symbol -> symbol instanceof FunctionSymbol && symbol.nameEquals(functionName))
                 .findFirst()
                 .orElse(null);
         this.document = targetSymbol == null ? null : targetSymbol.getLocation()
-                .map(location -> CommonUtils.getDocument(resolvedPackage.project(), location))
+                .map(location -> CommonUtils.getDocument(workspacePackage.project(), location))
                 .orElse(null);
     }
 
