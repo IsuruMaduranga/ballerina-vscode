@@ -523,6 +523,8 @@ export function CreateIntegrationWizard({
                         variant="create"
                         integrationName={effectiveName}
                         artifactLabel={artifactLabel}
+                        projectName={projectContext?.workspaceName}
+                        isNewProject={projectContext?.isNewProject}
                     />
                 )}
             </WizardPage>

@@ -26,7 +26,9 @@ import {
     CreateComponentResponse,
     createFunctionSignature,
     EVENT_TYPE,
+    IntegrationComponentLabel,
     isPathInside,
+    isSamePath,
     MigrateRequest,
     NodePosition,
     ProjectMigrationResult,
@@ -47,6 +49,9 @@ import { parse } from "@iarna/toml";
 import { getProjectTomlValues, VALIDATOR_PACKAGE_NAME } from "./config";
 import { extension } from "../BalExtensionContext";
 import { scheduleMigrationEnhancement, writeEnhanceToml } from "../features/ai/migration/orchestrator";
+// Imported from `startup-progress` rather than `pending-artifact`: that module pulls in the
+// RPC managers, which import this file back.
+import { PendingIntegrationLanding, writePendingIntegrationPointer } from "../features/bi/startup-progress";
 import { runBackgroundTerminalCommand } from "./runCommand";
 import { stringify as stringifyYaml } from "yaml";
 
@@ -725,12 +730,13 @@ export async function convertProjectToWorkspace(params: AddProjectToWorkspaceReq
     openInVSCode(newDirectory);
 }
 
-export async function addProjectToExistingWorkspace(params: AddProjectToWorkspaceRequest): Promise<void> {
+/** Adds a package to the project already open in this window; returns the new package's root. */
+export async function addProjectToExistingWorkspace(params: AddProjectToWorkspaceRequest): Promise<string> {
     const workspacePath = StateMachine.context().workspacePath;
     const packageFolder = resolvePackageFolderInWorkspace(workspacePath, params);
     addToWorkspaceToml(workspacePath, packageFolder);
 
-    await createProjectInWorkspace(params, workspacePath, packageFolder);
+    return createProjectInWorkspace(params, workspacePath, packageFolder);
 }
 
 function createWorkspaceToml(workspacePath: string, projectTitle: string, packageName: string) {
@@ -926,6 +932,41 @@ export async function createBIComponent(projectRequest: ProjectRequest): Promise
     }
     const packageRoot = await createBIProjectPure(projectRequest);
     return { packageRoot, openRoot: packageRoot };
+}
+
+/**
+ * Naming and landing for a create, resolved once at submit time (the only point that knows
+ * whether the project was created by this same submit) and carried across the reload.
+ */
+export interface CreateLandingContext {
+    /** Display name of the project the package went into; undefined for a standalone package. */
+    projectName?: string;
+    /** Whether this submit created the project too. */
+    isNewProject: boolean;
+    /**
+     * A brand-new project lands on the project overview — the project is what the user just
+     * made. Adding into a project that already existed lands on the new package instead.
+     */
+    landing: PendingIntegrationLanding;
+}
+
+export function resolveCreateLandingContext(
+    packageRoot: string,
+    openRoot: string,
+    request: Pick<ProjectRequest, 'newProject' | 'convertToWorkspace' | 'workspaceName'>
+): CreateLandingContext {
+    // The folder to open being the package itself means no project was involved.
+    if (isSamePath(packageRoot, openRoot)) {
+        return { isNewProject: false, landing: "package" };
+    }
+    const isNewProject = !!request.newProject || !!request.convertToWorkspace;
+    return {
+        // The form's project name is authoritative for a new project; for an existing one
+        // read the title it was actually created with.
+        projectName: request.workspaceName?.trim() || getExistingProjectInfo(openRoot).name || path.basename(openRoot),
+        isNewProject,
+        landing: isNewProject ? "project" : "package",
+    };
 }
 
 export function deleteProjectFromWorkspace(workspacePath: string, packagePath: string) {
@@ -1378,6 +1419,19 @@ export async function createBIProject(params: any): Promise<void> {
         return;
     }
     // Components go into an existing workspace when the target resolves inside one, else standalone.
-    const { openRoot } = await createBIComponent(params);
+    const { packageRoot, openRoot } = await createBIComponent(params);
+    // No artifact is configured on this path, so the pointer carries only the narration
+    // and the landing view for the window that opens next.
+    const landingContext = resolveCreateLandingContext(packageRoot, openRoot, params);
+    const componentLabel: IntegrationComponentLabel = params.isLibrary ? "library" : "integration";
+    await writePendingIntegrationPointer({
+        projectRoot: packageRoot,
+        timestamp: Date.now(),
+        integrationName: params.projectName,
+        projectName: landingContext.projectName,
+        isNewProject: landingContext.isNewProject,
+        componentLabel,
+        landing: landingContext.landing,
+    });
     openInVSCode(openRoot);
 }

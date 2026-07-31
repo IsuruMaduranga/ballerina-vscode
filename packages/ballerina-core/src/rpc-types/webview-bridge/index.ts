@@ -139,14 +139,55 @@ export const INTEGRATION_ARTIFACT_LABELS: Record<PendingIntegrationArtifactKind,
     AI_CHAT_AGENT: "AI chat agent",
 };
 
-export function getIntegrationCreationCopy(
-    integrationName: string,
-    artifactLabel?: string
-): { title: string; subtitle: string } {
+/** What the create is producing inside the project — an integration or a library. */
+export type IntegrationComponentLabel = "integration" | "library";
+
+/** Everything the creation progress screens need to name what is being created and where. */
+export interface IntegrationCreationCopyParams {
+    /** Name of the integration/library being created. */
+    integrationName: string;
+    /** e.g. "service"; absent for an integration created without a first artifact. */
+    artifactLabel?: string;
+    /** Display name of the project the package is created in; absent for a standalone package. */
+    projectName?: string;
+    /** True when this same submit also creates the project itself. */
+    isNewProject?: boolean;
+    /** Defaults to "integration". */
+    componentLabel?: IntegrationComponentLabel;
+}
+
+/**
+ * Wording for the create-in-progress screens. The three variants mirror the three
+ * things a submit can actually be doing, so the screen never claims a project is
+ * being created when the package is only being added to one that already exists.
+ */
+export function getIntegrationCreationCopy({
+    integrationName,
+    artifactLabel,
+    projectName,
+    isNewProject,
+    componentLabel = "integration",
+}: IntegrationCreationCopyParams): { title: string; subtitle: string } {
+    // What finally opens: the configured first artifact when there is one, else the
+    // integration/library itself (an empty integration is still something to open).
+    const opening = artifactLabel ?? componentLabel;
+
+    if (projectName && isNewProject) {
+        return {
+            title: `Creating project ${projectName} with ${componentLabel} ${integrationName}`,
+            subtitle: `Your new ${opening} will open once the project is ready.`,
+        };
+    }
+    if (projectName) {
+        return {
+            title: `Adding ${componentLabel} ${integrationName} to project ${projectName}`,
+            subtitle: `Your new ${opening} will open once it has been created.`,
+        };
+    }
+    // Standalone package — there is no project to name.
     return {
         title: `Creating ${integrationName}`,
-        // An integration created without an artifact is still an integration to open.
-        subtitle: `Your new ${artifactLabel ?? "integration"} will open once the project is ready.`,
+        subtitle: `Your new ${opening} will open once the project is ready.`,
     };
 }
 

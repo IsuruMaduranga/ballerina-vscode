@@ -22,6 +22,7 @@ import {
     AIMachineStateValue,
     DIRECTORY_MAP,
     getIntegrationCreationCopy,
+    IntegrationComponentLabel,
     isSamePath,
     MachineStateValue,
     PendingIntegrationArtifactKind,
@@ -175,6 +176,12 @@ interface StartupIntegration {
     artifactKind?: PendingIntegrationArtifactKind;
     /** The package the pending artifact is generated into. */
     projectRoot: string;
+    /** Project the package was created in; absent for a standalone package. */
+    projectName?: string;
+    /** Whether the same submit created the project too. */
+    isNewProject?: boolean;
+    /** Integration vs library. */
+    componentLabel?: IntegrationComponentLabel;
 }
 
 type StartupIntegrationHost = {
@@ -308,7 +315,7 @@ const VisualizerComponent = React.memo(({ state }: { state: MachineStateValue })
 /** Pre-view loading screen; continues the wizard's "Creating <name>" copy when this window is finishing a submit. */
 const LanguageServerLoadingView = ({ startupIntegration }: { startupIntegration?: StartupIntegration }) => {
     const copy = startupIntegration
-        ? getIntegrationCreationCopy(startupIntegration.integrationName, startupIntegration.artifactLabel)
+        ? getIntegrationCreationCopy(startupIntegration)
         : {
             title: readStartupTitle() ?? "Preparing your project",
             subtitle: "Your project is being prepared. This may take a few moments.",

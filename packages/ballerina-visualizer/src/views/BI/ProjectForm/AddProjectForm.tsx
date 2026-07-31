@@ -81,6 +81,8 @@ export function AddProjectForm() {
     // library = name + package details.
     const [screen, setScreen] = useState<Screen>("chooser");
     const [targetPath, setTargetPath] = useState<string>("");
+    // Title of the already-open project, for the wizard's "Adding … to project X" copy.
+    const [openProjectName, setOpenProjectName] = useState<string>("");
     // Convert flow: `convertBaseDir` is the parent location; the folder name defaults to
     // the project name until edited.
     const [convertBaseDir, setConvertBaseDir] = useState<string>("");
@@ -175,6 +177,17 @@ export function AddProjectForm() {
             setCurrentIntegrationDirName(inProject ? "" : name);
             setIsInProject(inProject);
 
+            if (inProject) {
+                // Only needed to name the project on the wizard's progress screen, so a
+                // failure here just leaves that copy unnamed.
+                try {
+                    const structure = await rpcClient.getBIDiagramRpcClient().getProjectStructure();
+                    setOpenProjectName(structure?.workspaceTitle || structure?.workspaceName || name);
+                } catch {
+                    setOpenProjectName(name);
+                }
+            }
+
             try {
                 const defaults = await rpcClient.getBIDiagramRpcClient().getSuggestedProjectDefaults({ isInProject: inProject });
                 setFormData(prev => ({
@@ -215,7 +228,7 @@ export function AddProjectForm() {
     // The project the wizard adds into: the open workspace, or a new one from converting
     // the current integration.
     const integrationProjectContext: ProjectContext = isInProject
-        ? { isNewProject: false, workspacePath: targetPath }
+        ? { isNewProject: false, workspacePath: targetPath, workspaceName: openProjectName || undefined }
         : {
             isNewProject: true,
             workspacePath: convertFullPath,

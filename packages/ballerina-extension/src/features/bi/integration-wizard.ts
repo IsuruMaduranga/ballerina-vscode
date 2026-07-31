@@ -29,8 +29,14 @@ import {
     WizardCapabilitiesResponse,
     WorkspaceSupportResponse,
 } from "@wso2/ballerina-core";
-import { createBIComponent, createBIProjectPure, isAlreadyOpenFolder, openInVSCode } from "../../utils/bi";
-import { generateArtifactInPlace, schedulePendingIntegration } from "./pending-artifact";
+import {
+    createBIComponent,
+    createBIProjectPure,
+    isAlreadyOpenFolder,
+    openInVSCode,
+    resolveCreateLandingContext,
+} from "../../utils/bi";
+import { generateArtifactInPlace, openPackageOverview, schedulePendingIntegration } from "./pending-artifact";
 import { extension } from "../../BalExtensionContext";
 import { StateMachine } from "../../stateMachine";
 
@@ -111,21 +117,36 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
     const { packageRoot, openRoot } = await createBIComponent(projectRequest);
     await cleanupStaging();
 
+    const landingContext = resolveCreateLandingContext(packageRoot, openRoot, projectRequest);
+
     // Live path only when the extension has ALREADY activated `openRoot` — a just-converted
     // workspace at the same path is open in VS Code but still needs the reload.
     const addedIntoActiveWorkspace = isAlreadyOpenFolder(openRoot) && isSamePath(StateMachine.context().workspacePath, openRoot);
 
     if (addedIntoActiveWorkspace) {
+        // The project was already open, so it cannot be new: the new integration is the
+        // news here and its own overview is where to land.
         if (params.artifact) {
-            await generateArtifactInPlace(packageRoot, params.artifact);
+            await generateArtifactInPlace(packageRoot, params.artifact, true);
         } else {
-            StateMachine.refreshProjectInfo();
+            openPackageOverview(packageRoot);
+            // Silent: a non-silent refresh would navigate to the project overview and
+            // clobber the package overview just opened.
+            StateMachine.refreshProjectInfo({ silent: true });
         }
         return;
     }
 
     // Scheduled for every create: it also tells the reloading window it is mid-create.
-    await schedulePendingIntegration(packageRoot, params.project.integrationName, params.artifact);
+    await schedulePendingIntegration({
+        packageRoot,
+        integrationName: params.project.integrationName,
+        payload: params.artifact,
+        projectName: landingContext.projectName,
+        isNewProject: landingContext.isNewProject,
+        componentLabel: "integration",
+        landing: landingContext.landing,
+    });
     openInVSCode(openRoot);
 }
 

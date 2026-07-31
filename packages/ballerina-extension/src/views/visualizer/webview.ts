@@ -222,8 +222,7 @@ export class VisualizerWebview {
             StateMachine.context().workspacePath || StateMachine.context().projectPath
         );
         const productTitle = biExtension ? VisualizerWebview.biTitle : VisualizerWebview.ballerinaTitle;
-        const creationCopy = startupProgress
-            && getIntegrationCreationCopy(startupProgress.integrationName, startupProgress.artifactLabel);
+        const creationCopy = startupProgress && getIntegrationCreationCopy(startupProgress);
         const title = creationCopy ? escapeHtml(creationCopy.title) : productTitle;
         const subtitle = creationCopy
             ? escapeHtml(creationCopy.subtitle)
@@ -297,6 +296,8 @@ export class VisualizerWebview {
                 font-size: 1.5em;
                 font-weight: 400;
                 line-height: normal;
+                /* Project and integration names are user input and both appear here. */
+                overflow-wrap: anywhere;
             }
             .welcome-subtitle {
                 color: var(--vscode-descriptionForeground);

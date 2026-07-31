@@ -17,7 +17,7 @@
  */
 
 import styled from "@emotion/styled";
-import { getIntegrationCreationCopy } from "@wso2/ballerina-core";
+import { getIntegrationCreationCopy, IntegrationComponentLabel } from "@wso2/ballerina-core";
 import { ProgressRing } from "@wso2/ui-toolkit";
 
 const Wrapper = styled.div`
@@ -74,6 +74,12 @@ type CreatingIntegrationViewProps =
         integrationName: string;
         /** e.g. "service"; omit for an empty integration. */
         artifactLabel?: string;
+        /** Project it is created in; omit for a standalone package. */
+        projectName?: string;
+        /** Whether this submit also creates the project. */
+        isNewProject?: boolean;
+        /** Defaults to "integration". */
+        componentLabel?: IntegrationComponentLabel;
     }
     | {
         variant: "add";
@@ -98,7 +104,7 @@ type CreatingIntegrationViewProps =
  */
 export function CreatingIntegrationView(props: CreatingIntegrationViewProps) {
     const copy = props.variant === "create"
-        ? getIntegrationCreationCopy(props.integrationName, props.artifactLabel)
+        ? getIntegrationCreationCopy(props)
         : {
             // The add path always carries an artifact, so its fallback is defensive.
             title: `Adding your ${props.artifactLabel ?? "artifact"}`,

@@ -22,6 +22,7 @@ import { ProgressLocation, window } from "vscode";
 import {
     EVENT_TYPE,
     INTEGRATION_ARTIFACT_LABELS,
+    IntegrationComponentLabel,
     isPathInside,
     isSamePath,
     MACHINE_VIEW,
@@ -34,6 +35,7 @@ import {
     clearPendingIntegrationPointer,
     isPendingPointerFresh,
     PendingIntegrationArtifactPointer,
+    PendingIntegrationLanding,
     readPendingIntegrationPointer,
     writePendingIntegrationPointer,
 } from "./startup-progress";
@@ -48,30 +50,50 @@ function pendingArtifactFilePath(projectRoot: string): string {
     return path.join(projectRoot, PENDING_ARTIFACT_RELATIVE_PATH);
 }
 
+/** What a submit hands over to the window that will finish it after the reload. */
+export interface PendingIntegrationSchedule {
+    /** The new package's own folder. */
+    packageRoot: string;
+    /** Display name of the integration/library being created. */
+    integrationName: string;
+    /** Configured first artifact; absent for an empty integration or a library. */
+    payload?: PendingIntegrationArtifactPayload;
+    /** Display name of the project the package went into; absent for a standalone package. */
+    projectName?: string;
+    /** True when the same submit created the project too. */
+    isNewProject?: boolean;
+    /** Defaults to "integration" on read. */
+    componentLabel?: IntegrationComponentLabel;
+    /** Where the reloaded window should land. */
+    landing: PendingIntegrationLanding;
+}
+
 /**
- * Records the wizard's create so the reloaded window can finish it. Written even for an
- * empty integration — it is also what lets the new window narrate "Creating <name>".
- * Call right before `openInVSCode(projectRoot)`.
+ * Records the create so the reloaded window can finish it. Written even for an empty
+ * integration or a library — it is also what lets the new window narrate the create and
+ * know where to land. Call right before `openInVSCode(openRoot)`.
  */
-export async function schedulePendingIntegration(
-    projectRoot: string,
-    integrationName: string,
-    payload?: PendingIntegrationArtifactPayload
-): Promise<void> {
+export async function schedulePendingIntegration(schedule: PendingIntegrationSchedule): Promise<void> {
+    const { packageRoot, payload } = schedule;
     if (payload) {
-        const payloadFile = pendingArtifactFilePath(projectRoot);
+        const payloadFile = pendingArtifactFilePath(packageRoot);
         fs.mkdirSync(path.dirname(payloadFile), { recursive: true });
         fs.writeFileSync(payloadFile, JSON.stringify(payload), "utf8");
     }
 
     await writePendingIntegrationPointer({
-        projectRoot,
+        projectRoot: packageRoot,
         timestamp: Date.now(),
-        integrationName,
+        integrationName: schedule.integrationName,
         artifactKind: payload?.kind,
+        projectName: schedule.projectName,
+        isNewProject: schedule.isNewProject,
+        componentLabel: schedule.componentLabel,
+        landing: schedule.landing,
     });
     console.log(
-        `[IntegrationWizard] Scheduled pending ${payload?.kind ?? "empty"} integration for project: ${projectRoot}`
+        `[IntegrationWizard] Scheduled pending ${payload?.kind ?? "empty"} integration for project: ${packageRoot} ` +
+        `(landing=${schedule.landing})`
     );
 }
 
@@ -113,17 +135,19 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
             return;
         }
 
+        const landOnPackageOverview = resolveLandsOnPackage(stored, opensStoredPackage);
+
         // An empty integration has no payload: there is nothing to generate, only
         // the landing view below to open.
         if (!payload) {
-            ensureLandedOnNewIntegration(stored, opensStoredPackage);
+            ensureLandedOnNewIntegration(stored, landOnPackageOverview);
             return;
         }
 
         const label = ARTIFACT_KIND_LABELS[payload.kind];
         if (!label || payload.version !== 1) {
             console.error(`[IntegrationWizard] Unsupported pending artifact payload:`, payload);
-            ensureLandedOnNewIntegration(stored, opensStoredPackage);
+            ensureLandedOnNewIntegration(stored, landOnPackageOverview);
             return;
         }
 
@@ -131,13 +155,10 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
         console.log(
             `[IntegrationWizard] Pending artifact: kind=${payload.kind}, projectRoot=${stored.projectRoot}, ` +
             `opensStoredPackage=${opensStoredPackage}, insideOpenWorkspace=${insideOpenWorkspace}, ` +
-            `addedIntoWorkspace=${addedIntoWorkspace}`
+            `addedIntoWorkspace=${addedIntoWorkspace}, landOnPackageOverview=${landOnPackageOverview}`
         );
         try {
-            // Standalone: land on the package overview (the package's home). Added
-            // into a workspace: don't drill into the package — the landing below
-            // puts the window on the workspace overview instead.
-            await generatePendingArtifact(payload, stored.projectRoot, opensStoredPackage);
+            await generatePendingArtifact(payload, stored.projectRoot, landOnPackageOverview);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error(`[IntegrationWizard] Failed to generate pending ${payload.kind} artifact:`, error);
@@ -148,10 +169,23 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
         }
         // Whatever generation did (navigated, didn't, or failed), never leave the window
         // on the startup screen.
-        ensureLandedOnNewIntegration(stored, opensStoredPackage);
+        ensureLandedOnNewIntegration(stored, landOnPackageOverview);
     } catch (error) {
         console.error("[IntegrationWizard] Unexpected error while checking pending artifact:", error);
     }
+}
+
+/**
+ * Whether this create lands on the new package's own overview rather than the project
+ * overview. The submit already decided (`landing`); a pointer written by an older build
+ * has no such field, so it falls back to the previous rule — package overview only when
+ * the package itself is the opened folder.
+ */
+function resolveLandsOnPackage(
+    pointer: PendingIntegrationArtifactPointer,
+    opensStoredPackage: boolean
+): boolean {
+    return pointer.landing ? pointer.landing === "package" : opensStoredPackage;
 }
 
 /**
@@ -161,7 +195,7 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
  */
 function ensureLandedOnNewIntegration(
     pointer: PendingIntegrationArtifactPointer,
-    opensStoredPackage: boolean
+    landOnPackageOverview: boolean
 ): void {
     // Read the raw machine value rather than `StateMachine.state()`: the shared
     // `MachineStateValue` type predates the startup states and does not include
@@ -169,7 +203,7 @@ function ensureLandedOnNewIntegration(
     if (StateMachine.service().getSnapshot().value !== "extensionReady") {
         return;
     }
-    if (opensStoredPackage) {
+    if (landOnPackageOverview) {
         openPackageOverview(pointer.projectRoot);
         return;
     }
@@ -237,8 +271,9 @@ export async function generateArtifactInPlace(
 
 /**
  * Runs the kind-specific generation and navigates to the result. All files target
- * `projectRoot` (the new package). `landOnPackageOverview`: true for a standalone package;
- * false when added into a workspace, so the window stays on the project overview.
+ * `projectRoot` (the new package). `landOnPackageOverview`: true when the new package is
+ * the thing to show (standalone, or added into an existing project); false when the
+ * project itself was just created, so the window stays on the project overview.
  */
 async function generatePendingArtifact(
     payload: PendingIntegrationArtifactPayload,
@@ -298,6 +333,6 @@ async function generatePendingArtifact(
  * Lands on the new package's overview; the package root is passed as `projectPath` so it
  * resolves inside a workspace.
  */
-function openPackageOverview(projectRoot: string): void {
+export function openPackageOverview(projectRoot: string): void {
     openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.PackageOverview, projectPath: projectRoot });
 }

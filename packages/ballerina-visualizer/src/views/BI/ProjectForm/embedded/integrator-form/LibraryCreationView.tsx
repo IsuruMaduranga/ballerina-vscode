@@ -50,6 +50,7 @@ import {
     FormFooter,
 } from "./shared/FormPageLayout";
 import { DEFAULT_LIBRARY_NAME, DEFAULT_PACKAGE_NAME } from "./types";
+import { CreatingIntegrationView } from "../../../CreateIntegrationWizard/components/CreatingIntegrationView";
 import { useRealtimeProjectPathValidation } from "./useRealtimeProjectPathValidation";
 import { useDirectoryNameCoupling } from "../../hooks/useDirectoryNameCoupling";
 import {
@@ -86,6 +87,12 @@ const FormError = styled.div`
     color: var(--vscode-errorForeground);
 `;
 
+
+/** Gives the create-in-progress screen room to centre itself inside the scrolling form body. */
+const CreatingSlot = styled.div`
+    display: flex;
+    min-height: 320px;
+`;
 
 interface LibraryFormData {
     libraryName: string;
@@ -125,6 +132,9 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
     const { directoryName, dirTouched } = dirCoupling;
     const [isPackageInfoExpanded, setIsPackageInfoExpanded] = useState(false);
     const [isValidating, setIsValidating] = useState(false);
+    // Distinct from `isValidating`: set once the create is actually in flight, at which
+    // point the window is about to reload and the form is replaced by a progress screen.
+    const [isCreating, setIsCreating] = useState(false);
     const [libraryNameError, setLibraryNameError] = useState<string | null>(null);
     const [pathError, setPathError] = useState<string | null>(null);
     const [existingWorkspace, setExistingWorkspace] = useState(false);
@@ -377,6 +387,9 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
             const orgHandle = organizations?.find(o => o.handle === formData.orgName)?.handle ||
                 sanitizeOrgHandle(formData.orgName)
 
+            // The extension reloads the window from here on, so the form is replaced by
+            // the progress screen the reloaded window then continues.
+            setIsCreating(true);
             await wsClient.createBIProject({
                 projectName: formData.libraryName.trim(),
                 packageName: formData.packageName,
@@ -393,13 +406,24 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
             });
         } catch (error) {
             console.error("Failed to create the library:", error);
+            setIsCreating(false);
             setFormError(error instanceof Error ? error.message : "Failed to create the library");
         } finally {
             setIsValidating(false);
         }
     };
 
-    const content = (
+    const content = isCreating ? (
+        <CreatingSlot>
+            <CreatingIntegrationView
+                variant="create"
+                componentLabel="library"
+                integrationName={formData.libraryName.trim() || DEFAULT_LIBRARY_NAME}
+                projectName={projectContext?.workspaceName}
+                isNewProject={projectContext?.isNewProject}
+            />
+        </CreatingSlot>
+    ) : (
         <>
             <FieldGroup>
                                 <TextField

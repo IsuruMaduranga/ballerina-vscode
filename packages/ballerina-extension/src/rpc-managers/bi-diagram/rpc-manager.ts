@@ -812,9 +812,12 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
             }
         } else {
             try {
-                await addProjectToExistingWorkspace(params);
-                // Refresh project info to update UI with newly added project
-                StateMachine.refreshProjectInfo();
+                const packageRoot = await addProjectToExistingWorkspace(params);
+                // The project was already open, so the new package is the news: land on
+                // its own overview. The refresh is silent because a non-silent one
+                // navigates to the project overview and would clobber that.
+                openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.PackageOverview, projectPath: packageRoot });
+                StateMachine.refreshProjectInfo({ silent: true });
             } catch (error) {
                 window.showErrorMessage("Error adding integration to existing project");
                 console.error("Error adding integration to existing project:", error);
