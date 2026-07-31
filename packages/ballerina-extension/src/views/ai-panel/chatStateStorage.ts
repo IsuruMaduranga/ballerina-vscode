@@ -533,7 +533,7 @@ export class ChatStateStorage {
             uiResponse: '',
             timestamp: Date.now(),
             reviewState: {
-                status: 'pending',
+                status: 'generating',
                 modifiedFiles: [],
             },
             currentTaskIndex: -1,
@@ -676,7 +676,7 @@ export class ChatStateStorage {
 
     /**
      * Get chat history for LLM (model messages only)
-     * Includes ALL generations (pending, under_review, accepted)
+     * Includes ALL generations (generating, done, accepted)
      * @param projectRootPath Workspace identifier
      * @param threadId Thread identifier
      * @returns Array of model messages for LLM context
@@ -730,7 +730,7 @@ export class ChatStateStorage {
     // ============================================
 
     /**
-     * Get pending review generation (latest with 'under_review' status)
+     * Get pending review generation (latest with 'done' status)
      * @param projectRootPath Workspace identifier
      * @param threadId Thread identifier
      * @returns Generation or undefined
@@ -741,11 +741,11 @@ export class ChatStateStorage {
     ): Generation | undefined {
         const thread = this.getOrCreateThread(projectRootPath, threadId);
 
-        // Find the LATEST generation with 'under_review' status
+        // Find the LATEST generation with 'done' status
         // Iterate in reverse to get the most recent one
         for (let i = thread.generations.length - 1; i >= 0; i--) {
             const generation = thread.generations[i];
-            if (generation.reviewState.status === 'under_review') {
+            if (generation.reviewState.status === 'done') {
                 console.log(`[ChatStateStorage] Found pending review generation: ${generation.id}`);
                 return generation;
             }
@@ -786,7 +786,7 @@ export class ChatStateStorage {
 
     /**
      * Accept all reviews in a thread
-     * Marks ALL 'under_review' generations as 'accepted' and clears runtime-only
+     * Marks ALL 'done' generations as 'accepted' and clears runtime-only
      * review fields (affectedPackagePaths) in a single operation.
      * @param projectRootPath Workspace identifier
      * @param threadId Thread identifier
@@ -796,7 +796,7 @@ export class ChatStateStorage {
         let count = 0;
 
         for (const generation of thread.generations) {
-            if (generation.reviewState.status === 'under_review') {
+            if (generation.reviewState.status === 'done') {
                 generation.reviewState.status = 'accepted';
                 generation.reviewState.affectedPackagePaths = [];
                 count++;
@@ -812,7 +812,7 @@ export class ChatStateStorage {
 
     /**
      * Decline all reviews in a thread
-     * Marks ALL 'under_review' generations as 'error' and clears runtime-only
+     * Marks ALL 'done' generations as 'error' and clears runtime-only
      * review fields (affectedPackagePaths) in a single operation.
      * @param projectRootPath Workspace identifier
      * @param threadId Thread identifier
@@ -822,7 +822,7 @@ export class ChatStateStorage {
         let count = 0;
 
         for (const generation of thread.generations) {
-            if (generation.reviewState.status === 'under_review') {
+            if (generation.reviewState.status === 'done') {
                 generation.reviewState.status = 'error';
                 generation.reviewState.errorMessage = 'Declined by user';
                 generation.reviewState.affectedPackagePaths = [];

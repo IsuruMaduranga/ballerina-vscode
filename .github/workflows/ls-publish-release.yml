@@ -62,8 +62,9 @@ jobs:
 
       - name: Set version env variable
         run: |
-          # Extract BASE_VERSION from gradle.properties (strip any suffix after '-')
-          BASE_VERSION=$(grep -w "version" gradle.properties | cut -d= -f2 | cut -d- -f1)
+          set -euo pipefail
+          # The extension manifest is the shared extension/LS version.
+          BASE_VERSION=$(node -p "require('../ballerina-extension/package.json').version" | cut -d- -f1)
           echo BASE_VERSION=${BASE_VERSION} >> $GITHUB_ENV
 
           if [ "${{ github.event.inputs.is_prerelease }}" == "true" ]; then

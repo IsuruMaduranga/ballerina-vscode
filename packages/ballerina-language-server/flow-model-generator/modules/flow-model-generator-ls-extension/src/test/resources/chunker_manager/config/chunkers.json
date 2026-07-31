@@ -61,6 +61,8 @@
               "symbol": "init"
             },
             "enabled": true
+          }
+            ]
           },
           {
             "metadata": {
@@ -77,8 +79,6 @@
               "symbol": "init"
             },
             "enabled": true
-          }
-            ]
           }
         ]
       }

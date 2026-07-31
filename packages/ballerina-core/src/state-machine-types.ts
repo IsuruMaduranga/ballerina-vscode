@@ -711,7 +711,7 @@ export interface Checkpoint {
  */
 export interface GenerationReviewState {
     /** Status of the generation review */
-    status: 'pending' | 'under_review' | 'accepted' | 'error';
+    status: 'generating' | 'done' | 'accepted' | 'reverted' | 'error';
     /** Temp project path while under review (shared across generations in same thread) */
     tempProjectPath?: string;
     /** Files modified in this specific generation */
