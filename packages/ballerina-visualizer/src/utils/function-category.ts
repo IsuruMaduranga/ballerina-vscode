@@ -34,6 +34,9 @@ export function normalizeFunctionSearchCategories(categories: Category[]): Categ
 }
 
 function normalizeFunctionSearchCategory(category: Category): Category {
+    if (!category || !Array.isArray(category.items)) {
+        return category;
+    }
     const originalLabel = category?.metadata?.label;
     const label = CURRENT_INTEGRATION_CATEGORY_ALIASES.has(originalLabel)
         ? CURRENT_INTEGRATION_CATEGORY_TITLE
@@ -44,9 +47,12 @@ function normalizeFunctionSearchCategory(category: Category): Category {
             ...category.metadata,
             label,
         },
-        items: category.items.map((item) => "codedata" in item
-            ? item
-            : normalizeFunctionSearchCategory(item as Category)),
+        items: category.items.map((item) => {
+            if (!item || "codedata" in item || !("items" in item)) {
+                return item;
+            }
+            return normalizeFunctionSearchCategory(item as Category);
+        }),
     };
 }
 

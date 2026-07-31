@@ -62,6 +62,31 @@ describe("normalizeFunctionSearchCategories", () => {
 
         expect(categories[0].metadata.label).toBe("Imported Modules");
     });
+
+    it("preserves missing and non-category entries while normalizing valid categories", () => {
+        const categoryWithoutItems = { metadata: { label: "Project" } };
+        const nonCategoryItem = { metadata: { label: "Project" } };
+        const categories = normalizeFunctionSearchCategories([
+            null,
+            categoryWithoutItems,
+            {
+                metadata: { label: "Project" },
+                items: [
+                    undefined,
+                    nonCategoryItem,
+                    { metadata: { label: "Activities" }, items: [] },
+                ],
+            },
+        ] as any);
+
+        expect(categories[0]).toBeNull();
+        expect(categories[1]).toBe(categoryWithoutItems);
+        expect(categories[2].metadata.label).toBe(CURRENT_INTEGRATION_CATEGORY_TITLE);
+        expect(categories[2].items[0]).toBeUndefined();
+        expect(categories[2].items[1]).toBe(nonCategoryItem);
+        expect((categories[2].items[2] as any).metadata.label)
+            .toBe(CURRENT_INTEGRATION_CATEGORY_TITLE);
+    });
 });
 
 describe("getItemKind", () => {

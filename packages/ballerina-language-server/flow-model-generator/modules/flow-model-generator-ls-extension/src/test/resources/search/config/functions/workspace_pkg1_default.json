@@ -33,16 +33,7 @@
             "description": "",
             "keywords": []
           },
-          "items": [
-            {
-              "metadata": {
-                "label": "package1.helpers",
-                "description": "",
-                "keywords": []
-              },
-              "items": []
-            }
-          ]
+          "items": []
         },
         {
           "metadata": {

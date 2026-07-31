@@ -196,7 +196,7 @@ class TypeSearchCommand extends SearchCommand {
                     current, relation);
             if (current || flattenDefaultModule) {
                 packageItems.addAll(moduleItems);
-            } else {
+            } else if (!moduleItems.isEmpty()) {
                 String label = moduleName + (PackageModuleUtils.isGenerated(module) ? " (Generated)" : "");
                 packageItems.add(buildCategory(label, moduleItems));
             }

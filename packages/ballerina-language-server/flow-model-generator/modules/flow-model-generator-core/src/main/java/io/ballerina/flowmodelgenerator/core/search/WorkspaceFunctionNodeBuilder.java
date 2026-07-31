@@ -182,8 +182,12 @@ class WorkspaceFunctionNodeBuilder {
                 packageItems.addAll(moduleNodes.functions());
                 packageAgentToolItems.addAll(moduleNodes.agentTools());
             } else {
-                packageItems.add(buildCategory(label, moduleNodes.functions()));
-                packageAgentToolItems.add(buildCategory(label, moduleNodes.agentTools()));
+                if (!moduleNodes.functions().isEmpty()) {
+                    packageItems.add(buildCategory(label, moduleNodes.functions()));
+                }
+                if (!moduleNodes.agentTools().isEmpty()) {
+                    packageAgentToolItems.add(buildCategory(label, moduleNodes.agentTools()));
+                }
             }
         }
         parentBuilder.items(packageItems);
