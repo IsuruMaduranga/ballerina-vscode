@@ -34,11 +34,11 @@ import io.ballerina.compiler.syntax.tree.SeparatedNodeList;
 import io.ballerina.compiler.syntax.tree.ServiceDeclarationNode;
 import io.ballerina.compiler.syntax.tree.TypeDescriptorNode;
 import io.ballerina.modelgenerator.commons.AnnotationAttachment;
+import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ReadOnlyMetaData;
 import io.ballerina.modelgenerator.commons.ServiceDatabaseManager;
 import io.ballerina.modelgenerator.commons.ServiceDeclaration;
 import io.ballerina.modelgenerator.commons.ServiceTypeFunction;
-import io.ballerina.modelgenerator.commons.trigger.utils.TriggerArtifactResolver;
 import io.ballerina.projects.Project;
 import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.Function;
@@ -738,8 +738,7 @@ public class ServiceModelUtils {
                 .setPackageName(context.packageName())
                 .setModuleName(context.moduleName())
                 .setListenerProtocol(protocol)
-                .setIcon(TriggerArtifactResolver.resolveIcon(context.orgName(), context.packageName(),
-                        context.moduleName(), context.version()).url())
+                .setIcon(CommonUtils.generateIcon(context.orgName(), context.packageName(), context.version()))
                 .setDocumentation(getServiceDocumentation(ServiceClassUtil.ServiceClassContext.SERVICE_DIAGRAM))
                 .setCodedata(codedata)
                 .setProperties(properties)

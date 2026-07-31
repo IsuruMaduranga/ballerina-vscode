@@ -45,7 +45,6 @@ import io.ballerina.modelgenerator.commons.FunctionDataBuilder;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.ParameterData;
 import io.ballerina.modelgenerator.commons.ServiceDatabaseManager;
-import io.ballerina.modelgenerator.commons.trigger.utils.TriggerArtifactResolver;
 import io.ballerina.projects.Document;
 import io.ballerina.projects.DocumentId;
 import io.ballerina.projects.Project;
@@ -301,8 +300,8 @@ public class ListenerUtil {
     public static Listener createBaseListenerModel(FunctionData functionData) {
         Map<String, Value> properties = new LinkedHashMap<>();
         String formattedModuleName = upperCaseFirstLetter(functionData.packageName());
-        String icon = TriggerArtifactResolver.resolveIcon(functionData.org(), functionData.packageName(),
-                functionData.packageName(), functionData.version()).url();
+        String icon = CommonUtils.generateIcon(functionData.org(), functionData.packageName(),
+                functionData.version());
 
         Listener.ListenerBuilder listenerBuilder = new Listener.ListenerBuilder();
         listenerBuilder

@@ -24,11 +24,11 @@ import io.ballerina.compiler.syntax.tree.Node;
 import io.ballerina.compiler.syntax.tree.NodeList;
 import io.ballerina.compiler.syntax.tree.ServiceDeclarationNode;
 import io.ballerina.modelgenerator.commons.AnnotationAttachment;
+import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ServiceDatabaseManager;
 import io.ballerina.modelgenerator.commons.ServiceDeclaration;
 import io.ballerina.modelgenerator.commons.ServiceInitInfo;
 import io.ballerina.modelgenerator.commons.ServiceInitProperty;
-import io.ballerina.modelgenerator.commons.trigger.utils.TriggerArtifactResolver;
 import io.ballerina.openapi.core.generators.common.exception.BallerinaOpenApiException;
 import io.ballerina.servicemodelgenerator.extension.builder.ServiceBuilderRouter;
 import io.ballerina.servicemodelgenerator.extension.builder.ServiceNodeBuilder;
@@ -309,8 +309,7 @@ public abstract class AbstractServiceBuilder implements ServiceNodeBuilder {
                 .setPackageName(pkg.name())
                 .setModuleName(context.moduleName())
                 .setType(context.moduleName())
-                .setIcon(TriggerArtifactResolver.resolveIcon(pkg.org(), pkg.name(), context.moduleName(),
-                        pkg.version()).url())
+                .setIcon(CommonUtils.generateIcon(pkg.org(), pkg.name(), pkg.version()))
                 .build();
 
         for (ServiceInitProperty property : initInfo.properties()) {
@@ -353,8 +352,7 @@ public abstract class AbstractServiceBuilder implements ServiceNodeBuilder {
 
         String label = serviceTemplate.displayName();
         Value documentation = getServiceDocumentation(ServiceClassUtil.ServiceClassContext.SERVICE_DIAGRAM);
-        String icon = TriggerArtifactResolver.resolveIcon(pkg.org(), pkg.name(), context.moduleName(),
-                pkg.version()).url();
+        String icon = CommonUtils.generateIcon(pkg.org(), pkg.name(), pkg.version());
 
         Map<String, Value> properties = new LinkedHashMap<>();
 

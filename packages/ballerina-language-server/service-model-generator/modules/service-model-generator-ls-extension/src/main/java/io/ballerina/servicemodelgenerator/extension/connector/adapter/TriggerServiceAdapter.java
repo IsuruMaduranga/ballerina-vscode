@@ -18,8 +18,8 @@
 
 package io.ballerina.servicemodelgenerator.extension.connector.adapter;
 
+import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
-import io.ballerina.modelgenerator.commons.trigger.utils.TriggerArtifactResolver;
 import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.Function;
 import io.ballerina.servicemodelgenerator.extension.model.MetaData;
@@ -79,7 +79,7 @@ public final class TriggerServiceAdapter {
                 .setVersion(model.version())
                 .setPackageName(packageName)
                 .setListenerProtocol(protocol)
-                .setIcon(TriggerArtifactResolver.resolveIcon(orgName, packageName, moduleName, model.version()).url())
+                .setIcon(CommonUtils.generateIcon(orgName, packageName, model.version()))
                 .setProperties(properties)
                 .setFunctions(new ArrayList<>())
                 .build();
