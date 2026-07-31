@@ -15,19 +15,27 @@
  *
  */
 
+import groovy.json.JsonSlurper
+
 plugins {
     id "com.github.spotbugs-base" version "${spotbugsPluginVersion}"
     id "com.github.johnrengelman.shadow" version "${shadowJarPluginVersion}"
     id "de.undercouch.download" version "${downloadPluginVersion}"
-    id "net.researchgate.release" version "${releasePluginVersion}"
     id "org.cyclonedx.bom" version "${cyclonedxBomPluginVersion}"
     id "java"
 }
 apply plugin: 'maven-publish'
 
+def extensionManifest = file("$rootDir/../ballerina-extension/package.json")
+def extensionVersion = new JsonSlurper().parse(extensionManifest).version
+if (!extensionVersion) {
+    throw new GradleException("No version found in ${extensionManifest}")
+}
+def buildVersion = providers.gradleProperty("version").getOrElse(extensionVersion)
+
 allprojects {
     group = project.group
-    version = project.version
+    version = buildVersion
 
     apply plugin: 'jacoco'
     apply plugin: 'maven-publish'
@@ -447,18 +455,6 @@ publishing {
                 password = System.getenv("packagePAT") ?: project.findProperty("packagePAT")
             }
         }
-    }
-}
-
-release {
-    failOnPublishNeeded = false
-
-    buildTasks = ['build']
-    versionPropertyFile = 'gradle.properties'
-    tagTemplate = 'v${version}'
-    git {
-        requireBranch = "release-${moduleVersion}"
-        pushToRemote = 'origin'
     }
 }
 
