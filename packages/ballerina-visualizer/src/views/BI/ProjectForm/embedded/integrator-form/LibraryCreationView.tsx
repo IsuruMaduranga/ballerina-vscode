@@ -74,6 +74,18 @@ const InfoNote = styled.div`
     color: var(--vscode-descriptionForeground);
 `;
 
+/** Form-level failure (path validation or the create call itself). The path field
+ *  used to be the only home for these, and it is hidden in the embedded flow. */
+const FormError = styled.div`
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--vscode-errorForeground);
+`;
+
 
 interface LibraryFormData {
     libraryName: string;
@@ -121,6 +133,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
     const [takenNames, setTakenNames] = useState<TakenNames>(emptyTakenNames());
     const [packageNameError, setPackageNameError] = useState<string | null>(null);
     const [orgNameError, setOrgNameError] = useState<string | null>(null);
+    const [formError, setFormError] = useState<string | null>(null);
     const [defaultPath, setDefaultPath] = useState("");
     const [pathTouched, setPathTouched] = useState(false);
     const [editablePath, setEditablePath] = useState("");
@@ -251,6 +264,15 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
 
     const resolvedPath = joinPath(editablePath, directoryName);
 
+    /**
+     * The unified Create flow picks the project — and therefore the location — on its
+     * chooser screen, so the library form asks only for a name and creates the package
+     * inside `projectContext.workspacePath`. This mirrors the integration wizard, which
+     * hides its own path field when embedded. The standalone `library` variant has no
+     * chooser in front of it, so it keeps owning its location.
+     */
+    const hidePath = !!embedded;
+
     const handleLibraryName = (value: string) => {
         libraryNameTouchedRef.current = true;
         const sanitized = sanitizePackageName(value);
@@ -276,6 +298,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
 
     const handleCreate = async () => {
         setIsValidating(true);
+        setFormError(null);
 
         // Commit any un-blurred path before submitting
         const currentPath = editablePath || formData.path;
@@ -305,7 +328,13 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
         }
 
         if (!currentPath || currentPath.trim().length < 2) {
-            setPathError("Please select a path for your library");
+            // With the path field hidden the location comes from the chooser, so an
+            // unusable one is a flow-level problem rather than a field the user can fix.
+            if (hidePath) {
+                setFormError("The project location could not be resolved. Go back and select the project again.");
+            } else {
+                setPathError("Please select a path for your library");
+            }
             hasError = true;
         }
 
@@ -320,24 +349,29 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
         }
 
         try {
-            const validationResult = await wsClient.validateProjectPath({
-                projectPath: currentPath,
-                projectName: formData.packageName,
-                directoryName,
-                createDirectory: true,
-                createAsWorkspace: false,
-                allowExistingDirectory: true,
-            });
+            // The chooser already resolved and validated the project location in the
+            // unified Create flow (as the integration wizard also trusts), so only the
+            // standalone form re-validates the path it collected here.
+            if (!hidePath) {
+                const validationResult = await wsClient.validateProjectPath({
+                    projectPath: currentPath,
+                    projectName: formData.packageName,
+                    directoryName,
+                    createDirectory: true,
+                    createAsWorkspace: false,
+                    allowExistingDirectory: true,
+                });
 
-            if (!validationResult.isValid) {
-                if (validationResult.errorField === ValidateProjectFormErrorField.PATH) {
-                    setPathError(validationResult.errorMessage || "Invalid library path");
-                } else if (validationResult.errorField === ValidateProjectFormErrorField.NAME) {
-                    setPackageNameError(validationResult.errorMessage || "Invalid package name");
-                    setIsPackageInfoExpanded(true);
+                if (!validationResult.isValid) {
+                    if (validationResult.errorField === ValidateProjectFormErrorField.PATH) {
+                        setPathError(validationResult.errorMessage || "Invalid library path");
+                    } else if (validationResult.errorField === ValidateProjectFormErrorField.NAME) {
+                        setPackageNameError(validationResult.errorMessage || "Invalid package name");
+                        setIsPackageInfoExpanded(true);
+                    }
+                    setIsValidating(false);
+                    return;
                 }
-                setIsValidating(false);
-                return;
             }
 
             const orgHandle = organizations?.find(o => o.handle === formData.orgName)?.handle ||
@@ -358,7 +392,8 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
                 workspaceName: projectContext?.workspaceName,
             });
         } catch (error) {
-            setPathError("An error occurred during validation");
+            console.error("Failed to create the library:", error);
+            setFormError(error instanceof Error ? error.message : "Failed to create the library");
         } finally {
             setIsValidating(false);
         }
@@ -378,6 +413,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
                                 />
                             </FieldGroup>
 
+                            {!hidePath && (
                             <FieldGroup>
                                 <DirectorySelector
                                     id="library-folder-selector"
@@ -412,6 +448,7 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
                                     </InfoNote>
                                 )}
                             </FieldGroup>
+                            )}
 
                             <SectionDivider />
 
@@ -437,10 +474,17 @@ export function LibraryCreationView({ onBack, ballerinaUnavailable, projectConte
                                 hasError={!!(packageNameError || orgNameError)}
                             />
 
+                            {formError && (
+                                <FormError>
+                                    <Icon name="error" isCodicon sx={{ marginTop: "1px" }} />
+                                    <span>{formError}</span>
+                                </FormError>
+                            )}
+
                             <FormFooter>
                                 <span title={ballerinaUnavailable ? "Ballerina distribution is not set up. Use Configure to set it up." : undefined}>
                                     <Button
-                                        disabled={isValidating || ballerinaUnavailable || !!libraryNameError || !!packageNameError || !!orgNameError || !!pathError}
+                                        disabled={isValidating || ballerinaUnavailable || !!libraryNameError || !!packageNameError || !!orgNameError || (!hidePath && !!pathError)}
                                         onClick={handleCreate}
                                         appearance="primary"
                                     >
