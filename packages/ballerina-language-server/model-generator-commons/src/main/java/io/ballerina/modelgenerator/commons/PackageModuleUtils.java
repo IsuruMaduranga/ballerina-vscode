@@ -104,17 +104,18 @@ public final class PackageModuleUtils {
         if (fileName == null || fileName.isBlank()) {
             return Optional.empty();
         }
-        String normalizedFileName = normalize(fileName);
+        String normalizedFileName = normalizePath(fileName);
         for (Module module : currentPackage.modules()) {
             for (DocumentId documentId : module.documentIds()) {
                 Optional<Path> documentPath = module.project().documentPath(documentId);
                 if (documentPath.isEmpty()) {
                     continue;
                 }
-                String absolute = normalize(documentPath.get().toString());
-                String relative = normalize(relativize(module.project(), documentPath.get()));
+                String absolute = normalizePath(documentPath.get().toString());
+                String relative = normalizePath(relativize(module.project(), documentPath.get()));
                 if (absolute.equals(normalizedFileName) || relative.equals(normalizedFileName)
-                        || absolute.endsWith("/" + normalizedFileName)) {
+                        || absolute.endsWith("/" + normalizedFileName)
+                        || relative.endsWith("/" + normalizedFileName)) {
                     return Optional.of(module);
                 }
             }
@@ -136,8 +137,8 @@ public final class PackageModuleUtils {
         return path.toString().replace('\\', '/');
     }
 
-    private static String normalize(String path) {
-        return normalizeForComparison(path);
+    private static String normalizePath(String path) {
+        return path.replace('\\', '/');
     }
 
     private static String normalizeForComparison(String path) {

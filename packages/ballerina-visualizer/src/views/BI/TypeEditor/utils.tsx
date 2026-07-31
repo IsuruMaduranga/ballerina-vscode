@@ -16,11 +16,11 @@
  * under the License.
  */
 
-import { AvailableNode, Category, Item, VisibleTypeItem, GeneralPayloadContext, Protocol, FunctionKind } from '@wso2/ballerina-core';
+import { Category, VisibleTypeItem, GeneralPayloadContext, Protocol, FunctionKind } from '@wso2/ballerina-core';
 import type { TypeHelperCategory, TypeHelperItem, TypeHelperOperator } from '@wso2/type-editor';
 import { COMPLETION_ITEM_KIND, convertCompletionItemKind } from '@wso2/ui-toolkit';
 import { getFunctionItemKind, isDMSupportedType } from '../../../utils/bi';
-import { getHelperCategoryPath, getItemKind } from '../../../utils/function-category';
+import { buildHelperCategory, getItemKind } from '../../../utils/function-category';
 
 // TODO: Remove this order onces the LS is fixed
 const TYPE_CATEGORY_ORDER = [
@@ -114,10 +114,6 @@ export const filterOperators = (operators: TypeHelperOperator[], searchText: str
     return operators.filter((operator) => operator.name.toLowerCase().includes(searchText.toLowerCase()));
 };
 
-const isCategoryType = (item: Item): item is Category => {
-    return !(item as AvailableNode)?.codedata;
-}
-
 export const transformTypesFromSearchToHelperCategory = (types: Category[]): TypeHelperCategory[] => {
     return types.map((category) =>
         toTypeHelperCategory(category, getFunctionItemKind(category.metadata.label), false)
@@ -162,65 +158,27 @@ function toTypeHelperCategory(
     fallback: FunctionKind,
     includeLabelDetails: boolean
 ): TypeHelperCategory {
-    const items = toTypeHelperItems(category.items, fallback, includeLabelDetails);
-    const subCategories = flattenTypeCategories(category, fallback, includeLabelDetails);
-    if (items.length && subCategories.length) {
-        subCategories.unshift({
-            category: typeModuleLabel(category.items, category.metadata.label),
-            items,
-        });
-    }
-    return {
-        category: category.metadata.label,
-        subCategory: subCategories,
-        items: items.length && !subCategories.length ? items : [],
-    };
-}
-
-function flattenTypeCategories(
-    category: Category,
-    fallback: FunctionKind,
-    includeLabelDetails: boolean,
-    parents: string[] = []
-): TypeHelperCategory[] {
-    const flattened: TypeHelperCategory[] = [];
-    for (const item of category.items) {
-        if (!isCategoryType(item)) {
-            continue;
-        }
-        const path = getHelperCategoryPath(parents, item);
-        const items = toTypeHelperItems(item.items, fallback, includeLabelDetails);
-        if (items.length) {
-            flattened.push({ category: path.join(" / "), items });
-        }
-        flattened.push(...flattenTypeCategories(item, fallback, includeLabelDetails, path));
-    }
-    return flattened;
-}
-
-function toTypeHelperItems(
-    items: Item[],
-    fallback: FunctionKind,
-    includeLabelDetails: boolean
-): TypeHelperItem[] {
-    return items
-        .filter((item): item is AvailableNode => !isCategoryType(item))
-        .map((item) => ({
+    return buildHelperCategory<TypeHelperItem, TypeHelperCategory, TypeHelperCategory>(
+        category,
+        fallback,
+        (item, itemFallback) => ({
             name: item.metadata.label,
             insertText: item.metadata.label,
             type: COMPLETION_ITEM_KIND.TypeParameter,
             codedata: item.codedata,
-            kind: getItemKind(item.codedata, fallback),
+            kind: getItemKind(item.codedata, itemFallback),
             ...(includeLabelDetails ? {
                 labelDetails: {
                     description: item.codedata.node,
                     detail: "",
                 },
             } : {}),
-        }));
-}
-
-function typeModuleLabel(items: Item[], fallback: string): string {
-    const currentItem = items.find((item): item is AvailableNode => !isCategoryType(item));
-    return currentItem?.codedata?.module || fallback;
+        }),
+        (categoryLabel, items) => ({ category: categoryLabel, items }),
+        (categoryLabel, items, subCategory) => ({
+            category: categoryLabel,
+            items,
+            subCategory,
+        })
+    );
 }

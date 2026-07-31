@@ -90,3 +90,73 @@ export function getHelperCategoryPath(parents: string[], category: Category): st
     );
     return containsModuleItems ? [category.metadata.label] : [...parents, category.metadata.label];
 }
+
+export function buildHelperCategory<TItem, TSubCategory, TCategory>(
+    category: Category,
+    fallback: FunctionKind,
+    mapItem: (item: AvailableNode, fallback: FunctionKind) => TItem,
+    createSubCategory: (label: string, items: TItem[]) => TSubCategory,
+    createCategory: (
+        label: string,
+        items: TItem[] | undefined,
+        subCategories: TSubCategory[] | undefined
+    ) => TCategory,
+    includeCategory: (category: Category) => boolean = () => true
+): TCategory {
+    const items = mapHelperItems(category.items, fallback, mapItem);
+    const subCategories = flattenHelperCategories(
+        category, fallback, mapItem, createSubCategory, includeCategory
+    );
+    if (items.length && subCategories.length) {
+        subCategories.unshift(createSubCategory(moduleLabel(category.items, category.metadata.label), items));
+    }
+    return createCategory(
+        category.metadata.label,
+        items.length && !subCategories.length ? items : undefined,
+        subCategories.length ? subCategories : undefined
+    );
+}
+
+function flattenHelperCategories<TItem, TSubCategory>(
+    category: Category,
+    fallback: FunctionKind,
+    mapItem: (item: AvailableNode, fallback: FunctionKind) => TItem,
+    createSubCategory: (label: string, items: TItem[]) => TSubCategory,
+    includeCategory: (category: Category) => boolean,
+    parents: string[] = []
+): TSubCategory[] {
+    const flattened: TSubCategory[] = [];
+    for (const item of category.items) {
+        if (!isCategory(item) || !includeCategory(item)) {
+            continue;
+        }
+        const path = getHelperCategoryPath(parents, item);
+        const items = mapHelperItems(item.items, fallback, mapItem);
+        if (items.length) {
+            flattened.push(createSubCategory(path.join(" / "), items));
+        }
+        flattened.push(...flattenHelperCategories(
+            item, fallback, mapItem, createSubCategory, includeCategory, path
+        ));
+    }
+    return flattened;
+}
+
+function mapHelperItems<TItem>(
+    items: Category["items"],
+    fallback: FunctionKind,
+    mapItem: (item: AvailableNode, fallback: FunctionKind) => TItem
+): TItem[] {
+    return items
+        .filter((item): item is AvailableNode => !isCategory(item))
+        .map((item) => mapItem(item, fallback));
+}
+
+function moduleLabel(items: Category["items"], fallback: string): string {
+    const currentItem = items.find((item): item is AvailableNode => !isCategory(item));
+    return currentItem?.codedata?.module || fallback;
+}
+
+function isCategory(item: Category["items"][number]): item is Category {
+    return !("codedata" in item);
+}

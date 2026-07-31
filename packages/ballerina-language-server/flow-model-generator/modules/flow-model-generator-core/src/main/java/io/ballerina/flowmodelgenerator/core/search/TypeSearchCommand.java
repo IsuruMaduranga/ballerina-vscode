@@ -157,7 +157,7 @@ class TypeSearchCommand extends SearchCommand {
         Optional<WorkspaceProject> workspaceProject = project.workspaceProject();
         if (workspaceProject.isEmpty()) {
             Category.Builder packageBuilder = rootBuilder.stepIn(Category.Name.CURRENT_INTEGRATION);
-            buildPackageModules(project, currentModule, packageBuilder, true);
+            buildPackageModules(project, currentModule, packageBuilder);
             return;
         }
 
@@ -165,7 +165,7 @@ class TypeSearchCommand extends SearchCommand {
         String activePackageLabel = project.currentPackage().packageName().value();
         Category.Builder currentPackageBuilder = workspaceBuilder.stepIn(
                 activePackageLabel + CURRENT_INTEGRATION_INDICATOR, "", List.of());
-        buildPackageModules(project, currentModule, currentPackageBuilder, true);
+        buildPackageModules(project, currentModule, currentPackageBuilder);
         PackageName currentPackageName = project.currentPackage().packageName();
         for (BuildProject buildProject : workspaceProject.get().projects()) {
             if (buildProject.currentPackage().packageName().equals(currentPackageName)) {
@@ -173,35 +173,17 @@ class TypeSearchCommand extends SearchCommand {
             }
             Category.Builder packageBuilder = workspaceBuilder.stepIn(
                     buildProject.currentPackage().packageName().value(), "", List.of());
-            buildPackageModules(buildProject, currentModule, packageBuilder, false);
+            buildPackageModules(buildProject, currentModule, packageBuilder);
         }
     }
 
-    private void buildPackageModules(Project targetProject, Module currentModule, Category.Builder parentBuilder,
-                                     boolean currentPackage) {
-        Package targetPackage = targetProject.currentPackage();
-        var compilation = PackageUtil.getCompilation(targetPackage);
-        List<Item> packageItems = new ArrayList<>();
-        List<Module> modules = new ArrayList<>(PackageModuleUtils.modules(targetPackage));
-        modules.sort(Comparator.comparingInt(module -> currentPackage
-                && module.moduleId().equals(currentModule.moduleId()) ? 0 : 1));
-        for (Module module : modules) {
-            boolean current = currentPackage && module.moduleId().equals(currentModule.moduleId());
-            String moduleName = PackageModuleUtils.fullModuleName(module);
-            boolean flattenDefaultModule = !currentPackage && module.isDefaultModule();
-            String relation = current ? PackageModuleUtils.CURRENT_MODULE
-                    : currentPackage ? PackageModuleUtils.SAME_PACKAGE_MODULE
-                    : PackageModuleUtils.WORKSPACE_PACKAGE_MODULE;
-            List<Item> moduleItems = buildProjectNodes(module, compilation.getSemanticModel(module.moduleId()),
-                    current, relation);
-            if (current || flattenDefaultModule) {
-                packageItems.addAll(moduleItems);
-            } else if (!moduleItems.isEmpty()) {
-                String label = moduleName + (PackageModuleUtils.isGenerated(module) ? " (Generated)" : "");
-                packageItems.add(buildCategory(label, moduleItems));
-            }
-        }
-        parentBuilder.items(packageItems);
+    private void buildPackageModules(Project targetProject, Module currentModule, Category.Builder parentBuilder) {
+        WorkspaceModuleSearchUtils.ModuleItems packageItems = WorkspaceModuleSearchUtils.buildPackageModules(
+                project, targetProject, currentModule, context -> new WorkspaceModuleSearchUtils.ModuleItems(
+                        buildProjectNodes(context.module(), context.semanticModel(), context.current(),
+                                context.relation()),
+                        List.of()));
+        parentBuilder.items(packageItems.items());
     }
 
     private List<Item> buildProjectNodes(Module module, SemanticModel semanticModel, boolean current,
@@ -262,12 +244,6 @@ class TypeSearchCommand extends SearchCommand {
             availableNodes.add(new AvailableNode(metadata, codedata, true));
         }
         return availableNodes;
-    }
-
-    private static Category buildCategory(String label, List<Item> items) {
-        Category.Builder categoryBuilder = new Category.Builder(null);
-        categoryBuilder.metadata().label(label).description("").keywords(List.of());
-        return categoryBuilder.items(items).build();
     }
 
     private void buildLibraryNodes(List<SearchResult> typeSearchList) {

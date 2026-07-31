@@ -95,6 +95,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -480,6 +481,8 @@ public class CommonUtils {
 
     private static Optional<Document> findDocument(Project project, Location location, String moduleName) {
         String locationFileName = location.lineRange().fileName().replace('\\', '/');
+        List<Document> exactMatches = new ArrayList<>();
+        List<Document> suffixMatches = new ArrayList<>();
         for (Module module : project.currentPackage().modules()) {
             if (moduleName != null && !module.moduleName().toString().equals(moduleName)) {
                 continue;
@@ -490,13 +493,20 @@ public class CommonUtils {
                         .map(Path::toString)
                         .orElse(document.name())
                         .replace('\\', '/');
-                if (document.name().equals(locationFileName) || documentPath.equals(locationFileName)
-                        || documentPath.endsWith("/" + locationFileName)) {
-                    return Optional.of(document);
+                if (document.name().equals(locationFileName) || documentPath.equals(locationFileName)) {
+                    exactMatches.add(document);
+                } else if (documentPath.endsWith("/" + locationFileName)) {
+                    suffixMatches.add(document);
                 }
             }
         }
-        return Optional.empty();
+        if (exactMatches.size() == 1) {
+            return Optional.of(exactMatches.getFirst());
+        }
+        if (!exactMatches.isEmpty() || suffixMatches.size() != 1) {
+            return Optional.empty();
+        }
+        return Optional.of(suffixMatches.getFirst());
     }
 
     /***
@@ -1710,4 +1720,3 @@ public class CommonUtils {
     }
 
 }
-

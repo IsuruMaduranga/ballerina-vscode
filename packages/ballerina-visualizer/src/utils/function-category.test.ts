@@ -17,12 +17,22 @@
  */
 
 import {
+    buildHelperCategory,
     CURRENT_INTEGRATION_CATEGORY_TITLE,
     findCurrentIntegrationCategory,
     getHelperCategoryPath,
     getItemKind,
     normalizeFunctionSearchCategories,
 } from "./function-category";
+
+const buildTestHelperCategory = (category: any) => buildHelperCategory(
+    category,
+    "AVAILABLE",
+    (item) => item.metadata.label,
+    (label, items) => ({ label, items }),
+    (label, items, subCategory) => ({ label, items, subCategory }),
+    (item) => item.metadata.label !== "Agent Tools"
+);
 
 describe("normalizeFunctionSearchCategories", () => {
     it("maps integration-specific and legacy labels to the current-integration category", () => {
@@ -106,6 +116,11 @@ describe("getItemKind", () => {
     it("preserves category fallback for external items", () => {
         expect(getItemKind(undefined, "AVAILABLE")).toBe("AVAILABLE");
     });
+
+    it("preserves category fallback for an unrecognized module relation", () => {
+        expect(getItemKind({ data: { moduleRelation: "FUTURE_MODULE_RELATION" } }, "AVAILABLE"))
+            .toBe("AVAILABLE");
+    });
 });
 
 describe("findCurrentIntegrationCategory", () => {
@@ -147,5 +162,54 @@ describe("getHelperCategoryPath", () => {
         } as any);
 
         expect(path).toEqual(["parent", "child"]);
+    });
+});
+
+describe("buildHelperCategory", () => {
+    it("maps direct and nested items through the shared category traversal", () => {
+        const category = buildTestHelperCategory({
+            metadata: { label: "Within Project" },
+            items: [
+                {
+                    metadata: { label: "directFunction" },
+                    codedata: { module: "orders" },
+                },
+                {
+                    metadata: { label: "orders.helpers" },
+                    items: [{
+                        metadata: { label: "helperFunction" },
+                        codedata: { module: "orders.helpers" },
+                    }],
+                },
+            ],
+        });
+
+        expect(category).toEqual({
+            label: "Within Project",
+            items: undefined,
+            subCategory: [
+                { label: "orders", items: ["directFunction"] },
+                { label: "orders.helpers", items: ["helperFunction"] },
+            ],
+        });
+    });
+
+    it("omits empty results and filtered Agent Tools categories", () => {
+        const category = buildTestHelperCategory({
+            metadata: { label: "Current Integration" },
+            items: [{
+                metadata: { label: "Agent Tools" },
+                items: [{
+                    metadata: { label: "toolFunction" },
+                    codedata: { module: "orders" },
+                }],
+            }],
+        });
+
+        expect(category).toEqual({
+            label: "Current Integration",
+            items: undefined,
+            subCategory: undefined,
+        });
     });
 });

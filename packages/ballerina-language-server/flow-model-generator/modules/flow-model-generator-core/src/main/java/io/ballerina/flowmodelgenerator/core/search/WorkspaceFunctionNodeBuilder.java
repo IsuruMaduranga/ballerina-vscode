@@ -50,7 +50,6 @@ import io.ballerina.tools.text.LineRange;
 import org.ballerinalang.langserver.common.utils.PositionUtil;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -158,40 +157,16 @@ class WorkspaceFunctionNodeBuilder {
     private static void buildPackageModules(Project currentProject, Project targetProject, Module currentModule,
                                             Category.Builder parentBuilder, Category.Builder agentToolsBuilder,
                                             LineRange position, String query, Document functionsDoc) {
-        Package targetPackage = targetProject.currentPackage();
-        var compilation = PackageUtil.getCompilation(targetPackage);
-        boolean currentPackage = currentProject.currentPackage().packageName().equals(targetPackage.packageName());
-        List<Item> packageItems = new ArrayList<>();
-        List<Item> packageAgentToolItems = new ArrayList<>();
-        List<Module> modules = new ArrayList<>(PackageModuleUtils.modules(targetPackage));
-        modules.sort(Comparator.comparingInt(module -> currentPackage
-                && module.moduleId().equals(currentModule.moduleId()) ? 0 : 1));
-
-        for (Module module : modules) {
-            boolean current = currentPackage && module.moduleId().equals(currentModule.moduleId());
-            String moduleName = PackageModuleUtils.fullModuleName(module);
-            String label = moduleName + (PackageModuleUtils.isGenerated(module) ? " (Generated)" : "");
-            boolean flattenDefaultModule = !currentPackage && module.isDefaultModule();
-            String relation = current ? PackageModuleUtils.CURRENT_MODULE
-                    : currentPackage ? PackageModuleUtils.SAME_PACKAGE_MODULE
-                    : PackageModuleUtils.WORKSPACE_PACKAGE_MODULE;
-            ModuleNodes moduleNodes = buildModuleNodes(
-                    getFunctions(compilation.getSemanticModel(module.moduleId())), module, current, relation,
-                    position, query, current ? functionsDoc : null);
-            if (current || flattenDefaultModule) {
-                packageItems.addAll(moduleNodes.functions());
-                packageAgentToolItems.addAll(moduleNodes.agentTools());
-            } else {
-                if (!moduleNodes.functions().isEmpty()) {
-                    packageItems.add(buildCategory(label, moduleNodes.functions()));
-                }
-                if (!moduleNodes.agentTools().isEmpty()) {
-                    packageAgentToolItems.add(buildCategory(label, moduleNodes.agentTools()));
-                }
-            }
-        }
-        parentBuilder.items(packageItems);
-        agentToolsBuilder.items(packageAgentToolItems);
+        WorkspaceModuleSearchUtils.ModuleItems packageItems = WorkspaceModuleSearchUtils.buildPackageModules(
+                currentProject, targetProject, currentModule, context -> {
+                    ModuleNodes moduleNodes = buildModuleNodes(getFunctions(context.semanticModel()),
+                            context.module(), context.current(), context.relation(), position, query,
+                            context.current() ? functionsDoc : null);
+                    return new WorkspaceModuleSearchUtils.ModuleItems(
+                            moduleNodes.functions(), moduleNodes.agentTools());
+                });
+        parentBuilder.items(packageItems.items());
+        agentToolsBuilder.items(packageItems.auxiliaryItems());
     }
 
     private static ModuleNodes buildModuleNodes(List<FunctionSymbol> functions, Module module, boolean current,
@@ -228,12 +203,6 @@ class WorkspaceFunctionNodeBuilder {
             }
         }
         return new ModuleNodes(availableNodes, availableTools);
-    }
-
-    private static Category buildCategory(String label, List<Item> items) {
-        Category.Builder categoryBuilder = new Category.Builder(null);
-        categoryBuilder.metadata().label(label).description("").keywords(List.of());
-        return categoryBuilder.items(items).build();
     }
 
     private static void buildProjectNodes(Project currentProject, Project targetProject,

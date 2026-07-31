@@ -26,9 +26,9 @@ import {
     FormImports,
 } from "@wso2/ballerina-side-panel";
 import {
+    buildHelperCategory,
     CURRENT_INTEGRATION_CATEGORY_TITLE,
     findCurrentIntegrationCategory,
-    getHelperCategoryPath,
     getItemKind,
     normalizeFunctionSearchCategories,
 } from "./function-category";
@@ -199,7 +199,9 @@ function convertDiagramCategoryToSidePanelCategory(category: Category, functionT
             if ((item as PanelCategory).items !== undefined) {
                 // Always keep subcategories that represent the active package, even if empty
                 const title = (item as PanelCategory).title;
-                if (title?.toLowerCase().endsWith("(current integration)")) {
+                if (title?.toLowerCase().endsWith(
+                    `(${CURRENT_INTEGRATION_CATEGORY_TITLE.toLowerCase()})`
+                )) {
                     return true;
                 }
                 // For other categories, use recursive check to see if they have any functions
@@ -886,10 +888,6 @@ export const convertToHelperPaneConfigurableVariable = (variables: VisibleType[]
     };
 };
 
-const isCategoryType = (item: Item): item is Category => {
-    return !(item as AvailableNode)?.codedata;
-};
-
 export const getFunctionItemKind = (category: string): FunctionKind => {
     if (category.toLocaleLowerCase().includes("current")
         || category.toLocaleLowerCase().includes("within project")) {
@@ -907,60 +905,27 @@ export const convertToHelperPaneFunction = (functions: Category[]): HelperPaneFu
     };
     for (const category of functions.filter((category) => category.metadata.label !== "Agent Tools")) {
         const categoryKind = getFunctionItemKind(category.metadata.label);
-        const items = toHelperPaneFunctionItems(category.items, categoryKind);
-        const subCategory = flattenFunctionCategories(category, categoryKind);
-        if (items.length && subCategory.length) {
-            subCategory.unshift({
-                label: moduleLabel(category.items, category.metadata.label),
-                items,
-            });
-        }
-
-        const categoryItem: HelperPaneFunctionCategory = {
-            label: category.metadata.label,
-            items: items.length && !subCategory.length ? items : undefined,
-            subCategory: subCategory.length ? subCategory : undefined,
-        };
+        const categoryItem = buildHelperCategory<
+            HelperPaneCompletionItem,
+            HelperPaneFunctionCategory,
+            HelperPaneFunctionCategory
+        >(
+            category,
+            categoryKind,
+            (item, fallback) => ({
+                label: item.metadata.label,
+                insertText: item.metadata.label,
+                kind: getItemKind(item.codedata, fallback),
+                codedata: item.codedata,
+            }),
+            (label, items) => ({ label, items }),
+            (label, items, subCategory) => ({ label, items, subCategory }),
+            (item) => item.metadata.label !== "Agent Tools"
+        );
         response.category.push(categoryItem);
     }
     return response;
 };
-
-function toHelperPaneFunctionItems(items: Item[], fallback: FunctionKind): HelperPaneCompletionItem[] {
-    return items
-        .filter((item): item is AvailableNode => !isCategoryType(item))
-        .map((item) => ({
-            label: item.metadata.label,
-            insertText: item.metadata.label,
-            kind: getItemKind(item.codedata, fallback),
-            codedata: item.codedata,
-        }));
-}
-
-function flattenFunctionCategories(
-    category: Category,
-    fallback: FunctionKind,
-    parents: string[] = []
-): HelperPaneFunctionCategory[] {
-    const flattened: HelperPaneFunctionCategory[] = [];
-    for (const item of category.items) {
-        if (!isCategoryType(item) || item.metadata.label === "Agent Tools") {
-            continue;
-        }
-        const path = getHelperCategoryPath(parents, item);
-        const items = toHelperPaneFunctionItems(item.items, fallback);
-        if (items.length) {
-            flattened.push({ label: path.join(" / "), items });
-        }
-        flattened.push(...flattenFunctionCategories(item, fallback, path));
-    }
-    return flattened;
-}
-
-function moduleLabel(items: Item[], fallback: string): string {
-    const currentItem = items.find((item): item is AvailableNode => !isCategoryType(item));
-    return currentItem?.codedata?.module || fallback;
-}
 
 export function extractFunctionInsertText(template: string): CompletionInsertText {
     const match = template.match(FUNCTION_REGEX);
