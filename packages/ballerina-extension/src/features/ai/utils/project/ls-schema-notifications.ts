@@ -21,6 +21,50 @@ import { StateMachine } from "../../../../stateMachine";
 import { ProjectSource, PROJECT_KIND } from "@wso2/ballerina-core";
 
 /**
+ * How the ai:// baseline works, and the Language Server behaviours every caller here depends
+ * on. All of them follow from the LS holding one project instance per (scheme, root):
+ *
+ * 1. That instance takes its sources from disk when it is *created*, and a baseline the LS
+ *    already has is never re-read. The temp-copy model hid this by copying the project to a
+ *    fresh directory per run; direct editing reuses the real root for every generation, so
+ *    the previous baseline has to be dropped explicitly — otherwise turn two diffs against
+ *    turn one's pre-edit sources and everything an earlier turn wrote comes back as an
+ *    addition. Hence: evict, then state the content.
+ * 2. Eviction is a didClose on an ai:// document (the ai:// workspace drops the whole project,
+ *    unlike the file:// one). Whichever notification arrives next — open or change — misses
+ *    the cache and rebuilds the package from disk, so either can re-establish the baseline.
+ * 3. Opening a document rebuilds the package from disk *even when the project is cached*, and
+ *    only then applies that document's text; a change updates a document in place. So opening
+ *    files one by one leaves just the last one holding its intended content — anything setting
+ *    more than one file's baseline has to send the content as changes.
+ *
+ * A corollary the file-creating tools rely on: a file with no ai:// document at all is
+ * exactly how getSemanticDiff recognises an addition, so brand-new files are deliberately
+ * left unseeded — announcing them would trigger (2) and wipe every other file's original.
+ *
+ * TODO: this all works around behaviour the LS never states. A dedicated LS request to reset
+ * a project's ai:// baseline would remove the need to route around it from out here.
+ */
+
+/** The ai:// address of a file — the same path the extension sees, under the baseline scheme. */
+function toAiUri(fullPath: string): string {
+  return Uri.file(fullPath).with({ scheme: 'ai' }).toString();
+}
+
+/**
+ * Drops the ai:// package the Language Server is holding for this file's project, so that
+ * the next ai:// notification for it rebuilds the package from what is on disk right now.
+ * @param fullPath The absolute path of a file in the package whose baseline is dropped
+ */
+function evictAiBaseline(fullPath: string): void {
+  try {
+    StateMachine.langClient().didClose({ textDocument: { uri: toAiUri(fullPath) } });
+  } catch (error) {
+    console.error(`[AgentNotification] Failed to evict ai:// baseline for ${fullPath}:`, error);
+  }
+}
+
+/**
  * Seeds the ai:// frozen-baseline scheme with a pristine (pre-edit) file's current content.
  * Called once per package at generation start (via each package's Ballerina.toml), before
  * any edits. file:// needs no equivalent call: tempProjectPath is now the real workspace
@@ -40,12 +84,14 @@ function seedAiBaseline(tempProjectPath: string, filePath: string): void {
 
     const fileContent = fs.readFileSync(fileFullPath, 'utf-8');
     const languageId = filePath.endsWith('.bal') ? 'ballerina' : 'toml';
-    const aiUri = 'ai' + Uri.file(fileFullPath).toString().substring(4); // Replace 'file' prefix with 'ai'
 
     try {
+      // Discard the previous generation's baseline first; the didOpen below then reloads
+      // the package from disk as it stands right now, before this generation's first edit.
+      evictAiBaseline(fileFullPath);
       StateMachine.langClient().didOpen({
         textDocument: {
-          uri: aiUri,
+          uri: toAiUri(fileFullPath),
           languageId,
           version: 1,
           text: fileContent
@@ -61,41 +107,10 @@ function seedAiBaseline(tempProjectPath: string, filePath: string): void {
 }
 
 /**
- * Seeds the ai:// frozen baseline for a newly created file with empty content, since the
- * file didn't exist before this generation — getSemanticDiff then reports it as added.
- * No file:// call needed: workspace.applyEdit's createFile() triggers VS Code's own didOpen
- * for the real file automatically.
- * @param tempProjectPath The root path of the project (the real workspace/project root)
- * @param filePath The relative file path
- */
-export function sendNewFileDidOpen(tempProjectPath: string, filePath: string): void {
-  if (!filePath.endsWith('.bal') && !filePath.endsWith('Ballerina.toml')) {
-    return;
-  }
-
-  try {
-    const fileFullPath = path.join(tempProjectPath, filePath);
-    const languageId = filePath.endsWith('.bal') ? 'ballerina' : 'toml';
-    const aiUri = 'ai' + Uri.file(fileFullPath).toString().substring(4); // Replace 'file' prefix with 'ai'
-
-    StateMachine.langClient().didOpen({
-      textDocument: {
-        uri: aiUri,
-        languageId,
-        version: 1,
-        text: ''
-      }
-    });
-    console.log(`[AgentNotification] Seeded ai:// baseline (empty — new file) for: ${filePath}`);
-  } catch (error) {
-    console.error(`[AgentNotification] Failed to seed ai:// baseline for ${filePath}:`, error);
-  }
-}
-
-/**
  * Seeds the ai:// baseline for every package in the project at generation start, via each
- * package's Ballerina.toml (one seedAiBaseline call per package is enough to trigger a full
- * pristine-package scan cached under ai://).
+ * package's Ballerina.toml (one seedAiBaseline call per package is enough: dropping and
+ * re-opening any of a package's documents makes the LS re-scan the whole package from disk
+ * and cache it under ai://).
  * @param tempProjectPath The root path of the project (the real workspace/project root)
  * @param projects Array of project sources containing source files, modules, and tests
  */
@@ -168,16 +183,7 @@ function sendBothSchemaDidClose(tempProjectPath: string, filePath: string): void
       console.error(`[AgentNotification] Failed didClose (file schema) for ${filePath}:`, error);
     }
 
-    const aiUri = 'ai' + fileUri.substring(4);
-    try {
-      StateMachine.langClient().didClose({
-        textDocument: {
-          uri: aiUri
-        }
-      });
-    } catch (error) {
-      console.error(`[AgentNotification] Failed didClose (ai schema) for ${filePath}:`, error);
-    }
+    evictAiBaseline(fullPath);
   } catch (error) {
     console.error(`[AgentNotification] Failed to send didClose for ${filePath}:`, error);
   }
@@ -214,6 +220,7 @@ export function sendReviewRestoreDidOpenBatch(
 ): void {
   const normalizedTempRoot = path.resolve(tempProjectPath);
   const baselineAvailable = !!baselineProjectPath && fs.existsSync(baselineProjectPath);
+  const restored: { filePath: string; aiUri: string; originalContent: string }[] = [];
 
   for (const filePath of modifiedFiles) {
     if (!filePath.endsWith('.bal') && !filePath.endsWith('Ballerina.toml')) {
@@ -255,18 +262,32 @@ export function sendReviewRestoreDidOpenBatch(
       const modifiedContent = tempFileExists ? fs.readFileSync(tempFileFullPath, 'utf-8') : '';
       const languageId = filePath.endsWith('.bal') ? 'ballerina' : 'toml';
       const tempFileUri = Uri.file(tempFileFullPath).toString();
-      const aiUri = 'ai' + tempFileUri.substring(4); // Replace 'file' prefix with 'ai'
+      const aiUri = toAiUri(tempFileFullPath);
 
       // ai:// = frozen original baseline, file:// = live/modified (getSemanticDiff diffs ai://→file://).
       StateMachine.langClient().didOpen({
         textDocument: { uri: tempFileUri, languageId, version: 1, text: modifiedContent }
       });
-      StateMachine.langClient().didOpen({
-        textDocument: { uri: aiUri, languageId, version: 1, text: originalContent }
+      evictAiBaseline(tempFileFullPath);
+      restored.push({ filePath, aiUri, originalContent });
+    } catch (error) {
+      console.error(`[AgentNotification] Failed to restore review schemas for ${filePath}:`, error);
+    }
+  }
+
+  // State the originals as changes rather than opening each file: the first change rebuilds
+  // the package from the live sources on disk and the rest update documents in place, so the
+  // batch costs one rebuild instead of one per file — and no file's original is clobbered by
+  // the next file's rebuild. See the module notes on the ai:// baseline.
+  for (const { filePath, aiUri, originalContent } of restored) {
+    try {
+      StateMachine.langClient().didChange({
+        textDocument: { uri: aiUri, version: 2 },
+        contentChanges: [{ text: originalContent }]
       });
       console.log(`[AgentNotification] Restored review schemas for: ${filePath}`);
     } catch (error) {
-      console.error(`[AgentNotification] Failed to restore review schemas for ${filePath}:`, error);
+      console.error(`[AgentNotification] Failed to restore the ai:// baseline for ${filePath}:`, error);
     }
   }
 }

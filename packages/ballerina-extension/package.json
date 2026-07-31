@@ -339,6 +339,12 @@
                     "default": false,
                     "scope": "resource",
                     "description": "Show context usage indicator in the AI chat input footer."
+                },
+                "ballerina.copilot.followupSuggestions": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "resource",
+                    "description": "Suggest follow-up actions after Copilot responds in the AI chat."
                 }
             }
         },
@@ -1233,6 +1239,13 @@
                     "fontCharacter": "\\f112"
                 }
             },
+            "bi-ai-chat": {
+                "description": "ai-chat",
+                "default": {
+                    "fontPath": "./resources/font-wso2-vscode/dist/wso2-vscode.woff",
+                    "fontCharacter": "\\f113"
+                }
+            },
             "ballerina-new-module": {
                 "description": "new-module",
                 "default": {
@@ -1457,7 +1470,7 @@
         "clean": "del-cli ./dist ./out ./ballerina-*.vsix ./coverage ./.nyc_output",
         "compile": "webpack --mode production",
         "watch-ballerina": "webpack --mode none --watch",
-        "test-compile": "tsc -p ./ && pnpm run copySkillAssets",
+        "test-compile": "tsc -p ./ && copyfiles -u 1 \"src/**/*.md\" out/src",
         "copySkillAssets": "copyfiles \"src/features/ai/agent/skills/**/*.md\" out",
         "test": "pnpm run test-compile && node ./out/test/runTest.js",
         "test:ai": "pnpm run test-compile && node ./out/test/runAiTest.js",
@@ -1492,7 +1505,7 @@
     "dependencies": {
         "@ai-sdk/amazon-bedrock": "4.0.83",
         "@ai-sdk/anthropic-aws": "1.0.3",
-        "@ai-sdk/anthropic": "3.0.64",
+        "@ai-sdk/anthropic": "3.0.104",
         "@ai-sdk/google-vertex": "4.0.94",
         "@iarna/toml": "2.2.5",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -1524,7 +1537,7 @@
         "node-fetch": "3.3.2",
         "node-schedule": "2.1.1",
         "portfinder": "1.0.32",
-        "protobufjs": "7.6.3",
+        "protobufjs": "7.6.5",
         "source-map-support": "0.5.21",
         "unzipper": "0.12.3",
         "uuid": "14.0.0",
@@ -1552,7 +1565,7 @@
         "@types/vscode": "1.100.0",
         "@types/vscode-notebook-renderer": "1.72.2",
         "adm-zip": "0.5.16",
-        "axios": "1.16.0",
+        "axios": "1.18.0",
         "chai": "4.3.10",
         "copyfiles": "2.4.1",
         "cross-env": "7.0.3",

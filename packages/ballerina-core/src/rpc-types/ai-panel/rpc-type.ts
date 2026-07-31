@@ -17,7 +17,7 @@
  * 
  * THIS FILE INCLUDES AUTO GENERATED CODE
  */
-import { LoginMethod } from "../../state-machine-types";
+import { LoginMethod, FollowupSuggestion } from "../../state-machine-types";
 import {
     TestGenerationMentions,
     RequirementSpecification,
@@ -41,6 +41,8 @@ import {
     ConnectorSpecCancelRequest,
     ConfigurationProvideRequest,
     ConfigurationCancelRequest,
+    CreateManagedConnectionRequest,
+    CreateManagedConnectionResponse,
     UIChatMessage,
     CheckpointInfo,
     AbortAIGenerationRequest,
@@ -83,6 +85,9 @@ import {
     // TODO(auto-memory): temporarily disabled for this release.
     // ClearMemoryRequest,
     // OpenMemoryRequest,
+    GetRunStatusRequest,
+    GetRunStatusResponse,
+    HasPendingReviewRequest,
 } from "./interfaces";
 import { RequestType, NotificationType } from "vscode-messenger-common";
 
@@ -124,13 +129,17 @@ export const provideConnectorSpec: RequestType<ConnectorSpecRequest, void> = { m
 export const cancelConnectorSpec: RequestType<ConnectorSpecCancelRequest, void> = { method: `${_preFix}/cancelConnectorSpec` };
 export const provideConfiguration: RequestType<ConfigurationProvideRequest, void> = { method: `${_preFix}/provideConfiguration` };
 export const cancelConfiguration: RequestType<ConfigurationCancelRequest, void> = { method: `${_preFix}/cancelConfiguration` };
+export const createManagedConnection: RequestType<CreateManagedConnectionRequest, CreateManagedConnectionResponse> = { method: `${_preFix}/createManagedConnection` };
+export const cancelManagedConnection: NotificationType<void> = { method: `${_preFix}/cancelManagedConnection` };
 export const getChatMessages: NotificationType<void> = { method: `${_preFix}/getChatMessages` };
 export const getCheckpoints: NotificationType<void> = { method: `${_preFix}/getCheckpoints` };
 export const restoreCheckpoint: RequestType<RestoreCheckpointRequest, void> = { method: `${_preFix}/restoreCheckpoint` };
 export const clearChat: RequestType<void, void> = { method: `${_preFix}/clearChat` };
 export const updateChatMessage: RequestType<UpdateChatMessageRequest, void> = { method: `${_preFix}/updateChatMessage` };
 export const getActiveTempDir: RequestType<void, string> = { method: `${_preFix}/getActiveTempDir` };
-export const hasPendingReview: RequestType<void, boolean> = { method: `${_preFix}/hasPendingReview` };
+export const hasPendingReview: RequestType<HasPendingReviewRequest, boolean> = { method: `${_preFix}/hasPendingReview` };
+export const getRunStatus: RequestType<GetRunStatusRequest, GetRunStatusResponse> = { method: `${_preFix}/getRunStatus` };
+export const getLatestFollowupSuggestions: RequestType<void, FollowupSuggestion[]> = { method: `${_preFix}/getLatestFollowupSuggestions` };
 export const getUsage: RequestType<void, UsageResponse | undefined> = { method: `${_preFix}/getUsage` };
 export const requestQuota: RequestType<QuotaRequestParams, QuotaRequestResult> = { method: `${_preFix}/requestQuota` };
 export const openFileDiff: NotificationType<OpenFileDiffRequest> = { method: `${_preFix}/openFileDiff` };

@@ -20,10 +20,11 @@ import { AICommandExecutor, AICommandConfig, AIExecutionResult } from '../execut
 import { Command, GenerateAgentCodeRequest, ProjectSource, ExecutionContext, SemanticDiff, ReviewModeData, PROJECT_KIND, LoginMethod } from '@wso2/ballerina-core';
 import { StateMachine } from '../../../stateMachine';
 import { ModelMessage, stepCountIs, streamText, TextStreamPart } from 'ai';
-import { getAnthropicClient, getProviderCacheControl, addCacheControlToMessages, ANTHROPIC_SONNET_4 } from '../utils/ai-client';
-import { populateHistoryForAgent, getErrorMessage, buildChatError } from '../utils/ai-utils';
+import { getAnthropicClient, getProviderCacheControl, getProviderModelOptions, addCacheControlToMessages, ANTHROPIC_SONNET } from '../utils/ai-client';
+import { populateHistoryForAgent, getErrorMessage, getErrorCode, buildChatError } from '../utils/ai-utils';
 import { sendAgentDidOpenForFreshProjects } from '../utils/project/ls-schema-notifications';
 import { getSystemPrompt, getUserPrompt } from './prompts';
+import { FollowupSituation, startFollowupSuggestions } from './followups';
 import { prepareAgentsMdForTurn } from './agents-md';
 // TODO(auto-memory): temporarily disabled for this release.
 // import { executeAutoDream, isMemoryEnabled } from '../memory/autoDream';
@@ -36,6 +37,7 @@ import { getProjectSource } from '../utils/project/temp-project';
 import { getWorkspaceTomlValues } from '../../../utils';
 import { StreamContext } from './stream-handlers/stream-context';
 import { checkCompilationErrors } from './tools/diagnostics-utils';
+import { TASK_WRITE_TOOL_NAME } from './tools/task-writer';
 import { updateAndSaveChat, calculateTotalCost } from '../utils/events';
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
 import * as path from 'path';
@@ -218,8 +220,27 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
     /** Tracks in-flight tool-call start times keyed by toolCallId for duration logging. */
     private readonly _pendingToolCalls = new Map<string, number>();
 
+    /** A turn can reach both the finish and abort paths; suggestions must be scheduled once. */
+    private _followupsScheduled = false;
+
     constructor(config: AICommandConfig<GenerateAgentCodeRequest>) {
         super(config);
+    }
+
+    protected async prepareForExecution(): Promise<void> {
+        if (!this.config.chatStorage) {
+            return;
+        }
+        const { projectRootPath, threadId } = this.config.chatStorage;
+        if (chatStateStorage.getGeneration(projectRootPath, threadId, this.config.generationId)) {
+            return;
+        }
+        const params = this.config.params;
+        this.addGeneration(params.usecase, {
+            isPlanMode: params.isPlanMode,
+            operationType: params.operationType,
+            generationType: "agent",
+        });
     }
 
     /**
@@ -269,10 +290,21 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
 
             // Resolve model and login method
             const loginMethod = await getLoginMethod();
-            const model = await getAnthropicClient(ANTHROPIC_SONNET_4);
+            const model = await getAnthropicClient(ANTHROPIC_SONNET);
 
             const projectRootPath = this.config.executionContext.workspacePath || this.config.executionContext.projectPath || '';
             const agentsMd = await prepareAgentsMdForTurn(workspaceId || '', threadId);
+            if (agentsMd.hashToPersist !== undefined) {
+                const generation = chatStateStorage.getGeneration(projectRootPath, threadId, this.config.generationId);
+                if (generation) {
+                    chatStateStorage.updateGeneration(projectRootPath, threadId, this.config.generationId, {
+                        metadata: {
+                            ...generation.metadata,
+                            agentsMdLastReadHash: agentsMd.hashToPersist,
+                        },
+                    });
+                }
+            }
 
             const { allDisabled, projectSkills, userSkills, disabledSkillMetas } =
                 loadSkillsContext(projectRootPath || null);
@@ -285,18 +317,14 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const floorTokens = estimateFloorTokens(systemPromptText, JSON.stringify(userMessageContent));
 
 
-            const providerOptions = buildCompactionProviderOptions(loginMethod, floorTokens);
-            if (supportsCompaction(loginMethod) && providerOptions === undefined) {
+            const compactionOptions = buildCompactionProviderOptions(loginMethod, floorTokens);
+            if (supportsCompaction(loginMethod) && compactionOptions === undefined) {
                 warnCompactionDisabledOnce(projectRootPath, this.config.eventHandler);
             }
-
-            // 3. Add generation to chat storage (if enabled)
-            this.addGeneration(params.usecase, {
-                isPlanMode: params.isPlanMode,
-                operationType: params.operationType,
-                generationType: 'agent',
-                agentsMdLastReadHash: agentsMd.hashToPersist,
-            });
+            const modelOptions = await getProviderModelOptions('xhigh');
+            const providerOptions = compactionOptions
+                ? { anthropic: { ...(modelOptions as { anthropic?: object }).anthropic, ...compactionOptions.anthropic } }
+                : modelOptions;
 
             // Ensure the pre-edit snapshot exists before any tool can run.
             await chatStateStorage.waitForCheckpointCapture(this.config.generationId);
@@ -366,7 +394,6 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const { fullStream, response, usage, totalUsage } = streamText({
                 model,
                 maxOutputTokens: 8192,
-                temperature: 0,
                 messages: allMessages,
                 tools,
                 abortSignal: this.config.abortController.signal,
@@ -428,7 +455,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         );
                         this.config.eventHandler({
                             type: "usage_metrics",
-                            model: ANTHROPIC_SONNET_4,
+                            model: ANTHROPIC_SONNET,
                             usage: {
                                 inputTokens,
                                 cacheCreationInputTokens: cacheWriteTokens,
@@ -612,6 +639,11 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                         );
                     }
 
+                    // Only meaningful once the turn produced something to pivot away from.
+                    if (partialLLMMessages.length > 0) {
+                        this.maybeScheduleFollowups(streamContext, partialLLMMessages, 'aborted');
+                    }
+
                     // Note: Abort event is sent by base class handleExecutionError()
                 }
 
@@ -688,6 +720,42 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                 }
                 break;
 
+            case "tool-error": {
+                // A tool whose execute() throws never reaches its own
+                // emitFileToolResult/eventHandler call, because tools emit their
+                // tool_call/tool_result events from inside execute(). Without a
+                // compensating result the UI leaves that tool_call open forever:
+                // a spinner stuck in the transcript, and — since the composer's
+                // loading indicator reads the same events — a step label that
+                // keeps claiming a finished operation is still running.
+                //
+                // Unlike "error" above, this must not rethrow: the SDK feeds the
+                // tool failure back to the model and the run continues.
+                const failedToolName = (part as any).toolName;
+                const failedToolCallId = (part as any).toolCallId;
+                this._pendingToolCalls.delete(failedToolCallId);
+
+                // TaskWrite is deliberately excluded. Its tool_result drives the
+                // task rail through applyTaskWriteResult, where an empty task
+                // list closes the running task and reopens a floating entry —
+                // corrupting the transcript rather than just marking a failure.
+                // A failed TaskWrite is left to the turn's own error handling.
+                if (failedToolName && failedToolName !== TASK_WRITE_TOOL_NAME) {
+                    const reason = (part as any).error;
+                    context.eventHandler({
+                        type: "tool_result",
+                        toolName: failedToolName,
+                        toolCallId: failedToolCallId,
+                        failed: true,
+                        toolOutput: {
+                            success: false,
+                            error: reason instanceof Error ? reason.message : String(reason ?? "Tool execution failed"),
+                        },
+                    });
+                }
+                break;
+            }
+
             default:
                 // All other stream part types (step-finish, etc.) are handled by the SDK.
                 break;
@@ -763,6 +831,11 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             });
             updateAndSaveChat(context.messageId, Command.Agent, context.eventHandler);
         }
+
+        // A quota failure gets a Continue chip with no model call — the webview keeps it hidden
+        // until the limit resets, so the user can pick the work back up then.
+        const situation: FollowupSituation = getErrorCode(error) === 'usage_limit' ? 'usage_limit' : 'error';
+        this.maybeScheduleFollowups(context, messagesToSave, situation, getErrorMessage(error));
     }
 
     /**
@@ -798,7 +871,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         );
 
         const totalCost = calculateTotalCost(
-            ANTHROPIC_SONNET_4,
+            ANTHROPIC_SONNET,
             { inputTokens, outputTokens, cacheReadTokens: totalCacheRead, cacheWriteTokens: totalCacheWrite },
             context.toolModelUsage
         );
@@ -859,12 +932,41 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         // Emit UI events
         await this.emitReviewActions(context);
 
+        // Follow-up suggestions — best-effort, non-blocking.
+        this.maybeScheduleFollowups(context, assistantMessages, 'completed');
+
         // TODO(auto-memory): auto-dream consolidation temporarily disabled for this release.
         // // autoDream consolidation — skipped on compaction turns (no real user activity)
         // const workspacePath = context.ctx.workspacePath || context.ctx.projectPath || '';
         // if (workspacePath && !context.wasCompactionTurn) {
         //     executeAutoDream({ workspacePath });
         // }
+    }
+
+    /** Hands the finished turn to the follow-up suggestion flow; at most once per turn. */
+    private maybeScheduleFollowups(
+        context: StreamContext,
+        assistantMessages: any[],
+        situation: FollowupSituation,
+        errorMessage?: string
+    ): void {
+        // Migration and evals drive this executor with their own handlers and no chat storage —
+        // suggestions there would burn a call and leak chips into the wrong panel.
+        if (this._followupsScheduled || !this.config.chatStorage?.enabled) {
+            return;
+        }
+        this._followupsScheduled = startFollowupSuggestions({
+            situation,
+            messageId: context.messageId,
+            projectRootPath: context.ctx.workspacePath || context.ctx.projectPath || '',
+            threadId: this.config.chatStorage.threadId,
+            assistantMessages,
+            userQuery: this.config.params.usecase ?? '',
+            isPlanMode: this.config.params.isPlanMode,
+            abortSignal: this.config.abortController.signal,
+            errorMessage,
+            eventHandler: this.config.eventHandler,
+        });
     }
 
     /**
@@ -977,6 +1079,10 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             // stash what the diff view needs to reopen after an extension host restart.
             await savePendingReviewRestore({
                 generationId: context.messageId,
+                projectRootPath: workspaceId,
+                // Capture the run's own thread — the reader must not re-derive it from
+                // whatever thread happens to be active at restore time.
+                threadId,
                 tempProjectPath: workingProjectPath,
                 // Direct-edit mode keeps no on-disk baseline copy; the checkpoint snapshot
                 // (fallbackOriginalContents on restore) is the source of pre-generation originals.

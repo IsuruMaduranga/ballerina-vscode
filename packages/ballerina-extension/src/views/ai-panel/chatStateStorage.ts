@@ -272,19 +272,21 @@ export class ChatStateStorage {
      * Flush a thread to disk after mutation.
      * Called after every state change to keep files as the source of truth.
      */
-    private flushThread(projectRootPath: string, threadId: string): void {
+    private flushThread(projectRootPath: string, threadId: string): boolean {
         const workspace = this.storage.get(projectRootPath);
         if (!workspace) {
-            return;
+            return false;
         }
         const thread = workspace.threads.get(threadId);
         if (!thread) {
-            return;
+            return false;
         }
         try {
             this.persistenceStore.saveThread(projectRootPath, threadId, toPersistedThread(thread));
+            return true;
         } catch (err) {
             console.error(`[ChatStateStorage] Failed to persist thread ${threadId}:`, err);
+            return false;
         }
     }
 
@@ -473,16 +475,38 @@ export class ChatStateStorage {
     }
 
     /**
-     * Get active thread
+     * Get active thread.
+     *
+     * Initializes the workspace rather than reading the in-memory cache directly.
+     * A cold cache used to resolve to 'default' even when the persisted active
+     * thread was something else, and the caller would then go on to *create* that
+     * 'default' thread through getOrCreateThread — repointing activeThreadId and
+     * flushing it to disk, so the user landed in an empty chat with their real
+     * thread still on disk but no longer active. Nothing warms this cache eagerly
+     * (initializeWorkspace has no external callers), so ordering between the
+     * panel's mount RPCs was the only thing preventing it.
+     *
      * @param projectRootPath Workspace identifier
-     * @returns Active thread or undefined
+     * @returns Active thread, or undefined only if its file failed to load
      */
     getActiveThread(projectRootPath: string): ChatThread | undefined {
-        const workspace = this.storage.get(projectRootPath);
-        if (!workspace) {
-            return undefined;
-        }
+        const workspace = this.initializeWorkspace(projectRootPath);
         return workspace.threads.get(workspace.activeThreadId);
+    }
+
+    /**
+     * Id of the active thread. Resolves against the workspace on disk, so it is
+     * correct even on the first call after an extension-host restart; the
+     * 'default' fallback now only covers a thread whose file failed to load.
+     *
+     * Prefer this over inlining `getActiveThread(p)?.id ?? 'default'` at call sites:
+     * threads are dynamic (`thread-<ts>-<rand>`), so every place that reaches for a
+     * thread by name has to resolve the active one, and a hardcoded 'default' is a
+     * silent bug — it reads (and, via getOrCreateThread, can create) a thread the
+     * user isn't looking at. Several such bugs have already been fixed.
+     */
+    getActiveThreadId(projectRootPath: string): string {
+        return this.getActiveThread(projectRootPath)?.id ?? 'default';
     }
 
     // ============================================
@@ -710,13 +734,13 @@ export class ChatStateStorage {
         threadId: string,
         generationId: string,
         updates: Partial<Generation>
-    ): void {
+    ): boolean {
         const thread = this.getOrCreateThread(projectRootPath, threadId);
         const generation = thread.generations.find(g => g.id === generationId);
 
         if (!generation) {
             console.error(`[ChatStateStorage] Generation not found: ${generationId}`);
-            return;
+            return false;
         }
 
         // Apply updates
@@ -724,8 +748,9 @@ export class ChatStateStorage {
         thread.updatedAt = Date.now();
 
         // Persist immediately
-        this.flushThread(projectRootPath, threadId);
+        const persisted = this.flushThread(projectRootPath, threadId);
         console.log(`[ChatStateStorage] Updated generation: ${generationId}`);
+        return persisted;
     }
 
     /**
@@ -762,6 +787,24 @@ export class ChatStateStorage {
     ): Generation | undefined {
         const thread = this.getOrCreateThread(projectRootPath, threadId);
         return thread.generations.find(g => g.id === generationId);
+    }
+
+    /**
+     * Locate a generation without relying on the mutable active-thread pointer.
+     * Generation IDs are unique within a workspace.
+     */
+    findGenerationScope(
+        projectRootPath: string,
+        generationId: string
+    ): { threadId: string; generation: Generation } | undefined {
+        const workspace = this.initializeWorkspace(projectRootPath);
+        for (const [threadId, thread] of workspace.threads) {
+            const generation = thread.generations.find(candidate => candidate.id === generationId);
+            if (generation) {
+                return { threadId, generation };
+            }
+        }
+        return undefined;
     }
 
     /**
@@ -1178,6 +1221,14 @@ export class ChatStateStorage {
         threadId: string,
         execution: ActiveExecution
     ): void {
+        const existing = this.activeExecutions.get(projectRootPath)?.get(threadId);
+        if (
+            existing?.generationId === execution.generationId
+            && existing.abortController === execution.abortController
+        ) {
+            return;
+        }
+
         // Abort any existing execution for this thread first
         this.abortActiveExecution(projectRootPath, threadId);
 

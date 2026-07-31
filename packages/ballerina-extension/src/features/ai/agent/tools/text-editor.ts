@@ -19,7 +19,6 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendNewFileDidOpen } from "../../utils/project/ls-schema-notifications";
 import { CopilotEventHandler } from "../../utils/events";
 import { normalizeInvisibleChars } from "../../utils/string-utils";
 import { normalizeToLf, readAndNormalize, restoreEol } from "../../utils/eol-utils";
@@ -299,13 +298,9 @@ export function createWriteExecute(
     const lineCount = content.split('\n').length;
     const action: 'created' | 'updated' = fileExists ? 'updated' : 'created';
 
-    // Seed the ai:// frozen baseline for brand-new files (empty — didn't exist before this
-    // generation). Existing files were already seeded at generation start; the live write
-    // below reaches file:// automatically via VS Code's own document sync.
-    if (action === 'created') {
-      sendNewFileDidOpen(tempProjectPath, file_path);
-    }
-
+    // Neither case notifies the ai:// baseline: a brand-new file has to stay absent from it
+    // to read as an addition, and an existing one is already frozen there from generation
+    // start. See the notes in utils/project/ls-schema-notifications.ts.
     await persistLiveEdit(file_path, content, modifiedFiles, allModifiedFiles, ctx);
 
     console.log(`[FileWriteTool] Successfully ${action} file: ${file_path} with ${lineCount} lines.`);

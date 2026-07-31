@@ -26,6 +26,8 @@ import {
     AddFilesToProjectRequest,
     CheckpointInfo,
     Command,
+    GetRunStatusRequest,
+    GetRunStatusResponse,
     DocGenerationRequest,
     GenerateAgentCodeRequest,
     GenerateOpenAPIRequest,
@@ -47,6 +49,7 @@ import {
     UsageResponse,
     QuotaRequestParams,
     QuotaRequestResult,
+    FollowupSuggestion,
     WebToolApprovalRequest,
     CompactConversationRequest,
     CompactConversationResponse,
@@ -80,6 +83,9 @@ import {
     ThreadSummary,
     SwitchThreadRequest,
     DeleteThreadRequest,
+    HasPendingReviewRequest,
+    CreateManagedConnectionRequest,
+    CreateManagedConnectionResponse,
     // TODO(auto-memory): temporarily disabled for this release.
     // ClearMemoryRequest,
     // OpenMemoryRequest,
@@ -123,7 +129,10 @@ import { enhancePrompt as enhancePromptService } from "../../features/ai/service
 import { StateMachine, updateView } from "../../stateMachine";
 import { isInDevant, isInWI } from "../../utils";
 import { getLoginMethod, isPlatformExtensionAvailable, loginGithubCopilot } from "../../utils/ai/auth";
+import { cancelConnectionCallback, ConnectionSettleReason, createConnectionState, waitForConnectionCallback } from "../../utils/uri-handlers";
+import { exchangeManagedConnection, initiateManagedConnection } from "../platform-ext/managed-connections";
 import { normalizeCodeContext } from "../../views/ai-panel/codeContextUtils";
+import { resolveActiveFilePath } from "../../views/ai-panel/activeFileContext";
 import { refreshDataMapper } from "../data-mapper/utils";
 import {
     TEST_DIR_NAME
@@ -148,6 +157,7 @@ import { ContextTypesExecutor } from '../../features/ai/executors/datamapper/Con
 import { approvalManager } from '../../features/ai/state/ApprovalManager';
 import { approvalViewManager } from '../../features/ai/state/ApprovalViewManager';
 import { chatStateStorage } from '../../views/ai-panel/chatStateStorage';
+import { runEventStore } from '../../features/ai/utils/run-event-store';
 import { restoreWorkspaceSnapshot } from '../../views/ai-panel/checkpoint/checkpointUtils';
 import { runningServicesManager } from '../../features/ai/agent/tools/running-service-manager';
 import { executeRun } from "../../features/ai/agent/tools/ballerina-run";
@@ -173,8 +183,20 @@ function validateMcpServerConfig(cfg: any): string | null {
 }
 
 function getActiveThreadId(projectRootPath?: string): string {
-    return chatStateStorage.getActiveThread(projectRootPath ?? resolveProjectRootPath())?.id ?? 'default';
+    return chatStateStorage.getActiveThreadId(projectRootPath ?? resolveProjectRootPath());
 }
+
+const OAUTH_CALLBACK_TIMEOUT_MS = 3 * 60 * 1_000;
+
+// Shown when a flow ends without a connection id. "cancelled" and "superseded" are dropped by the
+// webview's run-id guard, so those only reach the log.
+const CONNECTION_FAILURE_MESSAGE: Record<ConnectionSettleReason, string> = {
+    callback: "Managed connection failed.",
+    timeout: "Timed out waiting for the connection to be authorized. Please try again.",
+    denied: "The connection was not authorized. Please try again and approve access.",
+    cancelled: "Connection cancelled.",
+    superseded: "Connection cancelled — a newer connection attempt was started.",
+};
 
 export class AiPanelRpcManager implements AIPanelAPI {
 
@@ -353,7 +375,9 @@ export class AiPanelRpcManager implements AIPanelAPI {
 
     async abortAIGeneration(params: AbortAIGenerationRequest): Promise<void> {
         const projectRootPath = params?.projectRootPath || resolveProjectRootPath();
-        const threadId = params?.threadId || 'default';
+        // Callers pass `{}` (see AIChat's stop button), so falling back to a
+        // hardcoded 'default' aborted a thread that holds no execution.
+        const threadId = params?.threadId || getActiveThreadId(projectRootPath);
 
         const aborted = chatStateStorage.abortActiveExecution(projectRootPath, threadId);
 
@@ -448,6 +472,29 @@ export class AiPanelRpcManager implements AIPanelAPI {
     }
 
     async generateAgent(params: GenerateAgentCodeRequest): Promise<boolean> {
+        const smCtx = StateMachine.context();
+        const workspaceRoot = smCtx.workspacePath || smCtx.projectPath;
+
+        // Contextual mini-chat launches bypass getDefaultPrompt(), where panel
+        // launches normally convert the diagram's absolute file path to the
+        // workspace-relative path expected by the agent.
+        if (params.codeContext && path.isAbsolute(params.codeContext.filePath)) {
+            params = {
+                ...params,
+                codeContext: normalizeCodeContext(params.codeContext, workspaceRoot, smCtx.projectPath),
+            };
+        }
+
+        params = {
+            ...params,
+            // Always overwrite client input with a host-validated path.
+            activeFilePath: resolveActiveFilePath(
+                params.promptSource,
+                smCtx.documentUri,
+                workspaceRoot,
+                smCtx.projectPath,
+            ),
+        };
         return await generateAgent(params);
     }
 
@@ -588,6 +635,131 @@ User reverted the last made changes. The files have been restored to the state b
         approvalManager.resolveConfiguration(params.requestId, false, undefined, params.comment);
     }
 
+    async createManagedConnection(params: CreateManagedConnectionRequest): Promise<CreateManagedConnectionResponse> {
+        console.log(`[ManagedConnection] start — vendor='${params.vendor}'`);
+
+        // Unreachable in practice — no managed group means no button — but guard anyway.
+        if (!extension.ballerinaExtInstance.enabledExperimentalFeatures()) {
+            console.log("[ManagedConnection] experimental features are off — managed connections are unavailable. Aborting.");
+            return { success: false, error: "Managed connections are an experimental feature." };
+        }
+
+        try {
+            // 1. Ask the service which URL to open. `params.vendor` is already the backend
+            //    provider key, resolved from the managed registry.
+            //
+            // The redirect URI carries a per-flow nonce (see uri-handlers). NOTE: this makes it
+            // carry a query string, so the service's allow-listed redirect check must tolerate
+            // the extra `state` param and append its own id with '&'.
+            const connectionState = createConnectionState();
+            const redirectUri = `${vscode.env.uriScheme}://wso2.ballerina/oauth-callback?state=${connectionState}`;
+            console.log(`[ManagedConnection] step 1 — initiate: provider='${params.vendor}', redirectUri='${redirectUri}'`);
+            const initiate = await initiateManagedConnection({ provider: params.vendor, redirectUri });
+            console.log(`[ManagedConnection] step 1 done — next='${initiate?.next}'`);
+
+            // `next` decides which URL to open. "select" means the org already has a connection
+            // for this provider, so the service offers the selection page to reuse it rather than
+            // authorizing a duplicate; that page delivers a connection id to the same redirect,
+            // so from here both branches are identical.
+            const nextUrl = initiate?.next === "select" ? initiate.selectionUrl : initiate?.authorizeUrl;
+            if (!nextUrl) {
+                console.log(`[ManagedConnection] initiate returned next='${initiate?.next}' with no matching URL. Aborting.`);
+                return { success: false, error: `Could not start a managed connection for '${params.vendor}'.` };
+            }
+
+            // 2. Open the browser and wait for the redirect callback carrying the connection id.
+            //    The service 302s back to redirectUri with the id appended.
+            //
+            //    The waiter is registered before the browser opens: a callback that arrives with
+            //    no flow pending is dropped, and the service can redirect straight back.
+            console.log(`[ManagedConnection] step 2 — opening ${initiate.next === "select" ? "connection selection" : "vendor consent"} and waiting for oauth-callback...`);
+            const callback = waitForConnectionCallback(connectionState, OAUTH_CALLBACK_TIMEOUT_MS);
+            let browserOpened = false;
+            try {
+                browserOpened = await vscode.env.openExternal(vscode.Uri.parse(nextUrl));
+            } catch (err) {
+                console.error("[ManagedConnection] step 2 — openExternal threw:", (err as Error)?.message ?? err);
+            }
+            if (!browserOpened) {
+                // Release the waiter, otherwise the user sits out the full timeout and is told the
+                // OAuth flow timed out when it never started.
+                cancelConnectionCallback();
+                return { success: false, error: "Could not open a browser to complete the connection." };
+            }
+
+            const { connectionId, reason } = await callback;
+            if (!connectionId) {
+                console.log(`[ManagedConnection] step 2 — no connection id (reason='${reason}'). Aborting.`);
+                return { success: false, error: CONNECTION_FAILURE_MESSAGE[reason] };
+            }
+            console.log(`[ManagedConnection] step 2 done — received connectionId='${connectionId}'.`);
+
+            // 3. Exchange the connection id for the credentials.
+            console.log("[ManagedConnection] step 3 — exchange...");
+            const credentials = await exchangeManagedConnection(connectionId);
+            console.log(`[ManagedConnection] step 3 done — kind='${credentials?.kind}'.`);
+
+            // Never write bot-token creds into a refresh config (or vice-versa) if the group was
+            // mislabeled upstream.
+            const expectedKind = params.authType === "staticToken" ? "bearer" : "oauth2_refresh";
+            if (credentials.kind !== expectedKind) {
+                console.log(`[ManagedConnection] kind mismatch — expected '${expectedKind}', got '${credentials.kind}'. Aborting.`);
+                return { success: false, error: `Expected ${expectedKind} credentials but the service returned '${credentials.kind}'.` };
+            }
+
+            if (credentials.kind === "oauth2_refresh") {
+                if (!credentials.clientId || !credentials.clientSecret || !credentials.refreshToken || !credentials.tokenEndpoint) {
+                    console.log("[ManagedConnection] incomplete refresh credentials in exchange response. Aborting.");
+                    return { success: false, error: "Managed token service returned incomplete OAuth credentials." };
+                }
+                console.log("[ManagedConnection] success — returning refresh credentials to the config collector.");
+                return {
+                    success: true,
+                    credentials: {
+                        clientId: credentials.clientId,
+                        clientSecret: credentials.clientSecret,
+                        refreshToken: credentials.refreshToken,
+                        // The proxy /token endpoint the connector uses to refresh — returned by
+                        // the service per connection rather than hardcoded.
+                        refreshUrl: credentials.tokenEndpoint,
+                    },
+                };
+            }
+
+            if (credentials.kind === "bearer") {
+                if (!credentials.accessToken) {
+                    console.log("[ManagedConnection] empty bearer token in exchange response. Aborting.");
+                    return { success: false, error: "Managed token service returned an empty static token." };
+                }
+                console.log("[ManagedConnection] success — returning static token to the config collector.");
+                return {
+                    success: true,
+                    credentials: {
+                        // Auto-fills the connector's single token configurable (bot/bearer/static).
+                        token: credentials.accessToken,
+                    },
+                };
+            }
+
+            console.log(`[ManagedConnection] unsupported credential kind '${credentials.kind}'. Aborting.`);
+            return { success: false, error: `Unsupported credential kind '${credentials.kind}'.` };
+        } catch (err) {
+            // managed-connections.ts has already logged the URL, HTTP status and response body — the
+            // detail the bare message drops. What surfaces here is the user-facing summary.
+            const message = (err as Error)?.message ?? String(err);
+            console.error("[ManagedConnection] flow failed:", message);
+            return { success: false, error: message || "Failed to create a managed connection." };
+        }
+    }
+
+    cancelManagedConnection(): void {
+        // The user closed the consent tab (or gave up). Release the waiting
+        // createManagedConnection immediately instead of holding them for the full callback
+        // timeout; it returns a failure the webview discards as a user-initiated cancel.
+        console.log("[ManagedConnection] cancelled by user — abandoning the pending callback wait.");
+        cancelConnectionCallback();
+    }
+
     async approveWebTool(params: WebToolApprovalRequest): Promise<void> {
         approvalManager.resolveWebToolApproval(params.requestId, true);
     }
@@ -607,7 +779,7 @@ User reverted the last made changes. The files have been restored to the state b
     async restoreCheckpoint(params: RestoreCheckpointRequest): Promise<void> {
         // Get project root path and thread identifiers
         const projectRootPath = resolveProjectRootPath();
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
 
         // Find the checkpoint
         const found = chatStateStorage.findCheckpoint(projectRootPath, threadId, params.checkpointId);
@@ -705,29 +877,49 @@ User reverted the last made changes. The files have been restored to the state b
     // }
 
     async updateChatMessage(params: UpdateChatMessageRequest): Promise<void> {
-        const projectRootPath = resolveProjectRootPath();
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const projectRootPath = params.projectRootPath || resolveProjectRootPath();
+        let threadId = params.threadId
+            || chatStateStorage.getActiveThreadId(projectRootPath);
 
-        // The messageId is actually a generation ID
-        // This is called when streaming completes to save the final UI-formatted response
-        const generation = chatStateStorage.getGeneration(projectRootPath, threadId, params.messageId);
-
-        if (!generation) {
-            console.warn(`[RPC] Generation ${params.messageId} not found in thread ${threadId}`);
-            return;
+        // The messageId is actually a generation ID. Legacy callers do not send
+        // a thread, so locate the generation by its stable ID rather than trusting
+        // the mutable active-thread pointer.
+        let generation = chatStateStorage.getGeneration(projectRootPath, threadId, params.messageId);
+        if (!generation && !params.threadId) {
+            const located = chatStateStorage.findGenerationScope(projectRootPath, params.messageId);
+            if (located) {
+                threadId = located.threadId;
+                generation = located.generation;
+            }
         }
 
-        // Update the UI response with the final formatted content
-        chatStateStorage.updateGeneration(projectRootPath, threadId, params.messageId, {
+        if (!generation) {
+            throw new Error(`[RPC] Generation ${params.messageId} not found in thread ${threadId}`);
+        }
+
+        // Persist first. ChatStateStorage reports disk failures so the replay
+        // buffer remains available for another reconnect attempt.
+        const persisted = chatStateStorage.updateGeneration(projectRootPath, threadId, params.messageId, {
             uiResponse: params.content
         });
+        if (!persisted) {
+            throw new Error(`[RPC] Failed to persist generation ${params.messageId}`);
+        }
+
+        // Intermediate save_chat events encountered during a finished-run replay
+        // must not clear the only recovery source. The reconnect's final write
+        // explicitly clears it after the fully rebuilt transcript is durable.
+        const active = chatStateStorage.getActiveExecution(projectRootPath, threadId);
+        if (params.clearRunBuffer !== false && active?.generationId !== params.messageId) {
+            runEventStore.clearBuffer(projectRootPath, threadId, params.messageId);
+        }
 
         console.log(`[RPC] Updated generation ${params.messageId} UI response`);
     }
 
     async getChatMessages(): Promise<UIChatMessage[]> {
         const projectRootPath = resolveProjectRootPath();
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
 
         // Get all generations from chat storage
         const generations = chatStateStorage.getGenerations(projectRootPath, threadId);
@@ -758,7 +950,7 @@ User reverted the last made changes. The files have been restored to the state b
 
     async getCheckpoints(): Promise<CheckpointInfo[]> {
         const projectRootPath = resolveProjectRootPath();
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
 
         // Get checkpoints from ChatStateStorage
         const checkpoints = chatStateStorage.getCheckpoints(projectRootPath, threadId);
@@ -774,7 +966,7 @@ User reverted the last made changes. The files have been restored to the state b
 
     async getActiveTempDir(): Promise<string> {
         const projectRootPath = resolveProjectRootPath();
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
 
         // Always get tempProjectPath from the currently open ('done') generation
         const doneGeneration = chatStateStorage.getDoneGeneration(projectRootPath, threadId);
@@ -788,9 +980,44 @@ User reverted the last made changes. The files have been restored to the state b
         return projectPath;
     }
 
-    async hasPendingReview(): Promise<boolean> {
+    async hasPendingReview(params: HasPendingReviewRequest): Promise<boolean> {
+        const projectRootPath = params?.projectRootPath || resolveProjectRootPath();
+        const threadId = params?.threadId
+            || chatStateStorage.getActiveThreadId(projectRootPath);
+        return !!chatStateStorage.getDoneGeneration(projectRootPath, threadId);
+    }
+
+    async getRunStatus(params: GetRunStatusRequest): Promise<GetRunStatusResponse> {
+        const projectRootPath = params?.projectRootPath || resolveProjectRootPath();
+        // Runs execute (and buffer their events) under the active thread — resolve
+        // it the same way generateAgent does, or a reconnect on a non-default
+        // thread would look up an empty buffer.
+        const threadId = params?.threadId
+            || chatStateStorage.getActiveThreadId(projectRootPath);
+        const status = runEventStore.getRunStatus(projectRootPath, threadId, params?.sinceSeq);
+        // Generation storage is materialized before beginRun, so the prompt and
+        // mode are authoritative even when reconnect happens before the first event.
+        const generation = status.generationId
+            ? chatStateStorage.getGeneration(projectRootPath, threadId, status.generationId)
+            : undefined;
+        return {
+            ...status,
+            projectRootPath,
+            threadId,
+            isPlanMode: generation?.metadata?.isPlanMode,
+            userPrompt: generation?.userPrompt,
+            // Interactive prompts still awaiting an answer — lets the reopened panel
+            // re-surface only still-pending prompts during replay and skip resolved ones.
+            pendingRequestIds: approvalManager.getPendingRequestIds(),
+        };
+    }
+
+    async getLatestFollowupSuggestions(): Promise<FollowupSuggestion[]> {
         const projectRootPath = resolveProjectRootPath();
-        return !!chatStateStorage.getDoneGeneration(projectRootPath, 'default');
+        // Read the thread directly: getGenerations() would create and persist an empty thread if
+        // this one is no longer in memory.
+        const thread = chatStateStorage.getWorkspaceState(projectRootPath)?.threads.get(getActiveThreadId(projectRootPath));
+        return thread?.generations[thread.generations.length - 1]?.followupSuggestions ?? [];
     }
 
     async compactConversation(_params: CompactConversationRequest): Promise<CompactConversationResponse> {
@@ -883,7 +1110,7 @@ User reverted the last made changes. The files have been restored to the state b
 
         const context = StateMachine.context();
         const workspaceId = context.workspacePath || context.projectPath;
-        const threadId = chatStateStorage.getActiveThread(resolveProjectRootPath())?.id ?? 'default';
+        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
         const generation = chatStateStorage.getGeneration(workspaceId, threadId, params.generationId);
         const tempProjectPath = generation?.reviewState.tempProjectPath;
 

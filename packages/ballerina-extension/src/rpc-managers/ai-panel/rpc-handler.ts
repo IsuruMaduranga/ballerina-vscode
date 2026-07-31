@@ -46,8 +46,11 @@ import {
     generateContextTypes,
     generateOpenAPI,
     GenerateOpenAPIRequest,
+    HasPendingReviewRequest,
     getActiveTempDir,
     hasPendingReview,
+    getRunStatus,
+    getLatestFollowupSuggestions,
     getAIMachineSnapshot,
     getChatMessages,
     getCheckpoints,
@@ -75,6 +78,9 @@ import {
     promptForLogin,
     promptGithubAuthorize,
     provideConfiguration,
+    createManagedConnection,
+    cancelManagedConnection,
+    CreateManagedConnectionRequest,
     provideConnectorSpec,
     RequirementSpecification,
     restoreCheckpoint,
@@ -194,13 +200,17 @@ export function registerAiPanelRpcHandlers(messenger: Messenger) {
     messenger.onRequest(cancelConnectorSpec, (args: ConnectorSpecCancelRequest) => rpcManger.cancelConnectorSpec(args));
     messenger.onRequest(provideConfiguration, (args: ConfigurationProvideRequest) => rpcManger.provideConfiguration(args));
     messenger.onRequest(cancelConfiguration, (args: ConfigurationCancelRequest) => rpcManger.cancelConfiguration(args));
+    messenger.onRequest(createManagedConnection, (args: CreateManagedConnectionRequest) => rpcManger.createManagedConnection(args));
+    messenger.onNotification(cancelManagedConnection, () => rpcManger.cancelManagedConnection());
     messenger.onRequest(getChatMessages, () => rpcManger.getChatMessages());
     messenger.onRequest(getCheckpoints, () => rpcManger.getCheckpoints());
     messenger.onRequest(restoreCheckpoint, (args: RestoreCheckpointRequest) => rpcManger.restoreCheckpoint(args));
     messenger.onRequest(clearChat, () => rpcManger.clearChat());
     messenger.onRequest(updateChatMessage, (args: UpdateChatMessageRequest) => rpcManger.updateChatMessage(args));
     messenger.onRequest(getActiveTempDir, () => rpcManger.getActiveTempDir());
-    messenger.onRequest(hasPendingReview, () => rpcManger.hasPendingReview());
+    messenger.onRequest(hasPendingReview, (args: HasPendingReviewRequest) => rpcManger.hasPendingReview(args));
+    messenger.onRequest(getRunStatus, (args) => rpcManger.getRunStatus(args));
+    messenger.onRequest(getLatestFollowupSuggestions, () => rpcManger.getLatestFollowupSuggestions());
     messenger.onRequest(getUsage, () => rpcManger.getUsage());
     messenger.onRequest(requestQuota, (args: QuotaRequestParams) => rpcManger.requestQuota(args));
     messenger.onNotification(openFileDiff, (args: OpenFileDiffRequest) => rpcManger.openFileDiff(args));

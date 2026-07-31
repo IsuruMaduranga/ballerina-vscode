@@ -82,7 +82,7 @@ export enum MACHINE_VIEW {
     BIMainFunctionForm = "Add Automation SKIP",
     BIFunctionForm = "Add Function SKIP",
     BIAgentToolForm = "Add Agent Tool SKIP",
-    BIWorkflowForm = "Add Workflow SKIP",
+    BIWorkflowForm = "Add Durable Workflow SKIP",
     BIActivityForm = "Add Workflow Activity SKIP",
     BINPFunctionForm = "Add Natural Function SKIP",
     BITestFunctionForm = "Add Test Function SKIP",
@@ -160,6 +160,23 @@ export interface ArtifactInfo {
     version?: string;
 }
 
+export interface ManagedCredentialMapping {
+    name: string;
+    credentialField: "clientId" | "clientSecret" | "refreshToken" | "token";
+    description: string;
+    secret?: boolean;
+}
+
+export interface ManagedConnectionGroup {
+    // Stable per-payload identity. `vendor` is not unique across groups, so the form keys off this.
+    id: string;
+    vendor: string;
+    authType: "oauth2RefreshToken" | "staticToken";
+    variables: ManagedCredentialMapping[];
+    // Refresh grant only.
+    refreshUrlVar?: string;
+}
+
 export interface ConfigurationCollectorMetadata {
     requestId: string;
     variables: Array<{
@@ -171,6 +188,7 @@ export interface ConfigurationCollectorMetadata {
     existingValues?: Record<string, string>;
     message: string;
     isTestConfig?: boolean;
+    managedConnections?: ManagedConnectionGroup[];
 }
 
 export interface AgentMetadata {
@@ -332,7 +350,20 @@ export interface DownloadProgress {
     step?: number;
 }
 
-export type ChatNotify =
+/**
+ * Metadata stamped onto every {@link ChatNotify} at emit time by the backend
+ * `RunEventStore` to support panel reconnection:
+ * - `seq`: monotonic sequence number used for replay dedup / polling (`sinceSeq`).
+ * - `generationId`: identifies the run so a reconnecting/late panel can drop
+ *   events belonging to a previously-interrupted run.
+ * Both are optional so existing emitters/consumers are unaffected.
+ */
+export interface ChatNotifyMeta {
+    seq?: number;
+    generationId?: string;
+}
+
+export type ChatNotify = (
     | ChatStart
     | IntermidaryState
     | ChatContent
@@ -347,6 +378,7 @@ export type ChatNotify =
     | EvalsToolResult
     | UsageMetricsEvent
     | TaskApprovalRequest
+    | PlanApprovalResolved
     | WebToolApprovalEvent
     | GeneratedSourcesEvent
     | ConnectorGenerationNotification
@@ -359,7 +391,25 @@ export type ChatNotify =
     | CompactionEndEvent
     | CompactionDisabledEvent
     | ConfigChangeEvent
-    | MigrationProgressEvent;
+    | MigrationProgressEvent
+    | FollowupSuggestionsEvent
+) & ChatNotifyMeta;
+
+/** A single clickable follow-up suggestion shown after a completed turn. */
+export interface FollowupSuggestion {
+    /** Short imperative chip text (what the user sees). */
+    label: string;
+    /** The message sent to Copilot when the chip is clicked. */
+    prompt: string;
+}
+
+/** Post-turn follow-up suggestions for a specific assistant message. */
+export interface FollowupSuggestionsEvent {
+    type: "followup_suggestions";
+    /** The assistant message these suggestions belong to. */
+    messageId: string;
+    suggestions: FollowupSuggestion[];
+}
 
 /** Structured progress event emitted by the migration orchestrator at each stage boundary. */
 export interface MigrationProgressEvent {
@@ -483,6 +533,13 @@ export interface TaskApprovalRequest {
     autoApproved?: boolean;
 }
 
+export interface PlanApprovalResolved {
+    type: "plan_approval_resolved";
+    requestId: string;
+    approved: boolean;
+    comment?: string;
+}
+
 export interface WebToolApprovalEvent {
     type: "web_tool_approval_request";
     requestId: string;
@@ -602,9 +659,39 @@ export interface ConfigChangeEvent {
     value: boolean;
 }
 
+/**
+ * Compact, ambient-UI-friendly summary of the Copilot agent's background run.
+ * Derived host-side from the {@link ChatNotify} stream and the run lifecycle
+ * (see AgentStatusManager) and consumed by lightweight indicators — the
+ * status bar item and the visualizer orb overlay — that stay informative
+ * while the AI panel is closed.
+ */
+export type AgentRunState = "idle" | "running" | "awaiting-input" | "completed" | "error";
+
+export interface AgentRunStatus {
+    state: AgentRunState;
+    /** Short human-readable description of what the agent is doing (e.g. "Editing service.bal"). */
+    label?: string;
+    /** True while the Copilot chat panel is open — ambient indicators hide themselves then. */
+    aiPanelOpen: boolean;
+    /** Generation (run) the status belongs to, when a run is/was active. */
+    generationId?: string;
+    /** Epoch millis of the last status change. */
+    timestamp: number;
+}
+
+export const agentRunStatusChanged: NotificationType<AgentRunStatus> = { method: 'agentRunStatusChanged' };
+
 export const stateChanged: NotificationType<MachineStateValue> = { method: 'stateChanged' };
 export const onDownloadProgress: NotificationType<DownloadProgress> = { method: 'onDownloadProgress' };
 export const onChatNotify: NotificationType<ChatNotify> = { method: 'onChatNotify' };
+/**
+ * Copilot chat stream mirrored to the visualizer webview (mini-chat overlay)
+ * while the AI panel is closed. A separate method from onChatNotify because
+ * vscode-messenger keeps one handler per method per webview, and the
+ * visualizer's onChatNotify is already used by the migration wizard.
+ */
+export const onCopilotChatNotify: NotificationType<ChatNotify> = { method: 'onCopilotChatNotify' };
 export const onMigrationToolLogs: NotificationType<string> = { method: 'onMigrationToolLogs' };
 export const onMigrationToolStateChanged: NotificationType<string> = { method: 'onMigrationToolStateChanged' };
 export const onMigratedProject: NotificationType<ProjectMigrationResult> = { method: 'onMigratedProject' };
@@ -812,6 +899,8 @@ export interface Generation {
     fileAttachments?: FileAttatchment[];
     /** Code context for this generation */
     codeContext?: CodeContext;
+    /** Post-turn follow-up suggestions; runtime-only, not persisted across a restart */
+    followupSuggestions?: FollowupSuggestion[];
     /** Generation metadata */
     metadata: GenerationMetadata;
 }

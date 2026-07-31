@@ -79,6 +79,12 @@ import {
     getActiveTempDir,
     getChatMessages,
     hasPendingReview,
+    getRunStatus,
+    GetRunStatusRequest,
+    GetRunStatusResponse,
+    HasPendingReviewRequest,
+    getLatestFollowupSuggestions,
+    FollowupSuggestion,
     getCheckpoints,
     getDefaultPrompt,
     isScaffoldEnvActive,
@@ -99,6 +105,10 @@ import {
     promptForLogin,
     promptGithubAuthorize,
     provideConfiguration,
+    createManagedConnection,
+    cancelManagedConnection,
+    CreateManagedConnectionRequest,
+    CreateManagedConnectionResponse,
     provideConnectorSpec,
     restoreCheckpoint,
     showSignInAlert,
@@ -327,6 +337,14 @@ export class AiPanelRpcClient implements AIPanelAPI {
         return this._messenger.sendRequest(cancelConfiguration, HOST_EXTENSION, params);
     }
 
+    createManagedConnection(params: CreateManagedConnectionRequest): Promise<CreateManagedConnectionResponse> {
+        return this._messenger.sendRequest(createManagedConnection, HOST_EXTENSION, params);
+    }
+
+    cancelManagedConnection(): void {
+        return this._messenger.sendNotification(cancelManagedConnection, HOST_EXTENSION);
+    }
+
     getChatMessages(): Promise<UIChatMessage[]> {
         return this._messenger.sendRequest(getChatMessages, HOST_EXTENSION);
     }
@@ -351,8 +369,16 @@ export class AiPanelRpcClient implements AIPanelAPI {
         return this._messenger.sendRequest(getActiveTempDir, HOST_EXTENSION);
     }
 
-    hasPendingReview(): Promise<boolean> {
-        return this._messenger.sendRequest(hasPendingReview, HOST_EXTENSION);
+    hasPendingReview(params: HasPendingReviewRequest): Promise<boolean> {
+        return this._messenger.sendRequest(hasPendingReview, HOST_EXTENSION, params);
+    }
+
+    getRunStatus(params: GetRunStatusRequest): Promise<GetRunStatusResponse> {
+        return this._messenger.sendRequest(getRunStatus, HOST_EXTENSION, params);
+    }
+
+    getLatestFollowupSuggestions(): Promise<FollowupSuggestion[]> {
+        return this._messenger.sendRequest(getLatestFollowupSuggestions, HOST_EXTENSION);
     }
 
     getUsage(): Promise<UsageResponse | undefined> {

@@ -34,7 +34,6 @@ import { langClient } from "../../activator";
 import { applyTextEdits } from "../utils";
 import { LIBRARY_GET_TOOL } from "./library-get";
 import { approvalManager } from '../../state/ApprovalManager';
-import { sendNewFileDidOpen } from "../../utils/project/ls-schema-notifications";
 import { LIBRARY_SEARCH_TOOL } from "./library-search";
 import { recordAiTouchedFile } from "../../../../rpc-managers/diagram-validity";
 import { addToIntegration } from "../../../../rpc-managers/ai-panel/utils";
@@ -285,8 +284,10 @@ async function generateConnector(
         await addToIntegration(tempProjectPath, [{ filePath: relativePath, content }]);
         recordAiTouchedFile(filePath);
 
-        // Send didOpen notification to Language Server (new file: frozen ai:// baseline, live file://)
-        sendNewFileDidOpen(tempProjectPath, relativePath);
+        // The ai:// baseline is deliberately left alone here, for either kind of file this
+        // loop writes: a brand-new one has to stay absent from it to read as an addition, and
+        // an existing one (Ballerina.toml) keeps the baseline frozen at generation start.
+        // See the notes in utils/project/ls-schema-notifications.ts.
 
         // Add .bal files to generatedFiles for agent visibility
         if (filePath.endsWith(".bal") && edits.length > 0) {

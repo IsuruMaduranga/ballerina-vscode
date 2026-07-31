@@ -50,6 +50,7 @@ import { sendConfigChangeNotification } from './utils/ai-utils';
 import { captureWorkspaceSnapshot, restoreWorkspaceSnapshot } from '../../views/ai-panel/checkpoint/checkpointUtils';
 import { integrateCodeToWorkspace } from './agent/utils';
 import { Checkpoint } from '@wso2/ballerina-core/lib/state-machine-types';
+import { agentStatusManager } from './state/AgentStatusManager';
 
 /**
  * Parameters for test-mode code generation
@@ -84,6 +85,9 @@ export function activateAIFeatures(ballerinaExternalInstance: BallerinaExtension
     resetBIAuth();
     activateMcp();
     extension.context?.subscriptions.push(registerAgentsMdWatcher());
+    if (extension.context) {
+        agentStatusManager.init(extension.context);
+    }
 
     // Register commands in test environment to test the AI features
     if (process.env.AI_TEST_ENV) {
