@@ -31,7 +31,10 @@ jobs:
   Build:
     name: Build branch - ${{ github.ref_name }}
     uses: ./.github/workflows/reusable-build.yml
-    secrets: inherit
+    secrets:
+      COPILOT_ROOT_URL: ${{ secrets.COPILOT_ROOT_URL }}
+      COPILOT_DEV_ROOT_URL: ${{ secrets.COPILOT_DEV_ROOT_URL }}
+      APPINSIGHTS_INSTRUMENTATION_KEY: ${{ secrets.APPINSIGHTS_INSTRUMENTATION_KEY }}
     with:
       runOnAWS: false
       isPreRelease: ${{ inputs.isPreRelease }}
@@ -84,24 +87,6 @@ jobs:
 
       - name: Set up Ballerina for language-server publication
         uses: ./.github/actions/setup-ballerina
-
-      # This job runs only when githubRelease is selected. Publish the matching
-      # Maven package after the complete build/test workflow succeeds and before
-      # creating either a release or pre-release on GitHub.
-      - name: Publish language server to GitHub Packages
-        working-directory: packages/ballerina-language-server
-        env:
-          packageUser: ${{ secrets.BALLERINA_BOT_USERNAME }}
-          packagePAT: ${{ secrets.BALLERINA_BOT_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${packageUser}" ] || [ -z "${packagePAT}" ]; then
-            echo "::error::BALLERINA_BOT_USERNAME and BALLERINA_BOT_TOKEN are required to publish the language-server package."
-            exit 1
-          fi
-          version=$(node -p "require('../ballerina-extension/package.json').version")
-          echo "Publishing io.ballerina:ballerina-language-server:${version} to GitHub Packages"
-          ./gradlew -Pversion="${version}" publish -x check -x test
 
       - name: Get version
         id: vsix
@@ -169,8 +154,9 @@ jobs:
         with:
           repo: ${{ github.repository }}
           name: ballerina
-          chatAPI: ${{ secrets.EDITOR_TEAM_CHAT_API }}
-          threadKey: ballerina-release-${{ github.run_id }}
+          # The workflow sends its single completion announcement only after the
+          # matching LS Maven package has also been published.
+          chatAPI: ''
           # Real releases only: commit the version the build packaged (updateVersion wrote it
           # into the working tree, so it exists in no commit yet) and push 'release/<version>'
           # at that commit, which is then what the tag points at. Pre-releases keep tagging
@@ -187,6 +173,41 @@ jobs:
           # (the extension's copyLS command put it there) packed at the same version,
           # so the two assets can never disagree about what was built.
           extraAssets: packages/ballerina-extension/ls/ballerina-language-server-*.jar
+
+      # Publish only after the GitHub Release and its assets exist. On a job re-run,
+      # Maven correctly rejects the immutable version with HTTP 409; that means this
+      # exact package was already published, so continue to the recoverable downstream
+      # notification and PR steps.
+      - name: Publish language server to GitHub Packages
+        working-directory: packages/ballerina-language-server
+        env:
+          packageUser: ${{ secrets.BALLERINA_BOT_USERNAME }}
+          packagePAT: ${{ secrets.BALLERINA_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${packageUser}" ] || [ -z "${packagePAT}" ]; then
+            echo "::error::BALLERINA_BOT_USERNAME and BALLERINA_BOT_TOKEN are required to publish the language-server package."
+            exit 1
+          fi
+
+          version=$(node -p "require('../ballerina-extension/package.json').version")
+          echo "Publishing io.ballerina:ballerina-language-server:${version} to GitHub Packages"
+
+          set +e
+          ./gradlew -Pversion="${version}" \
+            publishMavenJavaPublicationToGitHubPackagesRepository \
+            -x check -x test 2>&1 | tee publish.log
+          publishStatus=${PIPESTATUS[0]}
+          set -e
+
+          if [ "${publishStatus}" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -Eq 'status code 409|409 Conflict' publish.log; then
+            echo "::notice::Language-server package ${version} already exists; continuing this release re-run."
+            exit 0
+          fi
+          exit "${publishStatus}"
 
       - name: Release Announcement
         env:

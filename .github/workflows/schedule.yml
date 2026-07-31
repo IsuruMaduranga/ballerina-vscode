@@ -345,7 +345,10 @@ jobs:
     name: Nightly development build
     needs: sync-nightly
     uses: ./.github/workflows/devBuild.yml
-    secrets: inherit
+    secrets:
+      COPILOT_ROOT_URL: ${{ secrets.COPILOT_ROOT_URL }}
+      COPILOT_DEV_ROOT_URL: ${{ secrets.COPILOT_DEV_ROOT_URL }}
+      APPINSIGHTS_INSTRUMENTATION_KEY: ${{ secrets.APPINSIGHTS_INSTRUMENTATION_KEY }}
     with:
       # Pin the nightly commit SHA rather than the branch name: the branch is
       # force-pushed every run, so a name would let a concurrent run swap the tree
@@ -377,6 +380,22 @@ jobs:
         with:
           ref: ${{ needs.sync-nightly.outputs.sha }}
           fetch-depth: 0
+
+      # One-time migration cleanup. Older workflows created a GitHub Release named
+      # 'nightly'. Leaving it in place while force-moving the tag would make its stale
+      # VSIX appear to belong to the latest nightly commit. New nightlies intentionally
+      # use only the tag and workflow artifact.
+      - name: Remove legacy nightly GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view nightly >/dev/null 2>&1; then
+            gh release delete nightly --yes
+            echo "Removed the legacy nightly GitHub Release; the Git tag is preserved."
+          else
+            echo "No legacy nightly GitHub Release exists."
+          fi
 
       - name: Move nightly tag
         run: |

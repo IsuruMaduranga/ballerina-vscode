@@ -62,6 +62,20 @@ function timestamp(now) {
  * Derive an odd-minor nightly version from the next even-minor release snapshot.
  */
 function deriveNightlyVersion(extensionVersion, stamp) {
+  if (typeof stamp !== 'string' || !/^(0|[1-9]\d*)$/.test(stamp)) {
+    throw new Error(
+      `Invalid nightly timestamp "${stamp}": expected decimal digits ` +
+      `(minutes since 2020-01-01 UTC).`
+    );
+  }
+
+  if (Number(stamp) > MAX_VERSION_COMPONENT) {
+    throw new Error(
+      `Invalid nightly timestamp "${stamp}": exceeds the maximum version component ` +
+      `${MAX_VERSION_COMPONENT} (int32), which the VS Code Marketplace rejects.`
+    );
+  }
+
   const match = SNAPSHOT_VERSION.exec(extensionVersion);
   if (!match) {
     throw new Error(
@@ -103,24 +117,6 @@ function main() {
   const args = process.argv.slice(2);
   const flagIndex = args.indexOf('--timestamp');
   const stamp = flagIndex !== -1 ? args[flagIndex + 1] : timestamp(new Date());
-
-  if (!/^\d+$/.test(stamp || '')) {
-    console.error(
-      `Invalid --timestamp "${stamp}": expected digits (minutes since 2020-01-01 UTC).`
-    );
-    process.exit(1);
-  }
-
-  // Checked here rather than trusted, because the caller passes the stamp in: a value
-  // over the limit packages fine and only fails at 'vsce publish', long after the
-  // release has been tagged.
-  if (Number(stamp) > MAX_VERSION_COMPONENT) {
-    console.error(
-      `Invalid --timestamp "${stamp}": exceeds the maximum version component ` +
-      `${MAX_VERSION_COMPONENT} (int32), which the VS Code Marketplace rejects.`
-    );
-    process.exit(1);
-  }
 
   const extensionVersion = JSON.parse(
     fs.readFileSync(path.join(REPO_ROOT, 'packages', 'ballerina-extension', 'package.json'), 'utf8')

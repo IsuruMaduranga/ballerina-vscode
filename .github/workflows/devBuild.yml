@@ -33,12 +33,22 @@ on:
         required: false
         type: boolean
         default: false
+    secrets:
+      COPILOT_ROOT_URL:
+        required: false
+      COPILOT_DEV_ROOT_URL:
+        required: false
+      APPINSIGHTS_INSTRUMENTATION_KEY:
+        required: false
 
 jobs:
   Build:
     name: Pre-release build - ${{ github.ref_name }}
     uses: ./.github/workflows/reusable-build.yml
-    secrets: inherit
+    secrets:
+      COPILOT_ROOT_URL: ${{ secrets.COPILOT_ROOT_URL }}
+      COPILOT_DEV_ROOT_URL: ${{ secrets.COPILOT_DEV_ROOT_URL }}
+      APPINSIGHTS_INSTRUMENTATION_KEY: ${{ secrets.APPINSIGHTS_INSTRUMENTATION_KEY }}
     with:
       ref: ${{ inputs.ref }}
       runOnAWS: false

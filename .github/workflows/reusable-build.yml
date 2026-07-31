@@ -60,6 +60,13 @@ on:
         type: boolean
         required: false
         default: false
+    secrets:
+      COPILOT_ROOT_URL:
+        required: false
+      COPILOT_DEV_ROOT_URL:
+        required: false
+      APPINSIGHTS_INSTRUMENTATION_KEY:
+        required: false
 
 jobs:
   Build_Stage:

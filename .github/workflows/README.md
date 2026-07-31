@@ -175,6 +175,9 @@ one commit that pins both its source and its version.
 - After every validation job passes, the workflow force-moves the `nightly` Git tag to
   that exact stamped commit. The tag is not a GitHub Release and has no release assets;
   the VSIX remains available from the workflow run.
+- On the first run after this migration, the tag job removes the legacy `nightly`
+  GitHub Release before moving the tag. That release currently contains an old
+  `5.12.0-SNAPSHOT` VSIX; retaining it would attach a stale asset to every new tag target.
 
 Every release or pre-release GitHub release carries two assets — the VSIX and the bundled LS jar — so the server
 can be downloaded on its own to debug a regression, or pointed at an existing install via
@@ -215,23 +218,27 @@ GitHub Packages credentials (`packageUser` / `packagePAT`). If the exact version
 missing, the copy command fails rather than silently substituting one.
 
 When `githubRelease` is selected, `release-pre-release.yml` publishes
-`io.ballerina:ballerina-language-server` to GitHub Packages at the same version before
-creating the GitHub release or pre-release. There is no independent LS publication
-workflow because the extension manifest owns the shared version. This path does not run
-Gradle's `release` task: that task rewrote the `version=`
+`io.ballerina:ballerina-language-server` to GitHub Packages at the same version after
+creating the GitHub release or pre-release and uploading both assets. A rerun treats
+GitHub Packages' HTTP 409 for that immutable version as confirmation that publication
+already succeeded. The workflow sends its completion announcement only after both
+operations finish. There is no independent LS publication workflow because the extension
+manifest owns the shared version. This path publishes only Gradle's `mavenJava`
+publication and does not run Gradle's `release` task: that task rewrote the `version=`
 key in `gradle.properties`, which no longer exists now that the extension manifest owns
 the version.
 
 ## Required GitHub secrets
 
-- `BALLERINA_BOT_USERNAME` / `BALLERINA_BOT_EMAIL` / `BALLERINA_BOT_TOKEN` — LS publishing from either release workflow (git identity + write to `ballerina-platform` packages + releases)
-- `BALLERINA_CENTRAL_ACCESS_TOKEN` — LS publish to Ballerina Central
+- `BALLERINA_BOT_USERNAME` / `BALLERINA_BOT_TOKEN` — publish the LS Maven package to GitHub Packages
 - `VSCE_TOKEN` — publish-vsix → VSCode Marketplace
 - `OPENVSX_TOKEN` — publish-vsix → OpenVSX
 - `EDITOR_TEAM_CHAT_API` — every chat notification: threaded release progress, the release
   announcement, nightly build success, and build/sync failures
 - `CLOUD_EDITOR_BUILDER_REPO` / `CLOUD_EDITOR_BUILDER_REPO_TOKEN` — optional cross-repo dispatch on stable release (publish-vsix)
-- `COPILOT_ROOT_URL` / `COPILOT_DEV_ROOT_URL` / `APPINSIGHTS_INSTRUMENTATION_KEY` — passed through to the build composite action
+- `COPILOT_ROOT_URL` / `COPILOT_DEV_ROOT_URL` / `APPINSIGHTS_INSTRUMENTATION_KEY` —
+  passed explicitly to trusted nightly, custom-development, and release builds. Pull-request
+  builds receive none of these secrets.
 
 Configure these in the new repo's settings before triggering anything.
 
