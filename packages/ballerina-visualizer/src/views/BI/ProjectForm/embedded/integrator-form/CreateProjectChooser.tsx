@@ -125,6 +125,12 @@ interface CreateProjectChooserProps {
     /** The wizard client (native BI WS) used by the integration route. */
     biWsClient: BiWsClient;
     ballerinaUnavailable?: boolean;
+    /**
+     * The extension has not yet determined whether the connected distribution supports
+     * projects/workspaces. The form is fully usable meanwhile — only leaving this screen
+     * is held back, because the answer decides which flow the user is routed into.
+     */
+    workspaceSupportPending?: boolean;
     /** Exit the whole Create flow (back to the welcome view). */
     onBack?: () => void;
 }
@@ -135,7 +141,12 @@ interface CreateProjectChooserProps {
  * The Default project is pre-selected; existing vs new is detected live and shown under
  * the location field.
  */
-export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack }: CreateProjectChooserProps) {
+export function CreateProjectChooser({
+    biWsClient,
+    ballerinaUnavailable,
+    workspaceSupportPending,
+    onBack,
+}: CreateProjectChooserProps) {
     const { wsClient } = useVisualizerContext();
     const firstFieldRef = useRef<HTMLInputElement>(null);
     const defaultPathInitialized = useRef(false);
@@ -326,7 +337,7 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
         !projectNameError && !pathError && !!projectName.trim() && !!editablePath && !!effectiveDirectoryName;
 
     const handleNext = () => {
-        if (!canProceed) return;
+        if (!canProceed || workspaceSupportPending) return;
         setScreen(isLibrary ? "library" : "integration");
     };
 
@@ -426,9 +437,17 @@ export function CreateProjectChooser({ biWsClient, ballerinaUnavailable, onBack 
             </Section>
 
             <FormFooter>
-                <span title={ballerinaUnavailable ? "Ballerina distribution is not set up. Use Configure to set it up." : undefined}>
+                <span
+                    title={
+                        ballerinaUnavailable
+                            ? "Ballerina distribution is not set up. Use Configure to set it up."
+                            : workspaceSupportPending
+                                ? "Finishing start-up…"
+                                : undefined
+                    }
+                >
                     <Button
-                        disabled={ballerinaUnavailable || !canProceed}
+                        disabled={ballerinaUnavailable || workspaceSupportPending || !canProceed}
                         onClick={handleNext}
                         appearance="primary"
                     >

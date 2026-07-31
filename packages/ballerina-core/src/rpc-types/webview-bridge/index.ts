@@ -237,7 +237,20 @@ export interface WizardCapabilitiesResponse {
     version: number;
     /** Whether the connected Ballerina distribution supports projects/workspaces
      *  (2201.13.0+). When false, the unified Create flow must fall back to
-     *  standalone integration/library creation instead of the project chooser. */
+     *  standalone integration/library creation instead of the project chooser.
+     *
+     *  `undefined` means NOT YET KNOWN — the probe is answered before the
+     *  extension has resolved the distribution version, so the flow can render
+     *  without waiting on it. Treating `undefined` as `false` silently degrades
+     *  the user to the standalone flow; await {@link WorkspaceSupportResponse}
+     *  (the `getWorkspaceSupport` RPC) for the settled answer instead. */
+    isWorkspaceSupported?: boolean;
+}
+
+/** Settled answer to "does this distribution support projects/workspaces?".
+ *  The `getWorkspaceSupport` RPC resolves only once the extension has determined
+ *  it, so callers never observe the pre-init default. */
+export interface WorkspaceSupportResponse {
     isWorkspaceSupported: boolean;
 }
 

@@ -85,9 +85,10 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
     const [biWsClient, setBiWsClient] = useState<BiWsClient | null>(null);
     const [wizardSupport, setWizardSupport] = useState<WizardSupport>("probing");
     const [error, setError] = useState<string | null>(null);
-    // Defaults to true so the `integration`/`library`/`project` modes (which never
-    // probe this) never accidentally fall back; only `create` mode reads it.
-    const [workspaceSupported, setWorkspaceSupported] = useState(true);
+    // `undefined` = the extension has not determined it yet (it answers the capability
+    // probe before the distribution version is known, so the form can render immediately).
+    // Only `create` mode reads this; the other modes never probe it.
+    const [workspaceSupported, setWorkspaceSupported] = useState<boolean | undefined>(undefined);
 
     useEffect(() => {
         let cancelled = false;
@@ -122,8 +123,26 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
                         if (!cancelled && capabilities?.threeStepWizard) {
                             setBiWsClient(wizardClient);
                             setWizardSupport("supported");
-                            setWorkspaceSupported(capabilities.isWorkspaceSupported);
                             wizardOk = true;
+                            if (capabilities.isWorkspaceSupported !== undefined) {
+                                setWorkspaceSupported(capabilities.isWorkspaceSupported);
+                            } else if (mode === "create") {
+                                // Still being determined. Resolve it in the background rather
+                                // than holding the whole form back — the chooser's first screen
+                                // needs no distribution, only its "Next" button does.
+                                // Aliased so the closure keeps the non-null narrowing.
+                                const probeClient = wizardClient;
+                                probeClient
+                                    .getWorkspaceSupport()
+                                    .then(({ isWorkspaceSupported }) => {
+                                        if (!cancelled) {
+                                            setWorkspaceSupported(isWorkspaceSupported);
+                                        }
+                                    })
+                                    .catch((supportError) =>
+                                        console.warn(">>> Failed to resolve workspace support.", supportError)
+                                    );
+                            }
                         }
                     } catch (probeError) {
                         console.warn(">>> Create Integration wizard unavailable, using the legacy form.", probeError);
@@ -213,16 +232,21 @@ export default function EmbeddedBIProjectForm({ wsClient, ballerinaUnavailable, 
             <WsClientProvider wsClient={rpcClient}>
                 <QueryClientProvider client={queryClient}>
                     <CloudContextProvider>
-                        {workspaceSupported ? (
-                            <CreateProjectChooser
+                        {/* Only a settled `false` routes to the standalone flow. While support is
+                            still unknown the project chooser renders (the overwhelmingly common
+                            outcome) with its Next button gated, so the user can start filling the
+                            form during the last of the extension's start-up. */}
+                        {workspaceSupported === false ? (
+                            <StandaloneCreateChooser
                                 biWsClient={biWsClient}
                                 ballerinaUnavailable={ballerinaUnavailable}
                                 onBack={onBack}
                             />
                         ) : (
-                            <StandaloneCreateChooser
+                            <CreateProjectChooser
                                 biWsClient={biWsClient}
                                 ballerinaUnavailable={ballerinaUnavailable}
+                                workspaceSupportPending={workspaceSupported === undefined}
                                 onBack={onBack}
                             />
                         )}

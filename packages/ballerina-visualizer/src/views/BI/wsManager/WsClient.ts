@@ -47,6 +47,7 @@ import {
     WizardCapabilitiesResponse,
     WizardFormTargetRequest,
     WizardFormTargetResponse,
+    WorkspaceSupportResponse,
 } from "@wso2/ballerina-core";
 import { ConnectionStatus, createWebviewTransportAdapter } from "@wso2/webview-giga-bridge/webview";
 import { WEBVIEW_WS_EVENTS, WebviewWsRequest, WebviewWsResponse, WebviewTransportBootstrap, SignInResult } from "@wso2/ballerina-core";
@@ -191,6 +192,12 @@ export class BiWsClient {
     }
     public getWizardCapabilities(): Promise<WizardCapabilitiesResponse> {
         return this.request("getWizardCapabilities");
+    }
+
+    /** Settled workspace support. Resolves only once the extension knows the answer,
+     *  so unlike `getWizardCapabilities().isWorkspaceSupported` it is never `undefined`. */
+    public getWorkspaceSupport(): Promise<WorkspaceSupportResponse> {
+        return this.request("getWorkspaceSupport");
     }
 
     public getTriggerModels(params: TriggerModelsRequest): Promise<TriggerModelsResponse> {

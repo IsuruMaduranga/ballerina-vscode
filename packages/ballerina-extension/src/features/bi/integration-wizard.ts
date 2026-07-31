@@ -27,14 +27,19 @@ import {
     ProjectRequest,
     ScaffoldIntegrationProjectResponse,
     WizardCapabilitiesResponse,
+    WorkspaceSupportResponse,
 } from "@wso2/ballerina-core";
 import { createBIComponent, createBIProjectPure, isAlreadyOpenFolder, openInVSCode } from "../../utils/bi";
 import { generateArtifactInPlace, schedulePendingIntegration } from "./pending-artifact";
 import { extension } from "../../BalExtensionContext";
 import { StateMachine } from "../../stateMachine";
 
-/** Bumped whenever the wizard wire contract changes in a way remote hosts must detect. */
-const WIZARD_CAPABILITIES_VERSION = 1;
+/**
+ * Bumped whenever the wizard wire contract changes in a way remote hosts must detect.
+ * v2: `isWorkspaceSupported` became tri-state (`undefined` = not determined yet) and the
+ * `getWorkspaceSupport` RPC was added for the settled answer.
+ */
+const WIZARD_CAPABILITIES_VERSION = 2;
 
 /**
  * OS-temp home for the wizard's throwaway staging package, scoped to this extension-host
@@ -144,11 +149,25 @@ export async function cleanupAbandonedScaffolds(): Promise<void> {
     await cancelIntegrationWizard();
 }
 
-/** Version-skew handshake for embedded hosts (see `WizardCapabilitiesResponse`). */
+/**
+ * Version-skew handshake for embedded hosts (see `WizardCapabilitiesResponse`).
+ *
+ * Answers immediately, without waiting for initialization: the Create flow's first screen
+ * needs no distribution at all, so blocking here would put the whole wizard behind the
+ * `bal version` probe. `isWorkspaceSupported` is therefore left `undefined` until the flags
+ * are settled — callers that need it await {@link getWorkspaceSupport}.
+ */
 export function getWizardCapabilities(): WizardCapabilitiesResponse {
+    const ballerinaExt = extension.ballerinaExtInstance;
     return {
         threeStepWizard: true,
         version: WIZARD_CAPABILITIES_VERSION,
-        isWorkspaceSupported: extension.ballerinaExtInstance.isWorkspaceSupported,
+        isWorkspaceSupported: ballerinaExt.featureSupportResolved ? ballerinaExt.isWorkspaceSupported : undefined,
     };
+}
+
+/** Settled workspace support, resolved once the distribution version is known. */
+export async function getWorkspaceSupport(): Promise<WorkspaceSupportResponse> {
+    await extension.ballerinaExtInstance.featureSupportReady;
+    return { isWorkspaceSupported: extension.ballerinaExtInstance.isWorkspaceSupported };
 }

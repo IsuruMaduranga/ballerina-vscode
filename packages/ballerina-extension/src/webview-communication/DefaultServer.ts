@@ -52,6 +52,7 @@ import {
     cleanupAbandonedScaffolds,
     createIntegration,
     getWizardCapabilities,
+    getWorkspaceSupport,
     scaffoldIntegrationProject,
 } from "../features/bi/integration-wizard";
 import { StateMachine } from "../stateMachine";
@@ -268,6 +269,9 @@ export class DefaultServer {
         // The model handlers await LS activation: the embedded wizard can send
         // requests while the extension is still in `activateLS`.
         this.register("getWizardCapabilities", () => getWizardCapabilities());
+        // Awaits only the distribution version, NOT the language server — this is what the
+        // Create flow's "Next" button is gated on.
+        this.register("getWorkspaceSupport", () => getWorkspaceSupport());
         this.register("getTriggerModels", async (p) => {
             await waitForLangClientReady();
             return serviceDesigner.getTriggerModels(p);

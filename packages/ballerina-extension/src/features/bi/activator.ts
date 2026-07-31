@@ -61,7 +61,6 @@ import { findWorkspaceTypeFromWorkspaceFolders } from "../../rpc-managers/common
 import { MESSAGES } from "../project";
 import { ensureICPServerRunning } from "../icp";
 import { TracerMachine } from "../tracing";
-import { DefaultServer } from "../../webview-communication/DefaultServer";
 
 const FOCUS_DEBUG_CONSOLE_COMMAND = 'workbench.debug.action.focusRepl';
 const TRACE_SERVER_OFF = "off";
@@ -271,12 +270,9 @@ export function activate(context: BallerinaExtension) {
         return createBIProjectFromMigration(params);
     });
 
-    // Lazily starts the WS server that serves the BI project-creation RPCs to the
-    // embedded form (which is owned by this extension but hosted in the WSO2
-    // Integrator webview), and returns the connection coordinates.
-    commands.registerCommand(BI_COMMANDS.GET_BI_FORM_WS_BOOTSTRAP, () => {
-        return DefaultServer.getInstance().getWsBootstrap();
-    });
+    // NOTE: `GET_BI_FORM_WS_BOOTSTRAP` is deliberately NOT registered here. This activator
+    // runs only after the language server is up, and the embedded Create flow needs that
+    // bridge long before then — see the registration in `extension.ts#activate`.
 
     commands.registerCommand(BI_COMMANDS.DELETE_COMPONENT, async (item?: TreeItem & { info?: string, position?: NodePosition }) => {
         // Guard: DELETE requires a tree item context
