@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@wso2/ui-toolkit';
 import { useRpcContext } from '@wso2/ballerina-rpc-client';
 import { DIRECTORY_MAP, EVENT_TYPE, MACHINE_VIEW, TriggerModelsResponse, ServiceModel, SCOPE } from '@wso2/ballerina-core';
@@ -23,17 +23,28 @@ import { DIRECTORY_MAP, EVENT_TYPE, MACHINE_VIEW, TriggerModelsResponse, Service
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
-import { isBetaModule, OutOfScopeComponentTooltip } from './componentListUtils';
+import { ARTIFACT_CATEGORY_META } from '../components/artifactCards';
+import { cardMatchesSearch, isBetaModule, OutOfScopeComponentTooltip } from './componentListUtils';
 import { RelativeLoader } from '../../../components/RelativeLoader';
 
 interface EventIntegrationPanelProps {
     scope: SCOPE;
     triggers: TriggerModelsResponse;
+    /** True only while the trigger models are still being fetched. */
+    isLoadingTriggers?: boolean;
+    searchQuery?: string;
 };
+
+const CATEGORY = ARTIFACT_CATEGORY_META["event-integration"];
 
 export function EventIntegrationPanel(props: EventIntegrationPanelProps) {
     const { rpcClient } = useRpcContext();
     const isDisabled = props.scope && (props.scope !== SCOPE.EVENT_INTEGRATION && props.scope !== SCOPE.ANY);
+    const q = props.searchQuery;
+    const matched = useMemo(
+        () => props.triggers.local.filter((t) => t.type === "event" && cardMatchesSearch(t.name, q)),
+        [props.triggers, q]
+    );
 
     const handleClick = async (key: DIRECTORY_MAP, model: ServiceModel) => {
         await rpcClient.getVisualizerRpcClient().openView({
@@ -50,19 +61,21 @@ export function EventIntegrationPanel(props: EventIntegrationPanelProps) {
         });
     };
 
+    // While searching, hide the whole panel when no event matches.
+    if (q?.trim() && matched.length === 0) {
+        return null;
+    }
+
     return (
         <PanelViewMore disabled={isDisabled}>
             <TitleWrapper>
-                <Title variant="h2">Event Integration</Title>
-                <BodyText>
-                    Create an integration that can be triggered by an event.
-                </BodyText>
+                <Title variant="h2">{CATEGORY.title}</Title>
+                <BodyText>{CATEGORY.description}</BodyText>
             </TitleWrapper>
             <CardGrid>
-                {props.triggers.local.length === 0 && <RelativeLoader />}
+                {!q?.trim() && props.isLoadingTriggers && matched.length === 0 && <RelativeLoader />}
                 {
-                    props.triggers.local
-                        .filter((t) => t.type === "event")
+                    matched
                         .map((item, index) => {
                             return (
                                 <ButtonCard

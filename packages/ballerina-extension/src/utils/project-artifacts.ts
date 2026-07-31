@@ -17,8 +17,8 @@
  */
 import * as vscode from "vscode";
 import { URI, Utils } from "vscode-uri";
-import { ARTIFACT_TYPE, Artifacts, ArtifactsNotification, BaseArtifact, DIRECTORY_MAP, isSamePath, PROJECT_KIND, ProjectInfo, ProjectStructure, ProjectStructureArtifactResponse, ProjectStructureResponse, SHARED_COMMANDS } from "@wso2/ballerina-core";
-import { StateMachine } from "../stateMachine";
+import { ARTIFACT_TYPE, Artifacts, ArtifactsNotification, BaseArtifact, DIRECTORY_MAP, EVENT_TYPE, isPathInside, isSamePath, MACHINE_VIEW, PROJECT_KIND, ProjectInfo, ProjectStructure, ProjectStructureArtifactResponse, ProjectStructureResponse, SHARED_COMMANDS } from "@wso2/ballerina-core";
+import { openView, StateMachine } from "../stateMachine";
 import { ExtendedLangClient } from "../core/extended-language-client";
 import { ArtifactsUpdated, ArtifactNotificationHandler } from "./project-artifacts-handler";
 import { isLibraryProject } from "./config";
@@ -32,6 +32,10 @@ const failedArtifactProjects = new Set<string>();
 // skipped during this window: the rebuild fetches the latest project state anyway, and letting
 // them run the incremental path would race the rebuild with updates based on stale structure.
 let artifactRecoveryInProgress = false;
+
+// Serializes full rebuilds: a burst of notifications for an unknown package would
+// otherwise rebuild concurrently, each run racing the others' structure updates.
+let pendingStructureRebuild: Promise<ProjectStructureResponse | undefined> = Promise.resolve(undefined);
 
 export async function buildProjectsStructure(
     projectInfo: ProjectInfo,
@@ -152,32 +156,26 @@ export async function updateProjectArtifacts(publishedArtifacts: ArtifactsNotifi
     // Current project structure
     const currentProjectStructure: ProjectStructureResponse = StateMachine.context().projectStructure;
 
-    const rootPath = StateMachine.context().projectPath ?? StateMachine.context().workspacePath;
+    const rootPath = StateMachine.context().workspacePath ?? StateMachine.context().projectPath;
     if (!rootPath) {
         console.warn("[updateProjectArtifacts] No project or workspace path found in the StateMachine context.");
         return;
     }
-    const projectUri = URI.file(rootPath);
-    const isWithinProject = URI
-        .parse(publishedArtifacts.uri).fsPath.toLowerCase()
-        .includes(projectUri.fsPath.toLowerCase());
+    const changedFsPath = URI.parse(publishedArtifacts.uri).fsPath.toLowerCase();
+    const isWithinProject = changedFsPath.includes(URI.file(rootPath).fsPath.toLowerCase());
 
     const isSubmodule = publishedArtifacts?.moduleName;
 
-    const persistDir = Utils.joinPath(projectUri, 'persist').fsPath.toLowerCase();
-    const isInPersistDir = URI.parse(publishedArtifacts.uri).fsPath.toLowerCase().includes(persistDir);
+    // A `persist` directory belongs to a package, which in a workspace is any member
+    // package — so the exclusion is matched on the path's segments rather than against
+    // a single `<root>/persist` path, which would only cover the root itself.
+    const isInPersistDir = changedFsPath.split(/[\\/]/).includes('persist');
 
     if (currentProjectStructure && isWithinProject && !isSubmodule && !isInPersistDir) {
-        // If user is working on a workspace project pick the workspace path, otherwise fallback to the project path.
-        // Fallback can happen when user is working on a standalone integration/library and
-        // adding another integration/library via AI chat.
-        const workspacePath = StateMachine.context().workspacePath ?? StateMachine.context().projectPath;
-        if (!workspacePath) {
-            console.warn("[updateProjectArtifacts] Workspace path not found in the StateMachine context.");
-            return;
-        }
-        
-        const projectInfo = await StateMachine.langClient().getProjectInfo({ projectPath: workspacePath });
+        // `rootPath` is the workspace root for a workspace project and the package root
+        // for a standalone integration/library — which can still gain a sibling package,
+        // e.g. when another integration/library is added via AI chat.
+        const projectInfo = await StateMachine.langClient().getProjectInfo({ projectPath: rootPath });
         if (!projectInfo) {
             console.warn("[updateProjectArtifacts] Project info not found for the project:", rootPath);
             return;
@@ -193,21 +191,18 @@ export async function updateProjectArtifacts(publishedArtifacts: ArtifactsNotifi
                     ?.some(project => isSamePath(project.projectPath, child.projectPath))
             ).map(child => child.projectPath) ?? [];
 
-        // Check if the active project exists in the current structure.
-        // If not (e.g., a new package was added by Copilot), a full rebuild is needed
-        // since we can't incrementally update a project that doesn't exist yet.
-        for (const untrackedProjectPath of untrackedProjectPaths) {
-            console.log("[updateProjectArtifacts] Project not found in structure, triggering full rebuild:", untrackedProjectPath);
-            const notificationHandler = ArtifactNotificationHandler.getInstance();
-            notificationHandler.publish(ArtifactsUpdated.method, {
-                data: [],
-                timestamp: Date.now()
-            });
-            StateMachine.refreshProjectInfo();
+        // Derive the owning package from the changed URI: in a workspace the context has
+        // no single `projectPath`, so relying on it would resolve paths against undefined.
+        const owningProjectPath = resolveOwningProjectPath(publishedArtifacts.uri, currentProjectStructure);
+
+        // The cached structure can't absorb deltas for a package it doesn't know (just
+        // added by the wizard or Copilot) — they'd be dropped or misapplied. Rebuild instead.
+        if (untrackedProjectPaths.length > 0 || !owningProjectPath) {
+            await rebuildAndPublishArtifacts(publishedArtifacts, projectInfo, untrackedProjectPaths);
             return;
         }
 
-        const entryLocations = await traverseUpdatedComponents(publishedArtifacts.artifacts, currentProjectStructure);
+        const entryLocations = await traverseUpdatedComponents(publishedArtifacts.artifacts, currentProjectStructure, owningProjectPath);
         const notificationHandler = ArtifactNotificationHandler.getInstance();
         // Publish a notification to the artifact handler
         notificationHandler.publish(ArtifactsUpdated.method, {
@@ -243,6 +238,94 @@ function dedupeArtifactsById(artifacts: ProjectStructureArtifactResponse[]): Pro
     const uniqueArtifacts = new Map<string, ProjectStructureArtifactResponse>();
     artifacts.forEach((artifact) => uniqueArtifacts.set(artifact.id, artifact));
     return Array.from(uniqueArtifacts.values());
+}
+
+/** Key an artifact by type as well as id: ids are only unique within an artifact type. */
+function artifactKey(artifactType: string, artifactId: string): string {
+    return `${artifactType}::${artifactId}`;
+}
+
+/**
+ * Rebuilds the structure from `projectInfo` and publishes the notification's artifacts
+ * against it. The incremental {@link traverseUpdatedComponents} cannot be used — the
+ * rebuild already absorbed the changes — but the artifacts must still be published, or
+ * the caller waiting to navigate times out.
+ */
+async function rebuildAndPublishArtifacts(
+    publishedArtifacts: ArtifactsNotification,
+    projectInfo: ProjectInfo,
+    untrackedProjectPaths: string[]
+): Promise<void> {
+    console.log(
+        "[updateProjectArtifacts] Rebuilding the project structure. Untracked package(s):",
+        untrackedProjectPaths, "changed file:", publishedArtifacts.uri
+    );
+    let entryLocations: ProjectStructureArtifactResponse[] = [];
+    try {
+        // Chained rather than shared: an in-flight rebuild may have read the project
+        // before this notification's change landed, so a rebuild that starts after it
+        // is still needed — it just must not run concurrently with the previous one.
+        const rebuild = pendingStructureRebuild
+            .catch(() => undefined)
+            .then(() => StateMachine.updateProjectInfoAndRebuild(projectInfo));
+        pendingStructureRebuild = rebuild;
+        const rebuiltStructure = await rebuild;
+        entryLocations = collectPublishedArtifacts(publishedArtifacts, rebuiltStructure);
+        if (untrackedProjectPaths.length > 0) {
+            // Where the fire-and-forget refresh this replaces used to land the window
+            // when a package joined the project: the overview is the view guaranteed to
+            // be consistent with the rebuilt structure.
+            openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.WorkspaceOverview });
+        }
+    } catch (error) {
+        // Still publish below (with whatever was resolved) so subscribers are not left
+        // hanging on a notification that will never come.
+        console.error("[updateProjectArtifacts] Failed to rebuild the project structure:", error);
+    }
+    ArtifactNotificationHandler.getInstance().publish(ArtifactsUpdated.method, {
+        data: entryLocations,
+        timestamp: Date.now()
+    });
+}
+
+/** Picks the notification's added/updated artifacts out of an up-to-date structure, flagging additions with `isNew`. */
+function collectPublishedArtifacts(
+    publishedArtifacts: ArtifactsNotification,
+    projectStructure: ProjectStructureResponse
+): ProjectStructureArtifactResponse[] {
+    const owningProjectPath = resolveOwningProjectPath(publishedArtifacts.uri, projectStructure);
+    const project = projectStructure?.projects?.find(project => isSamePath(project.projectPath, owningProjectPath));
+    if (!project || !publishedArtifacts.artifacts) {
+        console.warn("[collectPublishedArtifacts] No package in the project owns the changed file:",
+            publishedArtifacts.uri);
+        return [];
+    }
+
+    const entriesByKey = new Map<string, ProjectStructureArtifactResponse>();
+    for (const entries of Object.values(project.directoryMap ?? {})) {
+        for (const entry of entries ?? []) {
+            entriesByKey.set(artifactKey(entry.type, entry.id), entry);
+        }
+    }
+
+    const entryLocations: ProjectStructureArtifactResponse[] = [];
+    const collect = (artifacts: BaseArtifact[], isNew: boolean) => {
+        for (const artifact of artifacts) {
+            const entry = entriesByKey.get(artifactKey(artifact.type, artifact.id));
+            if (entry) {
+                entryLocations.push(isNew ? { ...entry, isNew: true } : { ...entry });
+            }
+        }
+    };
+    for (const actionMap of Object.values(publishedArtifacts.artifacts)) {
+        if (actionMap?.additions) {
+            collect(Object.values(actionMap.additions) as BaseArtifact[], true);
+        }
+        if (actionMap?.updates) {
+            collect(Object.values(actionMap.updates) as BaseArtifact[], false);
+        }
+    }
+    return dedupeArtifactsById(entryLocations);
 }
 
 async function getComponents(
@@ -425,11 +508,11 @@ function getDirectoryMapKeyAndIcon(artifact: BaseArtifact, artifactCategoryKey: 
  * @param artifactCategoryKey The category key (from ARTIFACT_TYPE).
  * @param projectStructure The project structure to modify.
  */
-function processDeletion(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse): void {
+function processDeletion(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse, activeProjectPath: string): void {
     const mapping = getDirectoryMapKeyAndIcon(artifact, artifactCategoryKey);
     if (mapping) {
         try {
-            const projectPath = StateMachine.context().projectPath;
+            const projectPath = activeProjectPath;
             const project = projectStructure.projects.find(project => isSamePath(project.projectPath, projectPath));
             project.directoryMap[mapping.mapKey] =
                 project.directoryMap[mapping.mapKey]?.filter(value => value.id !== artifact.id) ?? [];
@@ -449,11 +532,11 @@ function processDeletion(artifact: BaseArtifact, artifactCategoryKey: string, pr
  * @param projectStructure The project structure to modify.
  * @returns A promise resolving to the potentially relevant visualization entry, or undefined.
  */
-async function processAddition(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse): Promise<ProjectStructureArtifactResponse | undefined> {
+async function processAddition(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse, activeProjectPath: string): Promise<ProjectStructureArtifactResponse | undefined> {
     const mapping = getDirectoryMapKeyAndIcon(artifact, artifactCategoryKey);
     if (mapping) {
         try {
-            const projectPath = StateMachine.context().projectPath;
+            const projectPath = activeProjectPath;
             const entryValue = await getEntryValue(artifact, projectPath, mapping.icon);
 
             const project = projectStructure.projects.find(project => isSamePath(project.projectPath, projectPath));
@@ -481,11 +564,11 @@ async function processAddition(artifact: BaseArtifact, artifactCategoryKey: stri
  * @param projectStructure The project structure to modify.
  * @returns A promise resolving to the potentially relevant visualization entry, or undefined.
  */
-async function processUpdate(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse): Promise<ProjectStructureArtifactResponse | undefined> {
+async function processUpdate(artifact: BaseArtifact, artifactCategoryKey: string, projectStructure: ProjectStructureResponse, activeProjectPath: string): Promise<ProjectStructureArtifactResponse | undefined> {
     const mapping = getDirectoryMapKeyAndIcon(artifact, artifactCategoryKey);
     if (mapping) {
         try {
-            const projectPath = StateMachine.context().projectPath;
+            const projectPath = activeProjectPath;
             const entryValue = await getEntryValue(artifact, projectPath, mapping.icon);
             const project = projectStructure.projects.find(project => isSamePath(project.projectPath, projectPath));
             // Ensure the array exists
@@ -511,7 +594,29 @@ async function processUpdate(artifact: BaseArtifact, artifactCategoryKey: string
     }
 }
 
-async function traverseUpdatedComponents(publishedArtifacts: Artifacts, currentProjectStructure: ProjectStructureResponse): Promise<ProjectStructureArtifactResponse[]> {
+/** Resolves which package owns the changed file, preferring the deepest match so a workspace member wins over the root. */
+function resolveOwningProjectPath(changedUri: string, projectStructure: ProjectStructureResponse): string | undefined {
+    let changedFsPath: string;
+    try {
+        changedFsPath = URI.parse(changedUri).fsPath.toLowerCase();
+    } catch {
+        return undefined;
+    }
+    let best: string | undefined;
+    for (const project of projectStructure.projects ?? []) {
+        if (!project.projectPath) {
+            continue;
+        }
+        // Both sides lowercased: path case is not significant on Windows.
+        if (isPathInside(project.projectPath.toLowerCase(), changedFsPath)
+            && (best === undefined || project.projectPath.length > best.length)) {
+            best = project.projectPath;
+        }
+    }
+    return best;
+}
+
+async function traverseUpdatedComponents(publishedArtifacts: Artifacts, currentProjectStructure: ProjectStructureResponse, activeProjectPath: string): Promise<ProjectStructureArtifactResponse[]> {
     const entryLocations: ProjectStructureArtifactResponse[] = [];
     const promises: Promise<ProjectStructureArtifactResponse | undefined>[] = [];
 
@@ -520,21 +625,21 @@ async function traverseUpdatedComponents(publishedArtifacts: Artifacts, currentP
         // Process Deletions first (synchronous)
         if (actionMap.deletions) {
             for (const artifact of Object.values(actionMap.deletions) as BaseArtifact[]) {
-                processDeletion(artifact, artifactCategoryKey, currentProjectStructure);
+                processDeletion(artifact, artifactCategoryKey, currentProjectStructure, activeProjectPath);
             }
         }
 
         // Process Additions (asynchronous)
         if (actionMap.additions) {
             for (const artifact of Object.values(actionMap.additions) as BaseArtifact[]) {
-                promises.push(processAddition(artifact, artifactCategoryKey, currentProjectStructure));
+                promises.push(processAddition(artifact, artifactCategoryKey, currentProjectStructure, activeProjectPath));
             }
         }
 
         // Process Updates (asynchronous)
         if (actionMap.updates) {
             for (const artifact of Object.values(actionMap.updates) as BaseArtifact[]) {
-                promises.push(processUpdate(artifact, artifactCategoryKey, currentProjectStructure));
+                promises.push(processUpdate(artifact, artifactCategoryKey, currentProjectStructure, activeProjectPath));
             }
         }
     }
@@ -542,7 +647,7 @@ async function traverseUpdatedComponents(publishedArtifacts: Artifacts, currentP
     // Wait for all additions and updates to complete
     const results = await Promise.all(promises);
 
-    const projectPath = StateMachine.context().projectPath;
+    const projectPath = activeProjectPath;
     const project = currentProjectStructure.projects.find(project => isSamePath(project.projectPath, projectPath));
     try {
         if (project) {
