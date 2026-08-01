@@ -89,4 +89,30 @@ public class LibraryMetadataReaderTest {
         ModuleInfo moduleInfo = new ModuleInfo("no-such-org", "no-such-module", "no-such-module", null);
         Assert.assertTrue(READER.getTriggerUISchemaModel(moduleInfo).isEmpty());
     }
+
+    @Test
+    public void testIsLocallyResolvableNullOrIncompleteModuleInfo() {
+        Assert.assertFalse(READER.isLocallyResolvable(null));
+        Assert.assertFalse(READER.isLocallyResolvable(new ModuleInfo(null, "kafka", "kafka", "1.0.0")));
+        Assert.assertFalse(READER.isLocallyResolvable(new ModuleInfo("ballerinax", "kafka", null, "1.0.0")));
+    }
+
+    @Test
+    public void testIsLocallyResolvableUnresolvableModule() {
+        ModuleInfo moduleInfo = new ModuleInfo("no-such-org", "no-such-module", "no-such-module", null);
+        Assert.assertFalse(READER.isLocallyResolvable(moduleInfo));
+        // Repeatable: a miss must not be memoized, so that a subsequent pull of the package is picked
+        // up instead of being masked for the rest of the session.
+        Assert.assertFalse(READER.isLocallyResolvable(moduleInfo));
+    }
+
+    @Test
+    public void testUnresolvableModuleMissIsNotMemoized() {
+        // Same guarantee via the public reads: asking twice must re-resolve rather than return a
+        // cached "absent", which is what lets a mid-session `bal pull` take effect.
+        ModuleInfo moduleInfo = new ModuleInfo("no-such-org", "still-no-module", "still-no-module", null);
+        Assert.assertTrue(READER.getTriggerMetadataModel(moduleInfo).isEmpty());
+        Assert.assertTrue(READER.getTriggerMetadataModel(moduleInfo).isEmpty());
+        Assert.assertFalse(READER.isLocallyResolvable(moduleInfo));
+    }
 }

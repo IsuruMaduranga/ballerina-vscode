@@ -18,6 +18,8 @@
 
 package io.ballerina.modelgenerator.commons.trigger;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
@@ -32,9 +34,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Connector-agnostic entry point for reading the trigger model family (metadata JSON, UI schema JSON,
@@ -48,11 +48,14 @@ public final class LibraryMetadataReader {
     private static final String TRIGGER_UI_SCHEMA_RESOURCE_PATH = "resources/trigger-ui-schema.json";
     private static final String PACKAGED_TRIGGER_METADATA_ROOT = "trigger-metadata-models";
     private static final String PACKAGED_TRIGGER_METADATA_FILE = "trigger-metadata.json";
+    private static final int MAX_CACHE_SIZE = 2;
 
     private static final LibraryMetadataReader INSTANCE = new LibraryMetadataReader();
 
-    private final Map<String, Optional<Path>> packageRootCache = new ConcurrentHashMap<>();
-    private final Map<String, Optional<TriggerMetadataModel>> packagedMetadataCache = new ConcurrentHashMap<>();
+    private final Cache<String, Optional<Path>> packageRootCache =
+            Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).build();
+    private final Cache<String, Optional<TriggerMetadataModel>> packagedMetadataCache =
+            Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).build();
 
     private final Gson plainGson = new Gson();
 
@@ -74,6 +77,15 @@ public final class LibraryMetadataReader {
     }
 
     /**
+     * Whether the connector's {@code .bala} is present in the local repository. Lets a caller tell "not
+     * pulled yet" apart from "present but ships no trigger metadata", which is the difference between
+     * retrying later and a durable answer.
+     */
+    public boolean isLocallyResolvable(ModuleInfo moduleInfo) {
+        return packageRoot(moduleInfo).isPresent();
+    }
+
+    /**
      * The LS's bundled {@code trigger-metadata-models/<moduleName>/trigger-metadata.json} classpath
      * resource, if any.
      */
@@ -81,7 +93,7 @@ public final class LibraryMetadataReader {
         if (moduleInfo == null || moduleInfo.moduleName() == null) {
             return Optional.empty();
         }
-        return packagedMetadataCache.computeIfAbsent(moduleInfo.moduleName(), this::readPackagedMetadata);
+        return packagedMetadataCache.get(moduleInfo.moduleName(), this::readPackagedMetadata);
     }
 
     private Optional<TriggerMetadataModel> readPackagedMetadata(String moduleName) {
@@ -118,23 +130,38 @@ public final class LibraryMetadataReader {
         });
     }
 
-    // Offline only, so a connector-owned resource read never silently pulls from Central -- a genuine
-    // miss just degrades to "no metadata" here. catch(Throwable) defensively covers any unexpected
-    // compiler-API failure (e.g. a corrupted local bala), which must not propagate.
+    /**
+     * The local {@code .bala} root of {@code moduleInfo}. Only a hit is memoized: a miss means the
+     * package is not in the local repository <i>yet</i>, and caching that would hide it for the rest of
+     * the session once the user pulls it (the pull itself is left to the LS's explicit, user-notified
+     * flow -- see {@link PackageUtil#getModulePackageOffline}).
+     */
     private Optional<Path> packageRoot(ModuleInfo moduleInfo) {
         if (moduleInfo == null || moduleInfo.org() == null || moduleInfo.moduleName() == null) {
             return Optional.empty();
         }
         String key = moduleInfo.org() + "/" + moduleInfo.moduleName();
-        return packageRootCache.computeIfAbsent(key, ignored -> {
-            try {
-                Optional<Package> pkg = PackageUtil.getModulePackageOffline(PackageUtil.getSampleProject(),
-                        moduleInfo.org(), moduleInfo.moduleName());
-                return pkg.map(aPackage -> aPackage.project().sourceRoot());
-            } catch (Throwable e) {
-                return Optional.empty();
-            }
-        });
+        Optional<Path> cached = packageRootCache.getIfPresent(key);
+        if (cached != null) {
+            return cached;
+        }
+        Optional<Path> resolved = resolvePackageRoot(moduleInfo);
+        if (resolved.isPresent()) {
+            packageRootCache.put(key, resolved);
+        }
+        return resolved;
+    }
+
+    // catch(Throwable) defensively covers any unexpected compiler-API failure (e.g. a corrupted local
+    // bala), which must not propagate.
+    private Optional<Path> resolvePackageRoot(ModuleInfo moduleInfo) {
+        try {
+            Optional<Package> pkg = PackageUtil.getModulePackageOffline(PackageUtil.getSampleProject(),
+                    moduleInfo.org(), moduleInfo.moduleName());
+            return pkg.map(aPackage -> aPackage.project().sourceRoot());
+        } catch (Throwable e) {
+            return Optional.empty();
+        }
     }
 
     /** Reads a package-relative file as UTF-8 text, guarding against it escaping {@code packageRoot}. */
