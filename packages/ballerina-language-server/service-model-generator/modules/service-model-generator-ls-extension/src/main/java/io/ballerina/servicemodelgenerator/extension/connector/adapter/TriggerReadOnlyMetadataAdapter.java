@@ -29,11 +29,16 @@ import io.ballerina.servicemodelgenerator.extension.model.PropertyType;
 import io.ballerina.servicemodelgenerator.extension.model.Service;
 import io.ballerina.servicemodelgenerator.extension.model.Value;
 import io.ballerina.servicemodelgenerator.extension.model.context.ModelFromSourceContext;
+import io.ballerina.servicemodelgenerator.extension.util.Utils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_SERVICE_BASE_PATH;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_SERVICE_ANNOTATION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_STRING_LITERAL;
 
 /**
  * Builds the schema-driven service model's {@code readOnlyMetadata} property — the read-only summary
@@ -45,11 +50,8 @@ import java.util.Map;
  */
 public final class TriggerReadOnlyMetadataAdapter {
 
-    private static final String KIND_SERVICE_ANNOTATION = "SERVICE_ANNOTATION";
     private static final String KIND_LISTENER_PARAM = "LISTENER_PARAM";
-    private static final String KIND_STRING_LITERAL = "STRING_LITERAL";
     private static final String KIND_SERVICE_DESCRIPTION = "SERVICE_DESCRIPTION";
-    private static final String KIND_SERVICE_BASE_PATH = "SERVICE_BASE_PATH";
 
     // Wire kinds understood by the shared extractors (differ from the trigger-model JSON kinds above).
     private static final String EXTRACTOR_KIND_ANNOTATION = "ANNOTATION";
@@ -103,14 +105,14 @@ public final class TriggerReadOnlyMetadataAdapter {
         String kind = definition.kind() == null ? "" : definition.kind();
         String displayName = displayNameOf(definition);
         return switch (kind) {
-            case KIND_SERVICE_ANNOTATION -> flatten(ANNOTATION_EXTRACTOR.extractValues(
+            case CD_TYPE_SERVICE_ANNOTATION -> flatten(ANNOTATION_EXTRACTOR.extractValues(
                     new ReadOnlyMetaData(annotationField(definition), displayName, EXTRACTOR_KIND_ANNOTATION),
                     serviceNode, context));
             case KIND_LISTENER_PARAM -> flatten(LISTENER_PARAM_EXTRACTOR.extractValues(
                     new ReadOnlyMetaData(definition.key(), displayName, EXTRACTOR_KIND_LISTENER_PARAM),
                     serviceNode, context));
-            case KIND_STRING_LITERAL -> stringLiteralValue(serviceModel);
-            case KIND_SERVICE_DESCRIPTION, KIND_SERVICE_BASE_PATH -> flatten(SERVICE_DESCRIPTION_EXTRACTOR
+            case CD_TYPE_STRING_LITERAL -> stringLiteralValue(serviceModel);
+            case KIND_SERVICE_DESCRIPTION, ARG_TYPE_SERVICE_BASE_PATH -> flatten(SERVICE_DESCRIPTION_EXTRACTOR
                     .extractValues(new ReadOnlyMetaData(definition.key(), displayName,
                             EXTRACTOR_KIND_SERVICE_DESCRIPTION), serviceNode, context));
             default -> List.of();
@@ -136,15 +138,8 @@ public final class TriggerReadOnlyMetadataAdapter {
         if (value == null || value.isBlank()) {
             return List.of();
         }
-        value = unquote(value.trim());
+        value = Utils.unquote(value.trim());
         return value.isEmpty() ? List.of() : List.of(value);
-    }
-
-    private static String unquote(String value) {
-        if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
-            return value.substring(1, value.length() - 1);
-        }
-        return value;
     }
 
     private static String displayNameOf(TriggerUISchemaModel.ReadOnlyMetadata definition) {

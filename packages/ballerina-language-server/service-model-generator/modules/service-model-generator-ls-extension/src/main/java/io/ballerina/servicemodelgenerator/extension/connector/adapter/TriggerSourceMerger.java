@@ -39,6 +39,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ANNOTATION_ATTACHMENT;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_COMPLEX_FUNCTION_ANNOTATION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ENUM_LITERAL;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_FIELD_VALUE_CHOICE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_MAPPING_CONSTRUCTOR;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_MODIFIER;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD;
+
 /**
  * Folds the functions parsed from the user's source into a schema-driven trigger template
  * ({@link TriggerServiceAdapter#toServiceTemplate}), producing the wire {@link Service}'s
@@ -50,14 +59,6 @@ import java.util.Set;
 public final class TriggerSourceMerger {
 
     private static final String TYPE_PLACEHOLDER = "{{type}}";
-    private static final String CD_PAYLOAD_TYPE = "PAYLOAD_TYPE";
-    private static final String CD_PAYLOAD_TYPE_INCLUDED_RECORD = "PAYLOAD_TYPE_INCLUDED_RECORD";
-    private static final String CD_PAYLOAD_MODIFIER = "PAYLOAD_MODIFIER";
-    private static final String CD_COMPLEX_FUNCTION_ANNOTATION = "COMPLEX_FUNCTION_ANNOTATION";
-    private static final String CD_ANNOTATION_ATTACHMENT = "ANNOTATION_ATTACHMENT";
-    private static final String CD_MAPPING_CONSTRUCTOR = "MAPPING_CONSTRUCTOR";
-    private static final String CD_ENUM_LITERAL = "ENUM_LITERAL";
-    private static final String CD_FIELD_VALUE_CHOICE = "FIELD_VALUE_CHOICE";
 
     private static final Gson GSON = new Gson();
 
@@ -248,7 +249,7 @@ public final class TriggerSourceMerger {
             return false;
         }
         String codedataType = parameter.getType().getCodedata().getType();
-        return CD_PAYLOAD_TYPE.equals(codedataType) || CD_PAYLOAD_TYPE_INCLUDED_RECORD.equals(codedataType);
+        return CD_TYPE_PAYLOAD_TYPE.equals(codedataType) || CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD.equals(codedataType);
     }
 
     private static Parameter claimByType(List<Parameter> sourceParams, String typeText) {
@@ -287,7 +288,7 @@ public final class TriggerSourceMerger {
         String element = null;
         for (Value property : template.getProperties().values()) {
             Codedata propertyCodedata = property.getCodedata();
-            if (propertyCodedata == null || !CD_PAYLOAD_MODIFIER.equals(propertyCodedata.getType())
+            if (propertyCodedata == null || !CD_TYPE_PAYLOAD_MODIFIER.equals(propertyCodedata.getType())
                     || propertyCodedata.getTemplate() == null) {
                 continue;
             }
@@ -333,7 +334,7 @@ public final class TriggerSourceMerger {
     private static void applyAnnotationsFromSource(Function template, Function source) {
         for (Value tree : template.getProperties().values()) {
             Codedata treeCodedata = tree.getCodedata();
-            if (treeCodedata == null || !CD_COMPLEX_FUNCTION_ANNOTATION.equals(treeCodedata.getType())) {
+            if (treeCodedata == null || !CD_TYPE_COMPLEX_FUNCTION_ANNOTATION.equals(treeCodedata.getType())) {
                 continue;
             }
             String body = sourceAnnotationBody(source, treeCodedata.getOriginalName());
@@ -353,7 +354,7 @@ public final class TriggerSourceMerger {
         }
         for (Value property : source.getProperties().values()) {
             Codedata codedata = property.getCodedata();
-            if (codedata != null && CD_ANNOTATION_ATTACHMENT.equals(codedata.getType())
+            if (codedata != null && CD_TYPE_ANNOTATION_ATTACHMENT.equals(codedata.getType())
                     && annotationName.equals(codedata.getOriginalName())) {
                 return property.getValue();
             }
@@ -416,11 +417,11 @@ public final class TriggerSourceMerger {
     private static void applyValueNode(Value node, ExpressionNode expression) {
         Codedata codedata = node.getCodedata();
         String type = codedata == null ? null : codedata.getType();
-        if (CD_FIELD_VALUE_CHOICE.equals(type)) {
+        if (CD_TYPE_FIELD_VALUE_CHOICE.equals(type)) {
             applyChoice(node, expression);
             return;
         }
-        if (CD_MAPPING_CONSTRUCTOR.equals(type)
+        if (CD_TYPE_MAPPING_CONSTRUCTOR.equals(type)
                 && expression instanceof MappingConstructorExpressionNode mapping) {
             applyMapping(node, mapping);
             return;
@@ -455,7 +456,7 @@ public final class TriggerSourceMerger {
             String unqualified = text.contains(":") ? text.substring(text.lastIndexOf(':') + 1) : text;
             for (Value branch : choiceNode.getChoices()) {
                 Codedata branchCodedata = branch.getCodedata();
-                String branchValue = branchCodedata != null && CD_ENUM_LITERAL.equals(branchCodedata.getType())
+                String branchValue = branchCodedata != null && CD_TYPE_ENUM_LITERAL.equals(branchCodedata.getType())
                         && branchCodedata.getValue() != null ? branchCodedata.getValue() : branch.getValue();
                 if (text.equals(branchValue) || unqualified.equals(branchValue)) {
                     selected = branch;

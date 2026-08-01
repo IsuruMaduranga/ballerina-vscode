@@ -24,7 +24,6 @@ import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.PropertyType;
 import io.ballerina.servicemodelgenerator.extension.model.ServiceInitModel;
 import io.ballerina.servicemodelgenerator.extension.model.Value;
-import io.ballerina.servicemodelgenerator.extension.util.Constants;
 import io.ballerina.servicemodelgenerator.extension.util.ModuleAliasResolver;
 import io.ballerina.servicemodelgenerator.extension.util.Utils;
 import org.eclipse.lsp4j.TextEdit;
@@ -49,8 +48,21 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TY
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_LISTENER_VAR_NAME;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_SERVICE_BASE_PATH;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_SERVICE_TYPE_DESCRIPTOR;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ENUM_VALUE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_EXISTING_LISTENER;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_LISTENER_VAR_NAME;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_SERVICE_ANNOTATION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_STRING_LITERAL;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.CLOSE_BRACE;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.COLON;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.FIELD_TYPE_FLAG;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.FIELD_TYPE_VARIATION_SELECTOR;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_COMPLEX_REMOTE_FUNCTION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_MUTATION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_QUERY;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_REMOTE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_RESOURCE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_SUBSCRIPTION;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.NEW_LINE;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.NEW_LINE_WITH_TAB;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ON;
@@ -83,15 +95,9 @@ public final class SchemaDrivenSourceGenerator {
     private static final String LISTENER_TYPE = "Listener";
     private static final String NEW = "new";
     private static final String ERROR = "error";
-    private static final String LISTENER_VAR_NAME_KIND = "LISTENER_VAR_NAME";
-    // A CHOICE branch tagged ENUM_VALUE is a plain enum-literal selector whose parent's own value
-    // must be emitted as a leaf arg, unlike a branch that shapes a record via its children's paths.
-    private static final String CD_TYPE_ENUM_VALUE = "ENUM_VALUE";
     // Default target for a CDC operation flag with no explicit `path` (the cdc convention).
     private static final String CDC_OPTIONS_FIELD = "options";
     private static final String CDC_SKIPPED_OPERATIONS_FIELD = "skippedOperations";
-    // A base path may be modeled as SERVICE_BASE_PATH or STRING_LITERAL; both occupy the same slot.
-    private static final String CD_TYPE_STRING_LITERAL = "STRING_LITERAL";
 
     private SchemaDrivenSourceGenerator() {
     }
@@ -247,7 +253,7 @@ public final class SchemaDrivenSourceGenerator {
                 continue;
             }
             Codedata codedata = field.getCodedata();
-            if (codedata != null && Constants.CD_TYPE_SERVICE_ANNOTATION.equals(codedata.getType())
+            if (codedata != null && CD_TYPE_SERVICE_ANNOTATION.equals(codedata.getType())
                     && field.isEnabledWithValue()) {
                 String rendered = qualifiedValue(field);
                 if (!rendered.isEmpty()) {
@@ -371,16 +377,14 @@ public final class SchemaDrivenSourceGenerator {
         return selfPrefix.equals(module) ? emitAlias : module;
     }
 
-    /** The import alias of a (possibly dotted) module name — its last {@code .}-separated segment. */
+    /** @see ModuleAliasResolver#selfPrefix(String) */
     private static String aliasOf(String moduleName) {
-        int lastDot = moduleName.lastIndexOf('.');
-        return lastDot < 0 ? moduleName : moduleName.substring(lastDot + 1);
+        return ModuleAliasResolver.selfPrefix(moduleName);
     }
 
-    /** The simple (unqualified) type name — strips any {@code module:} prefix. */
+    /** @see TriggerModelSynthesizer#simpleName(String) */
     private static String simpleName(String typeName) {
-        int colon = typeName.indexOf(COLON);
-        return colon < 0 ? typeName : typeName.substring(colon + 1);
+        return TriggerModelSynthesizer.simpleName(typeName);
     }
 
     /**
@@ -534,7 +538,7 @@ public final class SchemaDrivenSourceGenerator {
     }
 
     private static String selectedVariantOriginalName(TriggerUISchemaModel.Property typeProp) {
-        if (typeProp == null || !"VARIATION_SELECTOR".equals(PayloadComposer.selectedFieldType(typeProp))) {
+        if (typeProp == null || !FIELD_TYPE_VARIATION_SELECTOR.equals(PayloadComposer.selectedFieldType(typeProp))) {
             return null;
         }
         Map<String, TriggerUISchemaModel.Property> variants = typeProp.properties();
@@ -568,8 +572,8 @@ public final class SchemaDrivenSourceGenerator {
     private static String qualifierKeyword(String kind) {
         String normalized = kind == null ? "" : kind.toUpperCase(Locale.US);
         return switch (normalized) {
-            case "REMOTE", "COMPLEX_REMOTE_FUNCTION" -> REMOTE;
-            case "RESOURCE", "QUERY", "MUTATION", "SUBSCRIPTION" -> RESOURCE;
+            case KIND_REMOTE, KIND_COMPLEX_REMOTE_FUNCTION -> REMOTE;
+            case KIND_RESOURCE, KIND_QUERY, KIND_MUTATION, KIND_SUBSCRIPTION -> RESOURCE;
             default -> "";
         };
     }
@@ -581,7 +585,7 @@ public final class SchemaDrivenSourceGenerator {
         }
         List<String> params = new ArrayList<>();
         for (TriggerUISchemaModel.Parameter parameter : function.parameters()) {
-            if ("FLAG".equals(PayloadComposer.selectedFieldType(parameter.type()))) {
+            if (FIELD_TYPE_FLAG.equals(PayloadComposer.selectedFieldType(parameter.type()))) {
                 if (!isFlagOn(parameter)) {
                     continue;
                 }
@@ -792,7 +796,7 @@ public final class SchemaDrivenSourceGenerator {
                 // top-level segment instead of a bogus flat named arg.
                 args.addIncludedPath(pathSegments, rendered);
             } else {
-                args.included.add(argName(codedata, key) + " = " + rendered);
+                args.addIncludedArg(argName(codedata, key), rendered);
             }
         } else if (ARG_TYPE_LISTENER_PARAM_CONFIG_FIELD.equals(argType)) {
             args.addConfigField(codedata.getPosition(), fieldNameSegments(codedata, key), rendered);
@@ -880,7 +884,7 @@ public final class SchemaDrivenSourceGenerator {
         if (codedata == null) {
             return false;
         }
-        return LISTENER_VAR_NAME_KIND.equals(codedata.getType())
+        return CD_TYPE_LISTENER_VAR_NAME.equals(codedata.getType())
                 || ARG_TYPE_LISTENER_VAR_NAME.equals(codedata.getArgType());
     }
 
@@ -946,13 +950,17 @@ public final class SchemaDrivenSourceGenerator {
         return "";
     }
 
-    /** The "use existing" selector — by key or by {@code codedata.type == KEY_EXISTING_LISTENER}. */
+    /**
+     * The "use existing" selector — by property map key ({@link ServiceInitModel#KEY_EXISTING_LISTENER},
+     * {@code "existingListener"}) or by {@code codedata.type} ({@code Constants.CD_TYPE_EXISTING_LISTENER},
+     * {@code "KEY_EXISTING_LISTENER"} -- an unrelated value that is coincidentally similar text).
+     */
     private static boolean isExistingListener(String key, Value field) {
         if (KEY_EXISTING_LISTENER.equals(key)) {
             return true;
         }
         Codedata codedata = field == null ? null : field.getCodedata();
-        return codedata != null && "KEY_EXISTING_LISTENER".equals(codedata.getType());
+        return codedata != null && CD_TYPE_EXISTING_LISTENER.equals(codedata.getType());
     }
 
     /** The listener name(s) to attach to; a {@code MULTIPLE_SELECT_LISTENER} yields several, joined. */
@@ -972,7 +980,7 @@ public final class SchemaDrivenSourceGenerator {
         private final TreeMap<Integer, String> byPosition = new TreeMap<>();
         private final TreeMap<Integer, Map<String, Object>> configFieldsByPosition = new TreeMap<>();
         private final List<String> noPosition = new ArrayList<>();
-        private final List<String> included = new ArrayList<>();
+        private final List<IncludedArg> included = new ArrayList<>();
         private final Map<String, Object> looseConfig = new LinkedHashMap<>();
         private final Map<String, Object> includedTree = new LinkedHashMap<>();
         // Aggregated CDC-style skip lists: record-field arg -> list field name -> collected op-codes.
@@ -984,15 +992,30 @@ public final class SchemaDrivenSourceGenerator {
         // listener config is entirely optional and blank still needs `new ()` emitted.
         private boolean declareListener;
 
+        /**
+         * One {@code <name> = <valueText>} constructor argument, kept apart until render time so
+         * {@link #mergeSkipLists} can fold a skip list into {@code valueText} by exact name instead of
+         * string-prefix matching over an already-joined {@code "name = value"} string.
+         *
+         * @param name      the argument's name
+         * @param valueText the argument's rendered value -- a scalar, or (for a CDC operations-style
+         *                  record) a user-authored record-literal string that {@link #insertListField}
+         *                  parses to fold a skip list into
+         */
+        private record IncludedArg(String name, String valueText) {
+            String render() {
+                return name + " = " + valueText;
+            }
+        }
+
         void addSkippedOperation(String recordField, String listField, String code) {
             skipLists.computeIfAbsent(recordField, ignored -> new LinkedHashMap<>())
                     .computeIfAbsent(listField, ignored -> new ArrayList<>())
                     .add(code);
         }
 
-        /** Seeds a pre-rendered {@code <recordField> = {...}} included arg (test support). */
-        void addIncludedArg(String rendered) {
-            included.add(rendered);
+        private void addIncludedArg(String name, String valueText) {
+            included.add(new IncludedArg(name, valueText));
         }
 
         private void addPositional(Integer position, String rendered) {
@@ -1058,22 +1081,27 @@ public final class SchemaDrivenSourceGenerator {
             }
             // Order: user-provided included args first, then dotted-path record args, then
             // freshly-created skip-list args last (mirrors the hand-written CDC builder's ordering).
-            List<String> newSkipArgs = new ArrayList<>();
-            args.addAll(mergeSkipLists(newSkipArgs));
+            List<IncludedArg> newSkipArgs = new ArrayList<>();
+            for (IncludedArg arg : mergeSkipLists(newSkipArgs)) {
+                args.add(arg.render());
+            }
             for (Map.Entry<String, Object> entry : includedTree.entrySet()) {
                 args.add(entry.getKey() + " = " + renderIncludedValue(entry.getValue()));
             }
-            args.addAll(newSkipArgs);
+            for (IncludedArg arg : newSkipArgs) {
+                args.add(arg.render());
+            }
             return String.join(", ", args);
         }
 
         /**
          * Folds each aggregated skip list into the matching included record argument, in place if
          * already present, else into a fresh {@code <record> = {...}} argument collected into
-         * {@code newSkipArgs} for the caller to append last.
+         * {@code newSkipArgs} for the caller to append last. Matches by exact argument name -- no
+         * string-prefix scanning, since {@link IncludedArg} keeps the name apart from its value text.
          */
-        private List<String> mergeSkipLists(List<String> newSkipArgs) {
-            List<String> result = new ArrayList<>(included);
+        private List<IncludedArg> mergeSkipLists(List<IncludedArg> newSkipArgs) {
+            List<IncludedArg> result = new ArrayList<>(included);
             for (Map.Entry<String, LinkedHashMap<String, List<String>>> entry : skipLists.entrySet()) {
                 String recordField = entry.getKey();
                 for (Map.Entry<String, List<String>> listEntry : entry.getValue().entrySet()) {
@@ -1085,26 +1113,27 @@ public final class SchemaDrivenSourceGenerator {
                     String listAssignment = listField + ": [" + String.join(", ", codes) + "]";
                     int index = indexOfIncludedArg(result, recordField);
                     if (index >= 0) {
-                        result.set(index, insertListField(result.get(index), listField, listAssignment));
+                        String patched = insertListField(result.get(index).valueText(), listField, listAssignment);
+                        result.set(index, new IncludedArg(recordField, patched));
                         continue;
                     }
                     int freshIndex = indexOfIncludedArg(newSkipArgs, recordField);
                     if (freshIndex < 0) {
-                        newSkipArgs.add(recordField + " = {" + listAssignment + "}");
+                        newSkipArgs.add(new IncludedArg(recordField, "{" + listAssignment + "}"));
                     } else {
-                        newSkipArgs.set(freshIndex, insertListField(newSkipArgs.get(freshIndex), listField,
-                                listAssignment));
+                        String patched = insertListField(newSkipArgs.get(freshIndex).valueText(), listField,
+                                listAssignment);
+                        newSkipArgs.set(freshIndex, new IncludedArg(recordField, patched));
                     }
                 }
             }
             return result;
         }
 
-        /** Index of the {@code <recordField> = ...} entry in a rendered included-arg list, or -1. */
-        private static int indexOfIncludedArg(List<String> args, String recordField) {
-            String prefix = recordField + " = ";
+        /** Index of the entry named {@code recordField}, or -1. */
+        private static int indexOfIncludedArg(List<IncludedArg> args, String recordField) {
             for (int i = 0; i < args.size(); i++) {
-                if (args.get(i).startsWith(prefix)) {
+                if (recordField.equals(args.get(i).name())) {
                     return i;
                 }
             }
@@ -1112,17 +1141,17 @@ public final class SchemaDrivenSourceGenerator {
         }
 
         /**
-         * Inserts (or replaces) a {@code <listField>: [...]} field inside an existing
-         * {@code <recordField> = {...}} record argument. Falls back to leaving the argument untouched
-         * when its value is not a record literal.
+         * Inserts (or replaces) a {@code <listField>: [...]} field inside an existing {@code {...}}
+         * record-literal value text. Falls back to leaving it untouched when it is not a record literal
+         * -- an opaque, user-authored scalar, which a skip list cannot be folded into.
          */
-        static String insertListField(String recordArg, String listField, String listAssignment) {
-            int brace = recordArg.indexOf('{');
-            if (brace < 0 || !recordArg.trim().endsWith("}")) {
-                return recordArg;
+        static String insertListField(String valueText, String listField, String listAssignment) {
+            int brace = valueText.indexOf('{');
+            if (brace < 0 || !valueText.trim().endsWith("}")) {
+                return valueText;
             }
-            int close = recordArg.lastIndexOf('}');
-            String inner = recordArg.substring(brace + 1, close).trim();
+            int close = valueText.lastIndexOf('}');
+            String inner = valueText.substring(brace + 1, close).trim();
             List<String> fields = new ArrayList<>(splitTopLevelFields(inner));
             int existingIndex = -1;
             for (int i = 0; i < fields.size(); i++) {
@@ -1136,7 +1165,7 @@ public final class SchemaDrivenSourceGenerator {
             } else {
                 fields.add(listAssignment);
             }
-            return recordArg.substring(0, brace + 1) + String.join(", ", fields) + "}";
+            return valueText.substring(0, brace + 1) + String.join(", ", fields) + "}";
         }
 
         /**

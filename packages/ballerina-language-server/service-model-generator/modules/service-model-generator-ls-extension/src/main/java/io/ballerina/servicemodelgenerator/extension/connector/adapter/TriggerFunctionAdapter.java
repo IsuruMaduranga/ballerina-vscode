@@ -34,7 +34,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.DATA_BINDING;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.FIELD_TYPE_VARIATION_SELECTOR;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_COMPLEX_REMOTE_FUNCTION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_COMPLEX_RESOURCE_FUNCTION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_REMOTE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_REQUIRED;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_RESOURCE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_VARIANT;
 
 /**
  * Adapts a unified {@link TriggerUISchemaModel.FunctionModel} into the wire {@link Function} POJOs the
@@ -44,11 +52,6 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_R
  * @since 1.9.0
  */
 public final class TriggerFunctionAdapter {
-
-    private static final String KIND_VARIANT = "VARIANT";
-    private static final String KIND_DATA_BINDING = "DATA_BINDING";
-    private static final String KIND_REQUIRED = "REQUIRED";
-    private static final String FIELD_TYPE_VARIATION_SELECTOR = "VARIATION_SELECTOR";
 
     private TriggerFunctionAdapter() {
     }
@@ -156,8 +159,8 @@ public final class TriggerFunctionAdapter {
             return null;
         }
         return switch (kind.toUpperCase(java.util.Locale.US)) {
-            case "COMPLEX_REMOTE_FUNCTION" -> "REMOTE";
-            case "COMPLEX_RESOURCE_FUNCTION" -> "RESOURCE";
+            case KIND_COMPLEX_REMOTE_FUNCTION -> KIND_REMOTE;
+            case KIND_COMPLEX_RESOURCE_FUNCTION -> KIND_RESOURCE;
             default -> kind;
         };
     }
@@ -254,7 +257,7 @@ public final class TriggerFunctionAdapter {
         // PAYLOAD_TYPE_INCLUDED_RECORD tells the save flow to generate a wrapper record in types.bal
         // instead of binding the type directly.
         Codedata typeCodedata = new Codedata(payloadCodedata != null && notBlank(payloadCodedata.type())
-                ? payloadCodedata.type() : "PAYLOAD_TYPE");
+                ? payloadCodedata.type() : CD_TYPE_PAYLOAD_TYPE);
         typeCodedata.setBindable(bindable);
         typeCodedata.setTemplate(normalizeTemplate(PayloadComposer.payloadTemplate(payloadTree)));
         if (payloadCodedata != null) {
@@ -279,7 +282,7 @@ public final class TriggerFunctionAdapter {
         Value name = identifierValue(paramNameText(model), label, description);
         return new Parameter.Builder()
                 .metadata(new MetaData(label, description))
-                .kind(bindable ? KIND_DATA_BINDING : KIND_REQUIRED)
+                .kind(bindable ? DATA_BINDING : KIND_REQUIRED)
                 .type(type)
                 .name(name)
                 .optional(false)

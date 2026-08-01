@@ -25,6 +25,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ANNOTATION_ATTACHMENT;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_COMPLEX_FUNCTION_ANNOTATION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ENUM_LITERAL;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_FIELD_VALUE_CHOICE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_MAPPING_CONSTRUCTOR;
+
 /**
  * Emits Ballerina annotation attachments (e.g. {@code @ftp:FunctionConfig { ... }}) from a node's
  * {@code properties} map, driven entirely by the granular {@code codedata} roles — no per-connector
@@ -56,9 +62,9 @@ public final class AnnotationEmitter {
             if (cd == null) {
                 continue;
             }
-            if ("COMPLEX_FUNCTION_ANNOTATION".equals(cd.type())) {
+            if (CD_TYPE_COMPLEX_FUNCTION_ANNOTATION.equals(cd.type())) {
                 emitAnnotation(node).ifPresent(annotations::add);
-            } else if ("ANNOTATION_ATTACHMENT".equals(cd.type()) && isEnabledWithValue(node)) {
+            } else if (CD_TYPE_ANNOTATION_ATTACHMENT.equals(cd.type()) && isEnabledWithValue(node)) {
                 annotations.add(emitWholeValueAnnotation(node));
             }
         }
@@ -135,7 +141,7 @@ public final class AnnotationEmitter {
             String raw = node.value() == null ? "" : String.valueOf(node.value());
             return node.enabled() && !raw.isBlank() && !"\"\"".equals(raw);
         }
-        return isTrue(node.value());
+        return PayloadComposer.isTrue(node.value());
     }
 
     /** A mapping field is a leaf when it renders its own value — it has no nested value node. */
@@ -160,9 +166,9 @@ public final class AnnotationEmitter {
             return renderLeaf(node);
         }
         return switch (type) {
-            case "MAPPING_CONSTRUCTOR" -> mappingBody(node.properties());
-            case "ENUM_LITERAL" -> enumLiteral(cd);
-            case "FIELD_VALUE_CHOICE" -> {
+            case CD_TYPE_MAPPING_CONSTRUCTOR -> mappingBody(node.properties());
+            case CD_TYPE_ENUM_LITERAL -> enumLiteral(cd);
+            case CD_TYPE_FIELD_VALUE_CHOICE -> {
                 TriggerUISchemaModel.Property selected = selectedChoice(node);
                 yield selected == null ? "" : emitValue(selected);
             }
@@ -211,9 +217,5 @@ public final class AnnotationEmitter {
                 .findFirst()
                 .orElse(node.types().getFirst());
         return STRING_TYPE.equals(selected.ballerinaType());
-    }
-
-    private static boolean isTrue(Object value) {
-        return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 }

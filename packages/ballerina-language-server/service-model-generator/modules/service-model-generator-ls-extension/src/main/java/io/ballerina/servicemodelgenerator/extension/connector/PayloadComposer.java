@@ -27,6 +27,12 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_MODIFIER;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.FIELD_TYPE_FLAG;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.FIELD_TYPE_VARIATION_SELECTOR;
+
 /**
  * Computes the effective Ballerina type text of a parameter from its {@code type} {@link
  * TriggerUISchemaModel.Property} tree:
@@ -56,7 +62,7 @@ public final class PayloadComposer {
             return "";
         }
         String fieldType = selectedFieldType(typeProp);
-        if ("FLAG".equals(fieldType)) {
+        if (FIELD_TYPE_FLAG.equals(fieldType)) {
             String ballerinaType = selectedBallerinaType(typeProp);
             return ballerinaType == null ? "" : ballerinaType;
         }
@@ -89,7 +95,7 @@ public final class PayloadComposer {
         List<TriggerUISchemaModel.Codedata> active = new ArrayList<>();
         for (TriggerUISchemaModel.Property sibling : siblings) {
             TriggerUISchemaModel.Codedata sc = sibling.codedata();
-            if (sc != null && "PAYLOAD_MODIFIER".equals(sc.type()) && isTrue(sibling.value())
+            if (sc != null && CD_TYPE_PAYLOAD_MODIFIER.equals(sc.type()) && isTrue(sibling.value())
                     && sc.template() != null && !sc.template().isBlank()) {
                 active.add(sc);
             }
@@ -144,7 +150,7 @@ public final class PayloadComposer {
         }
         String fieldType = selectedFieldType(typeProp);
         Map<String, TriggerUISchemaModel.Property> children = typeProp.properties();
-        if ("VARIATION_SELECTOR".equals(fieldType) && children != null) {
+        if (FIELD_TYPE_VARIATION_SELECTOR.equals(fieldType) && children != null) {
             TriggerUISchemaModel.Property variant = selectedVariant(typeProp, children);
             return variant == null ? Map.of() : compositionSiblings(variant);
         }
@@ -172,7 +178,7 @@ public final class PayloadComposer {
         }
         String fieldType = selectedFieldType(node);
         Map<String, TriggerUISchemaModel.Property> children = node.properties();
-        if ("VARIATION_SELECTOR".equals(fieldType) && children != null) {
+        if (FIELD_TYPE_VARIATION_SELECTOR.equals(fieldType) && children != null) {
             TriggerUISchemaModel.Property variant = selectedVariant(node, children);
             return variant == null ? null : locatePayload(variant);
         }
@@ -214,7 +220,7 @@ public final class PayloadComposer {
         if (cd == null || cd.type() == null) {
             return false;
         }
-        return "PAYLOAD_TYPE".equals(cd.type()) || "PAYLOAD_TYPE_INCLUDED_RECORD".equals(cd.type());
+        return CD_TYPE_PAYLOAD_TYPE.equals(cd.type()) || CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD.equals(cd.type());
     }
 
     private static String element(TriggerUISchemaModel.Codedata cd) {
@@ -249,8 +255,10 @@ public final class PayloadComposer {
      * -- the two authoring styles are alternatives, never combined in one template (see {@code
      * TriggerFunctionAdapter#normalizeTemplate}, which translates one into the other) -- so matching
      * {@code {{type}}} always short-circuits the (otherwise redundant) standalone-{@code T} pass.
+     * Package-visible: shared with {@link IncludedRecordBinder}, whose wrapper-type templates are
+     * always normalized to this same {@code {{type}}} form before reaching it.
      */
-    private static String applyTemplate(String template, String element) {
+    static String applyTemplate(String template, String element) {
         if (template == null || template.isBlank()) {
             return element == null ? "" : element;
         }
@@ -295,7 +303,9 @@ public final class PayloadComposer {
         return null;
     }
 
-    private static boolean isTrue(Object value) {
+    /** Truthy for a boolean {@code true} or a case-insensitive {@code "true"} string; shared by every
+     *  class in this package that reads a flag-shaped {@code TriggerUISchemaModel} value. */
+    static boolean isTrue(Object value) {
         return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 

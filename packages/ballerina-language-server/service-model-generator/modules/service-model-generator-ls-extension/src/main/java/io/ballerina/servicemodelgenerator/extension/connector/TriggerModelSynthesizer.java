@@ -26,6 +26,7 @@ import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
 import io.ballerina.modelgenerator.commons.trigger.models.TypeRef;
 import io.ballerina.servicemodelgenerator.extension.model.Listener;
 import io.ballerina.servicemodelgenerator.extension.model.Value;
+import io.ballerina.servicemodelgenerator.extension.util.ModuleAliasResolver;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -37,7 +38,19 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_SERVICE_TYPE_DESCRIPTOR;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ANNOTATION_ATTACHMENT;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_EXISTING_LISTENER;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_LISTENER_CONFIG;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_LISTENER_VAR_NAME;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_MODIFIER;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_SERVICE_ANNOTATION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.DATA_BINDING;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.DB_KIND_OPTIONAL;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.FIELD_TYPE_FLAG;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_REQUIRED;
 
 /**
  * Synthesizes a {@link TriggerUISchemaModel} at request time from a connector's own
@@ -183,8 +196,8 @@ public final class TriggerModelSynthesizer {
     }
 
     private static TriggerUISchemaModel.Codedata cdServiceType(String originalName, String moduleName) {
-        return TriggerUISchemaModel.Codedata.builder().type("SERVICE_TYPE_DESCRIPTOR").originalName(originalName)
-                .moduleName(moduleName).build();
+        return TriggerUISchemaModel.Codedata.builder().type(ARG_TYPE_SERVICE_TYPE_DESCRIPTOR)
+                .originalName(originalName).moduleName(moduleName).build();
     }
 
     private static TriggerUISchemaModel.Codedata cdAnnotation(String codedataType, String originalName,
@@ -261,7 +274,7 @@ public final class TriggerModelSynthesizer {
                 new TriggerUISchemaModel.Metadata("Listener Name", "Provide a name for the listener being created",
                         null, null, null, null, null, null),
                 true, true, false, false, null, moduleName + "Listener", List.of(type), null, null, null,
-                cdType("LISTENER_VAR_NAME"), null);
+                cdType(CD_TYPE_LISTENER_VAR_NAME), null);
     }
 
     /**
@@ -321,7 +334,7 @@ public final class TriggerModelSynthesizer {
                 new TriggerUISchemaModel.Metadata("Listener", "The existing listener to attach to", null, null,
                         null, null, null, null),
                 true, true, false, false, null, null, List.of(type), null, null, null,
-                cdType("KEY_EXISTING_LISTENER"), null);
+                cdType(CD_TYPE_EXISTING_LISTENER), null);
     }
 
     /**
@@ -394,7 +407,7 @@ public final class TriggerModelSynthesizer {
                 new TriggerUISchemaModel.Metadata("Service Type", "The kind of service to create", null, null,
                         null, null, null, null),
                 true, true, false, false, null, serviceTypes.get(0).id(), List.of(type), null, null, null,
-                cdType("SERVICE_TYPE_DESCRIPTOR"), null);
+                cdType(ARG_TYPE_SERVICE_TYPE_DESCRIPTOR), null);
     }
 
     private static TriggerUISchemaModel.ServiceTypeModel buildServiceType(TriggerMetadataModel.ServiceType serviceType,
@@ -483,7 +496,7 @@ public final class TriggerModelSynthesizer {
                 new TriggerUISchemaModel.Metadata(humanize(param.name()),
                         param.doc() == null || param.doc().isBlank() ? null : param.doc(), null, null, null, null,
                         null, null),
-                "REQUIRED", typeProperty, nameProperty, null, null, null, null, true, false, param.optional(),
+                KIND_REQUIRED, typeProperty, nameProperty, null, null, null, null, true, false, param.optional(),
                 false, false, cdType("FUNCTION_PARAM"), null);
     }
 
@@ -538,7 +551,7 @@ public final class TriggerModelSynthesizer {
         for (String id : annotationIds) {
             findAnnotationDeclaration(id, authoring)
                     .ifPresent(annotation -> properties.put(id,
-                            buildAnnotationProperty(annotation, facts, identity, "ANNOTATION_ATTACHMENT")));
+                            buildAnnotationProperty(annotation, facts, identity, CD_TYPE_ANNOTATION_ATTACHMENT)));
         }
         return properties;
     }
@@ -569,7 +582,7 @@ public final class TriggerModelSynthesizer {
                 ? plainTypeProperty(typeName)
                 : dataBindingTypeProperty(bindingRule, typeName, moduleName, name.isEmpty() ? "value" : name);
         TriggerUISchemaModel.Property nameProperty = identifierProperty(name.isEmpty() ? "value" : name, true);
-        String kind = bindingRule != null ? "DATA_BINDING" : (optional ? "OPTIONAL" : "REQUIRED");
+        String kind = bindingRule != null ? DATA_BINDING : (optional ? DB_KIND_OPTIONAL : KIND_REQUIRED);
         return new TriggerUISchemaModel.Parameter(
                 new TriggerUISchemaModel.Metadata(humanize(name.isEmpty() ? "value" : name), null, null, null,
                         null, null, null, null),
@@ -581,7 +594,7 @@ public final class TriggerModelSynthesizer {
     private static TriggerUISchemaModel.Parameter buildFlagParameter(String name, String qualifiedType) {
         String label = humanize(name);
         TriggerUISchemaModel.PropertyType flagType = new TriggerUISchemaModel.PropertyType(
-                "FLAG", true, qualifiedType, null, null, null, null, null);
+                FIELD_TYPE_FLAG, true, qualifiedType, null, null, null, null, null);
         TriggerUISchemaModel.Property typeProperty = new TriggerUISchemaModel.Property(
                 new TriggerUISchemaModel.Metadata("Include " + label,
                         "Tick to include the " + label.toLowerCase(Locale.ROOT) + " parameter in the handler "
@@ -591,7 +604,7 @@ public final class TriggerModelSynthesizer {
         return new TriggerUISchemaModel.Parameter(
                 new TriggerUISchemaModel.Metadata(label, "The " + label.toLowerCase(Locale.ROOT) + " object.", null,
                         null, null, null, null, null),
-                "OPTIONAL", typeProperty, nameProperty, null, null, null, null, false, true, true, true, false,
+                DB_KIND_OPTIONAL, typeProperty, nameProperty, null, null, null, null, false, true, true, true, false,
                 cdType("FUNCTION_PARAM"), null);
     }
 
@@ -624,7 +637,7 @@ public final class TriggerModelSynthesizer {
                 .filter(m -> TriggerMetadataModel.DataBindingRule.SupportedMode.MODE_STREAMABLE.equals(m.mode()))
                 .findFirst();
 
-        String cdType = includedRecord.isPresent() ? "PAYLOAD_TYPE_INCLUDED_RECORD" : "PAYLOAD_TYPE";
+        String cdType = includedRecord.isPresent() ? CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD : CD_TYPE_PAYLOAD_TYPE;
         String defaultType;
         String template = rule.cardinality() != null
                 && TriggerMetadataModel.DataBindingRule.CARDINALITY_ARRAY.equals(rule.cardinality())
@@ -644,7 +657,7 @@ public final class TriggerModelSynthesizer {
         }
 
         TriggerUISchemaModel.PropertyType propertyType = new TriggerUISchemaModel.PropertyType(
-                "PAYLOAD_TYPE", true, null, null, null, null,
+                CD_TYPE_PAYLOAD_TYPE, true, null, null, null, null,
                 List.of(new TriggerUISchemaModel.PayloadFormat(List.of("schema", "browse", "json", "xml"), "json")),
                 null);
         TriggerUISchemaModel.Property payload = new TriggerUISchemaModel.Property(
@@ -669,9 +682,9 @@ public final class TriggerModelSynthesizer {
     private static TriggerUISchemaModel.Property buildStreamModifierProperty(String targetParam) {
         String template = "stream<{{type}}, error?>";
         TriggerUISchemaModel.PropertyType flagType = new TriggerUISchemaModel.PropertyType(
-                "FLAG", true, null, null, null, template, null, null);
+                FIELD_TYPE_FLAG, true, null, null, null, template, null, null);
         TriggerUISchemaModel.Codedata modifierCodedata = TriggerUISchemaModel.Codedata.builder()
-                .type("PAYLOAD_MODIFIER").template(template).modifier("stream").supersedes(List.of("base"))
+                .type(CD_TYPE_PAYLOAD_MODIFIER).template(template).modifier("stream").supersedes(List.of("base"))
                 .targetParam(targetParam).build();
         return new TriggerUISchemaModel.Property(
                 new TriggerUISchemaModel.Metadata("Stream (Large Files)", "Process the file content in chunks", null,
@@ -743,7 +756,7 @@ public final class TriggerModelSynthesizer {
         Map<String, TriggerUISchemaModel.Property> properties = new LinkedHashMap<>();
         for (TriggerMetadataModel.Annotation annotation : applicableServiceAnnotations(serviceType, authoring)) {
             properties.put(annotation.id(), buildAnnotationProperty(annotation, facts, identity,
-                    "ANNOTATION_ATTACHMENT"));
+                    CD_TYPE_ANNOTATION_ATTACHMENT));
         }
         return properties;
     }
@@ -759,7 +772,7 @@ public final class TriggerModelSynthesizer {
                                                     Map<String, TriggerUISchemaModel.Property> initProperties) {
         for (TriggerMetadataModel.Annotation annotation : applicableServiceAnnotations(serviceType, authoring)) {
             initProperties.put(annotation.id(), buildAnnotationProperty(annotation, facts, identity,
-                    "SERVICE_ANNOTATION"));
+                    CD_TYPE_SERVICE_ANNOTATION));
         }
     }
 
@@ -837,14 +850,14 @@ public final class TriggerModelSynthesizer {
         return aliasOf(prefixModule) + ":" + name;
     }
 
-    /** The import alias of a (possibly dotted) module name -- its last {@code .}-separated segment. */
+    /** @see ModuleAliasResolver#selfPrefix(String) */
     private static String aliasOf(String moduleName) {
-        int lastDot = moduleName.lastIndexOf('.');
-        return lastDot < 0 ? moduleName : moduleName.substring(lastDot + 1);
+        return ModuleAliasResolver.selfPrefix(moduleName);
     }
 
-    /** The unqualified suffix of a module-qualified name, e.g. {@code "smb:SmbServiceConfig" -> "SmbServiceConfig"}. */
-    private static String simpleName(String qualified) {
+    /** The unqualified suffix of a module-qualified name, e.g. {@code "smb:SmbServiceConfig" -> "SmbServiceConfig"}.
+     *  Package-visible: shared with {@link SchemaDrivenSourceGenerator}. */
+    static String simpleName(String qualified) {
         int colon = qualified.lastIndexOf(':');
         return colon < 0 ? qualified : qualified.substring(colon + 1);
     }

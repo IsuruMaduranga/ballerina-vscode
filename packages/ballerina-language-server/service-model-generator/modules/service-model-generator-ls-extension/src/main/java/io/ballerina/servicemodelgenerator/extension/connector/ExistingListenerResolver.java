@@ -42,6 +42,7 @@ import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.PropertyType;
 import io.ballerina.servicemodelgenerator.extension.model.Value;
 import io.ballerina.servicemodelgenerator.extension.util.ListenerUtil;
+import io.ballerina.servicemodelgenerator.extension.util.Utils;
 import io.ballerina.tools.diagnostics.Location;
 import io.ballerina.tools.text.TextRange;
 
@@ -63,6 +64,7 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TY
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_LISTENER_PARAM_INCLUDED_FIELD;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_LISTENER_PARAM_REQUIRED;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ENUM_VALUE;
 
 /**
  * Builds the "use existing" listener selector for the schema-driven path, resolving each existing
@@ -74,9 +76,6 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TY
 public final class ExistingListenerResolver {
 
     private static final Logger LOGGER = Logger.getLogger(ExistingListenerResolver.class.getName());
-
-    // A bare enum-literal selector (e.g. ftp's protocol) rather than a record-shaping sub-form.
-    private static final String CD_TYPE_ENUM_VALUE = "ENUM_VALUE";
 
     private ExistingListenerResolver() {
     }
@@ -457,8 +456,11 @@ public final class ExistingListenerResolver {
         return null;
     }
 
+    /** Renders a (possibly nested) record literal from a field-name-to-value tree; a leaf value renders
+     *  via {@code String.valueOf}, so leaves may be pre-rendered strings or any other object. Shared with
+     *  {@link SchemaDrivenSourceGenerator}, which walks the same shape of tree. */
     @SuppressWarnings("unchecked")
-    private static String renderRecordTree(Map<?, ?> record) {
+    static String renderRecordTree(Map<?, ?> record) {
         if (record.isEmpty()) {
             return "{}";
         }
@@ -577,13 +579,14 @@ public final class ExistingListenerResolver {
         return copy;
     }
 
+    /** Renders a flat record; empty/null input yields {@code ""} (no value), not {@code "{}"} (an empty
+     *  record literal) -- callers treat the two differently, so this stays distinct from
+     *  {@link #renderRecordTree}, which it otherwise delegates to. */
     private static String renderRecord(LinkedHashMap<String, String> recordFields) {
         if (recordFields == null || recordFields.isEmpty()) {
             return "";
         }
-        List<String> parts = new ArrayList<>();
-        recordFields.forEach((name, value) -> parts.add(name + ": " + value));
-        return "{" + String.join(", ", parts) + "}";
+        return renderRecordTree(recordFields);
     }
 
     static Optional<ParsedListener> parseListener(String listenerName,
@@ -627,7 +630,7 @@ public final class ExistingListenerResolver {
             LinkedHashMap<String, Object> record = new LinkedHashMap<>();
             for (MappingFieldNode fieldNode : mapping.fields()) {
                 if (fieldNode instanceof SpecificFieldNode specificField) {
-                    String name = unquote(specificField.fieldName().toSourceCode().trim());
+                    String name = Utils.unquote(specificField.fieldName().toSourceCode().trim());
                     Object value = specificField.valueExpr()
                             .map(ExistingListenerResolver::parseExpression)
                             .orElse("");
@@ -644,7 +647,7 @@ public final class ExistingListenerResolver {
             LinkedHashMap<String, String> recordFields = new LinkedHashMap<>();
             for (MappingFieldNode fieldNode : mapping.fields()) {
                 if (fieldNode instanceof SpecificFieldNode specificField) {
-                    String name = unquote(specificField.fieldName().toSourceCode().trim());
+                    String name = Utils.unquote(specificField.fieldName().toSourceCode().trim());
                     String value = specificField.valueExpr()
                             .map(expr -> expr.toSourceCode().trim())
                             .orElse("");
@@ -690,10 +693,4 @@ public final class ExistingListenerResolver {
         return (ListenerDeclarationNode) node;
     }
 
-    private static String unquote(String text) {
-        if (text.length() >= 2 && text.startsWith("\"") && text.endsWith("\"")) {
-            return text.substring(1, text.length() - 1);
-        }
-        return text;
-    }
 }

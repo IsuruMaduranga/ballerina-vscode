@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD;
+
 /**
  * Included-record payload binding for schema-driven trigger handlers (the {@code
  * PAYLOAD_TYPE_INCLUDED_RECORD} marker on a payload parameter's {@code codedata}). Unlike a plain
@@ -53,8 +55,6 @@ import java.util.Set;
  */
 public final class IncludedRecordBinder {
 
-    private static final String CD_PAYLOAD_TYPE_INCLUDED_RECORD = "PAYLOAD_TYPE_INCLUDED_RECORD";
-    private static final String TYPE_PLACEHOLDER = "{{type}}";
     /** Builtin element types a direct (non-wrapper) binding can use — never wrapper type names. */
     private static final Set<String> BUILTIN_TYPES = Set.of(
             "int", "string", "boolean", "float", "decimal", "byte", "json", "xml",
@@ -107,7 +107,7 @@ public final class IncludedRecordBinder {
         }
         String boundType = codedata.getBoundType();
         if (isBlank(boundType)) {
-            String defaultComposed = applyTemplate(codedata.getTemplate(), baseType);
+            String defaultComposed = PayloadComposer.applyTemplate(codedata.getTemplate(), baseType);
             String currentValue = param.getType().getValue();
             if (currentValue != null && !currentValue.trim().equals(defaultComposed)) {
                 // A non-default type in play (e.g. hand-written int[]) is a custom direct binding.
@@ -166,7 +166,7 @@ public final class IncludedRecordBinder {
                 continue;
             }
             codedata.setBoundType(info.typeName());
-            param.getType().setValue(applyTemplate(codedata.getTemplate(), info.typeName()));
+            param.getType().setValue(PayloadComposer.applyTemplate(codedata.getTemplate(), info.typeName()));
         }
     }
 
@@ -191,7 +191,7 @@ public final class IncludedRecordBinder {
         }
         for (Parameter parameter : function.getParameters()) {
             Codedata codedata = parameter.getType() == null ? null : parameter.getType().getCodedata();
-            if (codedata != null && CD_PAYLOAD_TYPE_INCLUDED_RECORD.equals(codedata.getType())) {
+            if (codedata != null && CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD.equals(codedata.getType())) {
                 return parameter;
             }
         }
@@ -209,16 +209,11 @@ public final class IncludedRecordBinder {
         return localName.isBlank() ? "PayloadRecord" : localName;
     }
 
+    /** Wrapper-type templates are always normalized to {@code {{type}}} form by the time they reach
+     *  here (see {@code TriggerFunctionAdapter#normalizeTemplate}), so {@link PayloadComposer}'s
+     *  general-purpose template substitution applies unchanged. */
     private static void applyWrappedType(Parameter param, Codedata codedata, String typeName) {
-        param.getType().setValue(applyTemplate(codedata.getTemplate(), typeName));
-    }
-
-    static String applyTemplate(String template, String element) {
-        String safe = element == null ? "" : element;
-        if (template == null || template.isBlank() || !template.contains(TYPE_PLACEHOLDER)) {
-            return safe;
-        }
-        return template.replace(TYPE_PLACEHOLDER, safe);
+        param.getType().setValue(PayloadComposer.applyTemplate(codedata.getTemplate(), typeName));
     }
 
     private static boolean isBlank(String value) {

@@ -131,6 +131,23 @@ public class Constants {
     public static final String ARG_TYPE_SERVICE_TYPE_DESCRIPTOR = "SERVICE_TYPE_DESCRIPTOR";
     public static final String ARG_TYPE_CDC_OPERATION_ENABLE = "CDC_OPERATION_ENABLE";
 
+    public static final String CD_TYPE_PAYLOAD_TYPE = "PAYLOAD_TYPE";
+    public static final String CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD = "PAYLOAD_TYPE_INCLUDED_RECORD";
+    public static final String CD_TYPE_PAYLOAD_MODIFIER = "PAYLOAD_MODIFIER";
+    public static final String CD_TYPE_ENUM_VALUE = "ENUM_VALUE";
+    public static final String CD_TYPE_LISTENER_VAR_NAME = "LISTENER_VAR_NAME";
+    public static final String CD_TYPE_EXISTING_LISTENER = "KEY_EXISTING_LISTENER";
+    public static final String CD_TYPE_COMPLEX_FUNCTION_ANNOTATION = "COMPLEX_FUNCTION_ANNOTATION";
+    public static final String CD_TYPE_MAPPING_CONSTRUCTOR = "MAPPING_CONSTRUCTOR";
+    public static final String CD_TYPE_ENUM_LITERAL = "ENUM_LITERAL";
+    public static final String CD_TYPE_FIELD_VALUE_CHOICE = "FIELD_VALUE_CHOICE";
+    public static final String CD_TYPE_STRING_LITERAL = "STRING_LITERAL";
+    public static final String FIELD_TYPE_VARIATION_SELECTOR = "VARIATION_SELECTOR";
+    public static final String FIELD_TYPE_FLAG = "FLAG";
+    public static final String KIND_VARIANT = "VARIANT";
+    public static final String KIND_COMPLEX_REMOTE_FUNCTION = "COMPLEX_REMOTE_FUNCTION";
+    public static final String KIND_COMPLEX_RESOURCE_FUNCTION = "COMPLEX_RESOURCE_FUNCTION";
+
     public static final String TYPE_SERVICE = "Service";
 
     public static final String CLASS_TYPE_SERVICE = "service";
