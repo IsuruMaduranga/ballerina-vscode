@@ -309,7 +309,10 @@ function projectMcpRelativePatterns(): string[] {
 }
 
 /**
- * Subscribes to config file changes. Returns a single disposer.
+ * Subscribes to every config file's change/create/delete events. Returns a single disposer.
+ * This is the one watcher over MCP config — callers use the same `onChange` for both
+ * "does MCP need to be enabled/disabled" and "refresh an already-running manager", since
+ * a single file event can mean either depending on current state.
  *
  * - **User-global file** (`~/.ballerina/copilot/mcp.json`) lives outside any
  *   workspace, so the editor's `createFileSystemWatcher` can't see it. We use
@@ -352,21 +355,4 @@ export function watchMcpConfig(workspacePath: string | undefined, onChange: () =
     return () => {
         for (const d of disposers) { d(); }
     };
-}
-
-/**
- * Watches only for a project-scope file appearing or disappearing (edits are
- * ignored), across the primary path and every additional one. Kept separate from
- * `watchMcpConfig` because this one has to run even while MCP is off — a file's
- * presence is what flips the implicit opt-in.
- */
-export function watchProjectMcpConfigPresence(workspacePath: string, onChange: () => void): vscode.Disposable {
-    const watchers = projectMcpRelativePatterns().map(relative => {
-        const pattern = new vscode.RelativePattern(vscode.Uri.file(workspacePath), relative);
-        const watcher = vscode.workspace.createFileSystemWatcher(pattern, false, true, false);
-        watcher.onDidCreate(() => onChange());
-        watcher.onDidDelete(() => onChange());
-        return watcher;
-    });
-    return { dispose: () => watchers.forEach(w => w.dispose()) };
 }

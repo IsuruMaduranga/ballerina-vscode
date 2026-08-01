@@ -28,7 +28,6 @@ export {
     hasProjectMcpConfig,
     configFilePath,
     watchMcpConfig,
-    watchProjectMcpConfigPresence,
     writeMcpServer,
     updateMcpServer,
     deleteMcpServer,
