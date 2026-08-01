@@ -35,6 +35,7 @@ import io.ballerina.compiler.syntax.tree.NonTerminalNode;
 import io.ballerina.compiler.syntax.tree.PositionalArgumentNode;
 import io.ballerina.compiler.syntax.tree.SeparatedNodeList;
 import io.ballerina.compiler.syntax.tree.SpecificFieldNode;
+import io.ballerina.compiler.syntax.tree.TypeCastExpressionNode;
 import io.ballerina.projects.Document;
 import io.ballerina.projects.DocumentId;
 import io.ballerina.projects.Project;
@@ -96,7 +97,9 @@ public final class ExistingListenerResolver {
             Map<String, Value> fields = new LinkedHashMap<>();
             parseListener(name, listenerSymbolsByName, project).ifPresent(parsed -> {
                 fields.putAll(buildFieldsFromParsed(parsed, template));
-                fields.putAll(resolveIncludedFields(createNewProps, parsed.named()));
+                // putIfAbsent: resolveIncludedFields walks the whole tree unconditionally and would
+                // otherwise re-resolve (and clobber) a key already handled positionally above.
+                resolveIncludedFields(createNewProps, parsed.named()).forEach(fields::putIfAbsent);
             });
             Value configGroup = new Value.ValueBuilder()
                     .metadata(name, protocol + " listener: " + name)
@@ -159,6 +162,10 @@ public final class ExistingListenerResolver {
     static final class ListenerTemplate {
         final Map<Integer, Field> positionalScalars = new LinkedHashMap<>();
         final Map<Integer, LinkedHashMap<String, Value>> recordGroups = new LinkedHashMap<>();
+        // position -> a record-shaping CHOICE (key + template value), e.g. sap.jco's
+        // ServerConfig|AdvancedConfig union: which branch applies is only known once matched against source.
+        final Map<Integer, Field> positionalChoices = new LinkedHashMap<>();
+        // named (included/config) params: name -> template value
         final LinkedHashMap<String, Value> named = new LinkedHashMap<>();
     }
 
@@ -177,6 +184,16 @@ public final class ExistingListenerResolver {
         }
         for (Map.Entry<String, Value> entry : properties.entrySet()) {
             Value field = entry.getValue();
+            if (isChoice(field)) {
+                // Only a CHOICE whose branches carry their own position (e.g. sap.jco's ServerConfig/
+                // AdvancedConfig) occupies a positional slot; a nested, slot-less CHOICE (repositoryDestination)
+                // is resolved later, from within the matched branch.
+                Integer choicePosition = choicePositionalSlot(field);
+                if (choicePosition != null) {
+                    template.positionalChoices.put(choicePosition, new Field(entry.getKey(), field));
+                }
+                continue;
+            }
             if (isGroup(field)) {
                 Codedata groupCodedata = field.getCodedata();
                 boolean groupHasSlot = groupCodedata != null
@@ -227,6 +244,25 @@ public final class ExistingListenerResolver {
         }
     }
 
+    /** The position a record-shaping CHOICE occupies, taken from its branches; {@code null} if none carry one. */
+    private static Integer choicePositionalSlot(Value field) {
+        List<Value> branches = field.getChoices();
+        if (branches == null) {
+            return null;
+        }
+        for (Value branch : branches) {
+            Codedata branchCodedata = branch.getCodedata();
+            if (branchCodedata != null && branchCodedata.getPosition() != null) {
+                return branchCodedata.getPosition();
+            }
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------------
+    // Mapping — parsed source args onto the template as read-only fields
+    // ------------------------------------------------------------------
+
     /**
      * A parsed {@code new(...)}: positional args (scalar or record) and named args (as a nested-record tree).
      *
@@ -239,15 +275,16 @@ public final class ExistingListenerResolver {
     /**
      * One argument: exactly one of {@code scalar} / {@code recordFields} is set.
      *
-     * @param scalar       the argument's value, when it is a simple scalar
-     * @param recordFields the argument's fields, when it is a record
+     * @param scalar       the argument's rendered source text, when it is a scalar/expression
+     * @param recordFields the argument's field name -> value tree map, when it is a record literal
+     *                     (values are recursively {@code String} or nested {@code Map<String, Object>})
      */
-    record ParsedArg(String scalar, LinkedHashMap<String, String> recordFields) {
+    record ParsedArg(String scalar, LinkedHashMap<String, Object> recordFields) {
         static ParsedArg scalar(String value) {
             return new ParsedArg(value, null);
         }
 
-        static ParsedArg record(LinkedHashMap<String, String> fields) {
+        static ParsedArg record(LinkedHashMap<String, Object> fields) {
             return new ParsedArg(null, fields);
         }
     }
@@ -261,15 +298,31 @@ public final class ExistingListenerResolver {
             if (arg.recordFields() != null && template.recordGroups.containsKey(position)) {
                 LinkedHashMap<String, Value> configTemplates = template.recordGroups.get(position);
                 arg.recordFields().forEach((name, value) ->
-                        fields.put(name, readOnly(configTemplates.get(name), name, value)));
+                        fields.put(name, readOnly(configTemplates.get(name), name, renderValue(value))));
+            } else if (arg.recordFields() != null && template.positionalChoices.containsKey(position)) {
+                Field choiceField = template.positionalChoices.get(position);
+                Value resolved = resolvePositionalChoice(choiceField.template(), arg.recordFields());
+                if (resolved != null) {
+                    fields.put(choiceField.key(), resolved);
+                }
             } else if (template.positionalScalars.containsKey(position)) {
                 Field field = template.positionalScalars.get(position);
-                String value = arg.scalar() != null ? arg.scalar() : renderRecord(arg.recordFields());
+                String value = arg.scalar() != null ? arg.scalar() : renderRecordTree(arg.recordFields());
                 fields.put(field.key(), readOnly(field.template(), field.key(), value));
             }
         }
         return fields;
     }
+
+    private static String renderValue(Object value) {
+        return value instanceof String scalar ? scalar : renderRecordTree((Map<?, ?>) value);
+    }
+
+    // ------------------------------------------------------------------
+    // Included (named) args — resolved against the create-new field tree so a record-typed
+    // included param modeled as a nested CHOICE/GROUP (auth) or dotted paths (database.*) is
+    // rebuilt as structured, read-only fields instead of a raw record blob.
+    // ------------------------------------------------------------------
 
     /**
      * Walks the create-new field tree and, for every included-field leaf / CHOICE, resolves its value
@@ -541,6 +594,128 @@ public final class ExistingListenerResolver {
                         && CD_TYPE_ENUM_VALUE.equals(branch.getCodedata().getType()));
     }
 
+    // ------------------------------------------------------------------
+    // Positional record-shaping CHOICE (e.g. sap.jco's ServerConfig|AdvancedConfig) — the positional-arg
+    // counterpart of resolveIncludedFields / resolveRecordChoice below, against a positional record tree.
+    // ------------------------------------------------------------------
+
+    /** Picks the branch of a record-shaping CHOICE that best matches the parsed positional record, per
+     *  the same heuristic as {@link #resolveRecordChoice}. */
+    private static Value resolvePositionalChoice(Value field, Map<String, Object> recordTree) {
+        List<Value> branches = field.getChoices();
+        if (branches == null || branches.isEmpty() || recordTree == null) {
+            return null;
+        }
+        int bestIndex = -1;
+        int bestScore = -1;
+        int bestLeaves = Integer.MAX_VALUE;
+        List<Map<String, Value>> resolvedBranches = new ArrayList<>();
+        for (int i = 0; i < branches.size(); i++) {
+            Map<String, Value> branchFields = resolveConfigFields(branches.get(i).getProperties(), recordTree);
+            resolvedBranches.add(branchFields);
+            int leaves = countConfigLeaves(branches.get(i).getProperties());
+            int score = branchFields.size();
+            if (score > bestScore || (score == bestScore && leaves < bestLeaves)) {
+                bestScore = score;
+                bestLeaves = leaves;
+                bestIndex = i;
+            }
+        }
+        if (bestIndex < 0) {
+            return null;
+        }
+        List<Value> readOnlyBranches = new ArrayList<>();
+        for (int i = 0; i < branches.size(); i++) {
+            Value branch = new Value(branches.get(i));
+            branch.setEditable(false);
+            if (i == bestIndex) {
+                branch.setEnabled(true);
+                branch.setProperties(resolvedBranches.get(i));
+            } else {
+                branch.setEnabled(false);
+                branch.setProperties(new LinkedHashMap<>());
+            }
+            readOnlyBranches.add(branch);
+        }
+        Value choice = new Value(field);
+        choice.setChoices(readOnlyBranches);
+        choice.setProperties(null);
+        choice.setValue("");
+        choice.setEnabled(true);
+        choice.setEditable(false);
+        choice.setOptional(false);
+        choice.setAdvanced(false);
+        choice.setValidations(null);
+        return choice;
+    }
+
+    /** Resolves each {@code LISTENER_PARAM_CONFIG_FIELD} leaf's value from the parsed record tree by its
+     *  dotted {@code path}; a {@code LISTENER_PARAM_REQUIRED} leaf renders the whole record instead. */
+    private static Map<String, Value> resolveConfigFields(Map<String, Value> templateProps,
+                                                          Map<String, Object> recordTree) {
+        Map<String, Value> resolved = new LinkedHashMap<>();
+        if (templateProps == null) {
+            return resolved;
+        }
+        for (Map.Entry<String, Value> entry : templateProps.entrySet()) {
+            Value field = entry.getValue();
+            if (isChoice(field)) {
+                Value choice = resolvePositionalChoice(field, recordTree);
+                if (choice != null) {
+                    resolved.put(entry.getKey(), choice);
+                }
+                continue;
+            }
+            if (isGroup(field)) {
+                resolved.putAll(resolveConfigFields(field.getProperties(), recordTree));
+                continue;
+            }
+            Codedata codedata = field.getCodedata();
+            if (codedata == null) {
+                continue;
+            }
+            if (ARG_TYPE_LISTENER_PARAM_REQUIRED.equals(codedata.getArgType())) {
+                String whole = renderRecordTree(recordTree);
+                if (!"{}".equals(whole)) {
+                    resolved.put(entry.getKey(), readOnlyClone(field, whole));
+                }
+                continue;
+            }
+            if (!ARG_TYPE_LISTENER_PARAM_CONFIG_FIELD.equals(codedata.getArgType())) {
+                continue;
+            }
+            String value = resolveByPath(recordTree, lookupSegments(codedata, entry.getKey()));
+            if (value != null && !value.isBlank()) {
+                resolved.put(entry.getKey(), readOnlyClone(field, value));
+            }
+        }
+        return resolved;
+    }
+
+    private static int countConfigLeaves(Map<String, Value> properties) {
+        if (properties == null) {
+            return 0;
+        }
+        int count = 0;
+        for (Value field : properties.values()) {
+            if (isChoice(field)) {
+                for (Value branch : field.getChoices() == null ? List.<Value>of() : field.getChoices()) {
+                    count += countConfigLeaves(branch.getProperties());
+                }
+            } else if (isGroup(field)) {
+                count += countConfigLeaves(field.getProperties());
+            } else {
+                Codedata codedata = field.getCodedata();
+                if (codedata != null
+                        && (ARG_TYPE_LISTENER_PARAM_CONFIG_FIELD.equals(codedata.getArgType())
+                                || ARG_TYPE_LISTENER_PARAM_REQUIRED.equals(codedata.getArgType()))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
     private static String stripModulePrefix(String value) {
         if (value == null) {
             return "";
@@ -579,15 +754,9 @@ public final class ExistingListenerResolver {
         return copy;
     }
 
-    /** Renders a flat record; empty/null input yields {@code ""} (no value), not {@code "{}"} (an empty
-     *  record literal) -- callers treat the two differently, so this stays distinct from
-     *  {@link #renderRecordTree}, which it otherwise delegates to. */
-    private static String renderRecord(LinkedHashMap<String, String> recordFields) {
-        if (recordFields == null || recordFields.isEmpty()) {
-            return "";
-        }
-        return renderRecordTree(recordFields);
-    }
+    // ------------------------------------------------------------------
+    // Source side — parse a listener declaration's new(...) arguments
+    // ------------------------------------------------------------------
 
     static Optional<ParsedListener> parseListener(String listenerName,
                                                   Map<String, VariableSymbol> listenerSymbolsByName, Project project) {
@@ -624,8 +793,18 @@ public final class ExistingListenerResolver {
         }
     }
 
-    /** A named-arg expression as a nested-record tree: a record literal becomes a {@code Map}, else trimmed source. */
+    /**
+     * A named-arg expression as a nested-record tree: a record literal becomes a
+     * {@code Map<String, Object>} (recursively), anything else its trimmed source. Lets a leaf's dotted
+     * {@code path} be navigated back to the exact scalar (or whole sub-record) it was emitted from.
+     *
+     * <p>A type-cast (e.g. sap.jco's {@code <jco:ServerConfig>{...}}) is unwrapped first — it carries no
+     * field data itself.
+     */
     private static Object parseExpression(Node expression) {
+        if (expression instanceof TypeCastExpressionNode typeCast) {
+            return parseExpression(typeCast.expression());
+        }
         if (expression instanceof MappingConstructorExpressionNode mapping) {
             LinkedHashMap<String, Object> record = new LinkedHashMap<>();
             for (MappingFieldNode fieldNode : mapping.fields()) {
@@ -642,21 +821,15 @@ public final class ExistingListenerResolver {
         return expression.toSourceCode().trim();
     }
 
+    /** Parses a positional arg via {@link #parseExpression}, so a nested record literal is captured as a
+     *  navigable tree rather than flattened to raw source text. */
+    @SuppressWarnings("unchecked")
     private static ParsedArg toParsedArg(Node expression) {
-        if (expression instanceof MappingConstructorExpressionNode mapping) {
-            LinkedHashMap<String, String> recordFields = new LinkedHashMap<>();
-            for (MappingFieldNode fieldNode : mapping.fields()) {
-                if (fieldNode instanceof SpecificFieldNode specificField) {
-                    String name = Utils.unquote(specificField.fieldName().toSourceCode().trim());
-                    String value = specificField.valueExpr()
-                            .map(expr -> expr.toSourceCode().trim())
-                            .orElse("");
-                    recordFields.put(name, value);
-                }
-            }
-            return ParsedArg.record(recordFields);
+        Object parsed = parseExpression(expression);
+        if (parsed instanceof LinkedHashMap<?, ?> record) {
+            return ParsedArg.record((LinkedHashMap<String, Object>) record);
         }
-        return ParsedArg.scalar(expression.toSourceCode().trim());
+        return ParsedArg.scalar((String) parsed);
     }
 
     private static NewExpressionNode asNewExpression(Node initializer) {

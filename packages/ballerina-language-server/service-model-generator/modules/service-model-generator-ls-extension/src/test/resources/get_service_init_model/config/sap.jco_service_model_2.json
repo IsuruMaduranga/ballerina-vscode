@@ -732,6 +732,96 @@
                                   },
                                   "value": "true",
                                   "properties": {
+                                    "gwhost": {
+                                      "metadata": {
+                                        "label": "Gateway Host",
+                                        "description": "SAP gateway host to register the server with."
+                                      },
+                                      "codedata": {
+                                        "argType": "LISTENER_PARAM_CONFIG_FIELD",
+                                        "originalName": "gwhost",
+                                        "position": 1,
+                                        "path": "gwhost"
+                                      },
+                                      "placeholder": "sap-gw.example.com",
+                                      "value": "\"sap-gw.example.com\"",
+                                      "types": [
+                                        {
+                                          "fieldType": "TEXT",
+                                          "ballerinaType": "string",
+                                          "selected": true
+                                        },
+                                        {
+                                          "fieldType": "EXPRESSION",
+                                          "ballerinaType": "string",
+                                          "selected": false
+                                        }
+                                      ],
+                                      "enabled": true,
+                                      "editable": false,
+                                      "optional": false,
+                                      "advanced": false
+                                    },
+                                    "gwserv": {
+                                      "metadata": {
+                                        "label": "Gateway Service",
+                                        "description": "SAP gateway service name or port number."
+                                      },
+                                      "codedata": {
+                                        "argType": "LISTENER_PARAM_CONFIG_FIELD",
+                                        "originalName": "gwserv",
+                                        "position": 1,
+                                        "path": "gwserv"
+                                      },
+                                      "placeholder": "3300",
+                                      "value": "\"3300\"",
+                                      "types": [
+                                        {
+                                          "fieldType": "TEXT",
+                                          "ballerinaType": "string",
+                                          "selected": true
+                                        },
+                                        {
+                                          "fieldType": "EXPRESSION",
+                                          "ballerinaType": "string",
+                                          "selected": false
+                                        }
+                                      ],
+                                      "enabled": true,
+                                      "editable": false,
+                                      "optional": false,
+                                      "advanced": false
+                                    },
+                                    "progid": {
+                                      "metadata": {
+                                        "label": "Program ID",
+                                        "description": "Program ID registered in the SAP system via transaction SM59."
+                                      },
+                                      "codedata": {
+                                        "argType": "LISTENER_PARAM_CONFIG_FIELD",
+                                        "originalName": "progid",
+                                        "position": 1,
+                                        "path": "progid"
+                                      },
+                                      "placeholder": "JCO_LISTENER",
+                                      "value": "\"JCO_LISTENER\"",
+                                      "types": [
+                                        {
+                                          "fieldType": "TEXT",
+                                          "ballerinaType": "string",
+                                          "selected": true
+                                        },
+                                        {
+                                          "fieldType": "EXPRESSION",
+                                          "ballerinaType": "string",
+                                          "selected": false
+                                        }
+                                      ],
+                                      "enabled": true,
+                                      "editable": false,
+                                      "optional": false,
+                                      "advanced": false
+                                    },
                                     "repositoryDestination": {
                                       "metadata": {
                                         "label": "Repository Destination",
@@ -752,7 +842,7 @@
                                               "selected": true
                                             }
                                           ],
-                                          "enabled": true,
+                                          "enabled": false,
                                           "editable": false,
                                           "optional": false,
                                           "advanced": false
@@ -763,14 +853,45 @@
                                             "description": "The destination ID of an already-initialised JCo client."
                                           },
                                           "value": "true",
-                                          "properties": {},
+                                          "properties": {
+                                            "destinationId": {
+                                              "metadata": {
+                                                "label": "Destination ID",
+                                                "description": "The destination ID of an already-initialised JCo client."
+                                              },
+                                              "codedata": {
+                                                "argType": "LISTENER_PARAM_CONFIG_FIELD",
+                                                "originalName": "repositoryDestination",
+                                                "position": 1,
+                                                "path": "repositoryDestination"
+                                              },
+                                              "placeholder": "MY_SAP_DEST",
+                                              "value": "\"MY_SAP_DEST\"",
+                                              "types": [
+                                                {
+                                                  "fieldType": "TEXT",
+                                                  "ballerinaType": "string",
+                                                  "selected": true
+                                                },
+                                                {
+                                                  "fieldType": "EXPRESSION",
+                                                  "ballerinaType": "string",
+                                                  "selected": false
+                                                }
+                                              ],
+                                              "enabled": true,
+                                              "editable": false,
+                                              "optional": false,
+                                              "advanced": false
+                                            }
+                                          },
                                           "types": [
                                             {
                                               "fieldType": "FORM",
                                               "selected": true
                                             }
                                           ],
-                                          "enabled": false,
+                                          "enabled": true,
                                           "editable": false,
                                           "optional": false,
                                           "advanced": false
