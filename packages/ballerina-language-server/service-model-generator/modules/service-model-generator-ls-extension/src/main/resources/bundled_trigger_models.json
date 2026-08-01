@@ -18,5 +18,7 @@
     { "minVersion": "1.2.0", "resource": "trigger-models/mcp.json" },
     { "resource": "trigger-models/mcp_1.0.3.json" }
   ],
+  "solace": "trigger-models/solace.json",
+  "solace.jms": "trigger-models/solace.jms.json",
   "sap.jco": "trigger-models/sap.jco.json"
 }

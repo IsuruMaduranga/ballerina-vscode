@@ -154,9 +154,27 @@
       "messaging",
       "event"
     ],
-    "triggerName": "Solace"
+    "triggerName": "Solace",
+    "version": "0.4.0",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_solace_0.4.0.png",
+    "kind": "event"
   },
   "13": {
+    "name": "solace.jms",
+    "orgName": "ballerinax",
+    "packageName": "solace.jms",
+    "keywords": [
+      "solace",
+      "jms",
+      "messaging",
+      "event"
+    ],
+    "triggerName": "Solace (JMS)",
+    "version": "0.1.0",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_solace.jms_0.1.0.png",
+    "kind": "event"
+  },
+  "14": {
     "name": "trigger.shopify",
     "orgName": "ballerinax",
     "packageName": "trigger.shopify",
@@ -168,7 +186,7 @@
     "version": "1.6.0",
     "kind": "event"
   },
-  "14": {
+  "15": {
     "name": "mssql",
     "orgName": "ballerinax",
     "packageName": "mssql",
@@ -181,7 +199,7 @@
     "version": "1.18.1",
     "kind": "event"
   },
-  "15": {
+  "16": {
     "name": "postgresql",
     "orgName": "ballerinax",
     "packageName": "postgresql",
@@ -195,7 +213,7 @@
     "version": "1.18.0",
     "kind": "event"
   },
-  "16": {
+  "17": {
     "name": "mysql",
     "orgName": "ballerinax",
     "packageName": "mysql",
@@ -208,7 +226,7 @@
     "version": "1.18.0",
     "kind": "event"
   },
-  "17": {
+  "18": {
     "name": "trigger.hubspot",
     "orgName": "ballerinax",
     "packageName": "trigger.hubspot",
@@ -220,7 +238,7 @@
     "version": "0.12.0",
     "kind": "event"
   },
-  "18": {
+  "19": {
     "name": "sap.jco",
     "orgName": "ballerinax",
     "packageName": "sap.jco",
