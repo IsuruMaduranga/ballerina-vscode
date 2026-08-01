@@ -81,6 +81,7 @@ import {
     ThreadSummary,
     SwitchThreadRequest,
     DeleteThreadRequest,
+    RenameThreadRequest,
     // TODO(auto-memory): temporarily disabled for this release.
     // ClearMemoryRequest,
     // OpenMemoryRequest,
@@ -163,6 +164,7 @@ export interface AIPanelAPI {
     listThreads: () => Promise<ThreadSummary[]>;
     switchThread: (params: SwitchThreadRequest) => Promise<void>;
     deleteThread: (params: DeleteThreadRequest) => Promise<void>;
+    renameThread: (params: RenameThreadRequest) => Promise<void>;
     // TODO(auto-memory): memory management temporarily disabled for this release.
     // clearMemory: (params: ClearMemoryRequest) => Promise<void>;
     // openMemoryFiles: (params: OpenMemoryRequest) => void;

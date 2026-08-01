@@ -83,6 +83,7 @@ import {
     ThreadSummary,
     SwitchThreadRequest,
     DeleteThreadRequest,
+    RenameThreadRequest,
     HasPendingReviewRequest,
     CreateManagedConnectionRequest,
     CreateManagedConnectionResponse,
@@ -197,6 +198,19 @@ const CONNECTION_FAILURE_MESSAGE: Record<ConnectionSettleReason, string> = {
     cancelled: "Connection cancelled.",
     superseded: "Connection cancelled — a newer connection attempt was started.",
 };
+
+/**
+ * A run owns the active thread until it ends, so reparenting it mid-turn would strand the
+ * run's writes. The panel already disables these actions; this backstops a webview reload
+ * or a click that races the turn starting.
+ */
+function refuseWhileRunning(projectRootPath: string, action: string): boolean {
+    if (!runEventStore.hasActiveRun(projectRootPath)) {
+        return false;
+    }
+    console.warn(`[RPC] Refused ${action} — a response is still running for: ${projectRootPath}`);
+    return true;
+}
 
 export class AiPanelRpcManager implements AIPanelAPI {
 
@@ -813,6 +827,7 @@ User reverted the last made changes. The files have been restored to the state b
 
     async clearChat(): Promise<void> {
         const projectRootPath = resolveProjectRootPath();
+        if (refuseWhileRunning(projectRootPath, 'clearChat')) { return; }
         // Create a new thread — preserves all existing history
         const newThreadId = chatStateStorage.createNewThread(projectRootPath);
         clearCompactionDisabledWarning(projectRootPath, newThreadId);
@@ -826,12 +841,18 @@ User reverted the last made changes. The files have been restored to the state b
 
     async switchThread(params: SwitchThreadRequest): Promise<void> {
         const projectRootPath = resolveProjectRootPath();
+        if (refuseWhileRunning(projectRootPath, 'switchThread')) { return; }
         chatStateStorage.switchToThread(projectRootPath, params.threadId);
     }
 
     async deleteThread(params: DeleteThreadRequest): Promise<void> {
         const projectRootPath = resolveProjectRootPath();
+        if (refuseWhileRunning(projectRootPath, 'deleteThread')) { return; }
         await chatStateStorage.deleteThread(projectRootPath, params.threadId);
+    }
+
+    async renameThread(params: RenameThreadRequest): Promise<void> {
+        chatStateStorage.renameThread(resolveProjectRootPath(), params.threadId, params.name);
     }
 
     // TODO(auto-memory): memory management temporarily disabled for this release — restore once the memory feature is refined.
