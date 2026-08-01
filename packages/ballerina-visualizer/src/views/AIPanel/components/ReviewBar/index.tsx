@@ -330,7 +330,6 @@ interface ReviewBarProps {
     isDiscarded?: boolean;
     rpcClient?: any;
     isActive?: boolean;
-    onDiscarded?: () => void;
     generationId: string;
 }
 
@@ -702,7 +701,6 @@ export const ReviewBar: React.FC<ReviewBarProps> = ({
     isDiscarded = false,
     rpcClient,
     isActive = false,
-    onDiscarded,
     generationId,
 }) => {
     const status = isDiscarded ? "discarded" : isActive ? "pending" : "accepted";
@@ -762,7 +760,6 @@ export const ReviewBar: React.FC<ReviewBarProps> = ({
             setIsProcessing(true);
             await rpcClient.getAiPanelRpcClient().revertGeneration();
             rpcClient.getVisualizerRpcClient().goBack();
-            onDiscarded?.();
         } catch (error) {
             console.error("[ReviewBar] Error discarding changes:", error);
             rpcClient.getVisualizerRpcClient().goBack();
