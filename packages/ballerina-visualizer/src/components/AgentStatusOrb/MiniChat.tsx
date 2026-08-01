@@ -32,6 +32,7 @@ import {
     upsertComponent,
     upsertRequestCard,
     upsertThinking,
+    describeThinkingDuration,
     buildRequestCardData,
     buildPlanItem,
     applyPlanApprovalResolution,
@@ -303,9 +304,9 @@ function applyContentEvent(prevContent: string, evt: FoldableNotify): string {
         return serializeStream(upsertRequestCard(entries, "skill_enable", buildRequestCardData("skill_enable", evt)), prevContent);
     }
     if (evt.type === "thinking_start" || evt.type === "thinking_delta" || evt.type === "thinking_end") {
-        // The mini renders nothing for thinking items (record-but-don't-render, like
-        // cards) but must fold them, or a mini-witnessed turn persists a transcript
-        // with the panel's thinking segments missing. start/end use the event's
+        // The mini renders thinking as a label-only row (never the summary text) but
+        // must fold the full item regardless, or a mini-witnessed turn persists a
+        // transcript with the panel's thinking segments missing. start/end use the
         // extension-stamped timestamp so this fold stays byte-identical to the panel's.
         const delta = evt.type === "thinking_delta" ? evt.content : "";
         const timestamp = evt.type === "thinking_delta" ? Date.now() : evt.timestamp;
@@ -649,8 +650,30 @@ function toolRowNode(key: string, label: string, state: "running" | "pending" | 
 }
 
 /**
+ * Compact thinking indicator: spinner + "Thinking…" while the block streams,
+ * sparkle + duration once done. The summarized reasoning text itself is
+ * panel-only — the mini shows just the label.
+ */
+function thinkingRowNode(key: string, item: Extract<StreamItem, { kind: "thinking" }>, streaming: boolean): React.ReactNode {
+    const loading = !item.done && streaming;
+    return (
+        <ToolRow key={key}>
+            {loading ? (
+                <SpinIcon>
+                    <Codicon name="loading" />
+                </SpinIcon>
+            ) : (
+                <Codicon name="sparkle" />
+            )}
+            {loading ? "Thinking…" : describeThinkingDuration(item)}
+        </ToolRow>
+    );
+}
+
+/**
  * Render the persisted transcript: user bubbles, and assistant turns unpacked
- * from their `<agentstream>` timeline into markdown text + tool rows. Content
+ * from their `<agentstream>` timeline into markdown text, thinking rows
+ * (label-only), and tool rows. Content
  * with no `<agentstream>` blob (plain text) renders as a single markdown block.
  * Non-happy-path items (plan/config/…) are skipped — they escalate to the panel.
  */
@@ -688,6 +711,8 @@ function renderTranscript(msgs: MiniMsg[], streaming: boolean): React.ReactNode[
                     nodes.push(toolRowNode(key, describeTool(item.toolName ?? "", item.toolInput), streaming ? "running" : "pending"));
                 } else if (item.kind === "tool_result") {
                     nodes.push(toolRowNode(key, describeTool(item.toolName ?? "", undefined), item.failed ? "failed" : "done"));
+                } else if (item.kind === "thinking") {
+                    nodes.push(thinkingRowNode(key, item, streaming));
                 }
             });
         });

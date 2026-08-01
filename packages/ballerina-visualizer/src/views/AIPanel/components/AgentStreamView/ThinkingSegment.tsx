@@ -19,6 +19,7 @@
 import React, { useEffect, useState } from "react";
 import styled from "@emotion/styled";
 import MarkdownRenderer from "../MarkdownRenderer";
+import { describeThinkingDuration } from "../AIChat/utils/streamSerialization";
 import { ExpandIcon, ItemLabel, ItemRow, ItemsArea, ItemsInner, ToolIcon, breathe } from "./styles";
 import { StreamItem } from "./types";
 
@@ -50,14 +51,6 @@ const ThinkingBody = styled.div`
     p:last-child { margin-bottom: 0; }
 `;
 
-function describeDuration(item: ThinkingItem): string {
-    if (item.startedAt !== undefined && item.endedAt !== undefined && item.endedAt >= item.startedAt) {
-        const seconds = Math.max(1, Math.round((item.endedAt - item.startedAt) / 1000));
-        return `Thought for ${seconds}s`;
-    }
-    return "Thought";
-}
-
 const ThinkingSegment: React.FC<ThinkingSegmentProps> = ({ item, streamActive }) => {
     const loading = !item.done && streamActive;
     // Open while the block is live so the user sees reasoning stream in; collapse
@@ -84,7 +77,7 @@ const ThinkingSegment: React.FC<ThinkingSegmentProps> = ({ item, streamActive })
 
     const label = loading
         ? `Thinking${elapsedSeconds > 0 ? ` (${elapsedSeconds}s)` : ""}…`
-        : describeDuration(item);
+        : describeThinkingDuration(item);
     // Trim once — this component re-renders on every thinking_delta while streaming.
     const trimmedText = item.text.trim();
     const hasBody = trimmedText.length > 0;

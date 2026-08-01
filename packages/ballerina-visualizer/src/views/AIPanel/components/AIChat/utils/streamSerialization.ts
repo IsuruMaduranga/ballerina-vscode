@@ -157,6 +157,19 @@ export function upsertThinking(
 }
 
 /**
+ * Label for a completed thinking block, shared by both chat surfaces.
+ * Falls back to "Thought" when a block never closed (e.g. host restart
+ * mid-reasoning) or carries inconsistent timestamps.
+ */
+export function describeThinkingDuration(item: { startedAt?: number; endedAt?: number }): string {
+    if (item.startedAt !== undefined && item.endedAt !== undefined && item.endedAt >= item.startedAt) {
+        const seconds = Math.max(1, Math.round((item.endedAt - item.startedAt) / 1000));
+        return `Thought for ${seconds}s`;
+    }
+    return "Thought";
+}
+
+/**
  * Card items that a backend request drives through stages, keyed by `data.requestId`.
  *
  * Derived from `StreamItem` so adding a data-carrying item kind can't silently desync

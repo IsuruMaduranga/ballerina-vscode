@@ -48,6 +48,7 @@ import {
     upsertComponent,
     upsertRequestCard,
     upsertThinking,
+    describeThinkingDuration,
     buildRequestCardData,
     buildPlanItem,
     applyPlanApprovalResolution,
@@ -418,5 +419,19 @@ describe("upsertThinking", () => {
         let entries: StreamEntry[] = [];
         entries = upsertThinking(entries, "r1", "thought", true, 1000);
         expect(parseStream(serializeStream(entries, ""))).toEqual(entries);
+    });
+});
+
+describe("describeThinkingDuration", () => {
+    it("reports whole seconds, rounding and flooring at 1s", () => {
+        expect(describeThinkingDuration({ startedAt: 1000, endedAt: 4000 })).toBe("Thought for 3s");
+        expect(describeThinkingDuration({ startedAt: 1000, endedAt: 1200 })).toBe("Thought for 1s");
+        expect(describeThinkingDuration({ startedAt: 1000, endedAt: 1000 })).toBe("Thought for 1s");
+    });
+
+    it("falls back to a bare label when a block never closed or timestamps are inconsistent", () => {
+        expect(describeThinkingDuration({ startedAt: 1000 })).toBe("Thought");
+        expect(describeThinkingDuration({})).toBe("Thought");
+        expect(describeThinkingDuration({ startedAt: 2000, endedAt: 1000 })).toBe("Thought");
     });
 });
