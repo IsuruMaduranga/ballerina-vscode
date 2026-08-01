@@ -22,7 +22,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import { isMcpToolsEnabled } from "../features/ai/agent/mcp/enablement";
-import { PROJECT_MCP_FILENAME } from "../features/ai/agent/mcp/configLoader";
+import { PROJECT_MCP_FILENAME, ADDITIONAL_PROJECT_MCP_RELATIVE_PATHS } from "../features/ai/agent/mcp/configLoader";
 
 const ws = vscode.workspace as any;
 const originalGetConfiguration = ws.getConfiguration;
@@ -51,6 +51,13 @@ afterEach(() => {
 
 function writeProjectConfig(): void {
     fs.writeFileSync(path.join(projectRoot, PROJECT_MCP_FILENAME), JSON.stringify({ mcpServers: {} }), "utf8");
+}
+
+function writeAdditionalProjectConfig(): void {
+    const relative = ADDITIONAL_PROJECT_MCP_RELATIVE_PATHS[0];
+    const filePath = path.join(projectRoot, relative);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify({ mcpServers: {} }), "utf8");
 }
 
 describe("isMcpToolsEnabled", () => {
@@ -86,5 +93,11 @@ describe("isMcpToolsEnabled", () => {
     it("stays off with no project open", () => {
         stubEnableSetting(undefined);
         expect(isMcpToolsEnabled(undefined)).toBe(false);
+    });
+
+    it("turns on for a project carrying only an additional config path (e.g. .wso2/mcp.json)", () => {
+        stubEnableSetting(undefined);
+        writeAdditionalProjectConfig();
+        expect(isMcpToolsEnabled(projectRoot)).toBe(true);
     });
 });
