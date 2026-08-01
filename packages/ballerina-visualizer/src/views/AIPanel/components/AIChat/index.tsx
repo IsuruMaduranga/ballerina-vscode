@@ -1270,9 +1270,10 @@ const AIChat: React.FC = () => {
             const thinkingId = response.thinkingId;
             const delta = type === "thinking_delta" ? response.content : "";
             // start/end carry an extension-stamped timestamp so both surfaces fold the same
-            // value and replay keeps true durations; deltas only need the local fallback
-            // for the orphaned-delta append path.
-            const timestamp = type === "thinking_delta" ? Date.now() : response.timestamp;
+            // value and replay keeps true durations; deltas pass none — a locally-derived
+            // time on the orphaned-delta append path would make the persisted bytes differ
+            // between the two surfaces.
+            const timestamp = type === "thinking_delta" ? undefined : response.timestamp;
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);

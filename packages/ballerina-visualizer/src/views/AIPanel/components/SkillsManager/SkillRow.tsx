@@ -180,6 +180,7 @@ const SkillRow: React.FC<SkillRowProps> = ({ skill, onToggle, onEdit, onDelete }
                                 type="button"
                                 role="switch"
                                 aria-checked={enabled}
+                                aria-label={`${enabled ? "Disable" : "Enable"} ${skill.name} skill`}
                                 $on={enabled}
                                 style={{ order: 2 }}
                                 title={enabled ? "Disable skill" : "Enable skill"}

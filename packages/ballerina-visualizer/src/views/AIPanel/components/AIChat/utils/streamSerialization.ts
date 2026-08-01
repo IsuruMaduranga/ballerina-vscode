@@ -128,7 +128,10 @@ export function upsertThinking(
     id: string,
     delta: string,
     done: boolean,
-    timestamp: number,
+    // Extension-stamped on start/end events; undefined for deltas — a delta that
+    // opens a new item (orphaned-delta append) must NOT stamp a locally-derived
+    // time, or the serialized bytes diverge across the two persisting surfaces.
+    timestamp?: number,
 ): StreamEntry[] {
     if (entries.length > 0) {
         const lastEntry = entries[entries.length - 1];

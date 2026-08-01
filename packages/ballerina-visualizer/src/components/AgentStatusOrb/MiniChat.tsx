@@ -309,7 +309,9 @@ function applyContentEvent(prevContent: string, evt: FoldableNotify): string {
         // transcript with the panel's thinking segments missing. start/end use the
         // extension-stamped timestamp so this fold stays byte-identical to the panel's.
         const delta = evt.type === "thinking_delta" ? evt.content : "";
-        const timestamp = evt.type === "thinking_delta" ? Date.now() : evt.timestamp;
+        // Deltas carry no timestamp (see upsertThinking) — only extension-stamped
+        // start/end values may reach the persisted bytes.
+        const timestamp = evt.type === "thinking_delta" ? undefined : evt.timestamp;
         return serializeStream(
             upsertThinking(entries, evt.thinkingId, delta, evt.type === "thinking_end", timestamp),
             prevContent

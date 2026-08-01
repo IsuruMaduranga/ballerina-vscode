@@ -398,11 +398,15 @@ describe("upsertThinking", () => {
         let entries: StreamEntry[] = [];
         entries = upsertThinking(entries, "r1", "early", true, 1000);
         entries = appendToLastEntry(entries, { kind: "tool_call", toolCallId: "t1", toolName: "file_read" });
-        entries = upsertThinking(entries, "r1", "late", false, 2000);
+        entries = upsertThinking(entries, "r1", "late", false, undefined);
         const items = entries.flatMap((e) => e.items) as any[];
         expect(items.map((i) => i.kind)).toEqual(["thinking", "tool_call", "thinking"]);
         expect(items[0].text).toBe("early");
         expect(items[2].text).toBe("late");
+        // The orphan opened from a delta carries no locally-derived timestamp —
+        // stamping one would make the serialized bytes differ per surface.
+        expect(items[2].startedAt).toBeUndefined();
+        expect(serializeStream(entries, "")).not.toContain("startedAt\":2");
     });
 
     it("a repeated end keeps the first endedAt (duration is fixed at close time)", () => {
