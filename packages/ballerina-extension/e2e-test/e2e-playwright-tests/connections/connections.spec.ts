@@ -137,9 +137,14 @@ export default function createTests() {
                     }
                 }
             });
-            // `force` — the floating Copilot orb/invite box has been observed to
-            // overlap and intercept pointer events on this button.
-            await form.submit('Save Connection', true);
+            // `force: true` still dispatches the click at the button's on-screen
+            // coordinates, so it can land on the floating Copilot orb instead of
+            // the button when the orb's default bottom-center dock happens to sit
+            // exactly on top of it — dispatch directly on the DOM node instead,
+            // which is immune to any overlay regardless of on-screen position.
+            const saveConnectionBtn = artifactWebView.locator('vscode-button:has-text("Save Connection")[appearance="primary"]');
+            await saveConnectionBtn.waitFor({ state: 'visible', timeout: 30000 });
+            await saveConnectionBtn.evaluate((el: HTMLElement) => el.click());
 
             // Verify via the project explorer tree (decoupled from the
             // webview's own re-render timing) rather than racing the side

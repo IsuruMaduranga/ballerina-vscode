@@ -25,7 +25,7 @@ import { dataFolder } from '../utils/helpers/setup';
 export default function createTests() {
     test.describe.serial('Project Creation Tests', {
     }, async () => {
-        initTest(false);
+        // initTest(false);
         // The project creation flow has been updated and the latest changes are available on both product-integrator
         // and ballerina extensions. However, the CI/CD pipeline is fetching the old version of the product-integrator.
         // So skipping this test for now.

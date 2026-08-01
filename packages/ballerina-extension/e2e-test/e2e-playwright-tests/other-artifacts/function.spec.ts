@@ -43,7 +43,9 @@ export default function createTests() {
                     }
                 }
             });
-            await form.submit('Create');
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this button.
+            await form.submit('Create', true);
             // Both the diagram node's title and the diagram's own title-bar
             // breadcrumb render the function name, so a plain text= locator
             // (substring match) resolves to 2 elements — .first() is enough
@@ -73,7 +75,9 @@ export default function createTests() {
                     }
                 }
             });
-            await form.submit('Save');
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this button.
+            await form.submit('Save', true);
             // Both the diagram node's title and the diagram's own title-bar
             // breadcrumb render the function name, so a plain text= locator
             // (substring match) resolves to 2 elements — .first() is enough

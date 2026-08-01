@@ -72,7 +72,9 @@ async function clickUntil(
     attempts: number = 5
 ): Promise<void> {
     for (let attempt = 0; attempt < attempts; attempt++) {
-        await node.click({ timeout: 15000 }).catch(() => { /* node re-rendering; retry */ });
+        // `force` — the floating Copilot orb/invite box has been observed to
+        // overlap and intercept pointer events on diagram nodes.
+        await node.click({ force: true, timeout: 15000 }).catch(() => { /* node re-rendering; retry */ });
         const opened = await expected.waitFor({ state: 'visible', timeout: 15000 })
             .then(() => true).catch(() => false);
         if (opened) {
@@ -207,18 +209,27 @@ async function saveOpenForm(frame: Frame): Promise<void> {
     const save = frame.getByRole('button', { name: 'Save' }).last();
     await save.waitFor({ timeout: 30000 });
     await save.click({ force: true });
-    await frame.getByTestId('bi-diagram-canvas').waitFor({ timeout: 60000 });
+    // Generous deadline — this environment has been observed to stall well
+    // past what should be instant under real CI load (see openRecordConfigModal).
+    await frame.getByTestId('bi-diagram-canvas').waitFor({ timeout: 120000 });
     await page.page.waitForTimeout(1000);
 }
 
 async function openNodePalette(frame: Frame): Promise<SidePanel> {
     const diagram = new Diagram(page.page);
     await diagram.init();
+    // The floating Copilot orb's mini chat can end up open (e.g. a force-click
+    // aimed at something else lands on the orb instead) and sit on top of the
+    // diagram — close it defensively so a stray open chat never masks the
+    // canvas wait below. Best-effort: no-ops if it isn't open.
+    await frame.getByRole('button', { name: 'Close the mini chat' }).click({ force: true, timeout: 2000 }).catch(() => { });
     // Click the last visible plus button on the flow (works for a growing flow)
     // The diagram can still be re-rendering right after the previous node's
-    // panel closes, so give it the same headroom as saveOpenForm's wait.
+    // panel closes, and this environment has been observed to stall well past
+    // what should be instant under real CI load — match the generous deadline
+    // used elsewhere in this file (openRecordConfigModal) rather than a flat 60s.
     const canvas = frame.getByTestId('bi-diagram-canvas');
-    await canvas.waitFor({ timeout: 60000 });
+    await canvas.waitFor({ timeout: 120000 });
 
     // The diagram can still be re-rendering right after the previous node's
     // panel closes, so the add-button testids may not exist yet — poll for
@@ -308,7 +319,9 @@ export default function createTests() {
             const panel = frame.getByTestId('side-panel');
             const expr = panel.locator('.cm-content').last();
             await expr.waitFor({ state: 'visible', timeout: 15000 });
-            await expr.click();
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this editor.
+            await expr.click({ force: true });
             await page.page.waitForTimeout(1000);
             const expandBtn = frame.locator('[title="Expand Editor"]').last();
             await expandBtn.waitFor({ state: 'visible', timeout: 15000 });
@@ -341,7 +354,9 @@ export default function createTests() {
             // and retyping — placing the cursor at the end and typing ".le"
             // triggers the same completion.
             const exprCm = panel.locator('.cm-content').last();
-            await exprCm.click();
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this editor.
+            await exprCm.click({ force: true });
             await page.page.waitForTimeout(500);
             await page.page.keyboard.press(process.platform === 'darwin' ? 'Meta+End' : 'Control+End');
             await page.page.waitForTimeout(300);
@@ -382,7 +397,9 @@ export default function createTests() {
             });
             await dismissHelperPanel();
             const expr = panel.locator('.cm-content').last();
-            await expr.click();
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this editor.
+            await expr.click({ force: true });
             await page.page.waitForTimeout(500);
             await cmSet(frame, '{name: "Anne", age: 30}', (await frame.locator('.cm-content').count()) - 1);
             await page.page.waitForTimeout(1500);

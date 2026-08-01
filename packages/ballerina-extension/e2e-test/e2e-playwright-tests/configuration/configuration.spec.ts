@@ -64,7 +64,9 @@ export default function createTests() {
                 }
             });
 
-            await configurationWebView.getByRole('button', { name: 'Save' }).click();
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this button.
+            await configurationWebView.getByRole('button', { name: 'Save' }).click({ force: true });
             await configEditor.verifyConfigurableVariable('time', '100', '');
         });
 
@@ -87,7 +89,9 @@ export default function createTests() {
                 }
             });
 
-            await configurationWebView.getByRole('button', { name: 'Save' }).click();
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this button.
+            await configurationWebView.getByRole('button', { name: 'Save' }).click({ force: true });
             await configEditor.verifyConfigurableVariable('time', '200', '');
         });
 
@@ -123,7 +127,9 @@ export default function createTests() {
                     }
                 }
             });
-            await configurationWebView.getByRole('button', { name: 'Save' }).click();
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this button.
+            await configurationWebView.getByRole('button', { name: 'Save' }).click({ force: true });
             await configEditor.verifyConfigurableVariable('place', '', '');
             await configEditor.verifyWarning('place');
         });
@@ -154,7 +160,9 @@ export default function createTests() {
                     }
                 }
             });
-            await configurationWebView.getByRole('button', { name: 'Save' }).click();
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this button.
+            await configurationWebView.getByRole('button', { name: 'Save' }).click({ force: true });
             await configEditor.verifyConfigurableVariable('destination', '', '');
             await configEditor.verifyWarning('destination');
 
