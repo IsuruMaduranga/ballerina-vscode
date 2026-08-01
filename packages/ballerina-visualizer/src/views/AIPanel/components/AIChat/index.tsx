@@ -2196,17 +2196,24 @@ const AIChat: React.FC = () => {
         loadThreads();
     }
 
+    // Six call sites fire this without serializing, so a slow earlier response could otherwise
+    // overwrite a newer list — or end the spinner while a newer request is still running.
+    const loadThreadsSeqRef = useRef(0);
+
     async function loadThreads(): Promise<void> {
+        const seq = ++loadThreadsSeqRef.current;
         setThreadsLoading(true);
         setThreadsError(null);
         try {
             const list = await rpcClient.getAiPanelRpcClient().listThreads();
+            if (seq !== loadThreadsSeqRef.current) { return; }
             setThreads(list);
         } catch (error) {
+            if (seq !== loadThreadsSeqRef.current) { return; }
             console.error('[AIChat] Failed to load chat sessions:', error);
             setThreadsError("Couldn't load sessions. Close and reopen to retry.");
         } finally {
-            setThreadsLoading(false);
+            if (seq === loadThreadsSeqRef.current) { setThreadsLoading(false); }
         }
     }
 
