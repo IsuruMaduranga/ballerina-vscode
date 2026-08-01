@@ -32,9 +32,17 @@ interface ThinkingSegmentProps {
     streamActive: boolean;
 }
 
-const ThinkingHeader = styled(ItemRow)`
+// A real <button> so the collapsed block is focusable and keyboard-operable;
+// the resets strip the UA button chrome back to ItemRow's plain-row look.
+const ThinkingHeader = styled(ItemRow.withComponent("button"))`
     cursor: pointer;
     user-select: none;
+    background: none;
+    border: none;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    width: 100%;
 `;
 
 const ThinkingLabel = styled(ItemLabel)`
@@ -84,7 +92,11 @@ const ThinkingSegment: React.FC<ThinkingSegmentProps> = ({ item, streamActive })
 
     return (
         <div>
-            <ThinkingHeader onClick={() => hasBody && setExpanded((prev) => !prev)}>
+            <ThinkingHeader
+                type="button"
+                aria-expanded={hasBody ? expanded : undefined}
+                onClick={() => hasBody && setExpanded((prev) => !prev)}
+            >
                 <ToolIcon loading={loading}>
                     <span className="codicon codicon-sparkle" />
                 </ToolIcon>

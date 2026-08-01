@@ -356,6 +356,15 @@ describe("appendToLastEntry", () => {
     });
 });
 
+/** Flatten entries and return the item at `index`, narrowed to the thinking variant. */
+function thinkingAt(entries: StreamEntry[], index: number) {
+    const item = entries.flatMap((e) => e.items)[index];
+    if (item?.kind !== "thinking") {
+        throw new Error(`expected a thinking item at ${index}, got ${item?.kind}`);
+    }
+    return item;
+}
+
 describe("upsertThinking", () => {
     it("start → delta → delta → end merges into one done item with concatenated text", () => {
         let entries: StreamEntry[] = [];
@@ -387,9 +396,8 @@ describe("upsertThinking", () => {
         entries = upsertThinking(entries, "r1", "one", true, 1000);
         entries = upsertThinking(entries, "r2", "two", false, 2000);
         expect(kindsOf(entries)).toEqual(["thinking", "thinking"]);
-        const items = entries.flatMap((e) => e.items) as any[];
-        expect(items[0].id).toBe("r1");
-        expect(items[1].id).toBe("r2");
+        expect(thinkingAt(entries, 0).id).toBe("r1");
+        expect(thinkingAt(entries, 1).id).toBe("r2");
     });
 
     it("an orphaned delta (no trailing match) appends defensively rather than corrupting", () => {
@@ -399,13 +407,13 @@ describe("upsertThinking", () => {
         entries = upsertThinking(entries, "r1", "early", true, 1000);
         entries = appendToLastEntry(entries, { kind: "tool_call", toolCallId: "t1", toolName: "file_read" });
         entries = upsertThinking(entries, "r1", "late", false, undefined);
-        const items = entries.flatMap((e) => e.items) as any[];
+        const items = entries.flatMap((e) => e.items);
         expect(items.map((i) => i.kind)).toEqual(["thinking", "tool_call", "thinking"]);
-        expect(items[0].text).toBe("early");
-        expect(items[2].text).toBe("late");
+        expect(thinkingAt(entries, 0).text).toBe("early");
+        expect(thinkingAt(entries, 2).text).toBe("late");
         // The orphan opened from a delta carries no locally-derived timestamp —
         // stamping one would make the serialized bytes differ per surface.
-        expect(items[2].startedAt).toBeUndefined();
+        expect(thinkingAt(entries, 2).startedAt).toBeUndefined();
         expect(serializeStream(entries, "")).not.toContain("startedAt\":2");
     });
 
@@ -414,7 +422,7 @@ describe("upsertThinking", () => {
         entries = upsertThinking(entries, "r1", "x", false, 1000);
         entries = upsertThinking(entries, "r1", "", true, 2000);
         entries = upsertThinking(entries, "r1", "", true, 9000); // e.g. flush replayed after real end
-        const item = entries[0].items[0] as any;
+        const item = thinkingAt(entries, 0);
         expect(item.done).toBe(true);
         expect(item.endedAt).toBe(2000);
     });
