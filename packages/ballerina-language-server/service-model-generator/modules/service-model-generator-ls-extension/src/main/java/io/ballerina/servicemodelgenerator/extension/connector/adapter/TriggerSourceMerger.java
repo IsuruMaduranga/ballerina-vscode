@@ -79,19 +79,20 @@ public final class TriggerSourceMerger {
         Set<String> consumedExclusiveGroups = new HashSet<>();
         boolean legacyHandlerConsumed = false;
         for (Function source : functionsInSource == null ? List.<Function>of() : functionsInSource) {
-            Function template = findTemplate(catalog, source);
-            if (template == null) {
+            TemplateMatch match = findTemplate(catalog, source);
+            if (match == null) {
                 // A hand-written member the schema does not know: keep it, read-only.
                 source.setEditable(false);
                 source.setOptional(true);
                 merged.add(source);
                 continue;
             }
+            Function template = match.template();
             // A name-editable handler can be re-added under another name, so its template stays in the
             // catalog and the source function enriches a copy instead.
             Function enriched = Boolean.TRUE.equals(template.getNameEditable()) ? copyOf(template) : template;
             if (enriched == template) {
-                Repeatable repeatable = Repeatable.orDefault(template.getRepeatable()).effective(template.getGroup());
+                Repeatable repeatable = match.effective();
                 if (!repeatable.staysAddable()) {
                     catalog.remove(template);
                 }
@@ -126,11 +127,21 @@ public final class TriggerSourceMerger {
     }
 
     /**
+     * A matched template paired with its already-computed effective {@link Repeatable}, so the caller
+     * never re-derives it for the same template.
+     *
+     * @param template  the matched catalog template
+     * @param effective the template's {@code Repeatable}, already resolved against its group
+     */
+    private record TemplateMatch(Function template, Repeatable effective) {
+    }
+
+    /**
      * Matches by emitted name (and accessor for resources) first; a name-editable, repeat-always
      * template (e.g. MCP's {@code Tool}) has no fixed name once renamed, so falls back to matching
      * any same-kind/accessor source function not already claimed.
      */
-    private static Function findTemplate(List<Function> templates, Function source) {
+    private static TemplateMatch findTemplate(List<Function> templates, Function source) {
         String sourceName = valueOf(source.getName());
         if (sourceName == null) {
             return null;
@@ -143,14 +154,16 @@ public final class TriggerSourceMerger {
             String templateAccessor = valueOf(template.getAccessor());
             if (sourceAccessor == null || templateAccessor == null
                     || sourceAccessor.equals(templateAccessor)) {
-                return template;
+                return new TemplateMatch(template,
+                        Repeatable.orDefault(template.getRepeatable()).effective(template.getGroup()));
             }
         }
         for (Function template : templates) {
             if (!Boolean.TRUE.equals(template.getNameEditable())) {
                 continue;
             }
-            if (!Repeatable.orDefault(template.getRepeatable()).effective(template.getGroup()).staysAddable()) {
+            Repeatable effective = Repeatable.orDefault(template.getRepeatable()).effective(template.getGroup());
+            if (!effective.staysAddable()) {
                 continue;
             }
             if (!Objects.equals(source.getKind(), template.getKind())) {
@@ -159,7 +172,7 @@ public final class TriggerSourceMerger {
             String templateAccessor = valueOf(template.getAccessor());
             if (sourceAccessor == null || templateAccessor == null
                     || sourceAccessor.equals(templateAccessor)) {
-                return template;
+                return new TemplateMatch(template, effective);
             }
         }
         return null;

@@ -59,6 +59,12 @@ public final class TriggerReadOnlyMetadataAdapter {
     private static final String READONLY = "READONLY";
     private static final String PLACEHOLDER_FALSE = "false";
 
+    // Stateless (no instance fields), so one shared instance per extractor is safe to reuse across
+    // every definition instead of allocating fresh ones.
+    private static final AnnotationExtractor ANNOTATION_EXTRACTOR = new AnnotationExtractor();
+    private static final ListenerParamExtractor LISTENER_PARAM_EXTRACTOR = new ListenerParamExtractor();
+    private static final ServiceDescriptionExtractor SERVICE_DESCRIPTION_EXTRACTOR = new ServiceDescriptionExtractor();
+
     private TriggerReadOnlyMetadataAdapter() {
     }
 
@@ -97,14 +103,14 @@ public final class TriggerReadOnlyMetadataAdapter {
         String kind = definition.kind() == null ? "" : definition.kind();
         String displayName = displayNameOf(definition);
         return switch (kind) {
-            case KIND_SERVICE_ANNOTATION -> flatten(new AnnotationExtractor().extractValues(
+            case KIND_SERVICE_ANNOTATION -> flatten(ANNOTATION_EXTRACTOR.extractValues(
                     new ReadOnlyMetaData(annotationField(definition), displayName, EXTRACTOR_KIND_ANNOTATION),
                     serviceNode, context));
-            case KIND_LISTENER_PARAM -> flatten(new ListenerParamExtractor().extractValues(
+            case KIND_LISTENER_PARAM -> flatten(LISTENER_PARAM_EXTRACTOR.extractValues(
                     new ReadOnlyMetaData(definition.key(), displayName, EXTRACTOR_KIND_LISTENER_PARAM),
                     serviceNode, context));
             case KIND_STRING_LITERAL -> stringLiteralValue(serviceModel);
-            case KIND_SERVICE_DESCRIPTION, KIND_SERVICE_BASE_PATH -> flatten(new ServiceDescriptionExtractor()
+            case KIND_SERVICE_DESCRIPTION, KIND_SERVICE_BASE_PATH -> flatten(SERVICE_DESCRIPTION_EXTRACTOR
                     .extractValues(new ReadOnlyMetaData(definition.key(), displayName,
                             EXTRACTOR_KIND_SERVICE_DESCRIPTION), serviceNode, context));
             default -> List.of();

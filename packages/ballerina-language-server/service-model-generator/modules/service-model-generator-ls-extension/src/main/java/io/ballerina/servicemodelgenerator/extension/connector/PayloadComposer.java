@@ -24,6 +24,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Computes the effective Ballerina type text of a parameter from its {@code type} {@link
@@ -42,6 +44,8 @@ import java.util.Map;
 public final class PayloadComposer {
 
     private static final String BRACED = "{{type}}";
+    // Compiled once: applyTemplate runs on the hot per-parameter composition path.
+    private static final Pattern STANDALONE_T = Pattern.compile("\\bT\\b");
 
     private PayloadComposer() {
     }
@@ -240,15 +244,21 @@ public final class PayloadComposer {
         return "";
     }
 
-    /** Substitutes the element into a wrap template. Supports both {@code {{type}}} and a standalone {@code T}. */
+    /**
+     * Substitutes the element into a wrap template. Supports {@code {{type}}} or a standalone {@code T}
+     * -- the two authoring styles are alternatives, never combined in one template (see {@code
+     * TriggerFunctionAdapter#normalizeTemplate}, which translates one into the other) -- so matching
+     * {@code {{type}}} always short-circuits the (otherwise redundant) standalone-{@code T} pass.
+     */
     private static String applyTemplate(String template, String element) {
         if (template == null || template.isBlank()) {
             return element == null ? "" : element;
         }
         String safe = element == null ? "" : element;
-        String result = template.contains(BRACED) ? template.replace(BRACED, safe) : template;
-        result = result.replaceAll("\\bT\\b", java.util.regex.Matcher.quoteReplacement(safe));
-        return result;
+        if (template.contains(BRACED)) {
+            return template.replace(BRACED, safe);
+        }
+        return STANDALONE_T.matcher(template).replaceAll(Matcher.quoteReplacement(safe));
     }
 
     public static String selectedFieldType(TriggerUISchemaModel.Property property) {
