@@ -20,6 +20,7 @@ package io.ballerina.servicemodelgenerator.extension.connector;
 
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,17 +64,40 @@ public final class PayloadComposer {
 
         TriggerUISchemaModel.Codedata cd = located.payload.codedata();
         String element = element(cd);
-        if (located.siblings != null) {
-            for (TriggerUISchemaModel.Property sibling : located.siblings) {
-                TriggerUISchemaModel.Codedata sc = sibling.codedata();
-                if (sc != null && "PAYLOAD_MODIFIER".equals(sc.type()) && isTrue(sibling.value())
-                        && sc.template() != null && !sc.template().isBlank()) {
-                    return applyTemplate(sc.template(), element);
-                }
-            }
+        String modifierTemplate = highestPrecedenceModifierTemplate(located.siblings);
+        if (modifierTemplate != null) {
+            return applyTemplate(modifierTemplate, element);
         }
         String base = applyTemplate(templateOf(cd), element);
         return base.isEmpty() ? element : base;
+    }
+
+    /**
+     * The template of the highest-precedence active {@code PAYLOAD_MODIFIER} sibling, or {@code null}
+     * when none is active. A modifier wins over another active one when the other's {@code supersedes}
+     * does not name it; among modifiers no active peer supersedes (the common case: at most one
+     * modifier is ever active), the first one found wins.
+     */
+    private static String highestPrecedenceModifierTemplate(List<TriggerUISchemaModel.Property> siblings) {
+        if (siblings == null) {
+            return null;
+        }
+        List<TriggerUISchemaModel.Codedata> active = new ArrayList<>();
+        for (TriggerUISchemaModel.Property sibling : siblings) {
+            TriggerUISchemaModel.Codedata sc = sibling.codedata();
+            if (sc != null && "PAYLOAD_MODIFIER".equals(sc.type()) && isTrue(sibling.value())
+                    && sc.template() != null && !sc.template().isBlank()) {
+                active.add(sc);
+            }
+        }
+        for (TriggerUISchemaModel.Codedata candidate : active) {
+            boolean beaten = active.stream().anyMatch(other -> other != candidate
+                    && other.supersedes() != null && other.supersedes().contains(candidate.modifier()));
+            if (!beaten) {
+                return candidate.template();
+            }
+        }
+        return active.isEmpty() ? null : active.get(0).template();
     }
 
     /**

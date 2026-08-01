@@ -271,7 +271,7 @@ public final class TriggerFunctionAdapter {
                 .value(composedType)
                 .types(List.of(PropertyType.types(Value.FieldType.TYPE)))
                 .setPlaceholder(defaultType)
-                .editable(bindable && payload.editable())
+                .editable(bindable && payload != null && payload.editable())
                 .enabled(true)
                 .setCodedata(typeCodedata)
                 .build();

@@ -403,7 +403,7 @@ public final class TriggerModelSynthesizer {
                                                                   ConnectorIdentity identity, boolean isFirst,
                                                                   boolean multiType) {
         String moduleName = identity.moduleName();
-        String typeName = serviceType.type().name();
+        String typeName = serviceType.type() == null ? "" : serviceType.type().name();
         Map<String, TriggerUISchemaModel.Property> properties = buildServiceAnnotations(serviceType, authoring, facts,
                 identity);
 
@@ -439,18 +439,23 @@ public final class TriggerModelSynthesizer {
         return null;
     }
 
-    /** The introspected listener matching the authoring schema's declared type, or the first one on a miss. */
+    /**
+     * The introspected listener matching the authoring schema's declared type, or the first one on a
+     * miss (including when the authoring schema declares no type at all).
+     */
     private static TriggerLibraryFacts.Listener findListener(TriggerMetadataModel.Listener listener,
                                                               TriggerLibraryFacts facts) {
         if (facts.listeners() == null || facts.listeners().isEmpty()) {
             return null;
         }
-        String name = listener.type().name();
-        int colon = name.lastIndexOf(':');
-        String simpleName = colon < 0 ? name : name.substring(colon + 1);
-        for (TriggerLibraryFacts.Listener candidate : facts.listeners()) {
-            if (candidate.type().equals(simpleName)) {
-                return candidate;
+        String name = listener.type() == null ? null : listener.type().name();
+        if (name != null) {
+            int colon = name.lastIndexOf(':');
+            String simpleName = colon < 0 ? name : name.substring(colon + 1);
+            for (TriggerLibraryFacts.Listener candidate : facts.listeners()) {
+                if (candidate.type().equals(simpleName)) {
+                    return candidate;
+                }
             }
         }
         return facts.listeners().get(0);

@@ -113,9 +113,15 @@ public final class ExistingListenerResolver {
      * Assembles the {@code existingListener} dropdown (pure; unit-testable). Must NOT carry
      * {@code options} — that would route it to the expression/enum editor instead of the nested
      * per-listener config view (front-end {@code DropdownChoiceForm}).
+     *
+     * @throws IllegalArgumentException if {@code listenerNames} is empty -- callers must only reach
+     *                                  this once at least one compatible listener is known to exist
      */
     static Value assembleSelector(List<String> listenerNames, Map<String, Value> perListenerConfigs,
                                   String protocol) {
+        if (listenerNames == null || listenerNames.isEmpty()) {
+            throw new IllegalArgumentException("listenerNames must not be empty");
+        }
         return new Value.ValueBuilder()
                 .metadata("Select Listener", String.format("Select from the existing %s listeners", protocol))
                 .value(listenerNames.getFirst())

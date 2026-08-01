@@ -90,7 +90,15 @@ public final class PropertyValueAdapter {
         return value;
     }
 
-    /** Converts an edited wire {@link Value} tree back into a unified-model property tree. */
+    /**
+     * Converts an edited wire {@link Value} tree back into a unified-model property tree. Partial, not
+     * a round-trip inverse of {@link #toValue}: {@code items}, {@code Metadata.notice/badge/addLabel},
+     * and {@code PropertyType.options/payloadFormats/template} are dropped, along with whatever
+     * {@link #toModelCodedata} drops. Sufficient for its one caller ({@code
+     * SchemaDrivenFunctionBuilder#renderComplexAnnotations}, which reads only {@code field}/
+     * {@code optional}/{@code type}/{@code value}/{@code valueQualifier}); extend it before relying on
+     * any other field surviving the round trip.
+     */
     public static TriggerUISchemaModel.Property toProperty(Value value) {
         if (value == null) {
             return null;
@@ -220,6 +228,12 @@ public final class PropertyValueAdapter {
         return codedata;
     }
 
+    /**
+     * The wire {@link Codedata}'s fields that {@link #toValue} carries onto the wire {@code Codedata},
+     * mapped back — not a full inverse of {@link #toCodedata}. {@code bindingKind}, {@code
+     * typeConstraint}, {@code supersedes}, {@code modifiers}, {@code group}, and {@code variantLabel}
+     * are always {@code null} here since the wire {@link Codedata} has no equivalents to read them from.
+     */
     private static TriggerUISchemaModel.Codedata toModelCodedata(Codedata cd) {
         if (cd == null) {
             return null;
