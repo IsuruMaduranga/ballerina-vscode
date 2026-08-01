@@ -41,19 +41,21 @@ export async function addArtifact(artifactName: string, testId: string) {
         addIntegrationBtn.waitFor({ timeout: 30000 }),
     ]);
 
+    // `force` throughout — the floating Copilot orb/invite box intermittently overlaps
+    // and intercepts pointer events on cards and buttons across these views.
     if (await addIntegrationBtn.isVisible().catch(() => false)) {
-        await addIntegrationBtn.click();
+        await addIntegrationBtn.click({ force: true });
         const card = artifactWebView.locator(`#${testId}`);
         await card.waitFor();
-        await card.click();
-        await artifactWebView.getByRole('button', { name: 'Next' }).click();
+        await card.click({ force: true });
+        await artifactWebView.getByRole('button', { name: 'Next' }).click({ force: true, timeout: 60000 });
         return;
     }
 
-    await addArtifactBtn.click();
+    await addArtifactBtn.click({ force: true });
     const card = artifactWebView.locator(`#${testId}`);
     await card.waitFor();
-    await card.click();
+    await card.click({ force: true, timeout: 60000 });
 }
 
 /**

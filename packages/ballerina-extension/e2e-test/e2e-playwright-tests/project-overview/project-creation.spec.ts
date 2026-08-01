@@ -77,11 +77,13 @@ export default function createTests() {
                 },
             });
 
-            await biWebview.getByRole('button', { name: 'Next' }).click();
+            // `force` — the Copilot chat input in this panel has been observed to
+            // overlap the footer and intercept pointer events on the button beneath it.
+            await biWebview.getByRole('button', { name: 'Next' }).click({ force: true, timeout: 60000 });
 
             // Type step: skip straight to an empty integration — this test only
             // covers project creation, not artifact creation.
-            await biWebview.getByRole('button', { name: 'Create Empty Integration' }).click();
+            await biWebview.getByRole('button', { name: 'Create Empty Integration' }).click({ force: true, timeout: 60000 });
 
             console.log('Waiting for project and BI webview');
             const artifactWebView = await getWebview(BI_INTEGRATOR_LABEL, page);

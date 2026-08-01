@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { test } from '@playwright/test';
+import { Locator, test } from '@playwright/test';
 import path from 'path';
 import { addArtifact, BI_INTEGRATOR_LABEL, BI_WEBVIEW_NOT_FOUND_ERROR, initTest, page } from '../utils/helpers';
 import { Form, switchToIFrame } from '@wso2/playwright-vscode-tester';
@@ -27,6 +27,33 @@ import { DEFAULT_PROJECT_NAME } from '../utils/helpers/constants';
 // `empty_project` (which now ships a seeded automation so other suites can
 // reach "Add Artifact" on an otherwise-empty integration; see addArtifact()).
 const AUTOMATION_CREATION_PROJECT_TEMPLATE = path.join(__dirname, '..', 'data', 'automation_creation_project');
+
+/**
+ * Click an architecture-diagram node until it actually navigates.
+ *
+ * These nodes (entry, connection, listener) have no onClick — component-diagram
+ * wires onMouseDown/onMouseUp through useClickWithDragTolerance, which only
+ * fires the handler when the pointer moved less than 5px between the two
+ * events. Any layout shift mid-click therefore reads as a drag and the click is
+ * dropped with no error at all, so a single attempt can silently do nothing.
+ * Retry against `expected` — the thing the click is supposed to open.
+ */
+async function clickUntil(
+    node: Locator,
+    expected: Locator,
+    description: string,
+    attempts: number = 5
+): Promise<void> {
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        await node.click({ timeout: 15000 }).catch(() => { /* node re-rendering; retry */ });
+        const opened = await expected.waitFor({ state: 'visible', timeout: 15000 })
+            .then(() => true).catch(() => false);
+        if (opened) {
+            return;
+        }
+    }
+    throw new Error(`Clicking the ${description} did not open the expected view after ${attempts} attempts`);
+}
 
 export default function createTests() {
     test.describe.serial('Automation Tests', {
@@ -67,12 +94,24 @@ export default function createTests() {
             }
 
             // 8. Click on the submit button ("Create" in the in-project form,
-            // "Create Integration" in the creation wizard's Configure step)
-            await artifactWebView.getByRole('button', { name: /^Create( Integration)?$/ }).click();
+            // "Create Integration" in the creation wizard's Configure step).
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this button.
+            await artifactWebView.getByRole('button', { name: /^Create( Integration)?$/ }).click({ force: true, timeout: 60000 });
 
-            // 9. Verify the Automation is created and the automation designer view is displayed
+            // 9. Verify the Automation is created and the automation designer view is displayed.
+            // On this empty integration, the wizard generates the artifact into the existing
+            // package and closes back to the (now non-empty) overview rather than opening the
+            // new automation directly — unlike the in-project form's direct-to-diagram flow.
+            // Wait for the refreshed overview's entry node, then navigate into it.
             const diagramCanvas = artifactWebView.locator('#bi-diagram-canvas');
-            await diagramCanvas.waitFor({ state: 'visible', timeout: 30000 });
+            const automationNode = artifactWebView.locator('[data-testid="entry-node-automation"]');
+            const landedOnDiagram = await diagramCanvas.waitFor({ state: 'visible', timeout: 10000 })
+                .then(() => true).catch(() => false);
+            if (!landedOnDiagram) {
+                await automationNode.waitFor({ state: 'visible', timeout: 30000 });
+                await clickUntil(automationNode, diagramCanvas, 'Automation entry node');
+            }
 
             // 10. Verify the automation name is displayed (default: "main")
             const diagramTitle = artifactWebView.locator('h2', { hasText: 'Automation' });

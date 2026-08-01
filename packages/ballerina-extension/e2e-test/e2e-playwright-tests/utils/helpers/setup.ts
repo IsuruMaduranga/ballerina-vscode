@@ -474,11 +474,13 @@ export async function createProject(page: ExtendedPage, projectName?: string) {
             }
         }
     });
-    await webview.getByRole('button', { name: 'Next' }).click();
+    // `force` — the Copilot chat input in this panel has been observed to
+    // overlap the footer and intercept pointer events on the button beneath it.
+    await webview.getByRole('button', { name: 'Next' }).click({ force: true, timeout: 60000 });
 
     // Type step: skip straight to an empty integration, matching this helper's
     // old single-step "fill name+path, submit" semantics.
-    await webview.getByRole('button', { name: 'Create Empty Integration' }).click();
+    await webview.getByRole('button', { name: 'Create Empty Integration' }).click({ force: true, timeout: 60000 });
 
     const artifactWebView = await getWebview(BI_INTEGRATOR_LABEL, page);
     if (!artifactWebView) {

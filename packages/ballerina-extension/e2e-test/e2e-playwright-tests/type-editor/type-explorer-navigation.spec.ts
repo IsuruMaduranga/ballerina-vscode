@@ -18,6 +18,7 @@
 
 import { expect, test } from '@playwright/test';
 import { BI_INTEGRATOR_LABEL, DEFAULT_PROJECT_NAME, getWebview, initTest, logStep, page, verifyGeneratedSource } from '../utils/helpers';
+import { waitForBISidebarTreeView } from '../utils/helpers/sidebar';
 import { ProjectExplorer } from '../utils/pages';
 import { TypeEditorUtils } from './TypeEditorUtils';
 import path from 'path';
@@ -46,6 +47,10 @@ export default function createTests() {
             logStep(`Navigate to type diagram via explorer — attempt ${testAttempt}`);
 
             logStep('Locating Types node in project explorer');
+            // Waits for the sidebar tree view container itself (polling, up to 60s) rather
+            // than just the activity tab — findItem()'s own per-level wait is a tight 5s,
+            // too short for the tree's first population after a reload.
+            await waitForBISidebarTreeView(page, 60000);
             const projectExplorer = new ProjectExplorer(page.page);
             await projectExplorer.init();
             await projectExplorer.findItem([DEFAULT_PROJECT_NAME, 'Types']);

@@ -137,7 +137,9 @@ export default function createTests() {
                     }
                 }
             });
-            await form.submit('Save Connection');
+            // `force` — the floating Copilot orb/invite box has been observed to
+            // overlap and intercept pointer events on this button.
+            await form.submit('Save Connection', true);
 
             // Verify via the project explorer tree (decoupled from the
             // webview's own re-render timing) rather than racing the side
