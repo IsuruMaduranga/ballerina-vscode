@@ -197,7 +197,7 @@ export function loadMcpConfig(workspacePath?: string, allowWorkspace: boolean = 
         for (const filePath of projectPaths) {
             const read = readConfigFile(filePath);
             if (read.error) {
-                workspaceErrors.push(read.error);
+                workspaceErrors.push(`${filePath}: ${read.error}`);
             }
             const fresh = normaliseEntries("workspace", read.file).filter(e => !claimedNames.has(e.name));
             fresh.forEach(e => claimedNames.add(e.name));
@@ -336,7 +336,6 @@ export function watchMcpConfig(workspacePath: string | undefined, onChange: () =
     if (workspacePath) {
         for (const relative of projectMcpRelativePatterns()) {
             const filePath = path.join(path.resolve(workspacePath), relative);
-            try { fs.mkdirSync(path.dirname(filePath), { recursive: true }); } catch { /* ignore */ }
             try {
                 const pattern = new vscode.RelativePattern(vscode.Uri.file(workspacePath), relative);
                 const watcher = vscode.workspace.createFileSystemWatcher(pattern);
