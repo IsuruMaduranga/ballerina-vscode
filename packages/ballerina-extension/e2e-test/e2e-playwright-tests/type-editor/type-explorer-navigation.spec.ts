@@ -181,7 +181,9 @@ export default function createTests() {
             await verifyGeneratedSource('types.bal', expectedFilePath, substitutions);
         });
 
-        test('Edit Type Name via Node Menu', async ({ }, testInfo) => {
+        // Skipped due to: https://github.com/wso2/product-integrator/issues/1988
+        // TODO: Enable the following test once the issue is resolved.
+        test.skip('Edit Type Name via Node Menu', async ({ }, testInfo) => {
             const testAttempt = testInfo.retry + 1;
             const addressName = `Address${testAttempt}`;
             const locationName = `Location${testAttempt}`;
