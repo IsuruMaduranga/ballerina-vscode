@@ -189,6 +189,22 @@ describe('emitReviewActions', () => {
         expect(reviewEvent(events).data.isWorkspace).toBe(true);
     });
 
+    it('turns the generation revertible only once the review data is stored', async () => {
+        seedGeneration('gen-1', ['main.bal'], [PKG_A]);
+        // Marking 'done' before this point leaves a window where the panel reads the generation
+        // as settled and never hears otherwise.
+        expect(chatStateStorage.getGeneration(ROOT, 'default', 'gen-1')?.reviewState.status).not.toBe('done');
+        getSemanticDiff.mockResolvedValue({ semanticDiffs: [{ a: 1 }], loadDesignDiagrams: false });
+        const events: any[] = [];
+        const { executor, context } = makeExecutor(events);
+
+        await executor.emitReviewActions(context);
+
+        const review = chatStateStorage.getGeneration(ROOT, 'default', 'gen-1')?.reviewState;
+        expect(review?.status).toBe('done');
+        expect(review?.reviewView).toBeDefined();
+    });
+
     it('persists what the diff view needs onto the generation', async () => {
         seedGeneration('gen-1', ['main.bal'], [PKG_A]);
         getSemanticDiff.mockResolvedValue({ semanticDiffs: [{ a: 1 }], loadDesignDiagrams: true });

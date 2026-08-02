@@ -1007,15 +1007,14 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             tempProjectPath
         );
 
-        // 'done' = finished and revertible until the user reverts or the next generation starts.
+        // Status stays put here: 'done' means revertible, and it is emitReviewActions that
+        // produces the data that makes it so. Announcing it earlier leaves a window where a
+        // panel reload reads the generation as settled and never hears otherwise.
         chatStateStorage.updateReviewState(projectRootPath, threadId, context.messageId, {
-            status: 'done',
             tempProjectPath,
             modifiedFiles: generationModifiedFiles,
             affectedPackagePaths: affectedPackagePaths,
         });
-
-        // ReviewMode will be opened with data from emitReviewActions
     }
 
     /**
@@ -1076,7 +1075,9 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
 
             // Keep what the diff view needs on the generation itself, so reopening resolves against
             // the thread that owns it rather than a workspace-wide slot.
+            // 'done' = finished and revertible, so it lands with the data that makes it revertible.
             chatStateStorage.updateReviewState(workspaceId, threadId, context.messageId, {
+                status: 'done',
                 tempProjectPath: workingProjectPath,
                 modifiedFiles: accumulatedModifiedFiles,
                 affectedPackagePaths: affectedPackages,

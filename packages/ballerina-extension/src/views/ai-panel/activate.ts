@@ -42,7 +42,7 @@ export function activateAiPanel(ballerinaExtInstance: BallerinaExtension) {
         dispose: chatStateStorage.onGenerationStatusChanged((generationId, status) => {
             sendGenerationStatusNotification(generationId, status);
             if (status === 'accepted' || status === 'reverted') {
-                approvalViewManager.clearReviewData();
+                approvalViewManager.clearReviewData(generationId);
             }
         })
     });

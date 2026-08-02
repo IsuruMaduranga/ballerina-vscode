@@ -21,6 +21,7 @@ import { CopilotEventHandler } from '../../utils/events';
 import { chatStateStorage, ChatStateStorage } from '../../../../views/ai-panel/chatStateStorage';
 import { getTempProject, cleanupTempProject } from '../../utils/project/temp-project';
 import { buildChatError } from '../../utils/ai-utils';
+import { finalizeRevertibleGeneration } from '../../utils/generation-response';
 import { runEventStore } from '../../utils/run-event-store';
 import { agentStatusManager } from '../../state/AgentStatusManager';
 import { MigrationDebugLogger } from '../../migration/debug-logger';
@@ -423,7 +424,7 @@ export abstract class AICommandExecutor<TParams = any> {
             return;
         }
         const { projectRootPath, threadId } = this.config.chatStorage;
-        chatStateStorage.finalizeLastGenerationIfDone(projectRootPath, threadId);
+        finalizeRevertibleGeneration(projectRootPath, threadId);
     }
 
     protected settleGeneration(status: GenerationReviewState['status']): void {

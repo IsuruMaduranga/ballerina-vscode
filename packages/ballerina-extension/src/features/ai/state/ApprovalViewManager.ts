@@ -605,7 +605,16 @@ export class ApprovalViewManager {
     /**
      * Clear cached review data after accept or discard.
      */
-    clearReviewData(): void {
+    /**
+     * @param generationId Settle only this generation's review; omit to clear whatever is held.
+     * Another thread settling must not tear down the review a different one has open.
+     */
+    clearReviewData(generationId?: string): void {
+        if (generationId
+            && this.cachedReviewGenerationId !== generationId
+            && this.openReviewGenerationId !== generationId) {
+            return;
+        }
         this.resetReviewNavigationState();
         this.cachedReviewData = null;
         this.cachedReviewGenerationId = null;

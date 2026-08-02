@@ -31,7 +31,7 @@ import { getProjectMetrics } from "../../telemetry/common/project-metrics";
 import { getHashedProjectId } from "../../telemetry/common/project-id";
 import { runEventStore } from "../utils/run-event-store";
 import { sendSaveChatNotification } from "../utils/ai-utils";
-import { sendGenerationKeptTelemetry } from "../utils/generation-response";
+import { finalizeRevertibleGeneration } from "../utils/generation-response";
 
 // ==================================
 // Agent Generation Functions
@@ -93,21 +93,13 @@ export function createExecutorConfig<TParams>(
 }
 
 /**
- * Finalizes the thread's open generation and reports it. The reporting lives here rather than in
+ * Finalizes the thread's open generation and reports it. The reporting lives outside
  * `chatStateStorage`, which is storage and has no business sending notifications or telemetry.
  *
  * @returns true if a generation was finalized
  */
 export function finalizeLastGeneration(projectRootPath: string, threadId: string): boolean {
-    const finalized = chatStateStorage.finalizeLastGenerationIfDone(projectRootPath, threadId);
-    if (!finalized) {
-        return false;
-    }
-
-    sendGenerationKeptTelemetry(finalized.id);
-    sendSaveChatNotification(Command.Agent, finalized.id);
-    console.log(`[Agent] Accepted generation: ${finalized.id}`);
-    return true;
+    return finalizeRevertibleGeneration(projectRootPath, threadId);
 }
 
 /**

@@ -47,6 +47,9 @@ jest.mock('../features/ai/state/AgentStatusManager', () => ({
     agentStatusManager: { start: jest.fn(), stop: jest.fn(), update: jest.fn() },
 }));
 jest.mock('../features/ai/utils/ai-utils', () => ({ buildChatError: jest.fn() }));
+// Reaches the Language Server client through stateMachine; the finalize itself is covered
+// in finalizeLastGeneration.test.ts.
+jest.mock('../features/ai/utils/generation-response', () => ({ finalizeRevertibleGeneration: jest.fn() }));
 jest.mock('../features/ai/utils/run-event-store', () => ({ runEventStore: { beginRun: jest.fn(), endRun: jest.fn() } }));
 jest.mock('../features/ai/utils/project/temp-project', () => ({
     getTempProject: jest.fn(),

@@ -34,10 +34,10 @@ jest.mock('@wso2/ballerina-core', () => ({ Command: { Agent: 'Agent' } }));
 
 const sendChatComponentNotification = jest.fn();
 const sendSaveChatNotification = jest.fn();
-const sendGenerationKeptTelemetry = jest.fn();
+const sendTelemetryEvent = jest.fn();
 
 jest.mock('../features/ai/utils/ai-utils', () => ({ sendChatComponentNotification, sendSaveChatNotification }));
-jest.mock('../features/ai/utils/generation-response', () => ({ sendGenerationKeptTelemetry }));
+// generation-response is deliberately NOT mocked — it owns the finalize being tested.
 
 // Cuts an import chain that reaches the webview layer and an ESM-only LS dependency.
 jest.mock('../features/ai/state/ApprovalManager', () => ({
@@ -50,12 +50,14 @@ jest.mock('../features/ai/utils/project/temp-project', () => ({
     getReviewBaselinePath: (p: string) => `${p}-review-baseline`,
 }));
 jest.mock('../features/telemetry', () => ({
-    sendTelemetryEvent: jest.fn(),
+    sendTelemetryEvent,
     TM_EVENT_BALLERINA_AI_GENERATION_SUBMITTED: 'submitted',
+    TM_EVENT_BALLERINA_AI_GENERATION_KEPT: 'kept',
+    TM_EVENT_BALLERINA_AI_GENERATION_DISCARD: 'discard',
     CMP_BALLERINA_AI_GENERATION: 'generation',
 }));
 jest.mock('../features/ai/executors/base/AICommandExecutor', () => ({}));
-jest.mock('../stateMachine', () => ({ StateMachine: {} }));
+jest.mock('../stateMachine', () => ({ StateMachine: { context: () => ({ projectPath: '/workspace' }) } }));
 jest.mock('../BalExtensionContext', () => ({ extension: {} }));
 jest.mock('../features/ai/agent/AgentExecutor', () => ({ AgentExecutor: class { } }));
 jest.mock('../features/ai/migration/orchestrator', () => ({ getMigrationSourcePathForProject: jest.fn() }));
@@ -91,21 +93,24 @@ describe('finalizeLastGeneration', () => {
         expect(sendChatComponentNotification).not.toHaveBeenCalled();
     });
 
-    it('still reports the accepted generation', () => {
+    it('still reports the accepted generation', async () => {
         const generationId = seedDoneGeneration('thread-report');
 
         finalizeLastGeneration(ROOT, 'thread-report');
+        await Promise.resolve();
 
-        expect(sendGenerationKeptTelemetry).toHaveBeenCalledWith(generationId);
         expect(sendSaveChatNotification).toHaveBeenCalledWith('Agent', generationId);
+        const [, event, component, props] = sendTelemetryEvent.mock.calls[0];
+        expect([event, component, props['message.id']]).toEqual(['kept', 'generation', generationId]);
     });
 
-    it('EDGE: reports nothing when there is no done generation', () => {
+    it('EDGE: reports nothing when there is no done generation', async () => {
         chatStateStorage.getOrCreateThread(ROOT, 'thread-empty');
 
         expect(finalizeLastGeneration(ROOT, 'thread-empty')).toBe(false);
+        await Promise.resolve();
 
-        expect(sendGenerationKeptTelemetry).not.toHaveBeenCalled();
+        expect(sendTelemetryEvent).not.toHaveBeenCalled();
         expect(sendSaveChatNotification).not.toHaveBeenCalled();
     });
 });
