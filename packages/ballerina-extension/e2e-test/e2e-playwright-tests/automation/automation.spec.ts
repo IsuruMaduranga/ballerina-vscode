@@ -17,7 +17,14 @@
  */
 import { Locator, test } from '@playwright/test';
 import path from 'path';
-import { addArtifact, BI_INTEGRATOR_LABEL, BI_WEBVIEW_NOT_FOUND_ERROR, initTest, page } from '../utils/helpers';
+import {
+    addArtifact,
+    BI_INTEGRATOR_LABEL,
+    BI_WEBVIEW_NOT_FOUND_ERROR,
+    initTest,
+    page,
+    submitArtifactCreation
+} from '../utils/helpers';
 import { Form, switchToIFrame } from '@wso2/playwright-vscode-tester';
 import { ProjectExplorer } from '../utils/pages';
 import { DEFAULT_PROJECT_NAME } from '../utils/helpers/constants';
@@ -95,9 +102,7 @@ export default function createTests() {
 
             // 8. Click on the submit button ("Create" in the in-project form,
             // "Create Integration" in the creation wizard's Configure step).
-            // `force` — the floating Copilot orb/invite box has been observed to
-            // overlap and intercept pointer events on this button.
-            await artifactWebView.getByRole('button', { name: /^Create( Integration)?$/ }).click({ force: true, timeout: 60000 });
+            await submitArtifactCreation(artifactWebView);
 
             // 9. Verify the Automation is created and the automation designer view is displayed.
             // On this empty integration, the wizard generates the artifact into the existing

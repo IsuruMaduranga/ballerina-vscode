@@ -18,7 +18,16 @@
 import fs from 'fs';
 import path from 'path';
 import { expect, test, Frame, Locator } from '@playwright/test';
-import { addArtifact, BI_INTEGRATOR_LABEL, BI_WEBVIEW_NOT_FOUND_ERROR, initTest, logStep, newProjectPath, page } from '../utils/helpers';
+import {
+    addArtifact,
+    BI_INTEGRATOR_LABEL,
+    BI_WEBVIEW_NOT_FOUND_ERROR,
+    initTest,
+    logStep,
+    newProjectPath,
+    page,
+    submitArtifactCreation
+} from '../utils/helpers';
 import { Form, switchToIFrame } from '@wso2/playwright-vscode-tester';
 import { Diagram, SidePanel } from '../utils/pages';
 
@@ -282,11 +291,7 @@ export default function createTests() {
             // "Create" in the in-project form, "Create Integration" in the wizard's
             // Configure step — this fixture's project starts empty, so "Add Artifact"
             // is hidden and addArtifact() falls back to the latter.
-            const createBtn = frame.getByRole('button', { name: /^Create( Integration)?$/ });
-            await createBtn.waitFor({ state: 'visible', timeout: 60000 });
-            // `force` — the floating Copilot orb/invite box has been observed to
-            // overlap and intercept pointer events on this button.
-            await createBtn.click({ force: true, timeout: 60000 });
+            await submitArtifactCreation(frame);
 
             // On this empty integration, the wizard generates the artifact into the
             // existing package and closes back to the (now non-empty) overview rather

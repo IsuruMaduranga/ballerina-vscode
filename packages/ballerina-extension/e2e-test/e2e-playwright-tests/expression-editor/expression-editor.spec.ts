@@ -18,7 +18,14 @@
 
 import { Locator, test } from '@playwright/test';
 import path from 'path';
-import { addArtifact, BI_INTEGRATOR_LABEL, BI_WEBVIEW_NOT_FOUND_ERROR, initTest, page } from '../utils/helpers';
+import {
+    addArtifact,
+    BI_INTEGRATOR_LABEL,
+    BI_WEBVIEW_NOT_FOUND_ERROR,
+    initTest,
+    page,
+    submitArtifactCreation
+} from '../utils/helpers';
 import { switchToIFrame } from '@wso2/playwright-vscode-tester';
 import { Diagram, SidePanel } from '../utils/pages';
 
@@ -70,9 +77,7 @@ export default function createTests() {
                 throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
             }
             // "Create" in the in-project form, "Create Integration" in the wizard's Configure step.
-            // `force` — the floating Copilot orb/invite box has been observed to overlap and
-            // intercept pointer events on this button.
-            await artifactWebView.getByRole('button', { name: /^Create( Integration)?$/ }).click({ force: true, timeout: 60000 });
+            await submitArtifactCreation(artifactWebView);
 
             // On this empty integration, the wizard generates the artifact into the existing
             // package and closes back to the (now non-empty) overview rather than opening the
