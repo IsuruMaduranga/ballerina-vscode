@@ -123,6 +123,29 @@ async function domClick(locator: import('@playwright/test').Locator): Promise<vo
     await locator.evaluate((el: HTMLElement) => el.click());
 }
 
+// Collapses any active selection inside a rich-text (ProseMirror) contenteditable
+// to the very end of its content, via the DOM Selection API directly rather than
+// a keyboard 'End' press. CONFIRMED VIA TRACE INSPECTION: the markdown toolbar's
+// Bold button preserves the editor's "select all" range while applying the format
+// (so the command has something to operate on) instead of collapsing it, and that
+// preserved full-document selection can silently survive a subsequent 'End'
+// keypress. Pressing Enter while it is still active then deletes the (just
+// bolded) selected text and splits an empty paragraph in its place — the bolded
+// text vanishes entirely rather than merely losing focus. Forcing a real
+// DOM-level collapse first removes the ambiguity around whether 'End' reached
+// the editor or actually cleared the selection.
+async function collapseToEnd(locator: import('@playwright/test').Locator): Promise<void> {
+    await locator.evaluate((el: HTMLElement) => {
+        el.focus();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+    });
+}
+
 // The diagram library doesn't reliably react to Playwright's native
 // click/force-click on a node's text (the event dispatches without error but
 // the node's onClick handler doesn't fire — confirmed via trace inspection:
@@ -656,7 +679,10 @@ export default function createTests() {
             await page.page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
             await frame.locator('[title="Bold"]').last().click({ force: true });
             await page.page.waitForTimeout(800);
-            await page.page.keyboard.press('End');
+            // Explicitly collapse the (still-active) "select all" selection before
+            // splitting a new line — see collapseToEnd's comment for why a plain
+            // 'End' keypress is not reliable here.
+            await collapseToEnd(ed);
             await page.page.keyboard.press('Enter');
             await frame.locator('[title="Bulleted List"]').last().click({ force: true });
             await page.page.waitForTimeout(500);
