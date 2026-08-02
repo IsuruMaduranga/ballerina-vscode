@@ -602,7 +602,11 @@ export default function createTests() {
             await loading.waitFor({ state: 'hidden', timeout: 300000 }).catch(() => { });
             const connNameBox = frame.getByRole('textbox', { name: /Connection Name/i }).first();
             await connNameBox.waitFor({ state: 'visible', timeout: 60000 });
-            await frame.getByRole('button', { name: 'Save Connection' }).last().click({ force: true });
+            // domClick, not a coordinate click — this button can sit directly under
+            // the floating Copilot orb's default bottom-center dock point (confirmed
+            // root cause of a real failure on the wizard's equivalent button; see
+            // submitArtifactCreation in utils/helpers/artifacts.ts).
+            await domClick(frame.getByRole('button', { name: 'Save Connection' }).last());
             await pollGenerated('connections.bal', 'final mysql:Client mysqlClient = check new ()', 300000);
             logStep('connections.bal has mysql:Client');
 
