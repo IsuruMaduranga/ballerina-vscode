@@ -371,6 +371,9 @@ export class ApprovalViewManager {
     // hold a revertible generation, and serving one thread's diffs for another's bar is silent
     // and wrong.
     private cachedReviewGenerationId: string | null = null;
+    // Whose views the open ReviewMode is showing, so a bare index is never applied to another
+    // generation's list.
+    private openReviewGenerationId: string | null = null;
     // Shared while a restore-rebuild is running so concurrent navigateReviewMode calls
     // await the same result instead of each re-opening the same LS documents.
     private rebuildInFlight: Promise<ReviewModeData | null> | null = null;
@@ -437,6 +440,7 @@ export class ApprovalViewManager {
         this.reviewOpenAttempt++;
         this.queuedReviewIndex = null;
         this.queuedReviewGenerationId = null;
+        this.openReviewGenerationId = null;
         this.lastReviewNavigationRequestAt = 0;
         if (this.reviewNavigationTimer) {
             clearTimeout(this.reviewNavigationTimer);
@@ -478,6 +482,7 @@ export class ApprovalViewManager {
         const initialIndex = this.queuedReviewIndex ?? 0;
         this.queuedReviewIndex = null;
         const attempt = ++this.reviewOpenAttempt;
+        this.openReviewGenerationId = generationId;
         openMainView(EVENT_TYPE.OPEN_VIEW, {
             view: MACHINE_VIEW.ReviewMode,
             reviewData: { ...this.cachedReviewData, currentIndex: initialIndex }
@@ -527,7 +532,9 @@ export class ApprovalViewManager {
         this.queuedReviewIndex = index;
         this.lastReviewNavigationRequestAt = Date.now();
 
-        if (this.isReviewModeReady()) {
+        // Navigating by bare index is only meaningful against the generation whose views are
+        // loaded; another generation's bar has to reload ReviewMode, not scroll this one.
+        if (this.isReviewModeReady() && this.openReviewGenerationId === generationId) {
             VisualizerWebview.currentPanel?.getWebview()?.reveal();
             this.scheduleQueuedReviewNavigation();
             return;
