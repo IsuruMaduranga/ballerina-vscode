@@ -746,7 +746,7 @@ export const ReviewBar: React.FC<ReviewBarProps> = ({
 
     const navigateReviewMode = (index = 0) => {
         if (!rpcClient) return;
-        rpcClient.getVisualizerRpcClient().navigateReviewMode(index);
+        rpcClient.getVisualizerRpcClient().navigateReviewMode({ generationId, index });
     };
 
     const openFileDiff = (relativePath: string) => {
@@ -758,7 +758,7 @@ export const ReviewBar: React.FC<ReviewBarProps> = ({
         if (!rpcClient) return;
         try {
             setIsProcessing(true);
-            await rpcClient.getAiPanelRpcClient().revertGeneration();
+            await rpcClient.getAiPanelRpcClient().revertGeneration({ generationId });
             rpcClient.getVisualizerRpcClient().goBack();
         } catch (error) {
             console.error("[ReviewBar] Error discarding changes:", error);

@@ -33,6 +33,7 @@ import {
     SemanticDiffRequest,
     SemanticDiffResponse,
     RestoreCheckpointRequest,
+    RevertGenerationRequest,
     UpdateChatMessageRequest,
     PlanApprovalRequest,
     ApproveTaskRequest,
@@ -119,7 +120,7 @@ export const isUserAuthenticated: RequestType<void, boolean> = { method: `${_pre
 export const openAIPanel: RequestType<AIPanelPrompt, void> = { method: `${_preFix}/openAIPanel` };
 export const getSemanticDiff: RequestType<SemanticDiffRequest, SemanticDiffResponse> = { method: `${_preFix}/getSemanticDiff` };
 export const isWorkspaceProject: RequestType<void, boolean> = { method: `${_preFix}/isWorkspaceProject` };
-export const revertGeneration: RequestType<void, void> = { method: `${_preFix}/revertGeneration` };
+export const revertGeneration: RequestType<RevertGenerationRequest, void> = { method: `${_preFix}/revertGeneration` };
 export const approvePlan: RequestType<PlanApprovalRequest, void> = { method: `${_preFix}/approvePlan` };
 export const declinePlan: RequestType<PlanApprovalRequest, void> = { method: `${_preFix}/declinePlan` };
 export const approveTask: RequestType<ApproveTaskRequest, void> = { method: `${_preFix}/approveTask` };

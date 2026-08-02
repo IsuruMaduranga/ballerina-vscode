@@ -31,6 +31,7 @@ import {
     SemanticDiffRequest,
     SemanticDiffResponse,
     RestoreCheckpointRequest,
+    RevertGenerationRequest,
     UpdateChatMessageRequest,
     PlanApprovalRequest,
     ApproveTaskRequest,
@@ -125,7 +126,7 @@ export interface AIPanelAPI {
     // AI schema related functions
     getSemanticDiff: (params: SemanticDiffRequest) => Promise<SemanticDiffResponse>;
     isWorkspaceProject: () => Promise<boolean>;
-    revertGeneration: () => Promise<void>;
+    revertGeneration: (params: RevertGenerationRequest) => Promise<void>;
     // ==================================
     // Approval Related Functions (Human-in-the-Loop)
     // ==================================

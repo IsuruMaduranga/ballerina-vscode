@@ -40,6 +40,7 @@ import {
     PromptEnhancementResponse,
     RequirementSpecification,
     RestoreCheckpointRequest,
+    RevertGenerationRequest,
     SemanticDiffRequest,
     SemanticDiffResponse,
     SubmitFeedbackRequest,
@@ -535,16 +536,18 @@ export class AiPanelRpcManager implements AIPanelAPI {
         return isWorkspace;
     }
 
-    async revertGeneration(): Promise<void> {
+    async revertGeneration(params: RevertGenerationRequest): Promise<void> {
         try {
             const projectRootPath = resolveProjectRootPath();
-            const threadId = getActiveThreadId();
-
-            const doneGeneration = chatStateStorage.getDoneGeneration(projectRootPath, threadId);
-            if (!doneGeneration) {
-                console.warn("[Review Actions] No revertible generation found");
+            // Resolve the thread from the generation the bar names, not the active-thread pointer:
+            // another thread can hold its own revertible generation.
+            const located = chatStateStorage.findGenerationScope(projectRootPath, params.generationId);
+            const doneGeneration = located?.generation;
+            if (!located || !doneGeneration || doneGeneration.reviewState.status !== 'done') {
+                console.warn(`[Review Actions] Not a revertible generation: ${params.generationId}`);
                 return;
             }
+            const threadId = located.threadId;
 
             console.log(`[Review Actions] Reverting generation ${doneGeneration.id}`);
 
@@ -1088,14 +1091,14 @@ User reverted the last made changes. The files have been restored to the state b
     async openFileDiff(params: OpenFileDiffRequest): Promise<void> {
         AiPanelRpcManager.registerDiffContentProvider();
 
-        const context = StateMachine.context();
-        const workspaceId = context.workspacePath || context.projectPath;
-        const threadId = chatStateStorage.getActiveThreadId(resolveProjectRootPath());
-        const generation = chatStateStorage.getGeneration(workspaceId, threadId, params.generationId);
-        const tempProjectPath = generation?.reviewState.tempProjectPath;
+        const projectRootPath = resolveProjectRootPath();
+        const generation = chatStateStorage.findGenerationScope(projectRootPath, params.generationId)?.generation;
+        // Direct-edit mode edits the workspace in place, so the review root is the workspace root —
+        // re-derived rather than restored, since a persisted absolute path can outlive its workspace.
+        const tempProjectPath = generation?.reviewState.tempProjectPath ?? projectRootPath;
 
-        if (!tempProjectPath) {
-            console.error("[openFileDiff] No generation or temp project path for generationId:", params.generationId);
+        if (!generation) {
+            console.error("[openFileDiff] No generation for generationId:", params.generationId);
             return;
         }
 

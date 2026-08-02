@@ -17,6 +17,7 @@
  */
 
 import { MACHINE_VIEW, EVENT_TYPE, VisualizerLocation, PopupVisualizerLocation, AgentMetadata, navigateReviewIndex, reviewModeOpened, reviewModeClosed, ReviewModeData } from '@wso2/ballerina-core';
+import * as path from 'path';
 import { AiPanelWebview } from '../../../views/ai-panel/webview';
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
 import { sendReviewRestoreDidOpenBatch } from '../utils/project/ls-schema-notifications';
@@ -29,6 +30,24 @@ export type ApprovalType = 'configuration' | 'task' | 'plan' | 'connector_spec';
 
 const REVIEW_NAVIGATION_DEBOUNCE_MS = 150;
 const REVIEW_MODE_READY_TIMEOUT_MS = 15_000;
+
+/**
+ * ReviewMode matches these against the semantic diffs' URIs, so they have to be absolute. A
+ * modified file's first path segment is its package, matching how the review bar groups them.
+ */
+function deriveAffectedPackages(projectRootPath: string, modifiedFiles: string[], isWorkspace: boolean): string[] {
+    if (!isWorkspace) {
+        return [projectRootPath];
+    }
+    const packagePaths = new Set<string>();
+    for (const modifiedFile of modifiedFiles) {
+        const separatorIndex = modifiedFile.replace(/\\/g, '/').indexOf('/');
+        packagePaths.add(separatorIndex === -1
+            ? projectRootPath
+            : path.join(projectRootPath, modifiedFile.slice(0, separatorIndex)));
+    }
+    return Array.from(packagePaths);
+}
 
 interface OpenedApprovalView {
     requestId: string;
@@ -348,6 +367,10 @@ export class ApprovalViewManager {
     }
 
     private cachedReviewData: ReviewModeData | null = null;
+    // The cache is a single slot, so it must say whose data it holds: several threads can each
+    // hold a revertible generation, and serving one thread's diffs for another's bar is silent
+    // and wrong.
+    private cachedReviewGenerationId: string | null = null;
     // Shared while a restore-rebuild is running so concurrent navigateReviewMode calls
     // await the same result instead of each re-opening the same LS documents.
     private rebuildInFlight: Promise<ReviewModeData | null> | null = null;
@@ -355,6 +378,7 @@ export class ApprovalViewManager {
     // transition in flight and coalesce rapid clicks to the most recent requested view.
     private reviewOpenInFlight: Promise<void> | null = null;
     private queuedReviewIndex: number | null = null;
+    private queuedReviewGenerationId: string | null = null;
     private reviewNavigationTimer: ReturnType<typeof setTimeout> | null = null;
     private reviewOpenAttempt = 0;
     private lastReviewNavigationRequestAt = 0;
@@ -412,6 +436,7 @@ export class ApprovalViewManager {
     private resetReviewNavigationState(): void {
         this.reviewOpenAttempt++;
         this.queuedReviewIndex = null;
+        this.queuedReviewGenerationId = null;
         this.lastReviewNavigationRequestAt = 0;
         if (this.reviewNavigationTimer) {
             clearTimeout(this.reviewNavigationTimer);
@@ -421,14 +446,20 @@ export class ApprovalViewManager {
 
     private async openQueuedReviewMode(): Promise<void> {
         const pendingAttempt = this.reviewOpenAttempt;
-        if (!this.cachedReviewData) {
-            this.rebuildInFlight ??= this.rebuildReviewDataFromStorage();
+        const generationId = this.queuedReviewGenerationId;
+        if (!generationId) {
+            this.queuedReviewIndex = null;
+            return;
+        }
+        if (this.cachedReviewGenerationId !== generationId) {
+            this.rebuildInFlight ??= this.rebuildReviewDataFromStorage(generationId);
             try {
                 const rebuiltReviewData = await this.rebuildInFlight;
                 if (pendingAttempt !== this.reviewOpenAttempt) {
                     return;
                 }
                 this.cachedReviewData = rebuiltReviewData;
+                this.cachedReviewGenerationId = rebuiltReviewData ? generationId : null;
             } finally {
                 this.rebuildInFlight = null;
             }
@@ -470,15 +501,16 @@ export class ApprovalViewManager {
      * Open ReviewMode with review data passed via OPEN_VIEW reviewData field.
      * Data is cached for chip re-clicks while review is active.
      */
-    openReviewMode(data: ReviewModeData, autoOpen: boolean = true): void {
+    openReviewMode(generationId: string, data: ReviewModeData, autoOpen: boolean = true): void {
         // Cache regardless of panel state: a run can finish while the AI panel is
         // closed, and the chip click after reopen must hit this cache — the
         // storage-rebuild fallback re-opens the LS documents and is meant for the
         // extension-host-restart case only.
         this.cachedReviewData = data;
+        this.cachedReviewGenerationId = generationId;
         if (!AiPanelWebview.currentPanel) { return; }
         if (!autoOpen) { return; }
-        void this.navigateReviewMode(data.currentIndex).catch((error) =>
+        void this.navigateReviewMode(generationId, data.currentIndex).catch((error) =>
             console.error('[ApprovalViewManager] Failed to open ReviewMode:', error));
     }
 
@@ -489,8 +521,9 @@ export class ApprovalViewManager {
      * state when the cache is gone (extension host restarted mid-review). Concurrent
      * requests share one open transition so they cannot create competing view loads.
      */
-    async navigateReviewMode(index: number): Promise<void> {
+    async navigateReviewMode(generationId: string, index: number): Promise<void> {
         if (!AiPanelWebview.currentPanel) { return; }
+        this.queuedReviewGenerationId = generationId;
         this.queuedReviewIndex = index;
         this.lastReviewNavigationRequestAt = Date.now();
 
@@ -515,24 +548,26 @@ export class ApprovalViewManager {
     }
 
     /**
-     * Rebuild ReviewModeData for the active thread's revertible generation, for a panel that lost
-     * its cached copy. The Language Server may have restarted without the in-memory ai:// (modified)
-     * and file:// (original) documents, so the modified files are re-opened in the LS first.
+     * Rebuild ReviewModeData for one generation, for a panel that lost its cached copy — the
+     * extension host may have restarted, taking the in-memory copy and the Language Server's
+     * ai:// (original) and file:// (modified) documents with it, so the files are re-opened first
+     * from the generation's checkpoint.
+     *
+     * `tempProjectPath` and `affectedPackagePaths` are re-derived rather than read: they are
+     * absolute paths, and a persisted one silently outlives a moved workspace.
      */
-    private async rebuildReviewDataFromStorage(): Promise<ReviewModeData | null> {
+    private async rebuildReviewDataFromStorage(generationId: string): Promise<ReviewModeData | null> {
         const ctx = StateMachine.context();
         const projectRootPath = ctx.workspacePath || ctx.projectPath || '';
-        const threadId = chatStateStorage.getActiveThreadId(projectRootPath);
-        const generation = chatStateStorage.getDoneGeneration(projectRootPath, threadId);
+        const generation = chatStateStorage.findGenerationScope(projectRootPath, generationId)?.generation;
         const review = generation?.reviewState;
-        // reviewView is runtime-only, so an extension-host restart leaves the generation
-        // revertible but its diff view unrebuildable.
-        if (!review?.reviewView || !review.tempProjectPath) {
+        if (!review?.reviewView) {
             return null;
         }
 
+        const tempProjectPath = review.tempProjectPath ?? projectRootPath;
         sendReviewRestoreDidOpenBatch(
-            review.tempProjectPath,
+            tempProjectPath,
             review.modifiedFiles,
             undefined,
             generation.checkpoint?.workspaceSnapshot
@@ -543,9 +578,10 @@ export class ApprovalViewManager {
             currentIndex: 0,
             semanticDiffs: review.reviewView.semanticDiffs,
             loadDesignDiagrams: review.reviewView.loadDesignDiagrams,
-            affectedPackages: review.affectedPackagePaths ?? [],
+            affectedPackages: review.affectedPackagePaths
+                ?? deriveAffectedPackages(tempProjectPath, review.modifiedFiles, review.reviewView.isWorkspace),
             modifiedFiles: review.modifiedFiles,
-            tempProjectPath: review.tempProjectPath,
+            tempProjectPath,
             isWorkspace: review.reviewView.isWorkspace,
         };
     }
@@ -565,6 +601,7 @@ export class ApprovalViewManager {
     clearReviewData(): void {
         this.resetReviewNavigationState();
         this.cachedReviewData = null;
+        this.cachedReviewGenerationId = null;
     }
 }
 

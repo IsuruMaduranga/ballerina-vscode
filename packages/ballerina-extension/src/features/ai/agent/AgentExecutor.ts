@@ -1072,7 +1072,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                 isWorkspace,
             };
 
-            approvalViewManager.openReviewMode(reviewData, false);
+            approvalViewManager.openReviewMode(context.messageId, reviewData, false);
 
             // Keep what the diff view needs on the generation itself, so reopening resolves against
             // the thread that owns it rather than a workspace-wide slot.

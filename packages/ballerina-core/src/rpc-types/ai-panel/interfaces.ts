@@ -427,6 +427,10 @@ export interface SemanticDiffResponse {
     semanticDiffs: SemanticDiff[];
 }
 
+export interface RevertGenerationRequest {
+    generationId: string;
+}
+
 export interface RestoreCheckpointRequest {
     checkpointId: string;
 }

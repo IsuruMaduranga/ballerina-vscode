@@ -82,6 +82,7 @@ import {
     RequirementSpecification,
     restoreCheckpoint,
     RestoreCheckpointRequest,
+    RevertGenerationRequest,
     SemanticDiffRequest,
     showSignInAlert,
     submitFeedback,
@@ -189,7 +190,7 @@ export function registerAiPanelRpcHandlers(messenger: Messenger) {
     messenger.onRequest(openAIPanel, (args: AIPanelPrompt) => rpcManger.openAIPanel(args));
     messenger.onRequest(getSemanticDiff, (args: SemanticDiffRequest) => rpcManger.getSemanticDiff(args));
     messenger.onRequest(isWorkspaceProject, () => rpcManger.isWorkspaceProject());
-    messenger.onRequest(revertGeneration, () => rpcManger.revertGeneration());
+    messenger.onRequest(revertGeneration, (args: RevertGenerationRequest) => rpcManger.revertGeneration(args));
     messenger.onRequest(approvePlan, (args: PlanApprovalRequest) => rpcManger.approvePlan(args));
     messenger.onRequest(declinePlan, (args: PlanApprovalRequest) => rpcManger.declinePlan(args));
     messenger.onRequest(approveTask, (args: ApproveTaskRequest) => rpcManger.approveTask(args));

@@ -41,6 +41,7 @@ import {
     PromptEnhancementResponse,
     RequirementSpecification,
     RestoreCheckpointRequest,
+    RevertGenerationRequest,
     SemanticDiffRequest,
     SemanticDiffResponse,
     SubmitFeedbackRequest,
@@ -296,8 +297,8 @@ export class AiPanelRpcClient implements AIPanelAPI {
         return this._messenger.sendRequest(isWorkspaceProject, HOST_EXTENSION);
     }
 
-    revertGeneration(): Promise<void> {
-        return this._messenger.sendRequest(revertGeneration, HOST_EXTENSION);
+    revertGeneration(params: RevertGenerationRequest): Promise<void> {
+        return this._messenger.sendRequest(revertGeneration, HOST_EXTENSION, params);
     }
 
     approvePlan(params: PlanApprovalRequest): Promise<void> {
