@@ -833,8 +833,9 @@ export interface GenerationReviewState {
     /** Error message if status is 'error' */
     errorMessage?: string;
     /**
-     * What ReviewMode needs to reopen, beyond the fields above. Runtime-only and deliberately not
-     * persisted, so it dies with the extension host; revert does not need it.
+     * What ReviewMode needs to reopen, beyond the fields above. Persisted, so a review survives an
+     * extension-host restart. Settling clears it, so at most one generation per thread carries it —
+     * and its presence is what tells a caller the review is still actionable.
      */
     reviewView?: {
         semanticDiffs: object[];

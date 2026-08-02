@@ -132,6 +132,7 @@ function toPersistedGeneration(gen: Generation): PersistedGeneration {
             status: gen.reviewState.status,
             modifiedFiles: gen.reviewState.modifiedFiles,
             errorMessage: gen.reviewState.errorMessage,
+            reviewView: gen.reviewState.reviewView,
         },
         metadata: {
             isPlanMode: gen.metadata.isPlanMode,
@@ -162,7 +163,9 @@ function fromPersistedGeneration(pg: PersistedGeneration): Generation {
             status: pg.reviewState.status,
             modifiedFiles: pg.reviewState.modifiedFiles,
             errorMessage: pg.reviewState.errorMessage,
-            // tempProjectPath and affectedPackagePaths are runtime-only
+            reviewView: pg.reviewState.reviewView,
+            // tempProjectPath and affectedPackagePaths are re-derived, never restored: both are
+            // absolute paths a moved workspace would silently invalidate.
         },
         metadata: {
             isPlanMode: pg.metadata.isPlanMode,
