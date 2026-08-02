@@ -33,7 +33,7 @@ import { BI_INTEGRATOR_LABEL, BI_WEBVIEW_NOT_FOUND_ERROR } from "./constants";
  * the orb instead and silently opens its mini chat rather than submitting
  * the form. Dispatching through the DOM node bypasses hit-testing entirely.
  */
-async function domClick(locator: Locator): Promise<void> {
+export async function domClick(locator: Locator): Promise<void> {
     await locator.waitFor({ state: "attached", timeout: 15000 });
     await locator.evaluate((el: HTMLElement) => el.click());
 }
