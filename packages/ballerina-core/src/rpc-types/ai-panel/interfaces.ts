@@ -551,7 +551,7 @@ export interface ThreadSummary {
     isActive: boolean;
     createdAt: number;
     updatedAt: number;
-    messageCount: number;
+    turnCount: number;
 }
 
 export interface SwitchThreadRequest {
@@ -560,6 +560,11 @@ export interface SwitchThreadRequest {
 
 export interface DeleteThreadRequest {
     threadId: string;
+}
+
+export interface RenameThreadRequest {
+    threadId: string;
+    name: string;
 }
 
 // TODO(auto-memory): temporarily disabled for this release — restore once the memory feature is refined.

@@ -378,7 +378,8 @@ const AIChat: React.FC = () => {
     const [hasActiveReview, setHasActiveReview] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [threads, setThreads] = useState<ThreadSummary[]>([]);
-    const newChatAnchorRef = useRef<HTMLDivElement>(null);
+    const [threadsLoading, setThreadsLoading] = useState(false);
+    const [threadsError, setThreadsError] = useState<string | null>(null);
 
     const [approvalRequest, setApprovalRequest] = useState<TaskApprovalRequest | null>(null);
     const [approvalOverlay, setApprovalOverlay] = useState<ApprovalOverlayState>({ show: false });
@@ -2195,12 +2196,24 @@ const AIChat: React.FC = () => {
         loadThreads();
     }
 
+    // Six call sites fire this without serializing, so a slow earlier response could otherwise
+    // overwrite a newer list — or end the spinner while a newer request is still running.
+    const loadThreadsSeqRef = useRef(0);
+
     async function loadThreads(): Promise<void> {
+        const seq = ++loadThreadsSeqRef.current;
+        setThreadsLoading(true);
+        setThreadsError(null);
         try {
             const list = await rpcClient.getAiPanelRpcClient().listThreads();
+            if (seq !== loadThreadsSeqRef.current) { return; }
             setThreads(list);
-        } catch {
-            // Non-critical — session history unavailable
+        } catch (error) {
+            if (seq !== loadThreadsSeqRef.current) { return; }
+            console.error('[AIChat] Failed to load chat sessions:', error);
+            setThreadsError("Couldn't load sessions. Close and reopen to retry.");
+        } finally {
+            if (seq === loadThreadsSeqRef.current) { setThreadsLoading(false); }
         }
     }
 
@@ -2244,6 +2257,11 @@ const AIChat: React.FC = () => {
         setApprovalRequest(null);
         setContextUsage(null);
         await refreshFollowupSuggestions();
+        loadThreads();
+    }
+
+    async function handleRenameThread(threadId: string, name: string): Promise<void> {
+        await rpcClient.getAiPanelRpcClient().renameThread({ threadId, name });
         loadThreads();
     }
 
@@ -2506,27 +2524,26 @@ const AIChat: React.FC = () => {
                             </AuthProviderChip>
                         )}
                         <HeaderButtons>
-                            {/* Single button — click opens session history dropdown. New chat is created from within the dropdown. */}
-                            <div ref={newChatAnchorRef} style={{ position: "relative" }}>
+                            {/* New chat is created from a row inside the dropdown, not from this button. */}
+                            <div style={{ position: "relative" }}>
                                 <Button
                                     appearance="icon"
-                                    onClick={() => { loadThreads(); setHistoryOpen(v => !v); }}
+                                    onClick={() => { void loadThreads(); setHistoryOpen(v => !v); }}
                                     tooltip="Chat sessions"
-                                    disabled={isLoading}
                                 >
-                                    <Icon name="NewChat" sx={{ fontSize: "16px", marginRight: 4 }} iconSx={{ position: "relative", top: "2px" }} />
-                                    New Chat
-                                    <Codicon
-                                        name={historyOpen ? "chevron-up" : "chevron-down"}
-                                        sx={{ fontSize: "10px", marginLeft: 4, position: "relative", top: "1px" }}
-                                    />
+                                    <Icon name="CopilotChatRounded" sx={{ fontSize: "18px", marginRight: 6 }} iconSx={{ position: "relative" }} />
+                                    Chats
                                 </Button>
                                 {historyOpen && (
                                     <SessionHistoryDropdown
                                         threads={threads}
+                                        loading={threadsLoading}
+                                        error={threadsError}
+                                        readOnly={isLoading}
                                         onNewChat={handleClearChat}
                                         onSwitch={handleSwitchThread}
                                         onDelete={handleDeleteThread}
+                                        onRename={handleRenameThread}
                                         onClose={() => setHistoryOpen(false)}
                                     />
                                 )}
