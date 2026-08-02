@@ -157,7 +157,7 @@ import { LLM_API_BASE_PATH, WI_EXTENSION_ID } from "../../features/ai/constants"
 import { ContextTypesExecutor } from '../../features/ai/executors/datamapper/ContextTypesExecutor';
 import { approvalManager } from '../../features/ai/state/ApprovalManager';
 import { approvalViewManager } from '../../features/ai/state/ApprovalViewManager';
-import { chatStateStorage } from '../../views/ai-panel/chatStateStorage';
+import { chatStateStorage, isRevertible } from '../../views/ai-panel/chatStateStorage';
 import { runEventStore } from '../../features/ai/utils/run-event-store';
 import { restoreWorkspaceSnapshot } from '../../views/ai-panel/checkpoint/checkpointUtils';
 import { runningServicesManager } from '../../features/ai/agent/tools/running-service-manager';
@@ -543,7 +543,7 @@ export class AiPanelRpcManager implements AIPanelAPI {
             // another thread can hold its own revertible generation.
             const located = chatStateStorage.findGenerationScope(projectRootPath, params.generationId);
             const doneGeneration = located?.generation;
-            if (!located || !doneGeneration || doneGeneration.reviewState.status !== 'done') {
+            if (!located || !isRevertible(doneGeneration)) {
                 console.warn(`[Review Actions] Not a revertible generation: ${params.generationId}`);
                 return;
             }
@@ -930,7 +930,11 @@ User reverted the last made changes. The files have been restored to the state b
                     role: 'assistant',
                     content: generation.uiResponse,
                     messageId: generation.id,
-                    generationStatus: generation.reviewState.status
+                    // Never hand the panel a 'done' it cannot act on, or the bar renders live
+                    // with dead buttons.
+                    generationStatus: generation.reviewState.status === 'done' && !isRevertible(generation)
+                        ? 'accepted'
+                        : generation.reviewState.status
                 });
             }
         }

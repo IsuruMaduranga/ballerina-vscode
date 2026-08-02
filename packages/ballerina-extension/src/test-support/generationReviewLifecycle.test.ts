@@ -126,7 +126,11 @@ describe('generation review lifecycle', () => {
         store.finalizeLastGenerationIfDone(ROOT, 'thread-a');
         const secondId = 'gen-second';
         store.addGeneration(ROOT, 'thread-a', 'another thing', { generationType: 'agent' } as never, secondId);
-        store.updateReviewState(ROOT, 'thread-a', secondId, { status: 'done', modifiedFiles: [] });
+        store.updateReviewState(ROOT, 'thread-a', secondId, {
+            status: 'done',
+            modifiedFiles: [],
+            reviewView: { semanticDiffs: [], loadDesignDiagrams: false, isWorkspace: false },
+        });
 
         expect(store.getDoneGeneration(ROOT, 'thread-a')?.id).toBe(secondId);
     });

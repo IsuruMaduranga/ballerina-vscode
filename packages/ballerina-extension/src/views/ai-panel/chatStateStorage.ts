@@ -151,6 +151,15 @@ function toPersistedGeneration(gen: Generation): PersistedGeneration {
     };
 }
 
+/**
+ * A 'done' status on its own does not mean the review can still be acted on. Settling clears
+ * `reviewView`, so its absence marks a generation whose window has closed — including one written
+ * before reviews were persisted, which comes back claiming to be revertible with nothing behind it.
+ */
+export function isRevertible(generation: Generation | undefined): boolean {
+    return generation?.reviewState.status === 'done' && !!generation.reviewState.reviewView;
+}
+
 function fromPersistedGeneration(pg: PersistedGeneration): Generation {
     return {
         id: pg.id,
@@ -957,7 +966,7 @@ export class ChatStateStorage {
         // Iterate in reverse defensively — the invariant guarantees at most one match.
         for (let i = thread.generations.length - 1; i >= 0; i--) {
             const generation = thread.generations[i];
-            if (generation.reviewState.status === 'done') {
+            if (isRevertible(generation)) {
                 console.log(`[ChatStateStorage] Found done generation: ${generation.id}`);
                 return generation;
             }
