@@ -485,11 +485,9 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
             onGoToSource();
             return;
         }
-        if (isAgentReference) {
-            agentNode?.onGoToAgent?.(model.node);
-            setMenuPos(null);
-            return;
-        }
+        // In a caller's flow the box is the run statement, so clicking it opens that statement's
+        // form — the way every other node behaves. Jumping to the agent's own diagram stays on the
+        // button in the corner, which is the only affordance that says it navigates.
         onNodeClick();
     };
 
