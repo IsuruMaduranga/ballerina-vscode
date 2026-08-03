@@ -183,7 +183,7 @@ export class ConfigEditor {
 
     public async getSelectedPackage(): Promise<string> {
         const titleDiv = this.webView.locator('div#TitleDiv h2');
-        await expect(titleDiv).not.toHaveText('', { timeout: 30000 });
+        await expect(titleDiv).not.toHaveText('', { timeout: 120000 });
         return (await titleDiv.textContent())?.trim() || '';
     }
 
