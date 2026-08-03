@@ -1015,15 +1015,25 @@ public class CodeAnalyzer extends NodeVisitor {
             return;
         }
         nodeBuilder.metadata().label(label);
-        // run/call name the workflow directly; the wait and the send take the handle the run
-        // returned, so their first argument is the best available identification of the target.
         String target = callNode instanceof RemoteMethodCallActionNode remoteCall
                 && !remoteCall.arguments().isEmpty()
                 && remoteCall.arguments().get(0) instanceof PositionalArgumentNode positional
                 ? positional.expression().toSourceCode().trim() : null;
-        if (target != null && !target.isEmpty()) {
-            nodeBuilder.metadata().description(target);
+        if (target == null || target.isEmpty()) {
+            return;
         }
+        // run/call name the workflow directly. The wait and the send are given the handle the run
+        // returned, so the handle is followed back to that run and the workflow it started is
+        // named instead — a bare handle variable says nothing about which workflow is involved.
+        boolean takesHandle = Constants.Workflow.WAIT_CHILD_WORKFLOW_METHOD_NAME.equals(methodName)
+                || Constants.Workflow.SEND_DATA_CHILD_WORKFLOW_METHOD_NAME.equals(methodName);
+        if (takesHandle) {
+            String startedWorkflow = findChildWorkflowForHandle(callNode, target);
+            if (startedWorkflow != null && !startedWorkflow.isEmpty()) {
+                target = startedWorkflow;
+            }
+        }
+        nodeBuilder.metadata().description(target);
     }
 
     /**
@@ -1124,18 +1134,84 @@ public class CodeAnalyzer extends NodeVisitor {
     // Walks the enclosing function for `<...> <tokenName> = <agent>.sendData(id, "<event>", ...)`
     // and returns that event name.
     private String findSendDataEventForToken(NonTerminalNode fromNode, String tokenName) {
-        NonTerminalNode scope = fromNode;
-        while (scope != null && scope.kind() != SyntaxKind.FUNCTION_DEFINITION
-                && scope.kind() != SyntaxKind.RESOURCE_ACCESSOR_DEFINITION
-                && scope.kind() != SyntaxKind.OBJECT_METHOD_DEFINITION) {
-            scope = scope.parent();
-        }
+        NonTerminalNode scope = enclosingCallableScope(fromNode);
         if (scope == null) {
             return null;
         }
         DurableAgentSendDataFinder finder = new DurableAgentSendDataFinder(tokenName);
         scope.accept(finder);
         return finder.eventName();
+    }
+
+    // The callable a statement belongs to — the search space for the declaration that produced a
+    // token or a handle the statement was given.
+    private static NonTerminalNode enclosingCallableScope(NonTerminalNode fromNode) {
+        NonTerminalNode scope = fromNode;
+        while (scope != null && scope.kind() != SyntaxKind.FUNCTION_DEFINITION
+                && scope.kind() != SyntaxKind.RESOURCE_ACCESSOR_DEFINITION
+                && scope.kind() != SyntaxKind.OBJECT_METHOD_DEFINITION) {
+            scope = scope.parent();
+        }
+        return scope;
+    }
+
+    /**
+     * The child workflow a run handle came from, so a wait or a send names the workflow it
+     * concerns instead of the handle variable. Returns null when the handle does not trace back to
+     * a run/call in this callable.
+     */
+    private String findChildWorkflowForHandle(NonTerminalNode fromNode, String handleName) {
+        NonTerminalNode scope = enclosingCallableScope(fromNode);
+        if (scope == null) {
+            return null;
+        }
+        ChildWorkflowHandleFinder finder = new ChildWorkflowHandleFinder(handleName);
+        scope.accept(finder);
+        return finder.workflowName();
+    }
+
+    /**
+     * Finds the {@code runChildWorkflow}/{@code callChildWorkflow} whose handle was bound to a
+     * given variable, so a later wait or send can name the workflow that handle belongs to.
+     */
+    private static class ChildWorkflowHandleFinder extends NodeVisitor {
+
+        private final String handleName;
+        private String workflowName;
+
+        ChildWorkflowHandleFinder(String handleName) {
+            this.handleName = handleName;
+        }
+
+        String workflowName() {
+            return workflowName;
+        }
+
+        @Override
+        public void visit(VariableDeclarationNode variableDeclarationNode) {
+            if (workflowName == null
+                    && variableDeclarationNode.typedBindingPattern().bindingPattern().toSourceCode().trim()
+                            .equals(handleName)) {
+                variableDeclarationNode.initializer().ifPresent(this::captureWorkflowName);
+            }
+            if (workflowName == null) {
+                super.visit(variableDeclarationNode);
+            }
+        }
+
+        private void captureWorkflowName(ExpressionNode initializer) {
+            ExpressionNode expression = initializer instanceof CheckExpressionNode check
+                    ? check.expression() : initializer;
+            if (!(expression instanceof RemoteMethodCallActionNode call) || call.arguments().isEmpty()) {
+                return;
+            }
+            String method = call.methodName().toSourceCode().trim();
+            boolean startsChild = Constants.Workflow.RUN_CHILD_WORKFLOW_METHOD_NAME.equals(method)
+                    || Constants.Workflow.CALL_CHILD_WORKFLOW_METHOD_NAME.equals(method);
+            if (startsChild && call.arguments().get(0) instanceof PositionalArgumentNode positional) {
+                workflowName = positional.expression().toSourceCode().trim();
+            }
+        }
     }
 
     private static String stringLiteralArgument(FunctionArgumentNode argument) {
