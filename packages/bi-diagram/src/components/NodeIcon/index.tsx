@@ -252,6 +252,7 @@ const NODE_ICONS: Record<NodeKind, React.FC<{ size: number; color: string; isDBC
     HUMAN_TASK: ({ size, color }) => <Icon name="bi-user" sx={{ fontSize: size, width: size, height: size, color }} />,
     // Agent driver verbs mirror the workflow data-event icons: send for sendData, import
     // (receive) for the result readers, and the agent glyph for starting an agent.
+    DURABLE_AGENT_RUN: ({ size, color }) => <Icon name="bi-ai-agent" sx={{ fontSize: size, width: size, height: size, color }} />,
     DURABLE_AGENT_START: ({ size, color }) => <Icon name="bi-ai-agent" sx={{ fontSize: size, width: size, height: size, color }} />,
     DURABLE_AGENT_UPDATE: ({ size, color }) => <Icon name="bi-send" sx={{ fontSize: size, width: size, height: size, color }} />,
     DURABLE_AGENT_RESULT: ({ size, color }) => <Icon name="bi-flowchart" sx={{ fontSize: size, width: size, height: size, color }} />,
