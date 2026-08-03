@@ -404,9 +404,11 @@ jobs:
           fetch-depth: 0
 
       - name: Move nightly tag
+        env:
+          SHA: ${{ needs.sync-nightly.outputs.sha }}
         run: |
           set -euo pipefail
-          git tag --force nightly "${{ needs.sync-nightly.outputs.sha }}"
+          git tag --force nightly "${SHA}"
           git push --force origin refs/tags/nightly
 
       - name: Download nightly VSIX
@@ -427,17 +429,22 @@ jobs:
           vsix="ballerina-${VERSION}.vsix"
           test -f "$vsix"
 
-          # Delete rather than edit: the tag has just been force-moved, and an existing
-          # release keeps pointing at the commit it was created from. Deleting the release
-          # leaves the tag alone (no --cleanup-tag), so recreating it re-targets today's
-          # commit and replaces yesterday's asset. The URL stays
-          # releases/download/nightly/ballerina-<version>.vsix.
-          gh release delete nightly --yes || true
-          gh release create nightly "$vsix" \
-            --title "Nightly ${VERSION}" \
-            --notes "Nightly build ${VERSION} from ${SHA}. Overwritten on every successful nightly run." \
-            --prerelease \
-            --target "${SHA}"
+          notes="Nightly build ${VERSION} from ${SHA}. Overwritten on every successful nightly run."
+
+          # Edit in place rather than delete-and-recreate. 'Move nightly tag' above has
+          # already force-moved the tag, and target_commitish is ignored once the tag
+          # exists, so the release follows it without being destroyed first. That keeps
+          # releases/download/nightly/ballerina-<version>.vsix resolvable throughout, and
+          # lets a permission or API error fail the job instead of leaving no release.
+          if gh release view nightly >/dev/null 2>&1; then
+            gh release edit nightly --title "Nightly ${VERSION}" --notes "$notes" --prerelease
+            gh release upload nightly "$vsix" --clobber
+          else
+            gh release create nightly "$vsix" \
+              --title "Nightly ${VERSION}" \
+              --notes "$notes" \
+              --prerelease
+          fi
 
   # ─────────────────────────────────────────────────────────────────────────
   # Notifications
