@@ -50,6 +50,7 @@ import io.ballerina.compiler.syntax.tree.BindingPatternNode;
 import io.ballerina.compiler.syntax.tree.BlockStatementNode;
 import io.ballerina.compiler.syntax.tree.BreakStatementNode;
 import io.ballerina.compiler.syntax.tree.ByteArrayLiteralNode;
+import io.ballerina.compiler.syntax.tree.CaptureBindingPatternNode;
 import io.ballerina.compiler.syntax.tree.CheckExpressionNode;
 import io.ballerina.compiler.syntax.tree.ClassDefinitionNode;
 import io.ballerina.compiler.syntax.tree.ClientResourceAccessActionNode;
@@ -149,6 +150,7 @@ import io.ballerina.flowmodelgenerator.core.model.node.ChunkerBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.ClassInitBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataLoaderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataMapperBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRunBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.EmbeddingProviderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.FailBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.FunctionCall;
@@ -228,6 +230,8 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CALL_ACTIV
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CALL_HUMAN_TASK_METHOD_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CONTEXT_CLASS_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.HUMAN_TASK_DESCRIPTION;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.RUN_DURABLE_AGENT_DESCRIPTION;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.RUN_DURABLE_AGENT_LABEL;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.HUMAN_TASK_LABEL;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.SLEEP_DESCRIPTION;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.SLEEP_LABEL;
@@ -934,6 +938,237 @@ public class CodeAnalyzer extends NodeVisitor {
         nodeBuilder.properties().checkError(hasCheck);
     }
 
+    // Object-model durable agent: builds the node for `<agentVar>.run(...)` and renders the
+    // agent's DECLARATION (module-level `final workflow:DurableAgent x = check new ({...})`)
+    // as the agent box — role/instructions/model and the capability circles all come from the
+    // constructor config literal, since the object model has no imperative register statements.
+    private void populateDurableAgentObjectRun(MethodCallExpressionNode callNode, ExpressionNode expressionNode,
+                                               FunctionSymbol functionSymbol, String functionName) {
+        String agentVarName = expressionNode.toSourceCode().trim();
+        nodeBuilder
+                .symbolInfo(functionSymbol)
+                .metadata()
+                    .label(RUN_DURABLE_AGENT_LABEL)
+                    .description(RUN_DURABLE_AGENT_DESCRIPTION)
+                    .stepOut()
+                .codedata()
+                    .node(NodeKind.DURABLE_AGENT_RUN)
+                    .org(WORKFLOW_ORG)
+                    .module(WORKFLOW_MODULE)
+                    .object(Constants.Workflow.DURABLE_AGENT_OBJECT_CLASS_NAME)
+                    .parentSymbol(agentVarName)
+                    .symbol(functionName);
+
+        nodeBuilder.metadata().addData("agentName", agentVarName);
+        nodeBuilder.metadata().addData("agentBox", true);
+        populateAgentDeclarationMetadata(expressionNode);
+
+        SyntaxKind parentKind = callNode.parent().kind();
+        boolean hasCheck = parentKind == SyntaxKind.CHECK_ACTION || parentKind == SyntaxKind.CHECK_EXPRESSION;
+        nodeBuilder.properties().checkError(hasCheck);
+    }
+
+    // Parses the agent variable's `check new ({...})` config literal and attaches the agent-box
+    // metadata: agent role/instructions, model, and the capability lists.
+    private void populateAgentDeclarationMetadata(ExpressionNode agentVarRef) {
+        Optional<Symbol> symbol = semanticModel.symbol(agentVarRef);
+        if (symbol.isEmpty() || !(symbol.get() instanceof VariableSymbol variableSymbol)
+                || variableSymbol.getLocation().isEmpty()) {
+            return;
+        }
+        Document document = CommonUtils.getDocument(project, variableSymbol.getLocation().get());
+        if (document == null) {
+            return;
+        }
+        Optional<NonTerminalNode> varNodeOpt = CommonUtil.findNode(variableSymbol, document.syntaxTree());
+        if (varNodeOpt.isEmpty()) {
+            return;
+        }
+        populateAgentDeclarationMetadata(varNodeOpt.get());
+    }
+
+    // Variant taking the declaration node directly (used when the declaration itself is the
+    // diagram canvas).
+    private void populateAgentDeclarationMetadata(NonTerminalNode varNode) {
+        ExpressionNode initializer = getInitializerFromVariableNode(varNode);
+        if (initializer == null) {
+            return;
+        }
+        Optional<ImplicitNewExpressionNode> newExprOpt = getNewExpr(initializer);
+        if (newExprOpt.isEmpty() || newExprOpt.get().parenthesizedArgList().isEmpty()) {
+            return;
+        }
+        SeparatedNodeList<FunctionArgumentNode> newArgs = newExprOpt.get().parenthesizedArgList().get().arguments();
+        if (newArgs.isEmpty() || !(newArgs.get(0) instanceof PositionalArgumentNode configArg)
+                || configArg.expression().kind() != SyntaxKind.MAPPING_CONSTRUCTOR) {
+            return;
+        }
+        List<AgentCapabilityData> activities = new ArrayList<>();
+        List<AgentCapabilityData> humanTasks = new ArrayList<>();
+        List<AgentCapabilityData> agentTools = new ArrayList<>();
+        List<AgentCapabilityData> updateEvents = new ArrayList<>();
+        for (MappingFieldNode field : ((MappingConstructorExpressionNode) configArg.expression()).fields()) {
+            if (!(field instanceof SpecificFieldNode specificField) || specificField.valueExpr().isEmpty()) {
+                continue;
+            }
+            String fieldName = specificField.fieldName().toSourceCode().trim();
+            ExpressionNode valueExpr = specificField.valueExpr().get();
+            switch (fieldName) {
+                case "systemPrompt" -> {
+                    if (valueExpr.kind() == SyntaxKind.MAPPING_CONSTRUCTOR) {
+                        Map<String, String> agentData = new LinkedHashMap<>();
+                        Map<String, AiUtils.AgentPropertyValue> promptValues = new LinkedHashMap<>();
+                        for (MappingFieldNode promptField
+                                : ((MappingConstructorExpressionNode) valueExpr).fields()) {
+                            if (promptField instanceof SpecificFieldNode promptSpecific
+                                    && promptSpecific.valueExpr().isPresent()) {
+                                String promptText = extractPromptText(promptSpecific.valueExpr().get());
+                                String promptFieldName = promptSpecific.fieldName().toSourceCode().trim();
+                                agentData.put(promptFieldName, promptText);
+                                promptValues.put(promptFieldName,
+                                        new AiUtils.AgentPropertyValue(promptText, Property.ValueType.PROMPT));
+                            }
+                        }
+                        nodeBuilder.metadata().addData("agent", agentData);
+                        // The box's edit form exposes the declaration identity: Role/Instructions
+                        // prompt fields, saved back into the declaration's systemPrompt.
+                        DurableAgentRunBuilder.applyAgentFormShape(nodeBuilder, promptValues);
+                    }
+                }
+                case "model" -> {
+                    ModelData modelData = getModelIconUrl(valueExpr);
+                    nodeBuilder.metadata().addData("model", modelData != null ? modelData
+                            : new ModelData(valueExpr.toSourceCode().trim(), null, ""));
+                    nodeBuilder.properties().custom()
+                            .metadata()
+                                .label("Model")
+                                .description("The model provider used for the agent's LLM calls")
+                                .stepOut()
+                            .type(Property.ValueType.EXPRESSION)
+                            .value(valueExpr.toSourceCode().trim())
+                            .editable(true)
+                            .stepOut()
+                            .addProperty(DurableAgentRunBuilder.MODEL_KEY);
+                    DurableAgentRunBuilder.convertModelToSelect(nodeBuilder,
+                            DurableAgentRunBuilder.modelProviderOptions(semanticModel));
+                }
+                case "activities" -> collectDeclaredCapabilities(valueExpr, "activity", "activity",
+                        Map.of("activity", "activity", "name", "name", "description", "description",
+                                "requiresApproval", "requiresApproval", "userRoles", "userRoles"), activities);
+                case "tools", "peers" -> collectDeclaredCapabilities(valueExpr, "tool", "tool",
+                        Map.of("tool", "tool", "name", "name", "description", "description",
+                                "requiresApproval", "requiresApproval", "userRoles", "userRoles"), agentTools);
+                case "events" -> collectDeclaredCapabilities(valueExpr, "event", null,
+                        Map.of("name", "name", "request", "requestType", "response", "responseType",
+                                "cardinality", "cardinality"), updateEvents);
+                case "humanTasks" -> collectDeclaredCapabilities(valueExpr, "humanTask", null,
+                        Map.of("name", "taskName", "roles", "userRoles", "title", "title",
+                                "description", "description", "resultType", "resultType", "timeout", "timeout"),
+                        humanTasks);
+                default -> {
+                }
+            }
+        }
+        nodeBuilder.metadata().addData("activities", activities);
+        nodeBuilder.metadata().addData("humanTasks", humanTasks);
+        nodeBuilder.metadata().addData("tools", agentTools);
+        nodeBuilder.metadata().addData("events", updateEvents);
+        // The declaration's own range lets a run-site box navigate to the agent's model.
+        NonTerminalNode declarationNode = varNode;
+        while (declarationNode != null && declarationNode.kind() != SyntaxKind.MODULE_VAR_DECL) {
+            declarationNode = declarationNode.parent();
+        }
+        nodeBuilder.metadata().addData("declaration",
+                (declarationNode != null ? declarationNode : varNode).lineRange());
+    }
+
+    // Extracts capabilities from a declaration config list. Bare function/variable references
+    // use their identifier; mapping entries carry their fields as form values (keyed by the
+    // matching builder property via fieldToPropertyKey). Each capability records the ITEM's own
+    // line range so its circle opens a pre-filled edit form that rewrites that exact entry.
+    private void collectDeclaredCapabilities(ExpressionNode listExpr, String capabilityType, String refField,
+                                             Map<String, String> fieldToPropertyKey,
+                                             List<AgentCapabilityData> out) {
+        if (listExpr.kind() != SyntaxKind.LIST_CONSTRUCTOR) {
+            return;
+        }
+        for (Node item : ((ListConstructorExpressionNode) listExpr).expressions()) {
+            String name = null;
+            Map<String, String> values = new LinkedHashMap<>();
+            if (item.kind() == SyntaxKind.SIMPLE_NAME_REFERENCE || item.kind() == SyntaxKind.QUALIFIED_NAME_REFERENCE) {
+                name = item.toSourceCode().trim();
+                if (refField != null) {
+                    values.put(fieldToPropertyKey.getOrDefault(refField, refField), name);
+                }
+            } else if (item.kind() == SyntaxKind.MAPPING_CONSTRUCTOR) {
+                String refName = null;
+                String declaredName = null;
+                for (MappingFieldNode field : ((MappingConstructorExpressionNode) item).fields()) {
+                    if (!(field instanceof SpecificFieldNode specificField)
+                            || specificField.valueExpr().isEmpty()) {
+                        continue;
+                    }
+                    String fieldName = specificField.fieldName().toSourceCode().trim();
+                    String rawValue = specificField.valueExpr().get().toSourceCode().trim();
+                    String propertyKey = fieldToPropertyKey.get(fieldName);
+                    if (propertyKey != null) {
+                        // The cardinality enum may be module-qualified in source (workflow:SINGLE_EVENT);
+                        // the form's select options carry the bare enum names. String-literal values
+                        // of text-mode fields (name/title/description/roles) hydrate unquoted so the
+                        // form shows the text, not its source syntax.
+                        String value;
+                        if ("cardinality".equals(fieldName)) {
+                            value = stripModulePrefix(rawValue);
+                        } else if (TEXT_MODE_CAPABILITY_FIELDS.contains(fieldName)) {
+                            value = stripQuotes(rawValue);
+                        } else {
+                            value = rawValue;
+                        }
+                        values.put(propertyKey, value);
+                    }
+                    if ("name".equals(fieldName)) {
+                        declaredName = stripQuotes(rawValue);
+                    } else if (refField != null && refField.equals(fieldName)) {
+                        refName = rawValue;
+                    }
+                }
+                name = declaredName != null ? declaredName : refName;
+            }
+            if (name != null && !name.isBlank()) {
+                out.add(new AgentCapabilityData(name, capabilityType, item.lineRange(), values));
+            }
+        }
+    }
+
+    // Capability declaration fields whose values render in text-mode form fields.
+    private static final Set<String> TEXT_MODE_CAPABILITY_FIELDS =
+            Set.of("name", "title", "description", "roles");
+
+    private static String stripModulePrefix(String value) {
+        int colon = value.lastIndexOf(':');
+        return colon >= 0 ? value.substring(colon + 1) : value;
+    }
+
+    private static String stripQuotes(String value) {
+        if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+            return value.substring(1, value.length() - 1);
+        }
+        return value;
+    }
+
+    private String extractPromptText(ExpressionNode valueExpr) {
+        if (valueExpr.kind() == SyntaxKind.STRING_TEMPLATE_EXPRESSION) {
+            String value = ((TemplateExpressionNode) valueExpr).content().stream()
+                    .map(Node::toString)
+                    .collect(Collectors.joining());
+            return AiUtils.restoreBackticksFromStringTemplate(value);
+        }
+        return stripQuotes(valueExpr.toSourceCode().trim());
+    }
+
+    private record AgentCapabilityData(String name, String type, LineRange lineRange, Map<String, String> values) {
+    }
+
     /**
      * Returns the builtin-activity strategy symbol ("REST", "SOAP", or "EMAIL") if the first
      * positional argument of a {@code ctx->callActivity(...)} call resolves to one of the known
@@ -1491,23 +1726,31 @@ public class CodeAnalyzer extends NodeVisitor {
     private void addNormalizedRetryPolicyProperties(String rawValue) {
         String dropdownValue = ActivityCallBuilder.NO_RETRY_VALUE;
         String maxRetries = "", retryDelay = "", retryBackoff = "", maxRetryDelay = "";
+        String retryUserRoles = "";
 
         if (rawValue != null && !rawValue.isBlank()) {
-            if (rawValue.contains("ManualRetry")) {
-                dropdownValue = ActivityCallBuilder.MANUAL_RETRY_VALUE;
-            } else if (rawValue.trim().startsWith("{")) {
+            String trimmed = rawValue.trim();
+            if (trimmed.startsWith("{")) {
                 dropdownValue = ActivityCallBuilder.AUTO_RETRY_VALUE;
                 Map<String, String> fields = parseSimpleRecord(rawValue);
                 maxRetries = fields.getOrDefault(ActivityCallBuilder.MAX_RETRIES_KEY, "");
                 retryDelay = fields.getOrDefault(ActivityCallBuilder.RETRY_DELAY_KEY, "");
                 retryBackoff = fields.getOrDefault(ActivityCallBuilder.RETRY_BACKOFF_KEY, "");
                 maxRetryDelay = fields.getOrDefault(ActivityCallBuilder.MAX_RETRY_DELAY_KEY, "");
+            } else if (!trimmed.equals("()") && !trimmed.contains("NoRetry")
+                    && !trimmed.contains("NoAutomaticRetry")) {
+                // HumanReview is the reviewer role(s): a string, a role list, or the legacy
+                // workflow:ManualRetry sentinel (any role).
+                dropdownValue = ActivityCallBuilder.MANUAL_RETRY_VALUE;
+                if (!trimmed.contains("ManualRetry") && !trimmed.contains("HumanReview")
+                        && !trimmed.equals("[]")) {
+                    retryUserRoles = trimmed;
+                }
             }
-            // else: NoRetry (default) or any unrecognized value
         }
 
         ActivityCallBuilder.addRetryPolicyFormProperties(nodeBuilder, dropdownValue,
-                maxRetries, retryDelay, retryBackoff, maxRetryDelay);
+                maxRetries, retryDelay, retryBackoff, maxRetryDelay, retryUserRoles);
     }
 
     /** Parses a simple Ballerina record literal {@code {key: value, ...}} into a string map. */
@@ -3154,7 +3397,47 @@ public class CodeAnalyzer extends NodeVisitor {
 
     @Override
     public void visit(ModuleVariableDeclarationNode moduleVariableDeclarationNode) {
+        if (tryHandleDurableAgentDeclarationCanvas(moduleVariableDeclarationNode)) {
+            return;
+        }
         handleVariableNode(moduleVariableDeclarationNode);
+    }
+
+    // A module-level `workflow:DurableAgent` declaration opened as the diagram canvas (e.g. from
+    // the overview): synthesize the agent-only view — a Start pill followed by the agent box
+    // built from the declaration's config literal.
+    private boolean tryHandleDurableAgentDeclarationCanvas(ModuleVariableDeclarationNode varDecl) {
+        if (!(varDecl.typedBindingPattern().bindingPattern()
+                instanceof CaptureBindingPatternNode captureBindingPattern)
+                || varDecl.initializer().isEmpty()) {
+            return false;
+        }
+        if (!WorkflowUtil.isDurableAgentDeclaration(varDecl, semanticModel)) {
+            return false;
+        }
+
+        String agentVarName = captureBindingPattern.variableName().text();
+        startNode(NodeKind.EVENT_START, varDecl).codedata()
+                .lineRange(varDecl.lineRange())
+                .sourceCode(varDecl.toSourceCode().strip());
+        nodeBuilder.metadata()
+                .addData(KIND_KEY, "Durable Agentic Workflow")
+                .addData(LABEL_KEY, agentVarName);
+        endNode();
+
+        startNode(NodeKind.DURABLE_AGENT_RUN, varDecl).codedata()
+                .org(WORKFLOW_ORG)
+                .module(WORKFLOW_MODULE)
+                .object(Constants.Workflow.DURABLE_AGENT_OBJECT_CLASS_NAME)
+                .parentSymbol(agentVarName)
+                .symbol(Constants.Workflow.AGENT_OBJECT_RUN_METHOD_NAME)
+                .lineRange(varDecl.lineRange())
+                .sourceCode(varDecl.toSourceCode().strip());
+        nodeBuilder.metadata().addData("agentName", agentVarName);
+        nodeBuilder.metadata().addData("agentBox", true);
+        populateAgentDeclarationMetadata(varDecl);
+        endNode();
+        return true;
     }
 
     @Override
@@ -3248,6 +3531,7 @@ public class CodeAnalyzer extends NodeVisitor {
         endNode(expressionStatementNode);
     }
 
+
     @Override
     public void visit(ContinueStatementNode continueStatementNode) {
         startNode(NodeKind.CONTINUE, continueStatementNode);
@@ -3287,6 +3571,17 @@ public class CodeAnalyzer extends NodeVisitor {
                 && isWorkflowModule(classSymbol.getModule())) {
             startNode(NodeKind.SLEEP, expressionNode.parent());
             populateSleepNodeProperties(methodCallExpressionNode, functionSymbol);
+            return;
+        }
+
+        // Object-model durable agent: `<agentVar>.run(...)` renders the agent's declaration as
+        // the agent box (role/instructions/model/capabilities from the config literal) inside
+        // the caller's flow diagram.
+        if (Constants.Workflow.DURABLE_AGENT_OBJECT_CLASS_NAME.equals(classSymbol.getName().orElse(""))
+                && isWorkflowModule(classSymbol.getModule())
+                && Constants.Workflow.AGENT_OBJECT_RUN_METHOD_NAME.equals(functionName)) {
+            startNode(NodeKind.DURABLE_AGENT_RUN, methodCallExpressionNode.parent());
+            populateDurableAgentObjectRun(methodCallExpressionNode, expressionNode, functionSymbol, functionName);
             return;
         }
 
@@ -4603,6 +4898,7 @@ public class CodeAnalyzer extends NodeVisitor {
         RESOURCE("Resource"),
         AI_CHAT_AGENT("AI Chat Agent"),
         WORKFLOW("Workflow"),
+        DURABLE_AGENT("Durable Agentic Workflow"),
         ACTIVITY("Activity");
 
         private final String value;
