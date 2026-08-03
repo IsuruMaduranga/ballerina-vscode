@@ -118,15 +118,16 @@ export class SizingVisitor implements BaseVisitor {
     }
 
     private createWaitDataNode(node: FlowNode): void {
-        const halfCircle = WAIT_DATA_CORE_WIDTH / 2;
-        const leftWidth = halfCircle + WAIT_DATA_ARROW_WIDTH;
-        const containerLeftWidth = leftWidth;
-        const containerRightWidth = halfCircle + WAIT_DATA_DETAILS_GAP + WAIT_DATA_DETAILS_WIDTH;
-        const containerHeight = WAIT_DATA_CORE_HEIGHT;
+        // The mirror of a send: same body, with the room for the source box and its arrow on the
+        // left instead of the right.
+        const halfNodeWidth = NODE_WIDTH / 2;
+        const containerLeftWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT;
+        const containerRightWidth = halfNodeWidth;
+        const containerHeight = NODE_HEIGHT + LABEL_HEIGHT;
         this.setNodeSize(
             node,
-            leftWidth,
-            halfCircle,
+            halfNodeWidth,
+            halfNodeWidth,
             containerHeight,
             containerLeftWidth,
             containerRightWidth,

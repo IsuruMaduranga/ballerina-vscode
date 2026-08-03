@@ -19,12 +19,11 @@
 import { traverseFlow } from "@wso2/ballerina-core";
 
 import {
+    LABEL_HEIGHT,
+    NODE_GAP_X,
+    NODE_HEIGHT,
+    NODE_WIDTH,
     NodeTypes,
-    WAIT_DATA_ARROW_WIDTH,
-    WAIT_DATA_CORE_HEIGHT,
-    WAIT_DATA_CORE_WIDTH,
-    WAIT_DATA_DETAILS_GAP,
-    WAIT_DATA_DETAILS_WIDTH,
 } from "../resources/constants";
 import { NodeFactoryVisitor } from "../visitors/NodeFactoryVisitor";
 import { SizingVisitor } from "../visitors/SizingVisitor";
@@ -93,15 +92,15 @@ describe("Workflow Nodes", () => {
         traverseFlow(flow, visitor);
 
         const [waitDataNode] = flow.nodes as TestFlowNode[];
-        const halfCircle = WAIT_DATA_CORE_WIDTH / 2;
-        const expectedLeftWidth = halfCircle + WAIT_DATA_ARROW_WIDTH;
-        const expectedRightWidth = halfCircle;
-        const expectedContainerRightWidth = halfCircle + WAIT_DATA_DETAILS_GAP + WAIT_DATA_DETAILS_WIDTH;
+        // A wait is the mirror of a send: the same body, with the source box and its arrow on the
+        // left rather than the right.
+        const halfNodeWidth = NODE_WIDTH / 2;
 
-        expect(waitDataNode.viewState.lw).toBe(expectedLeftWidth);
-        expect(waitDataNode.viewState.rw).toBe(expectedRightWidth);
-        expect(waitDataNode.viewState.ch).toBe(WAIT_DATA_CORE_HEIGHT);
-        expect(waitDataNode.viewState.crw).toBe(expectedContainerRightWidth);
+        expect(waitDataNode.viewState.lw).toBe(halfNodeWidth);
+        expect(waitDataNode.viewState.rw).toBe(halfNodeWidth);
+        expect(waitDataNode.viewState.ch).toBe(NODE_HEIGHT + LABEL_HEIGHT);
+        expect(waitDataNode.viewState.clw).toBe(halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT);
+        expect(waitDataNode.viewState.crw).toBe(halfNodeWidth);
 
     });
 });
