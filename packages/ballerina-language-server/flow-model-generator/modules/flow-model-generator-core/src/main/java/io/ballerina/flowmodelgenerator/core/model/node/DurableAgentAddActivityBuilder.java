@@ -18,8 +18,12 @@
 
 package io.ballerina.flowmodelgenerator.core.model.node;
 
+import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.FunctionSymbol;
+import io.ballerina.compiler.api.symbols.ParameterSymbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
+import io.ballerina.compiler.api.symbols.TypeSymbol;
+import io.ballerina.compiler.api.symbols.VariableSymbol;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
@@ -28,6 +32,7 @@ import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
 import io.ballerina.modelgenerator.commons.FunctionData;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.modelgenerator.commons.ParameterData;
+import io.ballerina.projects.Module;
 import io.ballerina.projects.Package;
 import org.eclipse.lsp4j.TextEdit;
 
@@ -35,6 +40,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.AGENT_CONTEXT_CLASS_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_METHOD_NAME;
@@ -57,6 +63,9 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_O
  * @since 1.8.0
  */
 public class DurableAgentAddActivityBuilder extends CallBuilder {
+
+    // Binding properties are keyed by parameter name so toSource can rebuild the mapping.
+    public static final String BINDING_KEY_PREFIX = "bindings.";
 
     public static final String ACTIVITY_KEY = "activity";
     public static final String ACTIVITY_LABEL = "Activity";
@@ -130,9 +139,85 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 .editable(true)
                 .stepOut()
                 .addProperty(ACTIVITY_KEY);
+        addBindingProperties(context, preSelected);
         addToolIdentityProperties();
         addRequiresApprovalProperty();
         properties().checkError(true);
+    }
+
+    /**
+     * Adds a selector for every parameter of the chosen activity the model cannot supply — a
+     * client, typically. Their values are fixed at registration through {@code bindings}, and the
+     * remaining data parameters stay model-controlled. Options are the module-level variables
+     * assignable to the parameter, so a connection is picked rather than typed.
+     */
+    private void addBindingProperties(TemplateContext context, String activityName) {
+        if (activityName == null || activityName.isEmpty()) {
+            return;
+        }
+        Package currentPackage = PackageUtil.loadProject(context.workspaceManager(), context.filePath())
+                .currentPackage();
+        PackageUtil.getCompilation(currentPackage);
+        for (Module module : currentPackage.modules()) {
+            SemanticModel semanticModel;
+            try {
+                semanticModel = module.getCompilation().getSemanticModel();
+            } catch (RuntimeException e) {
+                continue;
+            }
+            Optional<FunctionSymbol> activity = semanticModel.moduleSymbols().stream()
+                    .filter(symbol -> symbol.kind() == SymbolKind.FUNCTION)
+                    .map(symbol -> (FunctionSymbol) symbol)
+                    .filter(WorkflowUtil::isActivityFunction)
+                    .filter(symbol -> activityName.equals(symbol.getName().orElse("")))
+                    .findFirst();
+            if (activity.isEmpty()) {
+                continue;
+            }
+            List<ParameterSymbol> params = activity.get().typeDescriptor().params().orElse(List.of());
+            for (ParameterSymbol parameter : params) {
+                TypeSymbol type = parameter.typeDescriptor();
+                if (type.subtypeOf(semanticModel.types().ANYDATA)) {
+                    continue;
+                }
+                String paramName = parameter.getName().orElse("");
+                if (paramName.isEmpty()) {
+                    continue;
+                }
+                properties().custom()
+                        .metadata()
+                            .label(paramName.substring(0, 1).toUpperCase(java.util.Locale.ROOT)
+                                    + paramName.substring(1))
+                            .description("Fixed at registration and hidden from the model: "
+                                    + "the agent cannot supply a '" + type.signature() + "'")
+                            .stepOut()
+                        .type()
+                            .fieldType(Property.ValueType.SINGLE_SELECT)
+                            .ballerinaType(type.signature())
+                            .options(moduleVariablesOfType(semanticModel, type))
+                            .selected(true)
+                            .stepOut()
+                        .codedata()
+                            .kind(ParameterData.Kind.REQUIRED.name())
+                            .stepOut()
+                        .value("")
+                        .editable(true)
+                        .stepOut()
+                        .addProperty(BINDING_KEY_PREFIX + paramName);
+            }
+            return;
+        }
+    }
+
+    // Module-level variables assignable to the parameter — the connections a binding can name.
+    private static List<Option> moduleVariablesOfType(SemanticModel semanticModel, TypeSymbol type) {
+        List<Option> options = new ArrayList<>();
+        semanticModel.moduleSymbols().stream()
+                .filter(symbol -> symbol instanceof VariableSymbol)
+                .map(symbol -> (VariableSymbol) symbol)
+                .filter(variable -> variable.typeDescriptor().subtypeOf(type))
+                .forEach(variable -> variable.getName().ifPresent(name -> options.add(new Option(name, name))));
+        return options;
     }
 
     // The name/description advertised to the model, mirroring the workflow activity form's
@@ -227,9 +312,18 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
             boolean requiresApproval = isRequiresApproval(sourceBuilder);
             String retryPolicyValue = ActivityCallBuilder.retryPolicyEntryValue(
                     sourceBuilder.flowNode.properties());
+            List<String> bindings = new ArrayList<>();
+            sourceBuilder.flowNode.properties().forEach((key, property) -> {
+                if (!key.startsWith(BINDING_KEY_PREFIX) || property.value() == null
+                        || property.value().toString().isBlank()) {
+                    return;
+                }
+                bindings.add(key.substring(BINDING_KEY_PREFIX.length()) + ": "
+                        + property.value().toString().trim());
+            });
             String entry;
             if (toolName.isBlank() && toolDescription.isBlank() && !requiresApproval && userRoles.isBlank()
-                    && retryPolicyValue == null) {
+                    && retryPolicyValue == null && bindings.isEmpty()) {
                 entry = activityRef;
             } else {
                 StringBuilder mapping = new StringBuilder("{activity: ").append(activityRef);
@@ -247,6 +341,9 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 }
                 if (retryPolicyValue != null) {
                     mapping.append(", retryPolicy: ").append(retryPolicyValue);
+                }
+                if (!bindings.isEmpty()) {
+                    mapping.append(", bindings: {").append(String.join(", ", bindings)).append("}");
                 }
                 entry = mapping.append("}").toString();
             }
