@@ -132,6 +132,13 @@ runs:
         version=$(node -p "require('./packages/ballerina-extension/package.json').version")
         vsix="packages/ballerina-extension/vsix/ballerina-${version}.vsix"
         entry='extension/resources/jslibs/federation/remoteEntry.js'
+        # 'zip' and 'unzip' are separate packages, so the sibling Compress build step
+        # using zip does not imply unzip is here. Say so plainly rather than surfacing
+        # a bare 'unzip: command not found' against a step about federation.
+        if ! command -v unzip >/dev/null 2>&1; then
+          echo "::error::unzip is not installed on this runner, so ${vsix} cannot be verified."
+          exit 1
+        fi
         # Listed once into a variable: piping unzip into 'grep -q' lets grep exit on the
         # first match, and the resulting SIGPIPE fails the pipeline under pipefail.
         listing=$(unzip -Z1 "$vsix")
