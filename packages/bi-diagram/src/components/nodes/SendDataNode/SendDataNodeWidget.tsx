@@ -508,7 +508,9 @@ export function SendDataNodeWidget(props: SendDataNodeWidgetProps) {
                         }}
                     >
                         <Icon
-                            name="bi-flowchart"
+                            // The target of an agent send is the agentic workflow itself, so it is
+                            // marked as one rather than as a plain workflow.
+                            name={agentName ? "bi-ai-agent" : "bi-flowchart"}
                             sx={{
                                 width: 24,
                                 height: 24,
