@@ -290,7 +290,8 @@ export class SizingVisitor implements BaseVisitor {
 
     endVisitWorkflowRun(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
-        this.createBaseNode(node);
+        // Drawn as an action, so measured as one — same as the child-workflow start.
+        this.createApiCallNode(node);
     }
 
     endVisitActivityCall(node: FlowNode, parent?: FlowNode): void {

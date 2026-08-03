@@ -783,10 +783,13 @@ export class NodeFactoryVisitor implements BaseVisitor {
         }
     }
 
+    // Starting a workflow looks the same wherever it is started from: the statement, the instance
+    // it binds, and an arrow to the workflow being run. The child-workflow start uses this shape,
+    // so the outside-world start uses it too.
     beginVisitWorkflowRun(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
         if (node.id) {
-            this.createWorkflowRunNode(node);
+            this.createApiCallNode(node);
             this.addSuggestionsButton(node);
         }
     }

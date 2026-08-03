@@ -78,7 +78,9 @@ describe("Workflow Nodes", () => {
         traverseFlow(flow, visitor);
         const nodeTypeById = new Map(visitor.getNodes().map((node) => [node.getID(), node.getType()]));
 
-        expect(nodeTypeById.get("workflow-run")).toBe(NodeTypes.WORKFLOW_RUN_NODE);
+        // Starting a workflow is drawn as an action wherever it is started from, so the
+        // outside-world start shares the child-workflow start's shape.
+        expect(nodeTypeById.get("workflow-run")).toBe(NodeTypes.API_CALL_NODE);
         expect(nodeTypeById.get("activity-call")).toBe(NodeTypes.CALL_ACTIVITY_NODE);
         expect(nodeTypeById.get("send-data")).toBe(NodeTypes.SEND_DATA_NODE);
         expect(nodeTypeById.get("wait-data")).toBe(NodeTypes.WAIT_DATA_NODE);

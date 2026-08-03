@@ -86,6 +86,15 @@ export function isDurableAgentRegisterNode(nodeOrKind?: FlowNode | string) {
  * `waitForResult`/`getResult` — so the flag the language server attaches is what decides between
  * the wait shape and a plain node.
  */
+/**
+ * Whether a node is a workflow receiving one of its declared data events, as opposed to merely
+ * waiting on something. Receiving is the same act in a workflow and in an agent, so both show the
+ * agent box's receive-event icon.
+ */
+export function isReceiveEventNode(node?: FlowNode) {
+    return node?.codedata?.node === "WAIT_DATA";
+}
+
 export function isWaitingAgentCall(node?: FlowNode) {
     return (node?.metadata?.data as { waits?: boolean } | undefined)?.waits === true;
 }

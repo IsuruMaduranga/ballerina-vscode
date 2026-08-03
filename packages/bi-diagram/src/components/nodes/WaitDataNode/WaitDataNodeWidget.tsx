@@ -28,6 +28,7 @@ import { BreakpointMenu } from "../../BreakNodeMenu/BreakNodeMenu";
 import { DiagnosticsPopUp } from "../../DiagnosticsPopUp";
 import {
     getAgentDataEventName,
+    isReceiveEventNode,
     getDiffContainerStyles,
     getDiffTitleStyles,
     nodeHasError,
@@ -422,7 +423,14 @@ export function WaitDataNodeWidget(props: WaitDataNodeWidgetProps) {
                         style={getDiffContainerStyles(model.node)}
                         onClick={handleOnClick}
                     >
-                        <Icon name="bi-wait" sx={{ fontSize: 32, width: 32, height: 32, color: NODE_TEXT_COLOR }} />
+                        <Icon
+                            // Receiving a declared event is the same act whether a workflow or an
+                            // agent does it, so it carries the agent box's receive-event icon. The
+                            // timer is kept for the waits that are only waits — a child workflow's
+                            // result, or an agent's answer to a turn.
+                            name={isReceiveEventNode(model.node) ? "bi-import" : "bi-wait"}
+                            sx={{ fontSize: 32, width: 32, height: 32, color: NODE_TEXT_COLOR }}
+                        />
                     </NodeStyles.Circle>
                 </Tooltip>
                 <NodeStyles.BottomPortWidget port={model.getPort("out")!} engine={engine} />
