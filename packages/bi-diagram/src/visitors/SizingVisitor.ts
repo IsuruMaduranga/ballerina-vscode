@@ -121,18 +121,13 @@ export class SizingVisitor implements BaseVisitor {
         // The mirror of a send: same body, with the room for the source box and its arrow on the
         // left instead of the right.
         const halfNodeWidth = NODE_WIDTH / 2;
-        const containerLeftWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT;
+        // The widths are the node's own bounds, not an inner box's: passing the body's half-width
+        // while the container reached further left put the body off the node's centre, and the
+        // links bent sideways to meet it. LABEL_WIDTH keeps the source's name from being clipped.
+        const containerLeftWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH;
         const containerRightWidth = halfNodeWidth;
         const containerHeight = NODE_HEIGHT + LABEL_HEIGHT;
-        this.setNodeSize(
-            node,
-            halfNodeWidth,
-            halfNodeWidth,
-            containerHeight,
-            containerLeftWidth,
-            containerRightWidth,
-            containerHeight
-        );
+        this.setNodeSize(node, containerLeftWidth, containerRightWidth, containerHeight);
     }
 
     private createBlockNode(node: Branch): void {

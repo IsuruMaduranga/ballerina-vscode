@@ -134,6 +134,7 @@ export namespace NodeStyles {
     export const TextGroup = styled.div`
         min-width: 0;
         flex: 1;
+        align-self: center;
         max-width: ${NODE_WIDTH - 110}px;
     `;
 
@@ -159,6 +160,9 @@ export namespace NodeStyles {
     export const ActionButtonGroup = styled.div`
         display: flex;
         flex-direction: row;
+        /* Pinned to the top-right of the box, as on every other node. */
+        align-self: flex-start;
+        margin-left: auto;
         align-items: center;
         gap: 2px;
         flex-shrink: 0;
@@ -403,9 +407,9 @@ export function WaitDataNodeWidget(props: WaitDataNodeWidgetProps) {
                 </foreignObject>
                 {sourceName && (
                     <text
-                        x={SOURCE_BOX_SIZE / 2}
+                        x={0}
                         y={svgHeight - 2}
-                        textAnchor="middle"
+                        textAnchor="start"
                         fill={NODE_TEXT_COLOR}
                         fontSize="14px"
                         fontFamily="GilmerRegular"
