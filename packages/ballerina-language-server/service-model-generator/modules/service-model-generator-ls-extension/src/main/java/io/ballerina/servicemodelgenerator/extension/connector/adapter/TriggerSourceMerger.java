@@ -39,55 +39,35 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ANNOTATION_ATTACHMENT;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_COMPLEX_FUNCTION_ANNOTATION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ENUM_LITERAL;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_FIELD_VALUE_CHOICE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_MAPPING_CONSTRUCTOR;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_MODIFIER;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD;
+
 /**
  * Folds the functions parsed from the user's source into a schema-driven trigger template
- * ({@link TriggerServiceAdapter#toServiceTemplate}) — the read-side counterpart of the wire source
- * emitter. After the merge the wire {@link Service} carries:
- *
- * <ul>
- *   <li>{@code functions} — exactly the handlers present in the source, each <i>enriched</i> with its
- *       schema variant's data so the generic handler form can edit it: catalog fields
- *       ({@code group}/{@code variantLabel}), the payload parameter's composition codedata (with
- *       {@code boundType} and the PAYLOAD_MODIFIER flag states <i>reverse-composed</i> from the
- *       actual parameter type), and the annotation tree ticked and filled from the source's
- *       {@code @module:Config {...}} attachment;</li>
- *   <li>{@code schemaFunctions} — the still-addable catalog: shipped variants minus those consumed by
- *       the source (a variant whose emitted function name already exists cannot be added again,
- *       unless its name is editable), plus any template handlers missing from the source.</li>
- * </ul>
- *
- * Source functions that match no schema variant are kept as-is (read-only), mirroring the default
- * merge behaviour for hand-written members.
+ * ({@link TriggerServiceAdapter#toServiceTemplate}), producing the wire {@link Service}'s
+ * {@code functions} (present handlers, enriched from source) and {@code schemaFunctions} (the
+ * still-addable catalog). Source functions matching no schema variant are kept as-is, read-only.
  *
  * @since 1.9.0
  */
 public final class TriggerSourceMerger {
 
     private static final String TYPE_PLACEHOLDER = "{{type}}";
-    private static final String CD_PAYLOAD_TYPE = "PAYLOAD_TYPE";
-    private static final String CD_PAYLOAD_TYPE_INCLUDED_RECORD = "PAYLOAD_TYPE_INCLUDED_RECORD";
-    private static final String CD_PAYLOAD_MODIFIER = "PAYLOAD_MODIFIER";
-    private static final String CD_COMPLEX_FUNCTION_ANNOTATION = "COMPLEX_FUNCTION_ANNOTATION";
-    private static final String CD_ANNOTATION_ATTACHMENT = "ANNOTATION_ATTACHMENT";
-    private static final String CD_MAPPING_CONSTRUCTOR = "MAPPING_CONSTRUCTOR";
-    private static final String CD_ENUM_LITERAL = "ENUM_LITERAL";
-    private static final String CD_FIELD_VALUE_CHOICE = "FIELD_VALUE_CHOICE";
 
     private static final Gson GSON = new Gson();
 
     private TriggerSourceMerger() {
     }
 
-    /**
-     * Merges the source-parsed functions into the trigger template in place. Expects the template
-     * layout produced by {@link TriggerServiceAdapter}: {@code functions} = the model's present
-     * handlers, {@code schemaFunctions} = the expanded addable catalog.
-     */
     public static void mergeSource(Service serviceModel, List<Function> functionsInSource) {
         List<Function> catalog = new ArrayList<>();
         if (serviceModel.getFunctions() != null) {
-            // Present-handler templates are part of the search space; if missing from the source
-            // they become addable again, so they join the catalog below.
             catalog.addAll(serviceModel.getFunctions());
         }
         if (serviceModel.getSchemaFunctions() != null) {
@@ -95,28 +75,25 @@ public final class TriggerSourceMerger {
         }
 
         List<Function> merged = new ArrayList<>();
-        // Groups whose consumed member is ONE_OF_GROUP (e.g. RabbitMQ's onMessage/onRequest — the
-        // compiler plugin allows exactly one): once one sibling is present, every other sibling must
-        // leave the addable catalog too, not just the matched one. ONE_EACH_PER_GROUP (e.g. FTP's
-        // per-format handlers) consumes only the matched member, so its siblings stay addable.
+        // ONE_OF_GROUP: once one sibling is present, every other sibling leaves the catalog too (e.g.
+        // RabbitMQ's onMessage/onRequest, mutually exclusive). ONE_EACH_PER_GROUP siblings stay addable.
         Set<String> consumedExclusiveGroups = new HashSet<>();
         boolean legacyHandlerConsumed = false;
         for (Function source : functionsInSource == null ? List.<Function>of() : functionsInSource) {
-            Function template = findTemplate(catalog, source);
-            if (template == null) {
+            TemplateMatch match = findTemplate(catalog, source);
+            if (match == null) {
                 // A hand-written member the schema does not know: keep it, read-only.
                 source.setEditable(false);
                 source.setOptional(true);
                 merged.add(source);
                 continue;
             }
-            // A name-editable handler can be added again under another name, so its template stays
-            // in the catalog and the source function enriches a copy; a fixed-name variant (the
-            // common case) is consumed — it leaves the addable catalog unless it is `TRUE`
-            // (repeat-always).
+            Function template = match.template();
+            // A name-editable handler can be re-added under another name, so its template stays in the
+            // catalog and the source function enriches a copy instead.
             Function enriched = Boolean.TRUE.equals(template.getNameEditable()) ? copyOf(template) : template;
             if (enriched == template) {
-                Repeatable repeatable = Repeatable.orDefault(template.getRepeatable()).effective(template.getGroup());
+                Repeatable repeatable = match.effective();
                 if (!repeatable.staysAddable()) {
                     catalog.remove(template);
                 }
@@ -134,13 +111,9 @@ public final class TriggerSourceMerger {
         if (!consumedExclusiveGroups.isEmpty()) {
             catalog.removeIf(fn -> fn.getGroup() != null && consumedExclusiveGroups.contains(fn.getGroup()));
         }
-        // A LEGACY handler that is actually present displaces every other NON-legacy schema function
-        // (not just its own group) — it and the rest of the "modern" catalog are mutually incompatible
-        // ways of handling the same surface. Other LEGACY siblings are independent of one another: once
-        // any one of them is in use, the rest are no longer hidden either (each still needs its own
-        // presence check to actually be added, same as any other handler). A LEGACY handler that is NOT
-        // present, and no sibling is either, never surfaces as an addable option: it exists only to keep
-        // recognising pre-existing source, never to be offered for new development.
+        // A present LEGACY handler displaces the whole "modern" catalog (mutually incompatible ways of
+        // handling the same surface); if none is present, LEGACY handlers stay hidden from the addable
+        // catalog entirely — they only exist to recognise pre-existing source.
         if (legacyHandlerConsumed) {
             catalog.removeIf(fn -> !Repeatable.orDefault(fn.getRepeatable()).isLegacy());
         } else {
@@ -155,16 +128,21 @@ public final class TriggerSourceMerger {
     }
 
     /**
-     * Matches a source function to its schema template by emitted name (and accessor for resources).
-     * A fixed-name template (the common case) only ever matches its own literal name. A
-     * <b>name-editable, repeat-always</b> template (e.g. MCP's {@code Tool} — any remote function in
-     * the service is one) has no fixed identity to match by name once the user renames an instance
-     * away from the template's placeholder: falls back to matching any same-{@code kind}/
-     * {@code accessor} source function not already claimed by a fixed-name template, so a renamed
-     * instance keeps being recognised (editable, and not silently dropped from the schema) on every
-     * re-read instead of degrading into an unrecognised, read-only hand-written member.
+     * A matched template paired with its already-computed effective {@link Repeatable}, so the caller
+     * never re-derives it for the same template.
+     *
+     * @param template  the matched catalog template
+     * @param effective the template's {@code Repeatable}, already resolved against its group
      */
-    private static Function findTemplate(List<Function> templates, Function source) {
+    private record TemplateMatch(Function template, Repeatable effective) {
+    }
+
+    /**
+     * Matches by emitted name (and accessor for resources) first; a name-editable, repeat-always
+     * template (e.g. MCP's {@code Tool}) has no fixed name once renamed, so falls back to matching
+     * any same-kind/accessor source function not already claimed.
+     */
+    private static TemplateMatch findTemplate(List<Function> templates, Function source) {
         String sourceName = valueOf(source.getName());
         if (sourceName == null) {
             return null;
@@ -177,14 +155,16 @@ public final class TriggerSourceMerger {
             String templateAccessor = valueOf(template.getAccessor());
             if (sourceAccessor == null || templateAccessor == null
                     || sourceAccessor.equals(templateAccessor)) {
-                return template;
+                return new TemplateMatch(template,
+                        Repeatable.orDefault(template.getRepeatable()).effective(template.getGroup()));
             }
         }
         for (Function template : templates) {
             if (!Boolean.TRUE.equals(template.getNameEditable())) {
                 continue;
             }
-            if (!Repeatable.orDefault(template.getRepeatable()).effective(template.getGroup()).staysAddable()) {
+            Repeatable effective = Repeatable.orDefault(template.getRepeatable()).effective(template.getGroup());
+            if (!effective.staysAddable()) {
                 continue;
             }
             if (!Objects.equals(source.getKind(), template.getKind())) {
@@ -193,7 +173,7 @@ public final class TriggerSourceMerger {
             String templateAccessor = valueOf(template.getAccessor());
             if (sourceAccessor == null || templateAccessor == null
                     || sourceAccessor.equals(templateAccessor)) {
-                return template;
+                return new TemplateMatch(template, effective);
             }
         }
         return null;
@@ -203,18 +183,11 @@ public final class TriggerSourceMerger {
         return GSON.fromJson(GSON.toJson(template), Function.class);
     }
 
-    // ----- enrichment of one matched handler -----
-
     private static void enrich(Function template, Function source) {
         template.setEnabled(true);
         template.setEditable(true);
-        // `optional` (whether the trash icon may remove this handler) is authored per-handler on the
-        // schema (e.g. ftp's onFileDelete/onError: optional=true; kafka's onConsumerRecord,
-        // rabbitmq's onMessage: optional=false, since the compiler mandates them) and carried onto the
-        // template by TriggerFunctionAdapter — it must NOT be forced here. Forcing it to `false`
-        // wiped out that distinction for every present handler, silently disabling deletion for
-        // otherwise-removable handlers (kafka/rabbitmq/ftp etc.); it only looked correct for
-        // github/twilio because every one of their handlers is already `optional: false` in the schema.
+        // `optional` must NOT be forced here: it's authored per-handler on the schema (e.g. compiler-
+        // mandated handlers are optional=false) and forcing it would disable deletion incorrectly.
         if (template.getCodedata() == null) {
             template.setCodedata(source.getCodedata());
         } else if (source.getCodedata() != null) {
@@ -233,14 +206,8 @@ public final class TriggerSourceMerger {
     }
 
     /**
-     * Reconciles the template's parameters with the source signature. Framework parameters (fixed
-     * types like {@code smb:FileInfo}/{@code smb:Caller}) match by type text and toggle their
-     * include state; payload parameters (there may be more than one — e.g. CDC's {@code before}/
-     * {@code after}) claim the remaining unclaimed source parameters positionally, in declaration
-     * order, and are each reverse-composed. Unknown extra source parameters are appended read-only —
-     * unless the handler declares {@code canAddParameters} (e.g. MCP's Tool), in which case an extra
-     * parameter is exactly what a user-added parameter/header looks like once it round-trips through
-     * source, and forcing it read-only would silently un-do the whole point of being able to add one.
+     * Framework parameters (fixed types) match by type text; payload parameters claim remaining
+     * source parameters positionally. Unknown extras are read-only unless {@code canAddParameters}.
      */
     private static void reconcileParameters(Function template, Function source) {
         List<Parameter> sourceParams = source.getParameters() == null
@@ -282,7 +249,7 @@ public final class TriggerSourceMerger {
             return false;
         }
         String codedataType = parameter.getType().getCodedata().getType();
-        return CD_PAYLOAD_TYPE.equals(codedataType) || CD_PAYLOAD_TYPE_INCLUDED_RECORD.equals(codedataType);
+        return CD_TYPE_PAYLOAD_TYPE.equals(codedataType) || CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD.equals(codedataType);
     }
 
     private static Parameter claimByType(List<Parameter> sourceParams, String typeText) {
@@ -297,13 +264,7 @@ public final class TriggerSourceMerger {
         return null;
     }
 
-    /**
-     * A framework parameter's declared type matches its source counterpart exactly, or up to a
-     * {@code & readonly} intersection on either side — a connector's compiler plugin sometimes accepts
-     * a type both with and without it (e.g. ftp's deprecated {@code onFileChange(WatchEvent)} /
-     * {@code onFileChange(WatchEvent & readonly)}), and the two are the same declared parameter either
-     * way.
-     */
+    /** Matches exactly, or up to a {@code & readonly} intersection on either side. */
     private static boolean typesMatch(String templateType, String actualType) {
         if (templateType == null || actualType == null) {
             return false;
@@ -319,12 +280,7 @@ public final class TriggerSourceMerger {
                 : normalized;
     }
 
-    /**
-     * Reverse-composes the payload parameter from its actual source type: an active PAYLOAD_MODIFIER
-     * is recognised by its template (e.g. {@code stream<{{type}}, error?>}), the element type is
-     * extracted through the matching template, and a non-default element becomes {@code boundType} —
-     * exactly undoing the composition the add flow performed.
-     */
+    /** Reverse-composes the payload parameter from its actual source type, undoing the add flow's composition. */
     private static void applyPayloadSource(Function template, Parameter payloadParam, Parameter sourceParam) {
         String actualType = typeOf(sourceParam);
         Codedata typeCodedata = payloadParam.getType() == null ? null : payloadParam.getType().getCodedata();
@@ -332,7 +288,7 @@ public final class TriggerSourceMerger {
         String element = null;
         for (Value property : template.getProperties().values()) {
             Codedata propertyCodedata = property.getCodedata();
-            if (propertyCodedata == null || !CD_PAYLOAD_MODIFIER.equals(propertyCodedata.getType())
+            if (propertyCodedata == null || !CD_TYPE_PAYLOAD_MODIFIER.equals(propertyCodedata.getType())
                     || propertyCodedata.getTemplate() == null) {
                 continue;
             }
@@ -358,10 +314,7 @@ public final class TriggerSourceMerger {
         payloadParam.setEnabled(true);
     }
 
-    /**
-     * Extracts the {@code {{type}}} element from an actual type through a composition template
-     * (whitespace-insensitive), or {@code null} when the type was not produced by that template.
-     */
+    /** Whitespace-insensitive; returns {@code null} when the type was not produced by this template. */
     static String elementOf(String template, String actualType) {
         if (template == null || actualType == null || !template.contains(TYPE_PLACEHOLDER)) {
             return null;
@@ -378,17 +331,10 @@ public final class TriggerSourceMerger {
         return normalizedActual.substring(prefix.length(), normalizedActual.length() - suffix.length());
     }
 
-    // ----- annotation tree population from the source attachment -----
-
-    /**
-     * Fills each COMPLEX_FUNCTION_ANNOTATION tree from the corresponding annotation attachment the
-     * source parser found on the function ({@code @module:Name {field: value, ...}}): present
-     * mapping fields are ticked and their leaves/choices set, absent optional fields stay unchecked.
-     */
     private static void applyAnnotationsFromSource(Function template, Function source) {
         for (Value tree : template.getProperties().values()) {
             Codedata treeCodedata = tree.getCodedata();
-            if (treeCodedata == null || !CD_COMPLEX_FUNCTION_ANNOTATION.equals(treeCodedata.getType())) {
+            if (treeCodedata == null || !CD_TYPE_COMPLEX_FUNCTION_ANNOTATION.equals(treeCodedata.getType())) {
                 continue;
             }
             String body = sourceAnnotationBody(source, treeCodedata.getOriginalName());
@@ -408,7 +354,7 @@ public final class TriggerSourceMerger {
         }
         for (Value property : source.getProperties().values()) {
             Codedata codedata = property.getCodedata();
-            if (codedata != null && CD_ANNOTATION_ATTACHMENT.equals(codedata.getType())
+            if (codedata != null && CD_TYPE_ANNOTATION_ATTACHMENT.equals(codedata.getType())
                     && annotationName.equals(codedata.getOriginalName())) {
                 return property.getValue();
             }
@@ -471,11 +417,11 @@ public final class TriggerSourceMerger {
     private static void applyValueNode(Value node, ExpressionNode expression) {
         Codedata codedata = node.getCodedata();
         String type = codedata == null ? null : codedata.getType();
-        if (CD_FIELD_VALUE_CHOICE.equals(type)) {
+        if (CD_TYPE_FIELD_VALUE_CHOICE.equals(type)) {
             applyChoice(node, expression);
             return;
         }
-        if (CD_MAPPING_CONSTRUCTOR.equals(type)
+        if (CD_TYPE_MAPPING_CONSTRUCTOR.equals(type)
                 && expression instanceof MappingConstructorExpressionNode mapping) {
             applyMapping(node, mapping);
             return;
@@ -486,11 +432,7 @@ public final class TriggerSourceMerger {
         }
     }
 
-    /**
-     * Selects the FIELD_VALUE_CHOICE branch the source value came from: a mapping value matches the
-     * MAPPING_CONSTRUCTOR branch sharing the most field names; a scalar matches an ENUM_LITERAL
-     * branch's (possibly qualified) value or the branch's own value.
-     */
+    /** A mapping value matches the branch sharing the most field names; a scalar matches by value. */
     private static void applyChoice(Value choiceNode, ExpressionNode expression) {
         if (choiceNode.getChoices() == null || choiceNode.getChoices().isEmpty()) {
             return;
@@ -514,7 +456,7 @@ public final class TriggerSourceMerger {
             String unqualified = text.contains(":") ? text.substring(text.lastIndexOf(':') + 1) : text;
             for (Value branch : choiceNode.getChoices()) {
                 Codedata branchCodedata = branch.getCodedata();
-                String branchValue = branchCodedata != null && CD_ENUM_LITERAL.equals(branchCodedata.getType())
+                String branchValue = branchCodedata != null && CD_TYPE_ENUM_LITERAL.equals(branchCodedata.getType())
                         && branchCodedata.getValue() != null ? branchCodedata.getValue() : branch.getValue();
                 if (text.equals(branchValue) || unqualified.equals(branchValue)) {
                     selected = branch;
@@ -546,8 +488,6 @@ public final class TriggerSourceMerger {
         }
         return score;
     }
-
-    // ----- small accessors -----
 
     private static String valueOf(Value value) {
         return value == null ? null : value.getValue();

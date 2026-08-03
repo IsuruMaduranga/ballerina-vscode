@@ -42,6 +42,7 @@ import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.PropertyType;
 import io.ballerina.servicemodelgenerator.extension.model.Value;
 import io.ballerina.servicemodelgenerator.extension.util.ListenerUtil;
+import io.ballerina.servicemodelgenerator.extension.util.Utils;
 import io.ballerina.tools.diagnostics.Location;
 import io.ballerina.tools.text.TextRange;
 
@@ -63,27 +64,18 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TY
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_LISTENER_PARAM_INCLUDED_FIELD;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_LISTENER_PARAM_REQUIRED;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ENUM_VALUE;
 
 /**
  * Builds the "use existing" listener selector for the schema-driven path, resolving each existing
- * listener's configuration from <b>both the model and the source</b> — the generic equivalent of the
- * per-connector extraction the (now-removed) hardcoded RabbitMQ/FTP service builders used to do.
- *
- * <p>The create-new branch's listener params define the field <i>template</i> (labels, types, and the
- * {@code codedata} position/path that says where each value sits in {@code new(...)}). For each listener
- * variable found in the project, its {@code new(...)} arguments are parsed and mapped back onto that
- * template as <b>read-only</b> fields, so selecting a listener shows its host/port/config etc.
+ * listener's configuration from both the model (field template) and the source ({@code new(...)} args)
+ * as read-only fields.
  *
  * @since 1.8.0
  */
 public final class ExistingListenerResolver {
 
     private static final Logger LOGGER = Logger.getLogger(ExistingListenerResolver.class.getName());
-
-    // A CHOICE branch tagged with this codedata type is a bare enum-literal selector (e.g. ftp's
-    // protocol: FTP/SFTP/FTPS) rather than a record-shaping sub-form — mirrors the constant in
-    // SchemaDrivenSourceGenerator that governs how the value is emitted.
-    private static final String CD_TYPE_ENUM_VALUE = "ENUM_VALUE";
 
     private ExistingListenerResolver() {
     }
@@ -96,15 +88,14 @@ public final class ExistingListenerResolver {
                                       SemanticModel semanticModel, Project project, String protocol) {
         ListenerTemplate template = collectTemplate(createNewBranch);
         Map<String, Value> createNewProps = createNewBranch == null ? null : createNewBranch.getProperties();
+        // Resolved once for every name here, instead of each parseListener call re-scanning every
+        // module symbol -- O(listenerNames + moduleSymbols) instead of O(listenerNames * moduleSymbols).
+        Map<String, VariableSymbol> listenerSymbolsByName = listenerSymbolsByName(semanticModel);
         Map<String, Value> perListenerConfigs = new LinkedHashMap<>();
         for (String name : listenerNames) {
             Map<String, Value> fields = new LinkedHashMap<>();
-            parseListener(name, semanticModel, project).ifPresent(parsed -> {
-                // Positional / config-record args map onto the flattened template (HubSpot/GitHub-style).
+            parseListener(name, listenerSymbolsByName, project).ifPresent(parsed -> {
                 fields.putAll(buildFieldsFromParsed(parsed, template));
-                // Included (named) args — including record-typed ones modeled as nested CHOICE/GROUP with
-                // dotted `path`s (e.g. ftp's auth, cdc's database.*) — are resolved against the create-new
-                // field tree so the nested structure (auth radio, host/port/…) is rebuilt, not shown raw.
                 fields.putAll(resolveIncludedFields(createNewProps, parsed.named()));
             });
             Value configGroup = new Value.ValueBuilder()
@@ -121,17 +112,38 @@ public final class ExistingListenerResolver {
     }
 
     /**
-     * Assembles the {@code existingListener} dropdown (pure; unit-testable). It is a plain
-     * {@code SINGLE_SELECT} whose choices come from {@code items} and whose per-listener config comes
-     * from {@code properties}.
+     * Every module-level listener-qualified variable symbol, keyed by name; first declaration wins on a
+     * duplicate name, matching the single declaration a valid Ballerina file would have anyway. An
+     * absent semantic model yields an empty map, so every listener degrades to "no config resolved from
+     * source" exactly as it did when this lookup happened inside {@link #parseListener}'s try/catch.
+     */
+    private static Map<String, VariableSymbol> listenerSymbolsByName(SemanticModel semanticModel) {
+        Map<String, VariableSymbol> byName = new LinkedHashMap<>();
+        if (semanticModel == null) {
+            return byName;
+        }
+        for (Symbol symbol : semanticModel.moduleSymbols()) {
+            if (symbol instanceof VariableSymbol variableSymbol
+                    && variableSymbol.qualifiers().contains(Qualifier.LISTENER)) {
+                variableSymbol.getName().ifPresent(name -> byName.putIfAbsent(name, variableSymbol));
+            }
+        }
+        return byName;
+    }
+
+    /**
+     * Assembles the {@code existingListener} dropdown (pure; unit-testable). Must NOT carry
+     * {@code options} — that would route it to the expression/enum editor instead of the nested
+     * per-listener config view (front-end {@code DropdownChoiceForm}).
      *
-     * <p><b>Important:</b> the type must NOT carry {@code options}. The front end renders the nested
-     * per-listener config ({@code DropdownChoiceForm}) only for a SINGLE_SELECT with no {@code options};
-     * adding options makes {@code isDropDownType} true, which routes it to the expression/enum editor and
-     * hides the resolved fields. FTP/RabbitMQ likewise use {@code items} only.
+     * @throws IllegalArgumentException if {@code listenerNames} is empty -- callers must only reach
+     *                                  this once at least one compatible listener is known to exist
      */
     static Value assembleSelector(List<String> listenerNames, Map<String, Value> perListenerConfigs,
                                   String protocol) {
+        if (listenerNames == null || listenerNames.isEmpty()) {
+            throw new IllegalArgumentException("listenerNames must not be empty");
+        }
         return new Value.ValueBuilder()
                 .metadata("Select Listener", String.format("Select from the existing %s listeners", protocol))
                 .value(listenerNames.getFirst())
@@ -143,17 +155,10 @@ public final class ExistingListenerResolver {
                 .build();
     }
 
-    // ------------------------------------------------------------------
-    // Model side — derive the field template from the create-new params
-    // ------------------------------------------------------------------
-
     /** The listener-parameter field template derived from the create-new branch. */
     static final class ListenerTemplate {
-        // position -> a scalar positional param (key + template value)
         final Map<Integer, Field> positionalScalars = new LinkedHashMap<>();
-        // position -> a record-arg group: field name -> config-field template value
         final Map<Integer, LinkedHashMap<String, Value>> recordGroups = new LinkedHashMap<>();
-        // named (included/config) params: name -> template value
         final LinkedHashMap<String, Value> named = new LinkedHashMap<>();
     }
 
@@ -173,10 +178,6 @@ public final class ExistingListenerResolver {
         for (Map.Entry<String, Value> entry : properties.entrySet()) {
             Value field = entry.getValue();
             if (isGroup(field)) {
-                // A group with its own positional slot collects its config fields into that one
-                // record group; a UI-only group's config fields keep their OWN position (fields
-                // sharing a position form the record at that slot, e.g. HubSpot's config at slot 1)
-                // and position-less ones resolve as named fields.
                 Codedata groupCodedata = field.getCodedata();
                 boolean groupHasSlot = groupCodedata != null
                         && ARG_TYPE_LISTENER_PARAM_REQUIRED.equals(groupCodedata.getArgType())
@@ -226,18 +227,11 @@ public final class ExistingListenerResolver {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Mapping — parsed source args onto the template as read-only fields
-    // ------------------------------------------------------------------
-
     /**
-     * A parsed {@code new(...)}: positional args (scalar or record) and named args. A named arg's value
-     * is the nested-record tree of its expression: a {@code String} for a scalar/expression, or a
-     * {@code Map<String, Object>} (recursively) for a record literal — so a leaf's dotted {@code path}
-     * (e.g. {@code auth.credentials.username}) can be navigated back to its exact source value.
+     * A parsed {@code new(...)}: positional args (scalar or record) and named args (as a nested-record tree).
      *
-     * @param positional the constructor's positional arguments, in source order
-     * @param named      the constructor's named arguments, keyed by parameter name
+     * @param positional the args passed by position
+     * @param named      the args passed by name, as a nested-record tree
      */
     record ParsedListener(List<ParsedArg> positional, LinkedHashMap<String, Object> named) {
     }
@@ -245,9 +239,8 @@ public final class ExistingListenerResolver {
     /**
      * One argument: exactly one of {@code scalar} / {@code recordFields} is set.
      *
-     * @param scalar       the argument's rendered source text, when it is a scalar/expression
-     * @param recordFields the argument's field name -> rendered source text map, when it is a record
-     *                     literal
+     * @param scalar       the argument's value, when it is a simple scalar
+     * @param recordFields the argument's fields, when it is a record
      */
     record ParsedArg(String scalar, LinkedHashMap<String, String> recordFields) {
         static ParsedArg scalar(String value) {
@@ -275,89 +268,111 @@ public final class ExistingListenerResolver {
                 fields.put(field.key(), readOnly(field.template(), field.key(), value));
             }
         }
-        // Named (included) args are resolved separately against the create-new field tree
-        // (see resolveIncludedFields), so their nested CHOICE/record structure is preserved.
         return fields;
     }
-
-    // ------------------------------------------------------------------
-    // Included (named) args — resolved against the create-new field tree so a record-typed
-    // included param modeled as a nested CHOICE/GROUP (auth) or dotted paths (database.*) is
-    // rebuilt as structured, read-only fields instead of a raw record blob.
-    // ------------------------------------------------------------------
 
     /**
      * Walks the create-new field tree and, for every included-field leaf / CHOICE, resolves its value
      * from the parsed named-arg tree by the leaf's dotted {@code path}. Fields whose value cannot be
-     * located are dropped (rather than shown empty or raw). GROUP_SECTIONs and enum-value CHOICEs (e.g.
-     * ftp's {@code protocol}) are flattened — their resolved children become siblings — while a
-     * record-shaping CHOICE (e.g. ftp's {@code auth}) is kept as a read-only radio with only the
-     * matching branch selected and populated.
+     * located are dropped. GROUP_SECTIONs and enum-value CHOICEs are flattened; a record-shaping CHOICE
+     * is kept as a read-only radio with only the matching branch selected and populated.
      */
     static Map<String, Value> resolveIncludedFields(Map<String, Value> templateProps,
                                                     Map<String, Object> named) {
+        return resolveIncludedFieldsWithCount(templateProps, named).resolved();
+    }
+
+    /**
+     * A subtree's resolved fields paired with its total count of included-field leaves -- every leaf
+     * across every CHOICE branch, matched or not, identical to what {@link #countIncludedLeaves} reports
+     * for the same subtree. Carrying the count out of the resolve walk means a record CHOICE's per-branch
+     * scoring no longer walks each branch's subtree a second time just to size it.
+     *
+     * @param resolved    the fields resolved from the parsed source
+     * @param totalLeaves the total count of included-field leaves in the subtree
+     */
+    private record IncludedFieldsResult(Map<String, Value> resolved, int totalLeaves) {
+    }
+
+    private static IncludedFieldsResult resolveIncludedFieldsWithCount(Map<String, Value> templateProps,
+                                                                       Map<String, Object> named) {
         Map<String, Value> resolved = new LinkedHashMap<>();
         if (templateProps == null) {
-            return resolved;
+            return new IncludedFieldsResult(resolved, 0);
         }
+        int totalLeaves = 0;
         for (Map.Entry<String, Value> entry : templateProps.entrySet()) {
             Value field = entry.getValue();
             if (isChoice(field)) {
+                List<Value> branches = field.getChoices() == null ? List.<Value>of() : field.getChoices();
                 if (isEnumValueChoiceField(field)) {
-                    // Enum selector (protocol): the selected branch's own children (port, auth) are the
-                    // real config; inline them, dropping the enum radio itself (it is implied by the
-                    // chosen listener) to match the hardcoded FTP builder's resolved view.
-                    Value branch = selectEnumBranch(field, named);
-                    if (branch != null) {
-                        resolved.putAll(resolveIncludedFields(branch.getProperties(), named));
+                    // Only the selected branch's fields are kept, so only it is worth resolving; the
+                    // others just contribute leaf counts (an enclosing record CHOICE's tie-break needs
+                    // them) via the cheaper count-only walk.
+                    int selected = selectEnumBranchIndex(field, branches, named);
+                    for (int i = 0; i < branches.size(); i++) {
+                        if (i == selected) {
+                            IncludedFieldsResult branchResult =
+                                    resolveIncludedFieldsWithCount(branches.get(i).getProperties(), named);
+                            resolved.putAll(branchResult.resolved());
+                            totalLeaves += branchResult.totalLeaves();
+                        } else {
+                            totalLeaves += countIncludedLeaves(branches.get(i).getProperties());
+                        }
                     }
                     continue;
                 }
-                Value choice = resolveRecordChoice(field, named);
+                // A record-shaping CHOICE scores every branch, so every branch has to be resolved
+                // regardless -- pairing each branch's count with its resolve is what removes the
+                // formerly duplicated second walk.
+                List<IncludedFieldsResult> branchResults = new ArrayList<>(branches.size());
+                for (Value branch : branches) {
+                    IncludedFieldsResult branchResult = resolveIncludedFieldsWithCount(branch.getProperties(), named);
+                    branchResults.add(branchResult);
+                    totalLeaves += branchResult.totalLeaves();
+                }
+                Value choice = resolveRecordChoice(branches, branchResults, field);
                 if (choice != null) {
                     resolved.put(entry.getKey(), choice);
                 }
                 continue;
             }
             if (isGroup(field)) {
-                resolved.putAll(resolveIncludedFields(field.getProperties(), named));
+                IncludedFieldsResult nested = resolveIncludedFieldsWithCount(field.getProperties(), named);
+                resolved.putAll(nested.resolved());
+                totalLeaves += nested.totalLeaves();
                 continue;
             }
             Codedata codedata = field.getCodedata();
             if (!isIncludedField(codedata) || isCdcOperationFlag(codedata)) {
-                // Positional / config-record / var-name / CDC-flag leaves are handled elsewhere or
-                // cannot be resolved to an exact value — leave them out.
                 continue;
             }
+            totalLeaves++;
             String value = resolveByPath(named, lookupSegments(codedata, entry.getKey()));
             if (value != null && !value.isBlank()) {
                 resolved.put(entry.getKey(), readOnlyClone(field, value));
             }
         }
-        return resolved;
+        return new IncludedFieldsResult(resolved, totalLeaves);
     }
 
     /**
-     * Picks the record-shaping CHOICE branch (e.g. Basic vs Certificate auth) that best matches the
-     * source: the branch whose included leaves resolve the most values wins; ties break toward the
-     * smaller branch, so an empty "No Authentication"-style branch is the fallback when nothing
-     * resolves. The result is a read-only radio exposing every branch but selecting/populating only the
-     * matched one.
+     * Picks the record-shaping CHOICE branch that best matches the source (most resolved values wins,
+     * ties break toward the smaller branch) and returns a read-only radio with only that branch populated.
+     * {@code branchResults} is {@code branches}' already-computed {@link IncludedFieldsResult}s (the
+     * caller resolves every branch once regardless), so scoring never re-walks a branch's subtree.
      */
-    private static Value resolveRecordChoice(Value field, Map<String, Object> named) {
-        List<Value> branches = field.getChoices();
-        if (branches == null || branches.isEmpty()) {
+    private static Value resolveRecordChoice(List<Value> branches, List<IncludedFieldsResult> branchResults,
+                                             Value field) {
+        if (branches.isEmpty()) {
             return null;
         }
         int bestIndex = -1;
         int bestScore = -1;
         int bestLeaves = Integer.MAX_VALUE;
-        List<Map<String, Value>> resolvedBranches = new ArrayList<>();
         for (int i = 0; i < branches.size(); i++) {
-            Map<String, Value> branchFields = resolveIncludedFields(branches.get(i).getProperties(), named);
-            resolvedBranches.add(branchFields);
-            int leaves = countIncludedLeaves(branches.get(i).getProperties());
-            int score = branchFields.size();
+            int score = branchResults.get(i).resolved().size();
+            int leaves = branchResults.get(i).totalLeaves();
             if (score > bestScore || (score == bestScore && leaves < bestLeaves)) {
                 bestScore = score;
                 bestLeaves = leaves;
@@ -373,7 +388,7 @@ public final class ExistingListenerResolver {
             branch.setEditable(false);
             if (i == bestIndex) {
                 branch.setEnabled(true);
-                branch.setProperties(resolvedBranches.get(i));
+                branch.setProperties(branchResults.get(i).resolved());
             } else {
                 branch.setEnabled(false);
                 branch.setProperties(new LinkedHashMap<>());
@@ -393,29 +408,31 @@ public final class ExistingListenerResolver {
     }
 
     /**
-     * Resolves the enum CHOICE's own value (e.g. {@code protocol = ftp:SFTP}) and returns the branch it
-     * selects, matched by the branch's {@code value} (module prefix stripped). Falls back to the enabled
-     * or first branch when the source carries no such argument.
+     * Resolves the enum CHOICE's own value and returns the matching branch's index, falling back to the
+     * enabled/first branch's index; {@code -1} when there are no branches.
      */
-    private static Value selectEnumBranch(Value field, Map<String, Object> named) {
-        List<Value> branches = field.getChoices();
-        if (branches == null || branches.isEmpty()) {
-            return null;
+    private static int selectEnumBranchIndex(Value field, List<Value> branches, Map<String, Object> named) {
+        if (branches.isEmpty()) {
+            return -1;
         }
         String own = resolveByPath(named, lookupSegments(field.getCodedata(), null));
         if (own != null && !own.isBlank()) {
             String selected = stripModulePrefix(own);
-            for (Value branch : branches) {
-                if (selected.equalsIgnoreCase(stripModulePrefix(branch.getValue()))) {
-                    return branch;
+            for (int i = 0; i < branches.size(); i++) {
+                if (selected.equalsIgnoreCase(stripModulePrefix(branches.get(i).getValue()))) {
+                    return i;
                 }
             }
         }
-        return branches.stream().filter(Value::isEnabled).findFirst().orElse(branches.getFirst());
+        for (int i = 0; i < branches.size(); i++) {
+            if (branches.get(i).isEnabled()) {
+                return i;
+            }
+        }
+        return 0;
     }
 
-    /** Navigates the parsed named-arg tree along the dotted path; renders a whole sub-record when the
-     *  path terminates on one (e.g. {@code options}, {@code secureSocket}). Returns null if not found. */
+    /** Navigates the parsed named-arg tree along the dotted path, rendering a sub-record if it terminates on one. */
     private static String resolveByPath(Map<String, Object> named, List<String> segments) {
         if (named == null || segments.isEmpty()) {
             return null;
@@ -439,8 +456,11 @@ public final class ExistingListenerResolver {
         return null;
     }
 
+    /** Renders a (possibly nested) record literal from a field-name-to-value tree; a leaf value renders
+     *  via {@code String.valueOf}, so leaves may be pre-rendered strings or any other object. Shared with
+     *  {@link SchemaDrivenSourceGenerator}, which walks the same shape of tree. */
     @SuppressWarnings("unchecked")
-    private static String renderRecordTree(Map<?, ?> record) {
+    static String renderRecordTree(Map<?, ?> record) {
         if (record.isEmpty()) {
             return "{}";
         }
@@ -454,11 +474,7 @@ public final class ExistingListenerResolver {
         return "{" + String.join(", ", parts) + "}";
     }
 
-    /**
-     * The named-arg lookup path for a leaf. A multi-segment {@code path} navigates the record tree
-     * ({@code auth.credentials.username}); a single/absent one uses the emitted arg name
-     * ({@code originalName} or key), matching how {@code SchemaDrivenSourceGenerator} emits it.
-     */
+    /** The named-arg lookup path for a leaf: a multi-segment {@code path}, or the emitted arg name. */
     private static List<String> lookupSegments(Codedata codedata, String key) {
         String path = codedata == null ? null : codedata.getPath();
         if (path != null && !path.isBlank()) {
@@ -471,11 +487,15 @@ public final class ExistingListenerResolver {
         if (name != null && !name.isBlank()) {
             return List.of(name);
         }
-        // A field carrying only a single-segment path (e.g. ftp's protocol, keyed off the map, no
-        // originalName): the path segment is the emitted arg name.
         return path != null && !path.isBlank() ? List.of(path) : List.of();
     }
 
+    /**
+     * A subtree's included-field leaf count without resolving anything -- the cheap path for a subtree
+     * whose resolved fields would be discarded (a non-selected enum CHOICE branch). Counts exactly what
+     * {@link #resolveIncludedFieldsWithCount}'s {@code totalLeaves} counts, so a record CHOICE's
+     * tie-break sees the same numbers whichever path produced them.
+     */
     private static int countIncludedLeaves(Map<String, Value> properties) {
         if (properties == null) {
             return 0;
@@ -488,8 +508,11 @@ public final class ExistingListenerResolver {
                 }
             } else if (isGroup(field)) {
                 count += countIncludedLeaves(field.getProperties());
-            } else if (isIncludedField(field.getCodedata())) {
-                count++;
+            } else {
+                Codedata codedata = field.getCodedata();
+                if (isIncludedField(codedata) && !isCdcOperationFlag(codedata)) {
+                    count++;
+                }
             }
         }
         return count;
@@ -534,8 +557,7 @@ public final class ExistingListenerResolver {
         copy.setValue(value);
         copy.setEnabled(true);
         copy.setEditable(false);
-        // Read-only displays must be non-optional/non-advanced (DropdownChoiceForm hides those) and
-        // carry no validations (a fixed value must never trip a "required"-style error).
+        // Must be non-optional/non-advanced: DropdownChoiceForm hides those fields on the front end.
         copy.setOptional(false);
         copy.setAdvanced(false);
         copy.setValidations(null);
@@ -551,31 +573,27 @@ public final class ExistingListenerResolver {
         copy.setValue(value);
         copy.setEnabled(true);
         copy.setEditable(false);
-        // These are read-only displays of an existing listener's config. Force optional=false and
-        // advanced=false so the front end shows them (DropdownChoiceForm hides optional/advanced fields),
-        // and drop validations so a read-only value never triggers "required"-style errors.
         copy.setOptional(false);
         copy.setAdvanced(false);
         copy.setValidations(null);
         return copy;
     }
 
+    /** Renders a flat record; empty/null input yields {@code ""} (no value), not {@code "{}"} (an empty
+     *  record literal) -- callers treat the two differently, so this stays distinct from
+     *  {@link #renderRecordTree}, which it otherwise delegates to. */
     private static String renderRecord(LinkedHashMap<String, String> recordFields) {
         if (recordFields == null || recordFields.isEmpty()) {
             return "";
         }
-        List<String> parts = new ArrayList<>();
-        recordFields.forEach((name, value) -> parts.add(name + ": " + value));
-        return "{" + String.join(", ", parts) + "}";
+        return renderRecordTree(recordFields);
     }
 
-    // ------------------------------------------------------------------
-    // Source side — parse a listener declaration's new(...) arguments
-    // ------------------------------------------------------------------
-
-    static Optional<ParsedListener> parseListener(String listenerName, SemanticModel semanticModel, Project project) {
+    static Optional<ParsedListener> parseListener(String listenerName,
+                                                  Map<String, VariableSymbol> listenerSymbolsByName, Project project) {
         try {
-            ListenerDeclarationNode declaration = findListenerDeclaration(listenerName, semanticModel, project);
+            ListenerDeclarationNode declaration = findListenerDeclaration(listenerName, listenerSymbolsByName,
+                    project);
             if (declaration == null) {
                 return Optional.empty();
             }
@@ -599,26 +617,20 @@ public final class ExistingListenerResolver {
             }
             return Optional.of(new ParsedListener(positional, named));
         } catch (RuntimeException e) {
-            // Never fail the "use existing listener" dropdown over one unparsable declaration — but a
-            // silent Optional.empty() here is otherwise indistinguishable from "not a listener at all",
-            // which makes a real bug in this syntax-tree walk very hard to diagnose from a bug report.
+            // Never fail the "use existing listener" dropdown over one unparsable declaration.
             LOGGER.log(Level.FINE, e,
                     () -> "Failed to parse existing listener declaration '%s'".formatted(listenerName));
             return Optional.empty();
         }
     }
 
-    /**
-     * A named-arg expression as a nested-record tree: a record literal becomes a
-     * {@code Map<String, Object>} (recursively), anything else its trimmed source. Lets a leaf's dotted
-     * {@code path} be navigated back to the exact scalar (or whole sub-record) it was emitted from.
-     */
+    /** A named-arg expression as a nested-record tree: a record literal becomes a {@code Map}, else trimmed source. */
     private static Object parseExpression(Node expression) {
         if (expression instanceof MappingConstructorExpressionNode mapping) {
             LinkedHashMap<String, Object> record = new LinkedHashMap<>();
             for (MappingFieldNode fieldNode : mapping.fields()) {
                 if (fieldNode instanceof SpecificFieldNode specificField) {
-                    String name = unquote(specificField.fieldName().toSourceCode().trim());
+                    String name = Utils.unquote(specificField.fieldName().toSourceCode().trim());
                     Object value = specificField.valueExpr()
                             .map(ExistingListenerResolver::parseExpression)
                             .orElse("");
@@ -635,7 +647,7 @@ public final class ExistingListenerResolver {
             LinkedHashMap<String, String> recordFields = new LinkedHashMap<>();
             for (MappingFieldNode fieldNode : mapping.fields()) {
                 if (fieldNode instanceof SpecificFieldNode specificField) {
-                    String name = unquote(specificField.fieldName().toSourceCode().trim());
+                    String name = Utils.unquote(specificField.fieldName().toSourceCode().trim());
                     String value = specificField.valueExpr()
                             .map(expr -> expr.toSourceCode().trim())
                             .orElse("");
@@ -658,21 +670,14 @@ public final class ExistingListenerResolver {
         return null;
     }
 
-    private static ListenerDeclarationNode findListenerDeclaration(String listenerName, SemanticModel semanticModel,
+    private static ListenerDeclarationNode findListenerDeclaration(String listenerName,
+                                                                   Map<String, VariableSymbol> listenerSymbolsByName,
                                                                    Project project) {
-        Optional<VariableSymbol> listenerSymbol = Optional.empty();
-        for (Symbol symbol : semanticModel.moduleSymbols()) {
-            if (symbol instanceof VariableSymbol variableSymbol
-                    && variableSymbol.qualifiers().contains(Qualifier.LISTENER)
-                    && variableSymbol.getName().map(listenerName::equals).orElse(false)) {
-                listenerSymbol = Optional.of(variableSymbol);
-                break;
-            }
-        }
-        if (listenerSymbol.isEmpty() || listenerSymbol.get().getLocation().isEmpty()) {
+        VariableSymbol listenerSymbol = listenerSymbolsByName.get(listenerName);
+        if (listenerSymbol == null || listenerSymbol.getLocation().isEmpty()) {
             return null;
         }
-        Location location = listenerSymbol.get().getLocation().get();
+        Location location = listenerSymbol.getLocation().get();
         Path path = project.sourceRoot().resolve(location.lineRange().fileName());
         DocumentId documentId = project.documentId(path);
         Document document = project.currentPackage().getDefaultModule().document(documentId);
@@ -688,10 +693,4 @@ public final class ExistingListenerResolver {
         return (ListenerDeclarationNode) node;
     }
 
-    private static String unquote(String text) {
-        if (text.length() >= 2 && text.startsWith("\"") && text.endsWith("\"")) {
-            return text.substring(1, text.length() - 1);
-        }
-        return text;
-    }
 }

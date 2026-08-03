@@ -24,7 +24,6 @@ import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.PropertyType;
 import io.ballerina.servicemodelgenerator.extension.model.ServiceInitModel;
 import io.ballerina.servicemodelgenerator.extension.model.Value;
-import io.ballerina.servicemodelgenerator.extension.util.Constants;
 import io.ballerina.servicemodelgenerator.extension.util.ModuleAliasResolver;
 import io.ballerina.servicemodelgenerator.extension.util.Utils;
 import org.eclipse.lsp4j.TextEdit;
@@ -49,8 +48,21 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TY
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_LISTENER_VAR_NAME;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_SERVICE_BASE_PATH;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_SERVICE_TYPE_DESCRIPTOR;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ENUM_VALUE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_EXISTING_LISTENER;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_LISTENER_VAR_NAME;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_SERVICE_ANNOTATION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_STRING_LITERAL;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.CLOSE_BRACE;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.COLON;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.FIELD_TYPE_FLAG;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.FIELD_TYPE_VARIATION_SELECTOR;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_COMPLEX_REMOTE_FUNCTION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_MUTATION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_QUERY;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_REMOTE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_RESOURCE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_SUBSCRIPTION;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.NEW_LINE;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.NEW_LINE_WITH_TAB;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ON;
@@ -68,27 +80,11 @@ import static io.ballerina.servicemodelgenerator.extension.util.ServiceModelUtil
  * Generates Ballerina source (text edits) for adding a connector-shipped trigger/service, driven
  * entirely by the {@code codedata} on the connector models — no per-connector branches.
  *
- * <p>The creation form is walked recursively so that the same CHOICE / GROUP_SECTION nesting the
- * hardcoded builders handle (create-new vs use-existing, grouped listener configuration) is handled
- * generically:
- * <ul>
- *   <li>a <b>CHOICE</b> ({@code configureListener}) descends into its enabled (or first) branch;</li>
- *   <li>a <b>GROUP_SECTION</b> that carries a listener {@code argType} becomes one record argument
- *       assembled from its {@code CONFIG_FIELD} children, while non-config children (e.g. a nested
- *       positional param, the listener variable name) are still collected as their own args — this
- *       is a legacy shape kept for backward compatibility with already-shipped manifests;</li>
- *   <li>leaves are placed by {@code argType} — {@code REQUIRED} positional (ordered by
- *       {@code position}), {@code INCLUDED_FIELD} as {@code name = value} (a multi-segment
- *       {@code path}, e.g. {@code auth.credentials.username} — a record- or union-typed included
- *       field modeled as a nested CHOICE/GROUP_SECTION — nests into a record literal assigned to
- *       the top-level segment: {@code auth = {credentials: {username: ...}}}), {@code CONFIG_FIELD}
- *       into a record at its {@code position} slot (flat {@code CONFIG_FIELD} siblings sharing a
- *       {@code position} — the current, GROUP_SECTION-free shape for a record-typed listener
- *       param — are merged into one record literal there), {@code valueQualifier} module-prefixes
- *       enum-like values.</li>
- * </ul>
- * The service type descriptor is resolved from the {@code SERVICE_TYPE_DESCRIPTOR} field wherever it
- * sits (not by property key). Output stays format-compatible with
+ * <p>The creation form is walked recursively: a CHOICE descends into its enabled (or first) branch, a
+ * GROUP_SECTION carrying a listener {@code argType} becomes one record argument from its
+ * {@code CONFIG_FIELD} children, and leaves are placed by {@code argType} (positional, included,
+ * config-field, or enum-qualified). The service type descriptor is resolved from the
+ * {@code SERVICE_TYPE_DESCRIPTOR} field wherever it sits. Output stays format-compatible with
  * {@code AbstractServiceBuilder.getServiceDeclarationEdits}.
  *
  * @since 1.8.0
@@ -99,19 +95,9 @@ public final class SchemaDrivenSourceGenerator {
     private static final String LISTENER_TYPE = "Listener";
     private static final String NEW = "new";
     private static final String ERROR = "error";
-    private static final String LISTENER_VAR_NAME_KIND = "LISTENER_VAR_NAME";
-    // A CHOICE branch tagged ENUM_VALUE is a plain enum-literal selector (e.g. ftp's protocol:
-    // FTP/SFTP/FTPS) whose parent field's own value must be emitted as a leaf arg, unlike a branch
-    // that shapes a nested record purely through its children's own dotted paths (e.g. ASB's
-    // entityConfig, where the branch and its children already carry the real path).
-    private static final String CD_TYPE_ENUM_VALUE = "ENUM_VALUE";
-    // Default target for a CDC operation flag authored without an explicit dotted `path`: the op-code
-    // of each deselected flag joins the listener's `options.skippedOperations` list (the cdc convention).
+    // Default target for a CDC operation flag with no explicit `path` (the cdc convention).
     private static final String CDC_OPTIONS_FIELD = "options";
     private static final String CDC_SKIPPED_OPERATIONS_FIELD = "skippedOperations";
-    // A base path may be modeled either as a SERVICE_BASE_PATH field or as a STRING_LITERAL attach
-    // point (a quoted service path) — both occupy the same slot between the descriptor and `on`.
-    private static final String CD_TYPE_STRING_LITERAL = "STRING_LITERAL";
 
     private SchemaDrivenSourceGenerator() {
     }
@@ -129,26 +115,21 @@ public final class SchemaDrivenSourceGenerator {
 
     /**
      * The {@code \nimport <org>/<module>;\n} statement for the connector, under its natural prefix (see
-     * {@link #defaultEmitAlias}) — this overload has no target file to check for a collision against, so
-     * it never generates a fallback alias.
+     * {@link #defaultEmitAlias}); has no target file to check for a collision, so never falls back to
+     * an alias.
      */
     public static String buildImport(ServiceInitModel creationModel) {
         return Utils.getImportStmt(creationModel.getOrgName(), creationModel.getModuleName(),
                 defaultEmitAlias(creationModel.getModuleName()));
     }
 
-    // ==================================================================
-    // Unified TriggerUISchemaModel path. The listener-arg walk below is shared across service descriptor
-    // resolution; the service descriptor and function block are sourced from the TriggerUISchemaModel.
-    // ==================================================================
-
+    // The listener-arg walk below is shared across service descriptor resolution; the service descriptor
+    // and function block are sourced from the TriggerUISchemaModel.
     /** {@code addServiceAndListener} for the unified model: import (if missing) + listener/service block. */
     public static Map<String, List<TextEdit>> buildAddServiceEditsForTrigger(ServiceInitModel filledInitForm,
                                                                    TriggerUISchemaModel triggerModel,
                                                                    ModulePartNode rootNode, String filePath) {
         List<TextEdit> edits = new ArrayList<>();
-        // The connector module's emitted import prefix, resolved against the file so the service block
-        // and the import agree on the same (possibly aliased, collision-free) prefix.
         String emitAlias = resolveEmitAlias(rootNode, filledInitForm, triggerModel);
         String imports = buildImports(filledInitForm, triggerModel, rootNode, emitAlias);
         if (!imports.isEmpty()) {
@@ -161,15 +142,12 @@ public final class SchemaDrivenSourceGenerator {
 
     /**
      * The connector import plus any additional imports the model declares in {@code importStatements}
-     * (each an {@code org/module} reference — e.g. a handler payload's or listener param's module such
-     * as {@code ballerina/http}). Each is emitted only when not already present in the file.
+     * (each an {@code org/module} reference). Each is emitted only when not already present in the file.
      */
     private static String buildImports(ServiceInitModel filledInitForm, TriggerUISchemaModel triggerModel,
                                        ModulePartNode rootNode, String emitAlias) {
         StringBuilder imports = new StringBuilder();
         if (!Utils.importExists(rootNode, filledInitForm.getOrgName(), filledInitForm.getModuleName())) {
-            // Aliased (`... as triggerTwilio;`) only when the natural prefix would clash — see
-            // Utils.getImportStmt(org, module, alias).
             imports.append(Utils.getImportStmt(filledInitForm.getOrgName(), filledInitForm.getModuleName(),
                     emitAlias));
         }
@@ -194,8 +172,7 @@ public final class SchemaDrivenSourceGenerator {
 
     /**
      * Full add-trigger block from the unified model: listener declaration (create-new branch only) +
-     * {@code service <descriptor> on &lt;var&gt; { <present functions> }}. Named distinctly from the
-     * two-model {@code buildServiceBlock} so a {@code null} second argument stays unambiguous.
+     * {@code service <descriptor> on &lt;var&gt; { <present functions> }}.
      */
     public static String buildServiceBlockForTrigger(ServiceInitModel filledInitForm,
                                                       TriggerUISchemaModel triggerModel) {
@@ -206,20 +183,12 @@ public final class SchemaDrivenSourceGenerator {
     /**
      * As {@link #buildServiceBlockForTrigger(ServiceInitModel, TriggerUISchemaModel)}, but referencing the
      * connector's own module under {@code emitAlias} — the prefix its import is (or will be) bound to.
-     * For a dotted module whose natural prefix clashes with a base client (e.g. {@code trigger.twilio}
-     * vs {@code ballerinax/twilio}) this is the safe alias {@code triggerTwilio}, and every self-module
-     * reference — listener type, service descriptor, handler parameter/return types, annotations — is
-     * emitted under it. For a single-segment module the alias equals the natural prefix and every
-     * rewrite below is a no-op, so output is byte-identical to before.
+     * Every self-module reference is emitted under it; for a single-segment module the alias equals the
+     * natural prefix and every rewrite below is a no-op.
      */
     public static String buildServiceBlockForTrigger(ServiceInitModel filledInitForm, TriggerUISchemaModel triggerModel,
                                                      String emitAlias) {
-        // The prefix the model's own strings are authored with (module's last dot-segment): the source
-        // token that self-module references are rewritten FROM.
         String selfPrefix = getProtocol(filledInitForm.getModuleName());
-        // Enum literals carry their module as a bare `valueQualifier` (e.g. ftp's `protocol = ftp:FTP`).
-        // Resolved up front, in place, so the arg/annotation walks below emit it already correct rather
-        // than each having to thread the alias down to every leaf.
         requalifyValueQualifiers(filledInitForm.getProperties(), selfPrefix, emitAlias);
         ListenerArgs collected = collectListenerArgs(filledInitForm);
         String descriptor = resolveServiceDescriptor(filledInitForm, triggerModel, selfPrefix, emitAlias);
@@ -235,7 +204,6 @@ public final class SchemaDrivenSourceGenerator {
         }
         builder.append(SERVICE).append(SPACE).append(descriptor).append(SPACE);
         if (!basePath.isEmpty()) {
-            // e.g. Salesforce's event channel: `service salesforce:CdcService /data/ChangeEvents on ...`.
             builder.append(basePath).append(SPACE);
         }
         builder.append(ON).append(SPACE)
@@ -248,12 +216,9 @@ public final class SchemaDrivenSourceGenerator {
 
     /**
      * The service-level annotation attachments (e.g. {@code @rabbitmq:ServiceConfig {...}}), built
-     * entirely from {@code SERVICE_ANNOTATION} fields present in the filled {@code ServiceInitModel}
-     * (the add-service init form) — the {@code TriggerUISchemaModel}'s service-type properties are not
-     * consulted here, since at add-time the only values available are the ones the user filled in the
-     * init form (e.g. RabbitMQ's {@code queueName}). Fields are grouped by their annotation identity
-     * ({@code moduleName}/{@code originalName}), so several init-form fields belonging to the same
-     * annotation are merged into one {@code @module:Name {...}} attachment.
+     * entirely from {@code SERVICE_ANNOTATION} fields present in the filled {@code ServiceInitModel}.
+     * Fields are grouped by annotation identity ({@code moduleName}/{@code originalName}) and merged
+     * into one {@code @module:Name {...}} attachment.
      */
     private static List<String> buildServiceAnnotations(ServiceInitModel filledInitForm, String selfPrefix,
                                                         String emitAlias) {
@@ -270,12 +235,9 @@ public final class SchemaDrivenSourceGenerator {
 
     /**
      * Recursively collects {@code SERVICE_ANNOTATION} fields from a filled form, grouping same-annotation
-     * fields ({@code moduleName}/{@code originalName}) together. Two shapes exist: a {@code path}-carrying
-     * leaf (e.g. the init form's flat {@code queueName}) contributes one field to a per-field mapping
-     * tree; a synthesized whole-record field (a single {@code RECORD_MAP_EXPRESSION} the user edits as
-     * one expression — see {@code TriggerModelSynthesizer}, no {@code path}) supplies its own raw value
-     * as the entire attachment body directly, matching how the read-back path already treats such a
-     * container (see {@code Utils#findServiceAnnotationContainer}).
+     * fields together. A {@code path}-carrying leaf contributes one field to a per-field mapping tree; a
+     * synthesized whole-record field (no {@code path}) supplies its raw value as the entire attachment
+     * body directly.
      */
     private static void collectAnnotationFields(Map<String, Value> properties,
                                                 Map<String, AnnotationFields> byAnnotation) {
@@ -291,7 +253,7 @@ public final class SchemaDrivenSourceGenerator {
                 continue;
             }
             Codedata codedata = field.getCodedata();
-            if (codedata != null && Constants.CD_TYPE_SERVICE_ANNOTATION.equals(codedata.getType())
+            if (codedata != null && CD_TYPE_SERVICE_ANNOTATION.equals(codedata.getType())
                     && field.isEnabledWithValue()) {
                 String rendered = qualifiedValue(field);
                 if (!rendered.isEmpty()) {
@@ -316,8 +278,8 @@ public final class SchemaDrivenSourceGenerator {
         private final String moduleName;
         private final String originalName;
         private final List<Map.Entry<String, String>> fields = new ArrayList<>();
-        // Set instead of `fields` for a synthesized whole-record annotation field (a single
-        // RECORD_MAP_EXPRESSION with no per-field `path`) -- its own raw value IS the attachment body.
+        // Set for a synthesized whole-record annotation field (no per-field `path`): its raw value IS
+        // the attachment body.
         private String wholeValue;
 
         private AnnotationFields(String moduleName, String originalName) {
@@ -336,10 +298,9 @@ public final class SchemaDrivenSourceGenerator {
     }
 
     /**
-     * Groups dot-separated {@code path}s (e.g. {@code info.name}, {@code info.version}) into a nested
-     * {field -> value | nested-map} tree, so a {@code SERVICE_ANNOTATION} field whose path addresses a
-     * record-typed sub-field (e.g. MCP's {@code info} record) emits as a nested mapping constructor
-     * rather than a literal dotted key, which is not valid Ballerina mapping-field syntax.
+     * Groups dot-separated {@code path}s (e.g. {@code info.name}) into a nested {field -> value |
+     * nested-map} tree, so a record-typed sub-field emits as a nested mapping constructor rather than
+     * an invalid literal dotted key.
      */
     private static LinkedHashMap<String, Object> buildFieldTree(List<Map.Entry<String, String>> fields) {
         LinkedHashMap<String, Object> root = new LinkedHashMap<>();
@@ -399,11 +360,9 @@ public final class SchemaDrivenSourceGenerator {
 
     /**
      * Qualifies a service type. An unqualified name is the connector's own type and takes the emitted
-     * import alias; an already-qualified one keeps its declared module — normalized to that module's
-     * import alias (its last dot-segment, so {@code trigger.google.mail:GmailService} becomes
-     * {@code mail:GmailService}) — because the type need NOT live in the connector's own module: the
-     * CDC connectors (mssql/mysql/postgresql) declare theirs in the separate {@code ballerinax/cdc}
-     * module and must stay {@code cdc:Service}. Only a self-module qualifier is remapped onto the alias.
+     * import alias; an already-qualified one keeps its declared module (normalized to that module's
+     * import alias), since the type need not live in the connector's own module (e.g. CDC connectors
+     * declare theirs in {@code ballerinax/cdc}).
      */
     private static String qualify(String typeName, String selfPrefix, String emitAlias) {
         if (!typeName.contains(COLON)) {
@@ -418,37 +377,19 @@ public final class SchemaDrivenSourceGenerator {
         return selfPrefix.equals(module) ? emitAlias : module;
     }
 
-    /**
-     * The import alias of a (possibly dotted) module name — its last {@code .}-separated segment. A
-     * module imported as {@code ballerinax/trigger.google.mail} is referenced by the alias {@code mail}.
-     */
+    /** @see ModuleAliasResolver#selfPrefix(String) */
     private static String aliasOf(String moduleName) {
-        int lastDot = moduleName.lastIndexOf('.');
-        return lastDot < 0 ? moduleName : moduleName.substring(lastDot + 1);
+        return ModuleAliasResolver.selfPrefix(moduleName);
     }
 
-    /** The simple (unqualified) type name — strips any {@code module:} prefix. */
+    /** @see TriggerModelSynthesizer#simpleName(String) */
     private static String simpleName(String typeName) {
-        int colon = typeName.indexOf(COLON);
-        return colon < 0 ? typeName : typeName.substring(colon + 1);
+        return TriggerModelSynthesizer.simpleName(typeName);
     }
-
-    // ------------------------------------------------------------------
-    // Self-module import alias
-    //
-    // A dotted module defaults to its natural prefix — its LAST segment (`ballerinax/trigger.twilio` ->
-    // `twilio`) — same as a plain one, so the common case is a bare, unaliased import. That only breaks
-    // when the target file already binds that prefix to something else: a same-named sibling package
-    // (`ballerinax/twilio` also wants `twilio`) or an unrelated import (`ballerina/file as ftp`
-    // shadowing `ballerina/ftp`). Only then is the module imported under a generated alias
-    // (`import ballerinax/trigger.twilio as triggerTwilio;`), with every reference to its own types
-    // rewritten onto it. Without a target file to check for such a collision (no rootNode in scope),
-    // the natural prefix is used as-is; a single-segment module never needs an alias.
-    // ------------------------------------------------------------------
 
     /**
-     * The alias the connector's module is referenced under: {@code TriggerUISchemaModel.importPrefix} when the
-     * model pins one, else the generated default.
+     * The alias the connector's module is referenced under: {@code TriggerUISchemaModel.importPrefix}, else the
+     * generated default.
      */
     private static String modelAliasOrDefault(TriggerUISchemaModel triggerModel, String moduleName) {
         if (triggerModel != null && triggerModel.importPrefix() != null
@@ -483,14 +424,8 @@ public final class SchemaDrivenSourceGenerator {
 
     /**
      * Rewrites, in place, every {@code valueQualifier} naming the connector's own module onto the prefix
-     * it is emitted under. A {@code valueQualifier} qualifies an enum literal — ftp's
-     * {@code protocol = ftp:FTP} listener argument and its {@code afterProcess: ftp:DELETE} annotation
-     * field — and names its module by bare prefix, so it is matched against the natural prefix rather
-     * than resolved as an {@code org/module} pair. Qualifiers naming any other module are left alone.
-     *
-     * <p>Recurses through nested properties and choice branches: the qualifier lives on the selected
-     * branch of a choice (ftp's protocol selector), not on the field itself. A no-op when the connector
-     * is not aliased.
+     * it is emitted under. Recurses through nested properties and choice branches; a no-op when the
+     * connector is not aliased.
      */
     private static void requalifyValueQualifiers(Map<String, Value> properties, String selfPrefix,
                                                  String emitAlias) {
@@ -518,14 +453,7 @@ public final class SchemaDrivenSourceGenerator {
         }
     }
 
-    /**
-     * Picks the service type matching the init-form selection; else the enabled one; else the first.
-     *
-     * <p>A model carrying a type that must not be offered for new services (e.g. mcp's deprecated
-     * {@code Service} alongside {@code StreamableHttpService}) pins the choice with a hidden
-     * {@code SERVICE_TYPE_DESCRIPTOR} field in its {@code initProperties}, so the selection is
-     * explicit here rather than resting on {@code serviceTypes[]} order.
-     */
+    /** Picks the service type matching the init-form selection; else the enabled one; else the first. */
     private static TriggerUISchemaModel.ServiceTypeModel selectServiceType(ServiceInitModel filledInitForm,
                                                                    TriggerUISchemaModel triggerModel) {
         if (triggerModel == null || triggerModel.serviceTypes() == null
@@ -578,7 +506,6 @@ public final class SchemaDrivenSourceGenerator {
     private static String buildFunctionSource(TriggerUISchemaModel.FunctionModel function, String selfPrefix,
                                               String emitAlias) {
         StringBuilder builder = new StringBuilder();
-        // Function-level annotations (COMPLEX_FUNCTION_ANNOTATION) sit above the function.
         for (String annotation : AnnotationEmitter.annotationsOf(function.properties())) {
             builder.append(annotation).append(NEW_LINE);
         }
@@ -597,11 +524,7 @@ public final class SchemaDrivenSourceGenerator {
         return builder.toString();
     }
 
-    /**
-     * The emitted function name. A format-variant handler ({@code VARIATION_SELECTOR} param) fans out
-     * to the selected variant's {@code originalName} (e.g. onFileCsv / onFileJson); otherwise the
-     * declared name.
-     */
+    /** The emitted function name: a format-variant handler fans out to the selected variant's name. */
     private static String effectiveFunctionName(TriggerUISchemaModel.FunctionModel function) {
         if (function.parameters() != null) {
             for (TriggerUISchemaModel.Parameter parameter : function.parameters()) {
@@ -615,7 +538,7 @@ public final class SchemaDrivenSourceGenerator {
     }
 
     private static String selectedVariantOriginalName(TriggerUISchemaModel.Property typeProp) {
-        if (typeProp == null || !"VARIATION_SELECTOR".equals(PayloadComposer.selectedFieldType(typeProp))) {
+        if (typeProp == null || !FIELD_TYPE_VARIATION_SELECTOR.equals(PayloadComposer.selectedFieldType(typeProp))) {
             return null;
         }
         Map<String, TriggerUISchemaModel.Property> variants = typeProp.properties();
@@ -649,8 +572,8 @@ public final class SchemaDrivenSourceGenerator {
     private static String qualifierKeyword(String kind) {
         String normalized = kind == null ? "" : kind.toUpperCase(Locale.US);
         return switch (normalized) {
-            case "REMOTE", "COMPLEX_REMOTE_FUNCTION" -> REMOTE;
-            case "RESOURCE", "QUERY", "MUTATION", "SUBSCRIPTION" -> RESOURCE;
+            case KIND_REMOTE, KIND_COMPLEX_REMOTE_FUNCTION -> REMOTE;
+            case KIND_RESOURCE, KIND_QUERY, KIND_MUTATION, KIND_SUBSCRIPTION -> RESOURCE;
             default -> "";
         };
     }
@@ -662,15 +585,11 @@ public final class SchemaDrivenSourceGenerator {
         }
         List<String> params = new ArrayList<>();
         for (TriggerUISchemaModel.Parameter parameter : function.parameters()) {
-            if ("FLAG".equals(PayloadComposer.selectedFieldType(parameter.type()))) {
-                // Framework param (caller/context): emitted only when the checkbox is ticked.
+            if (FIELD_TYPE_FLAG.equals(PayloadComposer.selectedFieldType(parameter.type()))) {
                 if (!isFlagOn(parameter)) {
                     continue;
                 }
             } else if (Boolean.TRUE.equals(parameter.optional())) {
-                // Core params (REQUIRED / DATA_BINDING / VARIANT) always emit unless explicitly
-                // optional. (The `enabled` marker is a UI-presence flag on the template, not an
-                // emission gate — a schemaFunction template ships its core param as enabled:false.)
                 continue;
             }
             String type = rewriteSelfPrefix(PayloadComposer.effectiveType(parameter.type()), selfPrefix, emitAlias);
@@ -714,21 +633,14 @@ public final class SchemaDrivenSourceGenerator {
     private static String renderListenerDeclaration(String emitAlias, ListenerArgs args) {
         String listenerType;
         if (args.listenerType != null && !args.listenerType.isBlank()) {
-            // The hint carries the listener's type name (e.g. `CdcListener`), which is not always
-            // `Listener`. The type always lives in the connector's own module, so it is prefixed with the
-            // emitted import alias. A hint that arrives already qualified may carry the full dotted
-            // module name (e.g. a `trigger.google.mail:Listener` type signature); only its simple name is
-            // kept so the emitted prefix is the import alias, not the full module path.
+            // The hint's type name is not always "Listener" (e.g. CdcListener); only its simple name is
+            // kept so the emitted prefix is the import alias, not a full dotted module path.
             listenerType = emitAlias + COLON + simpleName(args.listenerType);
         } else {
             listenerType = emitAlias + COLON + LISTENER_TYPE;
         }
         return String.format("%s %s %s = %s (%s);", LISTENER, listenerType, args.varName, NEW, args.render());
     }
-
-    // ------------------------------------------------------------------
-    // Listener argument collection (CHOICE + GROUP_SECTION aware)
-    // ------------------------------------------------------------------
 
     private static ListenerArgs collectListenerArgs(ServiceInitModel creationModel) {
         ListenerArgs args = new ListenerArgs();
@@ -745,12 +657,8 @@ public final class SchemaDrivenSourceGenerator {
             if (isChoice(field)) {
                 Value branch = enabledOrFirstChoice(field.getChoices());
                 if (branch != null && isEnumValueChoice(branch)) {
-                    // The branch is a literal enum value (not a record-shaping sub-form): the selected
-                    // value is the real arg (e.g. `protocol = ftp:FTP`) and must be placed itself, since
-                    // no descendant path will ever recreate it. The selection is carried by the enabled
-                    // branch's own `value`/`valueQualifier` (what the UI toggles), not the parent field's
-                    // `value` — which the front end does not always echo back on submit — so render from
-                    // the branch but place it at the parent CHOICE's arg slot (its argType/path).
+                    // A literal enum value branch: render from the branch but place it at the parent
+                    // CHOICE's arg slot, since the parent's own `value` is not reliably echoed back.
                     String rendered = qualifiedValue(branch);
                     if (!rendered.isEmpty()) {
                         placeArg(field.getCodedata(), entry.getKey(), rendered, args);
@@ -763,7 +671,6 @@ public final class SchemaDrivenSourceGenerator {
             }
             if (isExistingListener(entry.getKey(), field)) {
                 // "Use existing" branch: attach to the selected listener(s), no new declaration.
-                // A MULTIPLE_SELECT_LISTENER yields several names -> `service ... on l1, l2`.
                 String existing = existingListenerAttach(field);
                 if (!existing.isEmpty()) {
                     args.varName = existing;
@@ -772,11 +679,8 @@ public final class SchemaDrivenSourceGenerator {
             }
             Codedata codedata = field.getCodedata();
             if (isVarName(codedata)) {
-                // Presence of this field is itself the "create new listener" signal -- it only exists
-                // in that branch's form, never the "use existing" one -- so a declaration must always
-                // be emitted here even when every other (optional/defaultable) listener param was left
-                // blank: `new ()` rather than silently dropping the declaration while the service block
-                // still references this variable name.
+                // Presence of this field is itself the "create new listener" signal, so a declaration
+                // must always be emitted (`new ()`) even when every listener param was left blank.
                 args.declareListener = true;
                 String varName = value(field);
                 if (!varName.isEmpty()) {
@@ -805,13 +709,10 @@ public final class SchemaDrivenSourceGenerator {
     }
 
     /**
-     * A CDC operation checkbox (e.g. MSSQL's "Insert events") is not emitted as its own listener
-     * argument: instead it toggles membership of a record-field list. Deselecting it (value
-     * {@code false}) adds its {@code originalName} op-code (e.g. {@code "c"}) to that list; a selected
-     * flag contributes nothing. The target list is the flag's dotted {@code path}
-     * ({@code <recordField>.<listField>}, e.g. {@code options.skippedOperations}) when authored, and
-     * defaults to {@code options.skippedOperations} otherwise. The collected codes are folded into the
-     * target record arg at render time ({@link ListenerArgs#render()}).
+     * A CDC operation checkbox toggles membership of a record-field list rather than emitting its own
+     * arg: deselecting it (value {@code false}) adds its op-code to the target list (the flag's dotted
+     * {@code path}, defaulting to {@code options.skippedOperations}), folded in at render time
+     * ({@link ListenerArgs#render()}).
      */
     private static void collectCdcOperationFlag(Value field, Codedata codedata, ListenerArgs args) {
         boolean enabled = !"false".equalsIgnoreCase(value(field));
@@ -829,15 +730,10 @@ public final class SchemaDrivenSourceGenerator {
     }
 
     /**
-     * A GROUP_SECTION is a UI grouping — it may be a plain UI-only container boxing the whole
-     * "create new listener" branch (no {@code argType}/{@code position} of its own), or it may
-     * itself occupy a positional slot because a record-typed listener param's fields were flattened
-     * directly into it. When the group has a slot, its {@code CONFIG_FIELD} children form that one
-     * record argument; when it is UI-only, each child keeps its <b>own</b> {@code position} — fields
-     * sharing a position merge into a record at that slot (e.g. HubSpot's {@code {clientSecret,
-     * callbackURL}} at slot 1, ahead of {@code listenOn} at slot 2), and position-less fields fall
-     * back to a trailing loose record. Other children (nested positional params, the listener
-     * variable name, nested groups) are collected as their own args.
+     * A GROUP_SECTION may be a plain UI-only container, or occupy a positional slot itself (a
+     * record-typed listener param's fields flattened into it). When it has a slot, its
+     * {@code CONFIG_FIELD} children form one record argument; otherwise each child keeps its own
+     * position, with position-less fields falling back to a trailing loose record.
      */
     private static void collectGroup(String key, Value group, ListenerArgs args) {
         Codedata groupCodedata = group.getCodedata();
@@ -856,7 +752,6 @@ public final class SchemaDrivenSourceGenerator {
                     }
                     List<String> segments = fieldNameSegments(childCodedata, child.getKey());
                     if (groupHasSlot) {
-                        // Merge into the one record literal this group occupies, nesting dotted paths.
                         ListenerArgs.insertNested(recordFields, segments, rendered);
                     } else {
                         args.addConfigField(childCodedata.getPosition(), segments, rendered);
@@ -869,7 +764,6 @@ public final class SchemaDrivenSourceGenerator {
         if (groupHasSlot && !recordFields.isEmpty()) {
             args.addPositional(groupCodedata.getPosition(), ListenerArgs.renderIncludedValue(recordFields));
         }
-        // Non-config children: nested positional params (e.g. listenOn), the var name, nested groups.
         collect(rest, args);
     }
 
@@ -883,10 +777,6 @@ public final class SchemaDrivenSourceGenerator {
         }
         String argType = codedata.getArgType();
         if (ARG_TYPE_LISTENER_PARAM_CONFIG_FIELD.equals(argType)) {
-            // A config field with no enclosing GROUP_SECTION: fields sharing the same `position`
-            // (the record param's own positional slot) are merged into one record-literal argument
-            // at that slot; a field with no `position` falls back to a trailing loose record. A
-            // dotted `path` (e.g. `auth.username`) nests into a record at its top-level segment.
             args.addConfigField(codedata.getPosition(), fieldNameSegments(codedata, key), rendered);
             return;
         }
@@ -902,18 +792,15 @@ public final class SchemaDrivenSourceGenerator {
                 || ARG_TYPE_LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD.equals(argType)) {
             List<String> pathSegments = dottedPathSegments(codedata);
             if (pathSegments.size() > 1) {
-                // path crosses into a nested record field (e.g. a CHOICE/GROUP_SECTION modeling a
-                // record- or union-typed included field, such as `auth.credentials.username`) ->
-                // nest it into a record literal assigned to the top-level segment, instead of a
-                // bogus flat named arg using only the leaf's own key.
+                // Path crosses into a nested record field: nest into a record literal at the
+                // top-level segment instead of a bogus flat named arg.
                 args.addIncludedPath(pathSegments, rendered);
             } else {
-                args.included.add(argName(codedata, key) + " = " + rendered);
+                args.addIncludedArg(argName(codedata, key), rendered);
             }
         } else if (ARG_TYPE_LISTENER_PARAM_CONFIG_FIELD.equals(argType)) {
             args.addConfigField(codedata.getPosition(), fieldNameSegments(codedata, key), rendered);
         }
-        // SERVICE_TYPE_DESCRIPTOR / unknown -> not a listener argument.
     }
 
     private static List<String> dottedPathSegments(Codedata codedata) {
@@ -954,10 +841,9 @@ public final class SchemaDrivenSourceGenerator {
     }
 
     /**
-     * The service base path (e.g. Salesforce's event channel {@code /data/ChangeEvents}) — the value
-     * of a {@code SERVICE_BASE_PATH} or {@code STRING_LITERAL} field anywhere in the filled init form,
-     * emitted verbatim between the service descriptor and {@code on} (matching the DB-backed builders'
-     * {@code service <type> <basePath> on ...} shape). Empty when the model ships no base-path field.
+     * The service base path — the value of a {@code SERVICE_BASE_PATH} or {@code STRING_LITERAL} field
+     * anywhere in the filled init form, emitted between the service descriptor and {@code on}. Empty
+     * when the model ships no base-path field.
      */
     private static String resolveBasePath(ServiceInitModel filledInitForm) {
         return findBasePath(filledInitForm.getProperties());
@@ -994,24 +880,18 @@ public final class SchemaDrivenSourceGenerator {
         return "";
     }
 
-    // ------------------------------------------------------------------
-    // Small helpers
-    // ------------------------------------------------------------------
-
     private static boolean isVarName(Codedata codedata) {
         if (codedata == null) {
             return false;
         }
-        return LISTENER_VAR_NAME_KIND.equals(codedata.getType())
+        return CD_TYPE_LISTENER_VAR_NAME.equals(codedata.getType())
                 || ARG_TYPE_LISTENER_VAR_NAME.equals(codedata.getArgType());
     }
 
     /**
-     * The listener's actual Ballerina type (e.g. {@code mssql:CdcListener}), read off the
-     * {@code listenerVarName} field's {@code ballerinaType} — the connector's declared listener type
-     * name is not always {@code Listener} (MSSQL CDC's is {@code CdcListener}). Falls back to
-     * {@code null} (so the caller defaults to {@code <protocol>:Listener}) when unset, for manifests
-     * authored before this hint existed.
+     * The listener's actual Ballerina type (e.g. {@code mssql:CdcListener}), read off the field's
+     * {@code ballerinaType}. Falls back to {@code null} (caller defaults to {@code <protocol>:Listener})
+     * for manifests authored before this hint existed.
      */
     private static String listenerTypeOf(Value field) {
         if (field.getTypes() == null) {
@@ -1037,11 +917,7 @@ public final class SchemaDrivenSourceGenerator {
         return choices.stream().filter(Value::isEnabled).findFirst().orElse(choices.getFirst());
     }
 
-    /**
-     * The record-field name split into its dotted segments, so a config field whose {@code path}
-     * crosses into a nested record (e.g. {@code auth.username}) nests instead of emitting a flat
-     * {@code auth.username: ...} key. A plain name yields a single segment.
-     */
+    /** The record-field name split into its dotted segments, so a nested-record {@code path} nests correctly. */
     private static List<String> fieldNameSegments(Codedata codedata, String key) {
         return List.of(fieldName(codedata, key).split("\\."));
     }
@@ -1066,8 +942,7 @@ public final class SchemaDrivenSourceGenerator {
         if (rendered != null && !rendered.isEmpty()) {
             return rendered;
         }
-        // Multi-valued fields (TEXT_SET / EXPRESSION_SET / MULTIPLE_SELECT) carry their entries in
-        // `values`, not `value` (e.g. MSSQL CDC's `databaseNames`) -> render as an array literal.
+        // Multi-valued fields (TEXT_SET / EXPRESSION_SET / MULTIPLE_SELECT) carry entries in `values`.
         List<String> values = field.getValues();
         if (values != null && !values.isEmpty()) {
             return "[" + String.join(", ", values) + "]";
@@ -1075,20 +950,20 @@ public final class SchemaDrivenSourceGenerator {
         return "";
     }
 
-    /** The "use existing" selector — by key or by {@code codedata.type == KEY_EXISTING_LISTENER}. */
+    /**
+     * The "use existing" selector — by property map key ({@link ServiceInitModel#KEY_EXISTING_LISTENER},
+     * {@code "existingListener"}) or by {@code codedata.type} ({@code Constants.CD_TYPE_EXISTING_LISTENER},
+     * {@code "KEY_EXISTING_LISTENER"} -- an unrelated value that is coincidentally similar text).
+     */
     private static boolean isExistingListener(String key, Value field) {
         if (KEY_EXISTING_LISTENER.equals(key)) {
             return true;
         }
         Codedata codedata = field == null ? null : field.getCodedata();
-        return codedata != null && "KEY_EXISTING_LISTENER".equals(codedata.getType());
+        return codedata != null && CD_TYPE_EXISTING_LISTENER.equals(codedata.getType());
     }
 
-    /**
-     * The listener name(s) to attach to. A single-select yields one name; a
-     * {@code MULTIPLE_SELECT_LISTENER} yields several, joined so the service attaches to all
-     * (`service ... on l1, l2`).
-     */
+    /** The listener name(s) to attach to; a {@code MULTIPLE_SELECT_LISTENER} yields several, joined. */
     private static String existingListenerAttach(Value field) {
         if (field == null) {
             return "";
@@ -1105,24 +980,33 @@ public final class SchemaDrivenSourceGenerator {
         private final TreeMap<Integer, String> byPosition = new TreeMap<>();
         private final TreeMap<Integer, Map<String, Object>> configFieldsByPosition = new TreeMap<>();
         private final List<String> noPosition = new ArrayList<>();
-        private final List<String> included = new ArrayList<>();
+        private final List<IncludedArg> included = new ArrayList<>();
         private final Map<String, Object> looseConfig = new LinkedHashMap<>();
         private final Map<String, Object> includedTree = new LinkedHashMap<>();
-        // Aggregated CDC-style skip lists, keyed by the record-field arg they merge into (e.g.
-        // "options") -> its list field name (e.g. "skippedOperations") -> the collected op-code
-        // literals for that list field. Nested by list field (not flattened to one-per-recordField)
-        // so two independently-toggled flag groups that happen to target the same record slot with
-        // different list-field names both survive, instead of the second silently overwriting the
-        // first's list-field name.
+        // Aggregated CDC-style skip lists: record-field arg -> list field name -> collected op-codes.
         private final Map<String, LinkedHashMap<String, List<String>>> skipLists = new LinkedHashMap<>();
         private String varName = "";
         private String listenerType;
-        // Set only when the walk actually enters the "create new listener" branch (its LISTENER_VAR_NAME
-        // field is unique to that form -- the "use existing" branch has no such field). Whether to emit
-        // a declaration must key off this, never off "were any constructor args collected": a connector
-        // whose listener config is entirely optional and left blank still needs `new ();` emitted, not a
-        // silently-dropped declaration.
+        // Set only when the walk enters the "create new listener" branch (its LISTENER_VAR_NAME field
+        // is unique to that form). Must key off this, not "were any args collected" — a connector whose
+        // listener config is entirely optional and blank still needs `new ()` emitted.
         private boolean declareListener;
+
+        /**
+         * One {@code <name> = <valueText>} constructor argument, kept apart until render time so
+         * {@link #mergeSkipLists} can fold a skip list into {@code valueText} by exact name instead of
+         * string-prefix matching over an already-joined {@code "name = value"} string.
+         *
+         * @param name      the argument's name
+         * @param valueText the argument's rendered value -- a scalar, or (for a CDC operations-style
+         *                  record) a user-authored record-literal string that {@link #insertListField}
+         *                  parses to fold a skip list into
+         */
+        private record IncludedArg(String name, String valueText) {
+            String render() {
+                return name + " = " + valueText;
+            }
+        }
 
         void addSkippedOperation(String recordField, String listField, String code) {
             skipLists.computeIfAbsent(recordField, ignored -> new LinkedHashMap<>())
@@ -1130,9 +1014,10 @@ public final class SchemaDrivenSourceGenerator {
                     .add(code);
         }
 
-        /** Seeds a pre-rendered {@code <recordField> = {...}} included arg (test support). */
-        void addIncludedArg(String rendered) {
-            included.add(rendered);
+        // Package-private (not private): exercised directly by ListenerArgsTest's skip-list merge
+        // regression suite.
+        void addIncludedArg(String name, String valueText) {
+            included.add(new IncludedArg(name, valueText));
         }
 
         private void addPositional(Integer position, String rendered) {
@@ -1144,14 +1029,10 @@ public final class SchemaDrivenSourceGenerator {
         }
 
         /**
-         * Adds a flat {@code LISTENER_PARAM_CONFIG_FIELD} (no enclosing GROUP_SECTION). Fields
-         * sharing the same {@code position} are merged into one record literal at that positional
-         * slot — this is how a record-typed listener param's fields are laid out (see
-         * {@link #collect}). A field with no {@code position} falls back to a trailing loose record
-         * for backward compatibility with older manifests. A dotted {@code path} (e.g. a nested
-         * record field such as {@code auth.username}) nests into a record literal at its top-level
-         * segment, so the sibling {@code auth.password} lands in the same {@code auth: {...}} record
-         * rather than emitting bogus flat {@code auth.username: ...} keys.
+         * Adds a flat {@code LISTENER_PARAM_CONFIG_FIELD} (no enclosing GROUP_SECTION). Fields sharing
+         * the same {@code position} are merged into one record literal at that slot; a field with no
+         * position falls back to a trailing loose record. A dotted {@code path} nests into a record
+         * literal at its top-level segment.
          */
         private void addConfigField(Integer position, List<String> pathSegments, String rendered) {
             if (position != null) {
@@ -1162,20 +1043,12 @@ public final class SchemaDrivenSourceGenerator {
             }
         }
 
-        /**
-         * Merges a rendered value into the nested-record tree at a dotted path (e.g.
-         * {@code auth.credentials.username}) — intermediate segments become nested record literals,
-         * so the top-level segment ({@code auth}) renders as one named arg: {@code auth = {credentials:
-         * {username: "...", password: "..."}}}.
-         */
+        /** Merges a rendered value into the nested-record tree at a dotted path. */
         private void addIncludedPath(List<String> segments, String renderedValue) {
             insertNested(includedTree, segments, renderedValue);
         }
 
-        /**
-         * Merges a rendered value into a nested-record tree at a dotted path — intermediate segments
-         * become nested record literals (shared by included args and dotted config fields).
-         */
+        /** Merges a rendered value into a nested-record tree at a dotted path (shared by both callers above). */
         @SuppressWarnings("unchecked")
         private static void insertNested(Map<String, Object> tree, List<String> segments, String renderedValue) {
             Map<String, Object> node = tree;
@@ -1208,32 +1081,29 @@ public final class SchemaDrivenSourceGenerator {
             if (!looseConfig.isEmpty()) {
                 args.add(renderIncludedValue(looseConfig));
             }
-            // User-provided included args (with any skip list merged in place) come first, then the
-            // record args from dotted paths (e.g. `database = {...}`), then freshly-created skip-list
-            // args (e.g. `options = {skippedOperations: [...]}`) last — mirroring the hand-written CDC
-            // builder's `database` first / `options` last ordering.
-            List<String> newSkipArgs = new ArrayList<>();
-            args.addAll(mergeSkipLists(newSkipArgs));
+            // Order: user-provided included args first, then dotted-path record args, then
+            // freshly-created skip-list args last (mirrors the hand-written CDC builder's ordering).
+            List<IncludedArg> newSkipArgs = new ArrayList<>();
+            for (IncludedArg arg : mergeSkipLists(newSkipArgs)) {
+                args.add(arg.render());
+            }
             for (Map.Entry<String, Object> entry : includedTree.entrySet()) {
                 args.add(entry.getKey() + " = " + renderIncludedValue(entry.getValue()));
             }
-            args.addAll(newSkipArgs);
+            for (IncludedArg arg : newSkipArgs) {
+                args.add(arg.render());
+            }
             return String.join(", ", args);
         }
 
         /**
-         * Folds each aggregated skip list into the matching included record argument. When that
-         * record arg is already present (the user filled it, e.g. {@code options = {snapshotMode:
-         * "no_data"}}) each list field is inserted/replaced inside it in place, in encounter order —
-         * so two distinct list fields targeting the same record (e.g. {@code skippedOperations} and
-         * a hypothetical {@code excludedColumns}) both land in it rather than the second overwriting
-         * the first. Otherwise a fresh {@code <record> = {...}} argument is collected into
-         * {@code newSkipArgs} for the caller to append last (also merging further list fields for the
-         * same record into that same fresh argument, not one-per-list-field). Returns the
-         * user-provided included args with in-place merges applied.
+         * Folds each aggregated skip list into the matching included record argument, in place if
+         * already present, else into a fresh {@code <record> = {...}} argument collected into
+         * {@code newSkipArgs} for the caller to append last. Matches by exact argument name -- no
+         * string-prefix scanning, since {@link IncludedArg} keeps the name apart from its value text.
          */
-        private List<String> mergeSkipLists(List<String> newSkipArgs) {
-            List<String> result = new ArrayList<>(included);
+        private List<IncludedArg> mergeSkipLists(List<IncludedArg> newSkipArgs) {
+            List<IncludedArg> result = new ArrayList<>(included);
             for (Map.Entry<String, LinkedHashMap<String, List<String>>> entry : skipLists.entrySet()) {
                 String recordField = entry.getKey();
                 for (Map.Entry<String, List<String>> listEntry : entry.getValue().entrySet()) {
@@ -1245,26 +1115,27 @@ public final class SchemaDrivenSourceGenerator {
                     String listAssignment = listField + ": [" + String.join(", ", codes) + "]";
                     int index = indexOfIncludedArg(result, recordField);
                     if (index >= 0) {
-                        result.set(index, insertListField(result.get(index), listField, listAssignment));
+                        String patched = insertListField(result.get(index).valueText(), listField, listAssignment);
+                        result.set(index, new IncludedArg(recordField, patched));
                         continue;
                     }
                     int freshIndex = indexOfIncludedArg(newSkipArgs, recordField);
                     if (freshIndex < 0) {
-                        newSkipArgs.add(recordField + " = {" + listAssignment + "}");
+                        newSkipArgs.add(new IncludedArg(recordField, "{" + listAssignment + "}"));
                     } else {
-                        newSkipArgs.set(freshIndex, insertListField(newSkipArgs.get(freshIndex), listField,
-                                listAssignment));
+                        String patched = insertListField(newSkipArgs.get(freshIndex).valueText(), listField,
+                                listAssignment);
+                        newSkipArgs.set(freshIndex, new IncludedArg(recordField, patched));
                     }
                 }
             }
             return result;
         }
 
-        /** Index of the {@code <recordField> = ...} entry in a rendered included-arg list, or -1. */
-        private static int indexOfIncludedArg(List<String> args, String recordField) {
-            String prefix = recordField + " = ";
+        /** Index of the entry named {@code recordField}, or -1. */
+        private static int indexOfIncludedArg(List<IncludedArg> args, String recordField) {
             for (int i = 0; i < args.size(); i++) {
-                if (args.get(i).startsWith(prefix)) {
+                if (recordField.equals(args.get(i).name())) {
                     return i;
                 }
             }
@@ -1272,21 +1143,17 @@ public final class SchemaDrivenSourceGenerator {
         }
 
         /**
-         * Inserts (or replaces) a {@code <listField>: [...]} field inside an existing
-         * {@code <recordField> = {...}} record argument, by splitting the record's <i>top-level</i>
-         * fields (quote/brace/bracket-depth aware, so a nested record or array is never split into,
-         * and a value that happens to contain {@code ]} or a field-name substring never misleads the
-         * match) and replacing the one whose name exactly equals {@code listField}, or appending a new
-         * one when absent. Falls back to leaving the argument untouched when its value is not a record
-         * literal (a variable reference or expression the user typed).
+         * Inserts (or replaces) a {@code <listField>: [...]} field inside an existing {@code {...}}
+         * record-literal value text. Falls back to leaving it untouched when it is not a record literal
+         * -- an opaque, user-authored scalar, which a skip list cannot be folded into.
          */
-        static String insertListField(String recordArg, String listField, String listAssignment) {
-            int brace = recordArg.indexOf('{');
-            if (brace < 0 || !recordArg.trim().endsWith("}")) {
-                return recordArg;
+        static String insertListField(String valueText, String listField, String listAssignment) {
+            int brace = valueText.indexOf('{');
+            if (brace < 0 || !valueText.trim().endsWith("}")) {
+                return valueText;
             }
-            int close = recordArg.lastIndexOf('}');
-            String inner = recordArg.substring(brace + 1, close).trim();
+            int close = valueText.lastIndexOf('}');
+            String inner = valueText.substring(brace + 1, close).trim();
             List<String> fields = new ArrayList<>(splitTopLevelFields(inner));
             int existingIndex = -1;
             for (int i = 0; i < fields.size(); i++) {
@@ -1300,14 +1167,13 @@ public final class SchemaDrivenSourceGenerator {
             } else {
                 fields.add(listAssignment);
             }
-            return recordArg.substring(0, brace + 1) + String.join(", ", fields) + "}";
+            return valueText.substring(0, brace + 1) + String.join(", ", fields) + "}";
         }
 
         /**
          * Splits a record literal's inner content into its top-level {@code field: value} entries.
-         * Tracks brace/bracket/paren depth and quoted-string state so a comma inside a nested record,
-         * array, or a quoted string value (which may itself contain any of {@code {}[]()},}) never
-         * splits early or misdirects a match to a nested field of the same name.
+         * Tracks brace/bracket/paren depth and quoted-string state so a comma inside a nested value
+         * never splits early.
          */
         static List<String> splitTopLevelFields(String inner) {
             List<String> fields = new ArrayList<>();

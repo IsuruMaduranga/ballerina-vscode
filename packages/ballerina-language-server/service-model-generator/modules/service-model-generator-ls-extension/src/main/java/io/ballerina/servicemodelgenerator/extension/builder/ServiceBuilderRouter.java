@@ -31,7 +31,7 @@ import io.ballerina.servicemodelgenerator.extension.builder.service.HttpServiceB
 import io.ballerina.servicemodelgenerator.extension.builder.service.SchemaDrivenServiceBuilder;
 import io.ballerina.servicemodelgenerator.extension.builder.service.SolaceServiceBuilder;
 import io.ballerina.servicemodelgenerator.extension.builder.service.TCPServiceBuilder;
-import io.ballerina.servicemodelgenerator.extension.connector.ConnectorModelReader;
+import io.ballerina.servicemodelgenerator.extension.connector.TriggerModelReader;
 import io.ballerina.servicemodelgenerator.extension.model.Service;
 import io.ballerina.servicemodelgenerator.extension.model.ServiceInitModel;
 import io.ballerina.servicemodelgenerator.extension.model.ServiceMetadata;
@@ -69,7 +69,7 @@ public class ServiceBuilderRouter {
 
     // RABBITMQ/KAFKA/MSSQL/POSTGRESQL/MYSQL/FTP/TRIGGER_GITHUB/TRIGGER_SHOPIFY/MCP (and ASB, never
     // registered here) are deliberately absent: each now ships a bundled TriggerUISchemaModel schema (see
-    // ConnectorModelReader.BUNDLED_TRIGGER_MODEL_RESOURCES), so useSchemaDrivenPath always routes
+    // TriggerModelReader.BUNDLED_TRIGGER_MODEL_RESOURCES), so useSchemaDrivenPath always routes
     // them to SchemaDrivenServiceBuilder before this map is consulted — a hardcoded entry here
     // would be dead code. HTTP/AI/TCP/GRAPHQL/SOLACE are not (yet) schema-driven and keep their
     // dedicated builders.
@@ -89,11 +89,11 @@ public class ServiceBuilderRouter {
      * Returns {@code true} when the connector's schema is bundled as a classpath resource in this jar,
      * or -- on a miss, when {@code orgName} is known -- synthesizable from the connector's own shipped
      * {@code resources/trigger-authoring.json} plus semantic-API introspection of its {@code .bala}
-     * (see {@link ConnectorModelReader#getSchemaDrivenTriggerModel}). The hardcoded builder still wins
+     * (see {@link TriggerModelReader#getSchemaDrivenTriggerModel}). The hardcoded builder still wins
      * whenever neither source has a model, so an unrecognized connector's behavior is unchanged.
      */
     private static boolean useSchemaDrivenPath(String orgName, String moduleName) {
-        return ConnectorModelReader.getInstance().hasSchemaDrivenModel(orgName, moduleName);
+        return TriggerModelReader.getInstance().hasSchemaDrivenModel(orgName, moduleName);
     }
 
     public static Optional<Service> getModelTemplate(String orgName, String moduleName) {

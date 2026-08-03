@@ -39,18 +39,18 @@ public class TriggerSourceGenerationTest {
 
     private final Gson gson = new Gson();
 
-    // ConnectorModelReader caches bundled models per moduleName (a JVM-wide singleton), and source
+    // TriggerModelReader caches bundled models per moduleName (a JVM-wide singleton), and source
     // generation mutates the init form in place (e.g. the enum-qualifier pre-pass). Returning a fresh
     // deep copy per call keeps each test's mutations from leaking into every other test that resolves
     // the same module later in the run.
     private ServiceInitModel initForm(String moduleName) {
-        ServiceInitModel cached = ConnectorModelReader.getInstance().getBundledServiceInitModel(moduleName)
+        ServiceInitModel cached = TriggerModelReader.getInstance().getBundledServiceInitModel(moduleName)
                 .orElseThrow();
         return gson.fromJson(gson.toJsonTree(cached), ServiceInitModel.class);
     }
 
     private TriggerUISchemaModel triggerModel(String moduleName) {
-        return ConnectorModelReader.getInstance().getBundledTriggerModel(moduleName).orElseThrow();
+        return TriggerModelReader.getInstance().getBundledTriggerModel(moduleName).orElseThrow();
     }
 
     @Test

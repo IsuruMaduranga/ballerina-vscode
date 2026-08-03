@@ -39,14 +39,9 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * Project-context validators — the {@code ls.*} namespace. Unlike {@code common.*} these consult the
- * semantic model, so they only run on the language server.
- *
- * <p>Every validator here <b>fails closed toward passing</b>: when the context it needs is absent
- * (no semantic model, no enclosing service) or the value is a shape it cannot judge confidently, it
- * returns empty rather than guessing. A validator that wrongly blocks generation is worse than one
- * that is silent — the user cannot work around a false error, and the {@code common.*} pass plus the
- * compiler still cover the value.
+ * Project-context validators (the {@code ls.*} namespace) — consult the semantic model, so they only
+ * run on the language server. Every validator fails closed toward passing: absent context or an
+ * unjudgeable value returns empty rather than a guessed failure.
  *
  * @since 1.8.0
  */
@@ -55,19 +50,13 @@ public final class LsRuleValidators {
     private LsRuleValidators() {
     }
 
-    /**
-     * A type expression this module is willing to resolve by name: an optionally module-qualified
-     * identifier with an optional array suffix (`Order`, `kafka:Error`, `Order[]`). Anything richer
-     * — generics, unions, records, tuples — needs a real compile to resolve, so those are skipped
-     * rather than reported as invalid.
-     */
-    /**
-     * Resolved once: {@link CommonRuleValidators#validators()} builds a fresh map of every validator
-     * on each call, and this runs per node on a per-keystroke path.
-     */
+    // Resolved once — CommonRuleValidators.validators() rebuilds a map on every call, and this runs
+    // per node on a per-keystroke path.
     private static final RuleValidator COMMON_IDENTIFIER =
             CommonRuleValidators.validators().get("common.validate.identifier");
 
+    // Matches a simple, optionally module-qualified, optionally array type name (`Order`, `kafka:Error`,
+    // `Order[]`); richer shapes (generics, unions, records) are left unmatched and skipped.
     private static final Pattern SIMPLE_TYPE_PATTERN =
             Pattern.compile("^([a-zA-Z_][a-zA-Z0-9_]*:)?[a-zA-Z_][a-zA-Z0-9_]*(\\[])?$");
 
@@ -80,17 +69,14 @@ public final class LsRuleValidators {
         validators.put("ls.validate.identifier", (node, args, ctx) -> identifier(node));
         validators.put("ls.validate.valid.type", LsRuleValidators::validType);
         validators.put("ls.validate.subtype", LsRuleValidators::subtype);
-        // Deliberately absent: `ls.validate.unique.service.name` and `ls.validate.expression`.
-        // Both need machinery this package does not have yet (service-attachment comparison and a
-        // synthetic-snippet compile). An unregistered id is skipped by the engine, which is the
-        // documented degradation — better than a half-right check that blocks valid models.
+        // Deliberately absent: `ls.validate.unique.service.name` and `ls.validate.expression` need
+        // machinery this package doesn't have yet; an unregistered id is simply skipped by the engine.
         return validators;
     }
 
     /**
-     * The name must not collide with an existing module-level listener. A symbol declared at the
-     * node's own source location is the node itself, not a collision — that is what keeps the rule
-     * quiet when the user re-saves a listener they are editing.
+     * The name must not collide with an existing module-level listener. A symbol at the node's own
+     * source location is the node itself, not a collision.
      */
     private static Optional<String> uniqueListenerName(Value node, Map<String, Object> args, ValidationContext ctx) {
         String name = CommonRuleValidators.text(node);
@@ -124,10 +110,8 @@ public final class LsRuleValidators {
             if (!functionNode.functionName().text().trim().equals(name)) {
                 continue;
             }
-            // The handler being edited is itself a member, so a name match against its own
-            // declaration is not a collision. `editedRange` is the whole function definition on an
-            // edit and null on an add, which is exactly the distinction needed; the node passed here
-            // is only the name Value and cannot supply it.
+            // A name match against the construct's own declaration is not a collision; editedRange
+            // (whole function on an edit, null on an add) is what tells them apart here.
             if (isEditedConstruct(functionNode.lineRange(), ctx)) {
                 continue;
             }
@@ -160,8 +144,7 @@ public final class LsRuleValidators {
                     ? Optional.empty()
                     : Optional.of("{value} is not a {module} listener");
         }
-        // The name does not resolve to a listener here; the dropdown may simply be ahead of the
-        // semantic model. Not this rule's call to make.
+        // Unresolved name: the dropdown may be ahead of the semantic model, not this rule's call.
         return Optional.empty();
     }
 
@@ -185,10 +168,8 @@ public final class LsRuleValidators {
     }
 
     private static Optional<String> subtype(Value node, Map<String, Object> args, ValidationContext ctx) {
-        // The catalog also allows falling back to `codedata.typeConstraint`, but the wire Codedata
-        // does not carry that field today (it lives only on the TriggerUISchemaModel records, and
-        // PropertyValueAdapter does not map it across), so the arg is the only source. Wiring the
-        // fallback means extending Codedata + the adapter first.
+        // Catalog also allows falling back to `codedata.typeConstraint`, but the wire Codedata doesn't
+        // carry that field yet, so the arg is the only source for now.
         String constraint = CommonRuleValidators.argToString(args.get("typeConstraint"));
         String type = CommonRuleValidators.text(node);
         if (type.isEmpty() || constraint == null || constraint.isBlank() || !ctx.hasSemanticModel()) {
@@ -212,9 +193,7 @@ public final class LsRuleValidators {
     private static Optional<TypeSymbol> resolveType(String type, ValidationContext ctx) {
         String bare = type.endsWith("[]") ? type.substring(0, type.length() - 2) : type;
         String name = bare.contains(":") ? bare.substring(bare.indexOf(':') + 1) : bare;
-        // A qualified name resolves through its module prefix, which this lookup does not track;
-        // matching on the type's own name across module symbols is enough to tell "exists" from
-        // "typo", which is all this rule claims.
+        // Module prefix isn't tracked; matching the bare name is enough to tell "exists" from "typo".
         for (Symbol symbol : ctx.semanticModel().moduleSymbols()) {
             if (symbol instanceof TypeDefinitionSymbol typeDefinition
                     && typeDefinition.getName().filter(name::equals).isPresent()) {
@@ -248,10 +227,7 @@ public final class LsRuleValidators {
         };
     }
 
-    /**
-     * Whether the symbol is the very construct being edited — either it sits at the node's own
-     * recorded position, or at the range the request identified as the edit target.
-     */
+    /** Whether the symbol is the construct being edited: at the node's own position, or the edit target range. */
     private static boolean declaresNode(Symbol symbol, Value node, ValidationContext ctx) {
         if (symbol.getLocation().isEmpty()) {
             return false;
@@ -266,8 +242,7 @@ public final class LsRuleValidators {
         if (edited == null) {
             return false;
         }
-        // The edited range spans the whole construct, so containment — not equality — is the test:
-        // the symbol's own location is the name inside it.
+        // Containment, not equality: the edited range spans the whole construct, the symbol only its name.
         return range.fileName().equals(edited.fileName())
                 && range.startLine().line() >= edited.startLine().line()
                 && range.endLine().line() <= edited.endLine().line();

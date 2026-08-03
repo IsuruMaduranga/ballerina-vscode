@@ -18,8 +18,8 @@
 
 package io.ballerina.servicemodelgenerator.extension.connector.adapter;
 
+import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
-import io.ballerina.modelgenerator.commons.trigger.utils.TriggerArtifactResolver;
 import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.Function;
 import io.ballerina.servicemodelgenerator.extension.model.MetaData;
@@ -52,15 +52,8 @@ public final class TriggerServiceAdapter {
     }
 
     /**
-     * Builds a wire service template for the given service type from the unified model.
-     *
-     * @param model       the connector's TriggerUISchemaModel
-     * @param serviceType the service type identifier resolved from source (e.g. {@code IssuesService}
-     *                    or {@code github:IssuesService}); falls back to the selected/sole type
-     * @param orgName     the connector org (from the resolved source)
-     * @param packageName the connector package (from the resolved source)
-     * @param moduleName  the connector module (drives the listener protocol)
-     * @return the wire service template, or {@code null} if no service type resolves
+     * @param serviceType the service type identifier resolved from source; falls back to the
+     *                    selected/sole type when not found
      */
     public static Service toServiceTemplate(TriggerUISchemaModel model, String serviceType,
                                             String orgName, String packageName, String moduleName) {
@@ -86,7 +79,7 @@ public final class TriggerServiceAdapter {
                 .setVersion(model.version())
                 .setPackageName(packageName)
                 .setListenerProtocol(protocol)
-                .setIcon(TriggerArtifactResolver.resolveIcon(orgName, packageName, moduleName, model.version()).url())
+                .setIcon(CommonUtils.generateIcon(orgName, packageName, model.version()))
                 .setProperties(properties)
                 .setFunctions(new ArrayList<>())
                 .build();
@@ -95,11 +88,7 @@ public final class TriggerServiceAdapter {
         properties.put(PROP_KEY_SERVICE_TYPE, serviceTypeProperty(descriptor, type));
         addServiceTypeProperties(properties, type.properties());
 
-        // Present handlers (the model's functions[]) become wire `functions`; the addable catalog
-        // (schemaFunctions[]) becomes wire `schemaFunctions` — one entry per handler variant, each
-        // carrying the composed parameter types and connector codedata so the designer can render
-        // them and addFunction routes back here. TriggerSourceMerger later folds the user's source
-        // into this template (source handlers -> functions, consumed variants leave the catalog).
+        // TriggerSourceMerger later folds the user's source into functions/schemaFunctions.
         service.setSchemaFunctions(new ArrayList<>());
         addWireFunctions(service.getFunctions(), type.functions(),
                 orgName, packageName, moduleName, model.version());
@@ -108,11 +97,7 @@ public final class TriggerServiceAdapter {
         return service;
     }
 
-    /**
-     * The listener property's widget, from the model's {@code listenerKind} (a {@code Value.FieldType}
-     * name). Falls back to {@code SINGLE_SELECT_LISTENER} when absent or unrecognized, preserving the
-     * behavior for models authored before the field existed.
-     */
+    /** Falls back to {@code SINGLE_SELECT_LISTENER} when {@code listenerKind} is absent or unrecognized. */
     private static Value.FieldType listenerKind(TriggerUISchemaModel model) {
         String kind = model.listenerKind();
         if (kind != null && !kind.isBlank()) {
@@ -131,8 +116,6 @@ public final class TriggerServiceAdapter {
             return;
         }
         for (TriggerUISchemaModel.FunctionModel function : functions) {
-            // A VARIANT-bearing handler (e.g. onFileChange's CSV/JSON/XML/TEXT/RAW formats) fans out
-            // into one self-contained wire Function per variant, linked by `group`/`variantLabel`.
             for (Function wireFunction : TriggerFunctionAdapter.toFunctions(function)) {
                 wireFunction.setCodedata(new Codedata.Builder()
                         .setOrgName(orgName)
@@ -175,13 +158,6 @@ public final class TriggerServiceAdapter {
         return name.contains(COLON) ? name : protocol + COLON + name;
     }
 
-    /**
-     * Adds the service type's own properties (e.g. RabbitMQ's {@code serviceConfig}
-     * {@code SERVICE_ANNOTATION} container) to the template, keyed as declared in the schema. The
-     * container's value is the raw {@code {...}} mapping-constructor text (overlaid from source once
-     * the service is read back — see {@code Utils#updateAnnotationAttachmentProperty}) rather than
-     * per-field state, so no field-level merging is needed here.
-     */
     private static void addServiceTypeProperties(Map<String, Value> properties,
                                                  Map<String, TriggerUISchemaModel.Property> typeProperties) {
         if (typeProperties == null) {

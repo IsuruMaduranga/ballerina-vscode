@@ -28,8 +28,9 @@ import org.testng.annotations.Test;
 import java.util.List;
 
 /**
- * Direct unit tests for {@link IncludedRecordBinder}'s pure helpers — {@code typeIdentifierOf},
- * {@code applyTemplate}, and {@code includedRecordParam}. {@code forAdd}/{@code forUpdate}/
+ * Direct unit tests for {@link IncludedRecordBinder}'s pure helpers — {@code typeIdentifierOf} and
+ * {@code includedRecordParam} -- plus the shared {@link PayloadComposer#applyTemplate} it wraps its
+ * wrapper-type templates through. {@code forAdd}/{@code forUpdate}/
  * {@code overlayFromSource} themselves need a compiled project (via {@code DatabindUtil}) and are
  * already exercised indirectly through the {@code add_function}/{@code update_function}/
  * {@code get_sm_from_source} fixture suites for kafka and rabbitmq's included-record payloads.
@@ -74,21 +75,28 @@ public class IncludedRecordBinderTest {
 
     @Test
     public void testApplyTemplateSubstitutesPlaceholder() {
-        Assert.assertEquals(IncludedRecordBinder.applyTemplate("{{type}}[]", "KafkaAnydataConsumer1"),
+        Assert.assertEquals(PayloadComposer.applyTemplate("{{type}}[]", "KafkaAnydataConsumer1"),
                 "KafkaAnydataConsumer1[]");
     }
 
     @Test
-    public void testApplyTemplateReturnsElementWhenTemplateBlankOrMissingPlaceholder() {
-        Assert.assertEquals(IncludedRecordBinder.applyTemplate(null, "Foo"), "Foo");
-        Assert.assertEquals(IncludedRecordBinder.applyTemplate("", "Foo"), "Foo");
-        Assert.assertEquals(IncludedRecordBinder.applyTemplate("stream<error?>", "Foo"), "Foo",
-                "a template missing the {{type}} placeholder must not silently swallow the element");
+    public void testApplyTemplateReturnsElementWhenTemplateBlank() {
+        Assert.assertEquals(PayloadComposer.applyTemplate(null, "Foo"), "Foo");
+        Assert.assertEquals(PayloadComposer.applyTemplate("", "Foo"), "Foo");
+    }
+
+    @Test
+    public void testApplyTemplateMissingPlaceholderReturnsTemplateUnchanged() {
+        // Now shared with PayloadComposer (see its javadoc): a template missing {{type}}/standalone-T is
+        // returned as-is rather than falling back to the element -- callers (e.g. IncludedRecordBinder)
+        // are expected to have already normalized the template (see TriggerFunctionAdapter#normalizeTemplate)
+        // before it reaches here.
+        Assert.assertEquals(PayloadComposer.applyTemplate("stream<error?>", "Foo"), "stream<error?>");
     }
 
     @Test
     public void testApplyTemplateHandlesNullElement() {
-        Assert.assertEquals(IncludedRecordBinder.applyTemplate("{{type}}[]", null), "[]");
+        Assert.assertEquals(PayloadComposer.applyTemplate("{{type}}[]", null), "[]");
     }
 
     @Test

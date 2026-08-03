@@ -197,7 +197,7 @@ public class TriggerModelSynthesizerTest {
                 "testorg", MODULE, MODULE, "0.1.0").orElseThrow();
     }
 
-    /** Mirrors {@code ConnectorModelReader}'s private JSON-level {@code initProperties -> properties} remap. */
+    /** Mirrors {@code TriggerModelReader}'s private JSON-level {@code initProperties -> properties} remap. */
     private ServiceInitModel toServiceInitModel(TriggerUISchemaModel model) {
         JsonObject root = GSON.toJsonTree(model).getAsJsonObject();
         JsonObject remapped = new JsonObject();

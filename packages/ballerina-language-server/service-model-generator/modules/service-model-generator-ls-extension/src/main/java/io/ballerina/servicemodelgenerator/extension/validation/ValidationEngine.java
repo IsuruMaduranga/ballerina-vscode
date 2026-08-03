@@ -37,15 +37,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Walks a {@link Value} tree and evaluates the {@code validations[]} each editable node carries.
- *
- * <p>The walk mirrors the one the source generator performs — nested {@code properties} are
- * descended and only the <b>enabled</b> {@code choices} branch is visited — so a rule can never fail
- * on a node that will not contribute to generated source. Nodes that cannot contribute at all
- * (read-only, or an unchecked optional) are skipped entirely.
- *
- * <p>The rule vocabulary is open: an unknown id is logged and skipped rather than failing
- * generation, so a model may reference rules a newer server implements.
+ * Walks a {@link Value} tree and evaluates the {@code validations[]} each editable node carries,
+ * mirroring the source generator's own walk (only enabled {@code choices} branches, no read-only or
+ * unchecked-optional nodes) so a rule never fails on a node that won't contribute to generated source.
+ * An unknown rule id is logged and skipped rather than failing generation.
  *
  * @since 1.8.0
  */
@@ -66,9 +61,8 @@ public class ValidationEngine {
     }
 
     /**
-     * An engine with both catalogs registered. The {@code ls.*} validators need a
-     * {@link ValidationContext} carrying a semantic model; without one they skip themselves, so this
-     * engine is safe to use even when the project is not loaded.
+     * An engine with both catalogs registered. {@code ls.*} validators skip themselves without a
+     * semantic model, so this is safe to use even when no project is loaded.
      */
     public static ValidationEngine withAllRules() {
         Map<String, RuleValidator> registry = new HashMap<>(CommonRuleValidators.validators());
@@ -76,13 +70,7 @@ public class ValidationEngine {
         return new ValidationEngine(registry);
     }
 
-    /**
-     * Validates a whole model.
-     *
-     * @param properties the model's root property map
-     * @param context    project context; may be {@link ValidationContext#empty()}
-     * @return every failure found, in walk order
-     */
+    /** Validates a whole model; {@code context} may be {@link ValidationContext#empty()}. */
     public List<ValidationResult> validate(Map<String, Value> properties, ValidationContext context) {
         List<ValidationResult> results = new ArrayList<>();
         if (properties == null || properties.isEmpty()) {
@@ -134,9 +122,8 @@ public class ValidationEngine {
         if (node == null || isExemptFromValidation(node)) {
             return;
         }
-        // Rules live on the active type member: the value the node produces is the value of whichever
-        // member is selected, so only that member's rules describe it. A NUMBER member's `port` rule
-        // must not run when the user has switched the field to its EXPRESSION member.
+        // Only the active type member's rules apply, e.g. a NUMBER member's rule must not run once the
+        // field is switched to its EXPRESSION member.
         List<ValidationRule> rules = activeTypeValidations(node);
         if (rules == null || rules.isEmpty()) {
             return;
@@ -176,10 +163,7 @@ public class ValidationEngine {
         }
     }
 
-    /**
-     * A node exempt from validation cannot contribute to generated source: a read-only value is
-     * resolved by the server, and an unchecked optional is simply absent.
-     */
+    /** Exempt: a read-only value is resolved by the server; an unchecked optional is simply absent. */
     private static boolean isExemptFromValidation(Value node) {
         if (!node.isEditable()) {
             return true;
@@ -188,10 +172,8 @@ public class ValidationEngine {
     }
 
     /**
-     * The validations of the node's active type member — the {@code selected} one, or the first as a
-     * fallback. Returns {@code null} when the node has no types. This is the save-time counterpart of
-     * the client's {@code resolveActiveValidations}: whichever member the submitted model marks
-     * selected is the one whose value was produced.
+     * The validations of the node's active type member (the {@code selected} one, else the first).
+     * Save-time counterpart of the client's {@code resolveActiveValidations}.
      */
     private static List<ValidationRule> activeTypeValidations(Value node) {
         List<PropertyType> types = node.getTypes();
@@ -203,9 +185,8 @@ public class ValidationEngine {
     }
 
     /**
-     * Substitutes {@code {placeholder}} occurrences from the rule's args, plus the built-ins
-     * {@code {label}} and {@code {value}}. An unmatched placeholder is left as-is so an authoring
-     * mistake stays visible rather than silently rendering as blank.
+     * Substitutes {@code {placeholder}} occurrences from the rule's args plus the built-ins
+     * {@code {label}} and {@code {value}}. An unmatched placeholder is left as-is rather than blanked.
      */
     static String interpolate(String template, Map<String, Object> args, Value node) {
         Map<String, String> substitutions = new HashMap<>();

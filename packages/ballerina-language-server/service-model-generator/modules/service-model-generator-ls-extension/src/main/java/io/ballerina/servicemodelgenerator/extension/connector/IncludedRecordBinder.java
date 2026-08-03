@@ -33,12 +33,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD;
+
 /**
  * Included-record payload binding for schema-driven trigger handlers (the {@code
- * PAYLOAD_TYPE_INCLUDED_RECORD} marker on a payload parameter's {@code codedata}). Where a plain
- * {@code PAYLOAD_TYPE} binds the user's schema into the parameter type directly, this form wraps it
- * in a generated record that includes the connector's base record — e.g. binding {@code json} to
- * kafka's {@code onConsumerRecord} generates in {@code types.bal}:
+ * PAYLOAD_TYPE_INCLUDED_RECORD} marker on a payload parameter's {@code codedata}). Unlike a plain
+ * {@code PAYLOAD_TYPE}, this form wraps the user's schema in a generated record that includes the
+ * connector's base record — e.g. binding {@code json} to kafka's {@code onConsumerRecord} generates:
  *
  * <pre>
  * type KafkaAnydataConsumer1 record {|
@@ -47,19 +48,13 @@ import java.util.Set;
  * |};
  * </pre>
  *
- * and emits the parameter as {@code KafkaAnydataConsumer1[] records}. The UI only ever sees the
- * payload type ({@code json}): the save flows swap in the generated wrapper, and the read flow
- * resolves the wrapper's payload field back out. The binding inputs ride on the wire codedata —
- * {@code defaultType} (base record), {@code field} (payload field name), {@code typeIdentifier}
- * (generated-name base), {@code template} (parameter wrap) — put there by
- * {@code TriggerFunctionAdapter} from the connector's schema.
+ * The UI only ever sees the payload type ({@code json}); the save flows swap in the generated
+ * wrapper, and the read flow resolves the wrapper's payload field back out.
  *
  * @since 1.9.0
  */
 public final class IncludedRecordBinder {
 
-    private static final String CD_PAYLOAD_TYPE_INCLUDED_RECORD = "PAYLOAD_TYPE_INCLUDED_RECORD";
-    private static final String TYPE_PLACEHOLDER = "{{type}}";
     /** Builtin element types a direct (non-wrapper) binding can use — never wrapper type names. */
     private static final Set<String> BUILTIN_TYPES = Set.of(
             "int", "string", "boolean", "float", "decimal", "byte", "json", "xml",
@@ -71,9 +66,6 @@ public final class IncludedRecordBinder {
     /**
      * Applies the binding for an add-handler save: generates a fresh uniquely-named wrapper type in
      * {@code types.bal} and rewrites the parameter's emitted type to the wrapped form.
-     *
-     * @param context the add context (function carries the user's bound type on the payload codedata)
-     * @return the {@code types.bal} edits, or empty when nothing is bound
      */
     public static Map<String, List<TextEdit>> forAdd(AddModelContext context) {
         Parameter param = includedRecordParam(context.function());
@@ -84,7 +76,6 @@ public final class IncludedRecordBinder {
         String boundType = codedata.getBoundType();
         String fieldName = codedata.getField();
         if (isBlank(boundType) || isBlank(fieldName)) {
-            // Nothing bound (or no field declared -> degrade to direct binding): emit the type as-is.
             return Map.of();
         }
         String typeName = DatabindUtil.generateNewDataBindTypeName(context.filePath(), context.workspaceManager(),
@@ -93,7 +84,6 @@ public final class IncludedRecordBinder {
                 codedata.getDefaultType(), boundType, fieldName, context.filePath(), context.workspaceManager(),
                 param.getType().getImports());
         if (!edits.isEmpty()) {
-            // Only reference the wrapper once its definition actually lands (types.bal resolvable).
             applyWrappedType(param, codedata, typeName);
         }
         return edits;
@@ -103,9 +93,6 @@ public final class IncludedRecordBinder {
      * Applies the binding for an edit-handler save: rewrites the wrapper the source parameter already
      * uses (or generates one on first bind), and drops it when the binding is removed and nothing
      * else references it.
-     *
-     * @param context the update context (function node gives the current source parameter type)
-     * @return the {@code types.bal} edits, or empty when nothing changed there
      */
     public static Map<String, List<TextEdit>> forUpdate(UpdateModelContext context) {
         Parameter param = includedRecordParam(context.function());
@@ -120,15 +107,12 @@ public final class IncludedRecordBinder {
         }
         String boundType = codedata.getBoundType();
         if (isBlank(boundType)) {
-            String defaultComposed = applyTemplate(codedata.getTemplate(), baseType);
+            String defaultComposed = PayloadComposer.applyTemplate(codedata.getTemplate(), baseType);
             String currentValue = param.getType().getValue();
             if (currentValue != null && !currentValue.trim().equals(defaultComposed)) {
-                // No binding defined and a non-default type in play (e.g. a hand-written int[]):
-                // that is a custom direct binding — emit it untouched, no wrapper involved.
+                // A non-default type in play (e.g. hand-written int[]) is a custom direct binding.
                 return Map.of();
             }
-            // Binding removed: the parameter reverts to the base composed type, and the wrapper is
-            // deleted when no other code references it.
             param.getType().setValue(defaultComposed);
             return DatabindUtil.handleDataBindingDeletion(context, context.function(), param, baseType);
         }
@@ -152,11 +136,7 @@ public final class IncludedRecordBinder {
     /**
      * Read-side overlay: for each source handler whose payload parameter is a generated wrapper
      * (e.g. {@code KafkaAnydataConsumer1[]}), resolves the wrapper's payload field type and presents
-     * <i>that</i> as the bound type — so the UI shows {@code json}, never the wrapper. Runs after the
-     * textual source merge, which can only see the wrapper's name.
-     *
-     * @param serviceModel the merged designer model
-     * @param context      the source context (semantic model + service declaration node)
+     * <i>that</i> as the bound type — so the UI shows {@code json}, never the wrapper.
      */
     public static void overlayFromSource(Service serviceModel, ModelFromSourceContext context) {
         if (serviceModel.getFunctions() == null || context.semanticModel() == null
@@ -181,14 +161,12 @@ public final class IncludedRecordBinder {
             DatabindUtil.DataBindingTypeInfo info = DatabindUtil.extractDataBindingType(match.sourceFunctionNode(),
                     param.getName().getValue(), context.semanticModel(), fieldName);
             if (info == null || isBlank(info.typeName())) {
-                // Not a recognizable binding shape (e.g. a hand-written int[]): present it as
-                // unbound — the UI offers "Define ..." while the raw source type (kept as the
-                // parameter value by the merge) survives a bind-less save untouched.
+                // Not a recognizable binding shape (e.g. hand-written int[]): present it as unbound.
                 codedata.setBoundType(null);
                 continue;
             }
             codedata.setBoundType(info.typeName());
-            param.getType().setValue(applyTemplate(codedata.getTemplate(), info.typeName()));
+            param.getType().setValue(PayloadComposer.applyTemplate(codedata.getTemplate(), info.typeName()));
         }
     }
 
@@ -213,7 +191,7 @@ public final class IncludedRecordBinder {
         }
         for (Parameter parameter : function.getParameters()) {
             Codedata codedata = parameter.getType() == null ? null : parameter.getType().getCodedata();
-            if (codedata != null && CD_PAYLOAD_TYPE_INCLUDED_RECORD.equals(codedata.getType())) {
+            if (codedata != null && CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD.equals(codedata.getType())) {
                 return parameter;
             }
         }
@@ -231,16 +209,11 @@ public final class IncludedRecordBinder {
         return localName.isBlank() ? "PayloadRecord" : localName;
     }
 
+    /** Wrapper-type templates are always normalized to {@code {{type}}} form by the time they reach
+     *  here (see {@code TriggerFunctionAdapter#normalizeTemplate}), so {@link PayloadComposer}'s
+     *  general-purpose template substitution applies unchanged. */
     private static void applyWrappedType(Parameter param, Codedata codedata, String typeName) {
-        param.getType().setValue(applyTemplate(codedata.getTemplate(), typeName));
-    }
-
-    static String applyTemplate(String template, String element) {
-        String safe = element == null ? "" : element;
-        if (template == null || template.isBlank() || !template.contains(TYPE_PLACEHOLDER)) {
-            return safe;
-        }
-        return template.replace(TYPE_PLACEHOLDER, safe);
+        param.getType().setValue(PayloadComposer.applyTemplate(codedata.getTemplate(), typeName));
     }
 
     private static boolean isBlank(String value) {

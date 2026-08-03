@@ -28,11 +28,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The authoritative gate every model passes through before source is generated.
- *
- * <p>The webview runs the same {@code common.*} rules while the user types, but that pass is
- * advisory: the client is untrusted, and a model may reach these endpoints from a different client
- * entirely. This re-check is the one that decides whether edits are produced.
+ * The authoritative gate every model passes through before source is generated. The webview's live
+ * {@code common.*} pass is advisory only — the client is untrusted — so this re-check is the one that
+ * decides whether edits are produced.
  *
  * @since 1.8.0
  */
@@ -41,8 +39,6 @@ public final class SaveTimeValidator {
     private SaveTimeValidator() {
     }
 
-    // Save time runs both catalogs: the `ls.*` rules that only the server can answer, plus a
-    // re-check of `common.*` because the client's pass is advisory.
     private static final ValidationEngine ENGINE = ValidationEngine.withAllRules();
 
     /** Validates a model's property tree, plus any additional standalone nodes (e.g. a function name). */

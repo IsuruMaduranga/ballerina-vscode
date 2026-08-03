@@ -33,12 +33,12 @@ import io.ballerina.compiler.syntax.tree.ObjectFieldNode;
 import io.ballerina.compiler.syntax.tree.ServiceDeclarationNode;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.compiler.syntax.tree.SyntaxTree;
+import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.modelgenerator.commons.ServiceDatabaseManager;
 import io.ballerina.modelgenerator.commons.ServiceDeclaration;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
-import io.ballerina.modelgenerator.commons.trigger.utils.TriggerArtifactResolver;
 import io.ballerina.projects.Document;
 import io.ballerina.projects.Module;
 import io.ballerina.projects.ModuleId;
@@ -47,7 +47,7 @@ import io.ballerina.projects.Package;
 import io.ballerina.projects.Project;
 import io.ballerina.servicemodelgenerator.extension.builder.FunctionBuilderRouter;
 import io.ballerina.servicemodelgenerator.extension.builder.ServiceBuilderRouter;
-import io.ballerina.servicemodelgenerator.extension.connector.ConnectorModelReader;
+import io.ballerina.servicemodelgenerator.extension.connector.TriggerModelReader;
 import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.Function;
 import io.ballerina.servicemodelgenerator.extension.model.Listener;
@@ -1158,7 +1158,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
      * <p>Package-visible for unit testing without a full LS bootstrap.
      */
     Optional<TriggerBasicInfo> getTriggerBasicInfoByName(String orgName, String name) {
-        Optional<TriggerUISchemaModel> schemaDriven = ConnectorModelReader.getInstance()
+        Optional<TriggerUISchemaModel> schemaDriven = TriggerModelReader.getInstance()
                 .getSchemaDrivenTriggerModel(orgName, name);
         if (schemaDriven.isPresent()) {
             return schemaDriven.map(this::toTriggerBasicInfo);
@@ -1172,8 +1172,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
         String protocol = getProtocol(model.moduleName());
         String label = model.displayName();
         String icon = (model.icon() == null || model.icon().isBlank())
-                ? TriggerArtifactResolver.resolveIcon(
-                        model.orgName(), model.packageName(), model.moduleName(), model.version()).url()
+                ? CommonUtils.generateIcon(model.orgName(), model.packageName(), model.version())
                 : model.icon();
         // TriggerUISchemaModel.id is a String catalog id and is inconsistently populated across real models
         // (null / numeric / a slug), so it can't be reused as TriggerBasicInfo's int id. Nothing
@@ -1198,7 +1197,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
         ServiceDeclaration.Package pkg = serviceTemplate.packageInfo();
         String protocol = getProtocol(name);
         String label = serviceTemplate.displayName();
-        String icon = TriggerArtifactResolver.resolveIcon(pkg.org(), pkg.name(), pkg.name(), pkg.version()).url();
+        String icon = CommonUtils.generateIcon(pkg.org(), pkg.name(), pkg.version());
         TriggerBasicInfo triggerBasicInfo = new TriggerBasicInfo(pkg.packageId(),
                 label, pkg.org(), pkg.name(), pkg.name(),
                 pkg.version(), serviceTemplate.kind(), label, "",

@@ -25,29 +25,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ANNOTATION_ATTACHMENT;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_COMPLEX_FUNCTION_ANNOTATION;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ENUM_LITERAL;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_FIELD_VALUE_CHOICE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_MAPPING_CONSTRUCTOR;
+
 /**
  * Emits Ballerina annotation attachments (e.g. {@code @ftp:FunctionConfig { ... }}) from a node's
  * {@code properties} map, driven entirely by the granular {@code codedata} roles — no per-connector
- * code. Recursion mirrors the role hierarchy of the phase-6 spec:
- *
- * <ul>
- *   <li>{@code COMPLEX_FUNCTION_ANNOTATION} -> {@code @<module>:<name> { <fields> }}</li>
- *   <li>{@code MAPPING_FIELD} -> {@code <field>: <value>} (skipped when {@code optional} and its flag
- *       is unchecked); a childless field is a <i>leaf</i> that renders its own value, otherwise the
- *       value is a nested node</li>
- *   <li>{@code FIELD_VALUE_CHOICE} -> the selected (enabled) branch's value</li>
- *   <li>{@code MAPPING_CONSTRUCTOR} -> {@code { <fields> }}</li>
- *   <li>{@code ENUM_LITERAL} -> {@code <valueQualifier>:<value>}</li>
- * </ul>
- *
- * A leaf's rendered kind derives from its declared {@code types[]} (a {@code ballerinaType} of
- * {@code string} quotes the value, everything else renders raw) — which is what makes
- * {@code moveTo: "/x"} emit correctly rather than as a raw template.
- *
- * <p>Service-level {@code SERVICE_ANNOTATION} attachments (e.g. RabbitMQ's
- * {@code @rabbitmq:ServiceConfig}) are a different shape — collected purely from the filled
- * {@code ServiceInitModel} at add-time — and are handled by
- * {@link SchemaDrivenSourceGenerator#buildServiceAnnotations}, not here.
+ * code. Service-level {@code SERVICE_ANNOTATION} attachments are a different shape and are handled by
+ * {@link SchemaDrivenSourceGenerator#buildServiceAnnotations} instead.
  *
  * @since 1.9.0
  */
@@ -60,15 +48,9 @@ public final class AnnotationEmitter {
 
     /**
      * The annotation attachment strings (e.g. {@code @ftp:FunctionConfig {...}}) in a properties map.
-     * A node whose body renders empty (every optional field unchecked) is skipped entirely, matching
-     * {@link #annotationBody}'s behavior for the update-time path — an attachment with nothing to say
-     * should not be emitted at all.
-     *
-     * <p>Also recognizes a whole-value {@code ANNOTATION_ATTACHMENT} node — a single
-     * {@code RECORD_MAP_EXPRESSION} the user edits as one expression (a connector-synthesized
-     * function-level annotation, e.g. an SMB-shaped handler annotation; see
-     * {@code TriggerModelSynthesizer}), whose own {@code value} already IS the complete mapping-
-     * constructor body, unlike {@code COMPLEX_FUNCTION_ANNOTATION}'s per-field {@code properties} tree.
+     * A node whose body renders empty (every optional field unchecked) is skipped entirely. Also
+     * recognizes a whole-value {@code ANNOTATION_ATTACHMENT} node whose {@code value} already IS the
+     * complete mapping-constructor body (see {@code TriggerModelSynthesizer}).
      */
     public static List<String> annotationsOf(Map<String, TriggerUISchemaModel.Property> properties) {
         List<String> annotations = new ArrayList<>();
@@ -80,9 +62,9 @@ public final class AnnotationEmitter {
             if (cd == null) {
                 continue;
             }
-            if ("COMPLEX_FUNCTION_ANNOTATION".equals(cd.type())) {
+            if (CD_TYPE_COMPLEX_FUNCTION_ANNOTATION.equals(cd.type())) {
                 emitAnnotation(node).ifPresent(annotations::add);
-            } else if ("ANNOTATION_ATTACHMENT".equals(cd.type()) && isEnabledWithValue(node)) {
+            } else if (CD_TYPE_ANNOTATION_ATTACHMENT.equals(cd.type()) && isEnabledWithValue(node)) {
                 annotations.add(emitWholeValueAnnotation(node));
             }
         }
@@ -117,8 +99,7 @@ public final class AnnotationEmitter {
 
     /**
      * The mapping-constructor body ({@code {field: value, ...}}) of a COMPLEX_FUNCTION_ANNOTATION
-     * node, or empty when no field is emitted (all optional fields unchecked) — in which case the
-     * annotation attachment should be skipped entirely.
+     * node, or empty when no field is emitted (all optional fields unchecked).
      */
     public static Optional<String> annotationBody(TriggerUISchemaModel.Property node) {
         String body = mappingBody(node.properties());
@@ -152,18 +133,15 @@ public final class AnnotationEmitter {
     }
 
     /**
-     * Whether an optional mapping field is included. Two shapes exist: a flag-gated container
-     * (OPTIONAL_FIELD widget — {@code value:true} is the include flag, a child node carries the
-     * actual value, e.g. FTP's {@code afterProcess}) and a plain leaf (childless — {@code value} IS
-     * the payload, so inclusion is its {@code enabled} state plus a non-empty value, e.g. SMB's
-     * {@code fileNamePattern}).
+     * Whether an optional mapping field is included: for a flag-gated container, {@code value:true};
+     * for a plain leaf, its {@code enabled} state plus a non-empty value.
      */
     private static boolean isIncluded(TriggerUISchemaModel.Property node) {
         if (isLeaf(node)) {
             String raw = node.value() == null ? "" : String.valueOf(node.value());
             return node.enabled() && !raw.isBlank() && !"\"\"".equals(raw);
         }
-        return isTrue(node.value());
+        return PayloadComposer.isTrue(node.value());
     }
 
     /** A mapping field is a leaf when it renders its own value — it has no nested value node. */
@@ -188,9 +166,9 @@ public final class AnnotationEmitter {
             return renderLeaf(node);
         }
         return switch (type) {
-            case "MAPPING_CONSTRUCTOR" -> mappingBody(node.properties());
-            case "ENUM_LITERAL" -> enumLiteral(cd);
-            case "FIELD_VALUE_CHOICE" -> {
+            case CD_TYPE_MAPPING_CONSTRUCTOR -> mappingBody(node.properties());
+            case CD_TYPE_ENUM_LITERAL -> enumLiteral(cd);
+            case CD_TYPE_FIELD_VALUE_CHOICE -> {
                 TriggerUISchemaModel.Property selected = selectedChoice(node);
                 yield selected == null ? "" : emitValue(selected);
             }
@@ -239,9 +217,5 @@ public final class AnnotationEmitter {
                 .findFirst()
                 .orElse(node.types().getFirst());
         return STRING_TYPE.equals(selected.ballerinaType());
-    }
-
-    private static boolean isTrue(Object value) {
-        return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 }

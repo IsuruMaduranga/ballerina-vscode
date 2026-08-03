@@ -23,10 +23,7 @@ import io.ballerina.servicemodelgenerator.extension.model.Value;
 
 /**
  * Small field-shape checks shared by every walker of the wire {@code Value}/{@code Codedata} tree in
- * this package — {@code SchemaDrivenSourceGenerator} (generates listener/service source from a filled
- * creation model) and {@code ExistingListenerResolver} (resolves an existing listener's config back from
- * source onto the same field template) both walk the identical CHOICE/GROUP_SECTION shape for their own
- * purposes, and previously duplicated these checks independently.
+ * this package.
  *
  * @since 1.9.0
  */

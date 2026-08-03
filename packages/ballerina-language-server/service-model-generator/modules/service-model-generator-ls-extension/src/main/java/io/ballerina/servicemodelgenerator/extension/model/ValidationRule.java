@@ -21,13 +21,9 @@ package io.ballerina.servicemodelgenerator.extension.model;
 import java.util.Map;
 
 /**
- * A reference to a named validation rule carried by an editable form node.
- *
- * <p>The id's namespace decides where it runs: {@code common.*} client or server,
- * {@code vscode.*} VS Code client, {@code ls.*} the language server. An unknown rule id
- * degrades gracefully (skipped with a warning) so connectors may reference newer rules
- * without breaking older clients. Connector-shipped models populate this; the field is
- * passed through to the client untouched for {@code common.*}/{@code vscode.*} rules.
+ * A reference to a named validation rule carried by an editable form node. The id's namespace decides
+ * where it runs: {@code common.*} (client or server), {@code vscode.*} (VS Code client), {@code ls.*}
+ * (language server). An unknown rule id is skipped with a warning rather than failing.
  *
  * @since 1.8.0
  */

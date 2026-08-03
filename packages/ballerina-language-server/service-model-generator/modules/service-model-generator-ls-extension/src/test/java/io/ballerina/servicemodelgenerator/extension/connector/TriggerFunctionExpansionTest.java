@@ -54,7 +54,7 @@ public class TriggerFunctionExpansionTest {
 
     /** The shipped FTP model: file-format handlers pre-expanded, sharing the {@code onCreate} group. */
     private Service ftpTemplate() {
-        TriggerUISchemaModel model = ConnectorModelReader.getInstance().getBundledTriggerModel("ftp").orElseThrow();
+        TriggerUISchemaModel model = TriggerModelReader.getInstance().getBundledTriggerModel("ftp").orElseThrow();
         return TriggerServiceAdapter.toServiceTemplate(model, "Service", "ballerina", "ftp", "ftp");
     }
 

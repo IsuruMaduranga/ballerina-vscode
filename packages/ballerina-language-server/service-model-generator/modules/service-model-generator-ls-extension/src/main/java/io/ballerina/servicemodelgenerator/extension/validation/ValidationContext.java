@@ -25,24 +25,17 @@ import io.ballerina.projects.Project;
 import io.ballerina.tools.text.LineRange;
 
 /**
- * An immutable snapshot of the project context a validation run may consult.
+ * An immutable snapshot of the project context a validation run may consult. Every field is nullable,
+ * so pure {@code common.*} rules still run when no project is available.
  *
- * <p>{@code common.*} validators are pure and ignore it entirely; {@code ls.*} validators resolve
- * what they need lazily (module symbols, the type system, the enclosing service). Every field is
- * nullable — the engine still runs the pure rules when no project is available, which is what makes
- * the {@code common.*} re-check usable from contexts that have only a model.
- *
- * @param semanticModel the semantic model of the file being edited, or {@code null}
- * @param project       the loaded project, or {@code null}
- * @param document      the document being edited, or {@code null}
- * @param moduleName    the connector module the model belongs to, or {@code null}
- * @param serviceNode   the service declaration the edited node belongs to, or {@code null} — needed
- *                      by the rules that scope uniqueness to a single service
- * @param editedRange   where in the source the construct being edited currently lives, or
- *                      {@code null} when it does not exist yet (an add). This is what lets the
- *                      uniqueness rules tell "collides with something else" from "is itself" —
- *                      without it, editing and re-saving an unrenamed construct reports a collision
- *                      against its own declaration and the save is blocked with no way out.
+ * @param semanticModel the current semantic model, or {@code null} when unavailable
+ * @param project       the enclosing project, or {@code null} when unavailable
+ * @param document       the document being edited, or {@code null} when unavailable
+ * @param moduleName    the module the edited construct belongs to
+ * @param serviceNode   the enclosing service node, or {@code null} outside a service
+ * @param editedRange where the construct being edited currently lives, or {@code null} for an add.
+ *                    Lets uniqueness rules distinguish "collides with something else" from "is itself" —
+ *                    without it, re-saving an unrenamed construct would report a collision with itself.
  * @since 1.8.0
  */
 public record ValidationContext(SemanticModel semanticModel, Project project, Document document, String moduleName,

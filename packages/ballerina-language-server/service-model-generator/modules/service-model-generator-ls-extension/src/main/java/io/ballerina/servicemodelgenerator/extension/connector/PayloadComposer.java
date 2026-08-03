@@ -20,31 +20,38 @@ package io.ballerina.servicemodelgenerator.extension.connector;
 
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_MODIFIER;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.FIELD_TYPE_FLAG;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.FIELD_TYPE_VARIATION_SELECTOR;
 
 /**
  * Computes the effective Ballerina type text of a parameter from its {@code type} {@link
- * TriggerUISchemaModel.Property} tree — the payload-composition algorithm of the phase-6 spec:
+ * TriggerUISchemaModel.Property} tree:
  *
  * <pre>
  *   element = codedata.boundType (if set) else codedata.defaultType
  *   base    = codedata.template applied to element   ({{type}} / T -> element)
- *   result  = the highest-precedence active PAYLOAD_MODIFIER sibling's template (value == true,
- *             supersedes base), else base
+ *   result  = the highest-precedence active PAYLOAD_MODIFIER sibling's template, else base
  * </pre>
  *
- * Handles the widget nesting: a plain {@code TYPE} field yields its value; a {@code FLAG} field
- * (framework caller/context) yields its {@code ballerinaType}; a {@code DATA_BINDING} /
- * {@code COMPLEX_PAYLOAD} field descends to its {@code PAYLOAD_TYPE} child (+ modifier siblings); a
- * {@code VARIATION_SELECTOR} descends to the selected variant's payload. Pure and unit-testable.
+ * Pure and unit-testable.
  *
  * @since 1.9.0
  */
 public final class PayloadComposer {
 
     private static final String BRACED = "{{type}}";
+    // Compiled once: applyTemplate runs on the hot per-parameter composition path.
+    private static final Pattern STANDALONE_T = Pattern.compile("\\bT\\b");
 
     private PayloadComposer() {
     }
@@ -55,32 +62,52 @@ public final class PayloadComposer {
             return "";
         }
         String fieldType = selectedFieldType(typeProp);
-        if ("FLAG".equals(fieldType)) {
-            // Framework param (caller/context): the type is the widget's ballerinaType.
+        if (FIELD_TYPE_FLAG.equals(fieldType)) {
             String ballerinaType = selectedBallerinaType(typeProp);
             return ballerinaType == null ? "" : ballerinaType;
         }
 
         Located located = locatePayload(typeProp);
         if (located == null) {
-            // Plain TYPE (or anything without a payload node): the field value is the type.
             return stringValue(typeProp.value());
         }
 
         TriggerUISchemaModel.Codedata cd = located.payload.codedata();
         String element = element(cd);
-        // An active modifier (a checked FLAG sibling tagged PAYLOAD_MODIFIER) supersedes the base wrap.
-        if (located.siblings != null) {
-            for (TriggerUISchemaModel.Property sibling : located.siblings) {
-                TriggerUISchemaModel.Codedata sc = sibling.codedata();
-                if (sc != null && "PAYLOAD_MODIFIER".equals(sc.type()) && isTrue(sibling.value())
-                        && sc.template() != null && !sc.template().isBlank()) {
-                    return applyTemplate(sc.template(), element);
-                }
-            }
+        String modifierTemplate = highestPrecedenceModifierTemplate(located.siblings);
+        if (modifierTemplate != null) {
+            return applyTemplate(modifierTemplate, element);
         }
         String base = applyTemplate(templateOf(cd), element);
         return base.isEmpty() ? element : base;
+    }
+
+    /**
+     * The template of the highest-precedence active {@code PAYLOAD_MODIFIER} sibling, or {@code null}
+     * when none is active. A modifier wins over another active one when the other's {@code supersedes}
+     * does not name it; among modifiers no active peer supersedes (the common case: at most one
+     * modifier is ever active), the first one found wins.
+     */
+    private static String highestPrecedenceModifierTemplate(List<TriggerUISchemaModel.Property> siblings) {
+        if (siblings == null) {
+            return null;
+        }
+        List<TriggerUISchemaModel.Codedata> active = new ArrayList<>();
+        for (TriggerUISchemaModel.Property sibling : siblings) {
+            TriggerUISchemaModel.Codedata sc = sibling.codedata();
+            if (sc != null && CD_TYPE_PAYLOAD_MODIFIER.equals(sc.type()) && isTrue(sibling.value())
+                    && sc.template() != null && !sc.template().isBlank()) {
+                active.add(sc);
+            }
+        }
+        for (TriggerUISchemaModel.Codedata candidate : active) {
+            boolean beaten = active.stream().anyMatch(other -> other != candidate
+                    && other.supersedes() != null && other.supersedes().contains(candidate.modifier()));
+            if (!beaten) {
+                return candidate.template();
+            }
+        }
+        return active.isEmpty() ? null : active.get(0).template();
     }
 
     /**
@@ -123,7 +150,7 @@ public final class PayloadComposer {
         }
         String fieldType = selectedFieldType(typeProp);
         Map<String, TriggerUISchemaModel.Property> children = typeProp.properties();
-        if ("VARIATION_SELECTOR".equals(fieldType) && children != null) {
+        if (FIELD_TYPE_VARIATION_SELECTOR.equals(fieldType) && children != null) {
             TriggerUISchemaModel.Property variant = selectedVariant(typeProp, children);
             return variant == null ? Map.of() : compositionSiblings(variant);
         }
@@ -139,8 +166,6 @@ public final class PayloadComposer {
         return siblings;
     }
 
-    // --- navigation ---------------------------------------------------------
-
     private record Located(TriggerUISchemaModel.Property payload, List<TriggerUISchemaModel.Property> siblings) {
     }
 
@@ -153,13 +178,10 @@ public final class PayloadComposer {
         }
         String fieldType = selectedFieldType(node);
         Map<String, TriggerUISchemaModel.Property> children = node.properties();
-        // VARIATION_SELECTOR: descend into the selected (by value) or enabled variant sub-form.
-        if ("VARIATION_SELECTOR".equals(fieldType) && children != null) {
+        if (FIELD_TYPE_VARIATION_SELECTOR.equals(fieldType) && children != null) {
             TriggerUISchemaModel.Property variant = selectedVariant(node, children);
             return variant == null ? null : locatePayload(variant);
         }
-        // DATA_BINDING / COMPLEX_PAYLOAD / VARIANT sub-form: the payload is a child; the rest are
-        // its modifier siblings.
         if (children != null) {
             TriggerUISchemaModel.Property payload = null;
             for (TriggerUISchemaModel.Property child : children.values()) {
@@ -198,10 +220,8 @@ public final class PayloadComposer {
         if (cd == null || cd.type() == null) {
             return false;
         }
-        return "PAYLOAD_TYPE".equals(cd.type()) || "PAYLOAD_TYPE_INCLUDED_RECORD".equals(cd.type());
+        return CD_TYPE_PAYLOAD_TYPE.equals(cd.type()) || CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD.equals(cd.type());
     }
-
-    // --- element / template -------------------------------------------------
 
     private static String element(TriggerUISchemaModel.Codedata cd) {
         if (cd == null) {
@@ -230,19 +250,24 @@ public final class PayloadComposer {
         return "";
     }
 
-    /** Substitutes the element into a wrap template. Supports both {@code {{type}}} and a standalone {@code T}. */
-    private static String applyTemplate(String template, String element) {
+    /**
+     * Substitutes the element into a wrap template. Supports {@code {{type}}} or a standalone {@code T}
+     * -- the two authoring styles are alternatives, never combined in one template (see {@code
+     * TriggerFunctionAdapter#normalizeTemplate}, which translates one into the other) -- so matching
+     * {@code {{type}}} always short-circuits the (otherwise redundant) standalone-{@code T} pass.
+     * Package-visible: shared with {@link IncludedRecordBinder}, whose wrapper-type templates are
+     * always normalized to this same {@code {{type}}} form before reaching it.
+     */
+    static String applyTemplate(String template, String element) {
         if (template == null || template.isBlank()) {
             return element == null ? "" : element;
         }
         String safe = element == null ? "" : element;
-        String result = template.contains(BRACED) ? template.replace(BRACED, safe) : template;
-        // Replace a standalone T (word-boundary) used by the included-record form (e.g. "T[]").
-        result = result.replaceAll("\\bT\\b", java.util.regex.Matcher.quoteReplacement(safe));
-        return result;
+        if (template.contains(BRACED)) {
+            return template.replace(BRACED, safe);
+        }
+        return STANDALONE_T.matcher(template).replaceAll(Matcher.quoteReplacement(safe));
     }
-
-    // --- small helpers ------------------------------------------------------
 
     public static String selectedFieldType(TriggerUISchemaModel.Property property) {
         if (property == null || property.types() == null) {
@@ -278,7 +303,9 @@ public final class PayloadComposer {
         return null;
     }
 
-    private static boolean isTrue(Object value) {
+    /** Truthy for a boolean {@code true} or a case-insensitive {@code "true"} string; shared by every
+     *  class in this package that reads a flag-shaped {@code TriggerUISchemaModel} value. */
+    static boolean isTrue(Object value) {
         return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 

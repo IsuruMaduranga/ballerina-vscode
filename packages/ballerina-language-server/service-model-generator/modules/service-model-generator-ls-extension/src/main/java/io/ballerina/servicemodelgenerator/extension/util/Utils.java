@@ -1629,4 +1629,12 @@ public final class Utils {
 
     public record SelectionRecord(String label, String value) {
     }
+
+    /** Strips a leading and trailing double quote, if both are present; returns {@code text} unchanged otherwise. */
+    public static String unquote(String text) {
+        if (text != null && text.length() >= 2 && text.startsWith("\"") && text.endsWith("\"")) {
+            return text.substring(1, text.length() - 1);
+        }
+        return text;
+    }
 }

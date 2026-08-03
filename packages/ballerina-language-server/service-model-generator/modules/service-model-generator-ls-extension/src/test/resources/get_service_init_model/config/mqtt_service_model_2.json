@@ -195,8 +195,8 @@
             },
             {
               "metadata": {
-                "label": "Use existing (none available)",
-                "description": "No compatible listener of this type is present in the project."
+                "label": "Use existing",
+                "description": "Select an existing MQTT listener"
               },
               "properties": {
                 "listenerConfig": {

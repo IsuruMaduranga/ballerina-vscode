@@ -21,11 +21,11 @@ package io.ballerina.servicemodelgenerator.extension.builder.service;
 import io.ballerina.compiler.syntax.tree.ModulePartNode;
 import io.ballerina.compiler.syntax.tree.ServiceDeclarationNode;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
-import io.ballerina.servicemodelgenerator.extension.connector.ConnectorModelReader;
 import io.ballerina.servicemodelgenerator.extension.connector.ConnectorVersionResolver;
 import io.ballerina.servicemodelgenerator.extension.connector.ExistingListenerResolver;
 import io.ballerina.servicemodelgenerator.extension.connector.IncludedRecordBinder;
 import io.ballerina.servicemodelgenerator.extension.connector.SchemaDrivenSourceGenerator;
+import io.ballerina.servicemodelgenerator.extension.connector.TriggerModelReader;
 import io.ballerina.servicemodelgenerator.extension.connector.adapter.TriggerReadOnlyMetadataAdapter;
 import io.ballerina.servicemodelgenerator.extension.connector.adapter.TriggerServiceAdapter;
 import io.ballerina.servicemodelgenerator.extension.connector.adapter.TriggerSourceMerger;
@@ -54,22 +54,18 @@ import java.util.Set;
 import static io.ballerina.servicemodelgenerator.extension.model.ServiceInitModel.KEY_CONFIGURE_LISTENER;
 import static io.ballerina.servicemodelgenerator.extension.model.ServiceInitModel.KEY_EXISTING_LISTENER;
 import static io.ballerina.servicemodelgenerator.extension.model.ServiceInitModel.KEY_LISTENER_VAR_NAME;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_LISTENER_VAR_NAME;
+import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_LISTENER_CONFIG;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.LISTENER_VAR_NAME;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.PROP_READONLY_METADATA_KEY;
 import static io.ballerina.servicemodelgenerator.extension.util.ServiceModelUtils.getProtocol;
 import static io.ballerina.servicemodelgenerator.extension.util.ServiceModelUtils.getServiceTypeIdentifier;
 
 /**
- * Generic, schema-driven service builder for connectors whose unified {@link TriggerUISchemaModel} is bundled
- * as a classpath resource in this jar. It serves the add-event-integration flow
- * ({@code getServiceInitModel} + {@code addServiceAndListener}) with no per-connector code: the init
- * form comes straight from the model's {@code initProperties}, and the source is emitted by
- * {@link SchemaDrivenSourceGenerator} from the model's {@code codedata}.
- *
- * <p>Selected by {@code ServiceBuilderRouter} only when no hardcoded builder is registered for the
- * module and {@link ConnectorModelReader} finds a model — so existing connectors are unaffected.
- * The remaining {@code NodeBuilder} operations (designer/edit) are inherited from
- * {@link AbstractServiceBuilder} for now and will be specialised in later milestones.
+ * Schema-driven service builder for connectors whose unified {@link TriggerUISchemaModel} is bundled
+ * as a classpath resource in this jar. Serves the add-event-integration flow with no per-connector
+ * code, emitting source via {@link SchemaDrivenSourceGenerator}. Selected by {@code ServiceBuilderRouter}
+ * only when no hardcoded builder is registered and {@link TriggerModelReader} finds a model.
  *
  * @since 1.8.0
  */
@@ -84,13 +80,10 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
 
     @Override
     public ServiceInitModel getServiceInitModel(GetServiceInitModelContext context) {
-        // Bundled classpath resource (version-gated), or (on a miss) synthesized from the connector's
-        // own trigger-metadata.json + introspection: either way, its init form is derived from
-        // `initProperties`. Modelled against the version the project will actually compile against, so
-        // a project pinned to an older connector gets that release's form rather than the newest one.
+        // Modelled against the version the project actually compiles against, not the newest release.
         String version = ConnectorVersionResolver.resolve(context.project(), context.orgName(),
                 context.packageName(), context.version());
-        Optional<ServiceInitModel> triggerInit = ConnectorModelReader.getInstance()
+        Optional<ServiceInitModel> triggerInit = TriggerModelReader.getInstance()
                 .getSchemaDrivenServiceInitModel(context.orgName(), context.moduleName(), version);
         if (triggerInit.isEmpty()) {
             return null;
@@ -105,9 +98,7 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
     public Map<String, List<TextEdit>> addServiceInitSource(AddServiceInitModelContext context) {
         ServiceInitModel filledModel = context.serviceInitModel();
         ModulePartNode rootNode = context.document().syntaxTree().rootNode();
-        // Bundled classpath resource (version-gated by the filled model's own version), or (on a miss)
-        // synthesized from the connector's own trigger-metadata.json + introspection.
-        Optional<TriggerUISchemaModel> triggerModel = ConnectorModelReader.getInstance()
+        Optional<TriggerUISchemaModel> triggerModel = TriggerModelReader.getInstance()
                 .getSchemaDrivenTriggerModel(filledModel.getOrgName(), filledModel.getModuleName(),
                         filledModel.getVersion());
         if (triggerModel.isEmpty()) {
@@ -119,11 +110,7 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
 
     @Override
     public Service getModelFromSource(ModelFromSourceContext context) {
-        // Bundled (version-gated) or synthesized schema: build the designer template from its
-        // serviceTypes[], then merge the user's source (functions present, base path, listeners, line
-        // ranges). Reading an existing service already knows the exact version from the source's
-        // ModuleID (context.version()).
-        Optional<TriggerUISchemaModel> triggerModel = ConnectorModelReader.getInstance()
+        Optional<TriggerUISchemaModel> triggerModel = TriggerModelReader.getInstance()
                 .getSchemaDrivenTriggerModel(context.orgName(), context.moduleName(), context.version());
         if (triggerModel.isEmpty()) {
             // Not a schema-driven connector after all -> fall back to the DB-backed behaviour.
@@ -150,12 +137,9 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
                     || (stringLiteral != null && !stringLiteral.isEmpty()));
         }
 
-        // Included-record payloads: the textual merge above only sees the generated wrapper's name
-        // (e.g. KafkaAnydataConsumer1[]); resolve its payload field so the UI shows the bound type.
+        // Resolves the payload field for included-record wrapper types (e.g. KafkaAnydataConsumer1[]).
         IncludedRecordBinder.overlayFromSource(serviceModel, context);
 
-        // Read-only summary chips (e.g. "Monitored Path", "Queue Name") resolved from the source, using
-        // the trigger model's readOnlyMetadata definitions. Absent when the model ships none.
         Value readOnlyMetadata = TriggerReadOnlyMetadataAdapter.build(triggerModel.get().readOnlyMetadata(),
                 serviceModel, (ServiceDeclarationNode) context.node(), context);
         if (readOnlyMetadata != null) {
@@ -164,11 +148,7 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         return serviceModel;
     }
 
-    /**
-     * The unified trigger template ships an addable handler catalog ({@code schemaFunctions}), so
-     * the source merge enriches each source function with its schema variant's data and consumes the
-     * matched catalog entries — instead of the default enable/disable merge.
-     */
+    /** Enriches source functions with their schema variant's data instead of the default enable/disable merge. */
     @Override
     protected void mergeSourceFunctions(Service serviceModel, List<Function> functionsInSource) {
         if (serviceModel.getSchemaFunctions() != null) {
@@ -179,12 +159,8 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
     }
 
     /**
-     * Populates the "use existing" branch of the listener {@code configureListener} CHOICE with the
-     * listeners of this connector's type already present in the project, so the user can attach to one
-     * instead of creating a new listener. Mirrors the hardcoded builders (FTP/Solace/…): by convention
-     * {@code choices[0]} is "create new" and {@code choices[1]} is "use existing", and the selection is
-     * a {@code SINGLE_SELECT} bound to {@code KEY_EXISTING_LISTENER}. When the project has no compatible
-     * listener, the "use existing" branch is disabled so only the create-new path is offered.
+     * Populates the "use existing" branch of the listener {@code configureListener} CHOICE with
+     * compatible listeners already in the project. Disabled when none are found.
      */
     private void populateExistingListeners(ServiceInitModel creationModel, GetServiceInitModelContext context) {
         Value configureListener = findListenerChoice(creationModel);
@@ -198,8 +174,6 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         Value selector = null;
         if (!listeners.isEmpty()) {
             Value createNewBranch = choices.get(indexOfCreateNewBranch(choices));
-            // Resolve each existing listener's config from the model (create-new params as the field
-            // template) + the source (its new(...) args), like the FTP/RabbitMQ builders do.
             selector = ExistingListenerResolver.buildSelector(createNewBranch, new ArrayList<>(listeners),
                     context.semanticModel(), context.project(), getProtocol(context.moduleName()));
         } else {
@@ -211,14 +185,7 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         applyListenerChoiceSelection(configureListener, selector);
     }
 
-    /**
-     * Wires the listener {@code configureListener} CHOICE (pure; unit-testable). Identifies the "create
-     * new" branch by content (it carries listener params) and treats the other as "use existing". When a
-     * {@code selector} is supplied (listeners exist), it is nested in the use-existing branch's
-     * {@code listenerConfig} GROUP_SECTION (like FTP/RabbitMQ) and that branch becomes the enabled
-     * default; when {@code selector} is null, the use-existing branch is disabled and create-new is the
-     * default.
-     */
+    /** Wires the listener {@code configureListener} CHOICE (pure; unit-testable). */
     static void applyListenerChoiceSelection(Value configureListener, Value selector) {
         List<Value> choices = configureListener.getChoices();
         if (choices == null || choices.size() < 2) {
@@ -230,7 +197,6 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         Value useExistingChoice = choices.get(useExistingIndex);
 
         if (selector == null) {
-            // Nothing to attach to: offer only the create-new path and disable the use-existing radio.
             useExistingChoice.setEnabled(false);
             useExistingChoice.setEditable(false);
             createNewChoice.setEnabled(true);
@@ -243,9 +209,6 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         existingProps.put(KEY_EXISTING_LISTENER, selector);
         Value group = firstGroupSection(useExistingChoice);
         if (group == null) {
-            // The branch ships no GROUP_SECTION (model-author's choice): synthesize one so the
-            // selector and its resolved read-only config render inside a titled "Listener
-            // Configurations" box, matching the create-new branch and the hardcoded builders.
             group = new Value.ValueBuilder()
                     .metadata("Listener Configurations", "Configuration of the selected listener.")
                     .types(List.of(PropertyType.types(Value.FieldType.GROUP_SECTION)))
@@ -257,9 +220,7 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
             useExistingChoice.setProperties(branchProps);
         }
         group.setProperties(existingProps);
-        // Existing listeners are available -> enable and default-select the "use existing" branch.
-        // Both branches must be `editable` so the front-end radio (ChoiceForm) lets the user switch
-        // between "Create new" and "Use existing".
+        // Both branches stay `editable` so the front-end radio lets the user switch between them.
         useExistingChoice.setEnabled(true);
         useExistingChoice.setEditable(true);
         createNewChoice.setEnabled(false);
@@ -280,10 +241,7 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         return null;
     }
 
-    /**
-     * Returns the index of the "create new" branch — the one that carries listener parameters
-     * ({@code LISTENER_PARAM_*} / {@code LISTENER_VAR_NAME}). Defaults to 0 when none is detected.
-     */
+    /** Index of the "create new" branch (carries listener params). Defaults to 0 when none is detected. */
     private static int indexOfCreateNewBranch(List<Value> choices) {
         for (int i = 0; i < choices.size(); i++) {
             if (hasListenerParams(choices.get(i))) {
@@ -301,8 +259,8 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         if (codedata != null) {
             String argType = codedata.getArgType();
             if ((argType != null && argType.startsWith("LISTENER_PARAM"))
-                    || "LISTENER_VAR_NAME".equals(codedata.getType())
-                    || "LISTENER_VAR_NAME".equals(argType)) {
+                    || ARG_TYPE_LISTENER_VAR_NAME.equals(codedata.getType())
+                    || ARG_TYPE_LISTENER_VAR_NAME.equals(argType)) {
                 return true;
             }
         }
@@ -316,13 +274,9 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         return false;
     }
 
-    /**
-     * Replaces the shipped default listener variable name with a project-unique identifier, mirroring
-     * the hardcoded builders so a second trigger of the same kind does not collide.
-     */
+    /** Replaces the shipped default listener variable name with a project-unique identifier. */
     private void refreshListenerName(ServiceInitModel creationModel, GetServiceInitModelContext context) {
-        // v1: listenerVarName is a top-level property. Unified model: it lives inside the listener
-        // CHOICE's create-new branch, so fall back to a codedata-driven recursive lookup.
+        // Unified model nests it inside the listener CHOICE's create-new branch; v1 has it top-level.
         Value listenerName = creationModel.getProperties().get(KEY_LISTENER_VAR_NAME);
         if (listenerName == null) {
             listenerName = findListenerVarNameNode(creationModel.getProperties());
@@ -336,11 +290,7 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         listenerName.setValue(uniqueName);
     }
 
-    /**
-     * Locates the listener create/reuse CHOICE. Prefers the v1 {@code configureListener} key; falls
-     * back to the unified model's node carrying {@code codedata.type == LISTENER_CONFIG} (keyed
-     * {@code listener}). Robust to the key name so both conventions resolve.
-     */
+    /** Locates the listener create/reuse CHOICE, by the v1 key or by {@code codedata.type == LISTENER_CONFIG}. */
     private static Value findListenerChoice(ServiceInitModel model) {
         Value byKey = model.getProperties().get(KEY_CONFIGURE_LISTENER);
         if (byKey != null) {
@@ -348,17 +298,14 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         }
         for (Value candidate : model.getProperties().values()) {
             if (candidate != null && candidate.getCodedata() != null
-                    && "LISTENER_CONFIG".equals(candidate.getCodedata().getType())) {
+                    && CD_TYPE_LISTENER_CONFIG.equals(candidate.getCodedata().getType())) {
                 return candidate;
             }
         }
         return null;
     }
 
-    /**
-     * Recursively locates the listener-variable-name node ({@code codedata.type == LISTENER_VAR_NAME}),
-     * which in the unified model is nested inside the listener CHOICE's create-new branch.
-     */
+    /** Recursively locates the listener-variable-name node ({@code codedata.type == LISTENER_VAR_NAME}). */
     private static Value findListenerVarNameNode(Map<String, Value> properties) {
         if (properties == null) {
             return null;
@@ -368,7 +315,7 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
                 continue;
             }
             Codedata codedata = value.getCodedata();
-            if (codedata != null && "LISTENER_VAR_NAME".equals(codedata.getType())) {
+            if (codedata != null && ARG_TYPE_LISTENER_VAR_NAME.equals(codedata.getType())) {
                 return value;
             }
             Value nested = findListenerVarNameNode(value.getProperties());

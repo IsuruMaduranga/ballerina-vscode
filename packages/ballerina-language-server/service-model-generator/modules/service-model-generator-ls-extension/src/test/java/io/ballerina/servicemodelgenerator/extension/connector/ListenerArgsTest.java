@@ -46,7 +46,7 @@ public class ListenerArgsTest {
     @Test
     public void testSkipListMergesIntoExistingIncludedRecord() {
         ListenerArgs args = new ListenerArgs();
-        args.addIncludedArg("options = {snapshotMode: \"no_data\"}");
+        args.addIncludedArg("options", "{snapshotMode: \"no_data\"}");
         args.addSkippedOperation("options", "skippedOperations", "\"u\"");
 
         Assert.assertEquals(args.render(), "options = {snapshotMode: \"no_data\", skippedOperations: [\"u\"]}");
@@ -58,7 +58,7 @@ public class ListenerArgsTest {
         // including inside a nested sub-record — it would have rewritten the nested `skippedOperations`
         // instead of adding a new top-level one. The new top-level-only field split must leave it alone.
         ListenerArgs args = new ListenerArgs();
-        args.addIncludedArg("options = {sub: {skippedOperations: [\"z\"]}, mode: \"x\"}");
+        args.addIncludedArg("options", "{sub: {skippedOperations: [\"z\"]}, mode: \"x\"}");
         args.addSkippedOperation("options", "skippedOperations", "\"u\"");
 
         String rendered = args.render();
@@ -72,7 +72,7 @@ public class ListenerArgsTest {
         // substring of an existing, differently-named field (e.g. "codes" inside "errorCodes") could
         // misfire. The new exact top-level field-name comparison must not confuse the two.
         ListenerArgs args = new ListenerArgs();
-        args.addIncludedArg("options = {errorCodes: [\"x\"]}");
+        args.addIncludedArg("options", "{errorCodes: [\"x\"]}");
         args.addSkippedOperation("options", "codes", "\"u\"");
 
         String rendered = args.render();
@@ -94,7 +94,7 @@ public class ListenerArgsTest {
     @Test
     public void testTwoDistinctListFieldsMergeIntoTheSameExistingIncludedRecord() {
         ListenerArgs args = new ListenerArgs();
-        args.addIncludedArg("options = {snapshotMode: \"no_data\"}");
+        args.addIncludedArg("options", "{snapshotMode: \"no_data\"}");
         args.addSkippedOperation("options", "skippedOperations", "\"u\"");
         args.addSkippedOperation("options", "excludedColumns", "\"col1\"");
 

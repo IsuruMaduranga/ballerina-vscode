@@ -314,8 +314,8 @@
             },
             {
               "metadata": {
-                "label": "Use existing (none available)",
-                "description": "No compatible listener of this type is present in the project."
+                "label": "Use Existing Listener",
+                "description": "Attach to one or more Salesforce listeners already declared in the project."
               },
               "properties": {
                 "listenerConfig": {

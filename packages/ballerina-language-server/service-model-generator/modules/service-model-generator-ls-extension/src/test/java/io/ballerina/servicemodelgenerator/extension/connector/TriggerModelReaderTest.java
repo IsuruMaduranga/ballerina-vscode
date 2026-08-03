@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Unit test for the unified {@code trigger-ui-schema.json} reader on {@link ConnectorModelReader}:
+ * Unit test for the unified {@code trigger-ui-schema.json} reader on {@link TriggerModelReader}:
  * deserializes the bundled worked examples (kafka / ftp / trigger.github / trigger.hubspot) from their
  * classpath resources without spinning up the language server. Verifies the distinctive shapes survive
  * Gson: the listener CHOICE, structured parameters (type/name as {@code Property} sub-nodes),
@@ -43,7 +43,7 @@ import java.util.Map;
 public class TriggerModelReaderTest {
 
     private TriggerUISchemaModel read(String moduleName) {
-        return ConnectorModelReader.getInstance().getBundledTriggerModel(moduleName).orElseThrow();
+        return TriggerModelReader.getInstance().getBundledTriggerModel(moduleName).orElseThrow();
     }
 
     private String listenerFieldType(TriggerUISchemaModel model) {
@@ -148,7 +148,7 @@ public class TriggerModelReaderTest {
     public void testKafkaInitFormAsServiceInitModel() {
         // The add-trigger init form is derived from the unified model's initProperties subtree and
         // handed to the frontend as the wire ServiceInitModel (identity + Map<String,Value>).
-        ServiceInitModel init = ConnectorModelReader.getInstance().getBundledServiceInitModel("kafka").orElseThrow();
+        ServiceInitModel init = TriggerModelReader.getInstance().getBundledServiceInitModel("kafka").orElseThrow();
         Assert.assertEquals(init.getOrgName(), "ballerinax");
         Assert.assertEquals(init.getModuleName(), "kafka");
         Assert.assertEquals(init.getType(), "kafka");
@@ -175,7 +175,7 @@ public class TriggerModelReaderTest {
         // flattened as CONFIG_FIELD siblings sharing position 1 (config's own slot) with listenOn
         // correctly at position 2 — all nested inside ONE listenerConfig GROUP_SECTION so the whole
         // listener (not just the record fields) renders as a single titled box.
-        ServiceInitModel init = ConnectorModelReader.getInstance()
+        ServiceInitModel init = TriggerModelReader.getInstance()
                 .getBundledServiceInitModel("trigger.hubspot").orElseThrow();
 
         Value listener = init.getProperties().get("listener");
@@ -208,7 +208,7 @@ public class TriggerModelReaderTest {
     public void testInitFormBuildsForAllExamples() {
         // ftp and github init forms use only known wire fieldTypes, so they deserialize cleanly too.
         for (String moduleName : new String[] {"ftp", "trigger.github"}) {
-            ServiceInitModel init = ConnectorModelReader.getInstance()
+            ServiceInitModel init = TriggerModelReader.getInstance()
                     .getBundledServiceInitModel(moduleName).orElseThrow();
             Value listener = init.getProperties().get("listener");
             Assert.assertNotNull(listener, moduleName + " listener present");
@@ -219,7 +219,7 @@ public class TriggerModelReaderTest {
     @Test
     public void testMissingModelReturnsEmpty() {
         Assert.assertTrue(
-                ConnectorModelReader.getInstance().getBundledTriggerModel("no-such-module").isEmpty(),
+                TriggerModelReader.getInstance().getBundledTriggerModel("no-such-module").isEmpty(),
                 "a module with no bundled trigger-ui-schema.json must yield empty (so the router falls back)");
     }
 
@@ -230,7 +230,7 @@ public class TriggerModelReaderTest {
      */
     @Test
     public void testVersionGatedVariantSelection() {
-        ConnectorModelReader reader = ConnectorModelReader.getInstance();
+        TriggerModelReader reader = TriggerModelReader.getInstance();
 
         TriggerUISchemaModel current = reader.getBundledTriggerModel("mcp", "1.2.0").orElseThrow();
         Assert.assertEquals(current.version(), "1.2.0");
@@ -268,7 +268,7 @@ public class TriggerModelReaderTest {
      */
     @Test
     public void testInitFormPinsServiceType() {
-        ConnectorModelReader reader = ConnectorModelReader.getInstance();
+        TriggerModelReader reader = TriggerModelReader.getInstance();
         for (String[] expected : new String[][] {{"1.2.0", "StreamableHttpService"}, {"1.0.3", "Service"}}) {
             ServiceInitModel init = reader.getBundledServiceInitModel("mcp", expected[0]).orElseThrow();
             Value serviceType = init.getProperties().get("serviceType");
@@ -286,7 +286,7 @@ public class TriggerModelReaderTest {
     /** A single-variant registry entry (the plain-string form) ignores the version entirely. */
     @Test
     public void testUngatedModuleIgnoresVersion() {
-        ConnectorModelReader reader = ConnectorModelReader.getInstance();
+        TriggerModelReader reader = TriggerModelReader.getInstance();
         Assert.assertEquals(reader.getBundledTriggerModel("kafka", "0.0.1").orElseThrow().moduleName(),
                 reader.getBundledTriggerModel("kafka").orElseThrow().moduleName());
     }

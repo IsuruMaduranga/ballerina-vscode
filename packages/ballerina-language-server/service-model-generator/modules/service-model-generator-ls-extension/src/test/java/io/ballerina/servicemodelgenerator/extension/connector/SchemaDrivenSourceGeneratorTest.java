@@ -196,7 +196,7 @@ public class SchemaDrivenSourceGeneratorTest {
         // as ASB's entityConfig whose real value comes entirely from its children's own dotted paths.
         // A CHOICE branch tagged ENUM_VALUE (see ftp.json) means the parent's own selected value is a
         // real listener arg that must be emitted, not just a branch selector.
-        ServiceInitModel model = ConnectorModelReader.getInstance().getBundledServiceInitModel("ftp").orElseThrow();
+        ServiceInitModel model = TriggerModelReader.getInstance().getBundledServiceInitModel("ftp").orElseThrow();
         String listener = SchemaDrivenSourceGenerator.buildListenerDeclaration(model);
         Assert.assertTrue(listener.contains("protocol = ftp:FTP"),
                 "the default-selected FTP branch must emit `protocol = ftp:FTP`, got:\n" + listener);
@@ -209,7 +209,7 @@ public class SchemaDrivenSourceGeneratorTest {
         // FTPS was missing from the schema-driven model entirely (ftp_init.json's hardcoded-builder
         // era supported it). Selecting it must emit `protocol = ftp:FTPS` plus the advanced
         // `secureSocket` field.
-        ServiceInitModel model = ConnectorModelReader.getInstance().getBundledServiceInitModel("ftp").orElseThrow();
+        ServiceInitModel model = TriggerModelReader.getInstance().getBundledServiceInitModel("ftp").orElseThrow();
         Value protocol = listenerConfigProperties(model).get("protocol");
         selectChoiceByValue(protocol, "FTPS");
         Value ftps = selectedChoice(protocol);
@@ -230,7 +230,7 @@ public class SchemaDrivenSourceGeneratorTest {
         // ftp_init.json's SFTP branch offered No Auth / Basic Auth / Certificate Auth as alternatives;
         // the schema-driven model previously hardcoded private-key auth as the only option. Selecting
         // Basic Authentication for SFTP must fold into `auth.credentials.{username,password}`.
-        ServiceInitModel model = ConnectorModelReader.getInstance().getBundledServiceInitModel("ftp").orElseThrow();
+        ServiceInitModel model = TriggerModelReader.getInstance().getBundledServiceInitModel("ftp").orElseThrow();
         Value protocol = listenerConfigProperties(model).get("protocol");
         selectChoiceByValue(protocol, "SFTP");
         Value sftp = selectedChoice(protocol);
@@ -251,7 +251,7 @@ public class SchemaDrivenSourceGeneratorTest {
         // record, not top-level fields). A dotted SERVICE_ANNOTATION path must nest into a mapping
         // constructor, not render as a literal `info.name: ...` key — which is not valid Ballerina
         // mapping-field syntax.
-        ServiceInitModel model = ConnectorModelReader.getInstance().getBundledServiceInitModel("mcp").orElseThrow();
+        ServiceInitModel model = TriggerModelReader.getInstance().getBundledServiceInitModel("mcp").orElseThrow();
         String block = SchemaDrivenSourceGenerator.buildServiceBlockForTrigger(model, null);
         Assert.assertTrue(
                 block.contains("@mcp:StreamableHttpServiceConfig {info: {name: \"MCP Service\", "
@@ -264,7 +264,7 @@ public class SchemaDrivenSourceGeneratorTest {
         // Regression: on submit the front end signals a picked radio via the enabled branch's own value,
         // and does not always echo the parent CHOICE's `value` back. Clearing the parent value (leaving
         // only the enabled SFTP branch) must still emit `protocol = ftp:SFTP`.
-        ServiceInitModel model = ConnectorModelReader.getInstance().getBundledServiceInitModel("ftp").orElseThrow();
+        ServiceInitModel model = TriggerModelReader.getInstance().getBundledServiceInitModel("ftp").orElseThrow();
         Value protocol = listenerConfigProperties(model).get("protocol");
         protocol.setValue("");
         for (Value branch : protocol.getChoices()) {

@@ -225,7 +225,7 @@ public class ExistingListenerResolverTest {
 
     /** The create-new branch's config fields for a bundled trigger model (choices[0] of the listener CHOICE). */
     private static Map<String, Value> createNewProperties(String moduleName) {
-        ServiceInitModel model = ConnectorModelReader.getInstance()
+        ServiceInitModel model = TriggerModelReader.getInstance()
                 .getBundledServiceInitModel(moduleName).orElseThrow();
         return model.getProperties().get("listener").getChoices().getFirst().getProperties();
     }

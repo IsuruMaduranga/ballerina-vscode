@@ -22,8 +22,8 @@ import io.ballerina.compiler.syntax.tree.ModulePartNode;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
 import io.ballerina.projects.Document;
 import io.ballerina.servicemodelgenerator.extension.connector.AnnotationEmitter;
-import io.ballerina.servicemodelgenerator.extension.connector.ConnectorModelReader;
 import io.ballerina.servicemodelgenerator.extension.connector.IncludedRecordBinder;
+import io.ballerina.servicemodelgenerator.extension.connector.TriggerModelReader;
 import io.ballerina.servicemodelgenerator.extension.connector.adapter.PropertyValueAdapter;
 import io.ballerina.servicemodelgenerator.extension.model.Codedata;
 import io.ballerina.servicemodelgenerator.extension.model.Function;
@@ -47,19 +47,9 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYP
 import static io.ballerina.servicemodelgenerator.extension.util.ServiceModelUtils.getServiceTypeIdentifier;
 
 /**
- * Generic, schema-driven function builder for connectors that ship a unified {@link TriggerUISchemaModel}.
- * Function <b>source generation</b> (add/update) is already connector-agnostic in {@link AbstractFunctionBuilder}
- * (via {@code Utils.generateFunctionDefSource}), so this builder inherits it. Its own contributions:
- *
- * <ul>
- *   <li><b>Edit enrichment</b> — when a function is read from source for editing, the raw parse is
- *       overlaid with the connector's curated metadata (labels/descriptions/type constraints) and
- *       stamped with the connector identity so the follow-up {@code updateFunction} routes back here.</li>
- *   <li><b>Annotation pre-render</b> — before add/update, an edited unified-model annotation tree
- *       ({@code codedata.type == COMPLEX_FUNCTION_ANNOTATION}, e.g. {@code @smb:FunctionConfig})
- *       collapses into the generic {@code ANNOTATION_ATTACHMENT} property the wire emitter already
- *       understands, its value rendered by {@link AnnotationEmitter}.</li>
- * </ul>
+ * Schema-driven function builder for connectors that ship a unified {@link TriggerUISchemaModel}.
+ * Inherits source generation from {@link AbstractFunctionBuilder} and adds metadata overlay on read
+ * and annotation-tree rendering (via {@link AnnotationEmitter}) before add/update.
  *
  * @since 1.8.0
  */
@@ -74,9 +64,7 @@ public class SchemaDrivenFunctionBuilder extends AbstractFunctionBuilder {
 
     @Override
     public Map<String, List<TextEdit>> addModel(AddModelContext context) throws Exception {
-        // Strictly before renderComplexAnnotations: that collapses the annotation tree into a rendered
-        // `{...}` string, baking in each enum literal's qualifier, so the qualifiers must already be
-        // resolved by then.
+        // Must run before renderComplexAnnotations, which bakes qualifiers into the rendered string.
         requalifyModuleReferences(context.function(), context.document());
         renderComplexAnnotations(context.function());
         // Must run before the emitter: it rewrites the payload param's type to the generated wrapper.
@@ -93,19 +81,9 @@ public class SchemaDrivenFunctionBuilder extends AbstractFunctionBuilder {
     }
 
     /**
-     * Re-qualifies every module reference a function emits — parameter types, return type, and the
-     * module qualifier of its annotation attachments — onto the prefixes the target file actually binds.
-     *
-     * <p>The trigger model authors all of these against a module's natural prefix (e.g.
-     * {@code twilio:CallStatusEventWrapper}, {@code @ftp:FunctionConfig}). That prefix is not always in
-     * scope: the file may import the module under an alias, either because the natural one collides with
-     * a sibling package ({@code ballerinax/trigger.twilio} vs {@code ballerinax/twilio}) or because
-     * something else already bound it ({@code import ballerina/file as ftp;}). The file's own imports are
-     * authoritative — an added function must line up with what the service block already committed to.
-     *
-     * <p>Prefixes are resolved once into a {@link ModulePrefixContext} and reused for all three sites, so
-     * they cannot drift apart. The function's own module and each annotation's module are registered,
-     * since a function may reference several (MSSQL CDC spans {@code mssql} and {@code cdc}).
+     * Re-qualifies every module reference a function emits (parameter types, return type, annotation
+     * qualifiers) onto the prefixes the target file actually binds, since the trigger model authors
+     * against a module's natural prefix which may be aliased in the target file.
      */
     private static void requalifyModuleReferences(Function function, Document document) {
         Codedata codedata = function == null ? null : function.getCodedata();
@@ -135,17 +113,8 @@ public class SchemaDrivenFunctionBuilder extends AbstractFunctionBuilder {
     /**
      * Resolves the {@code valueQualifier} of every enum literal in a property tree, in place, to the
      * prefix its module is bound to ({@code afterProcess: ftp:DELETE} &rarr; {@code ftp2:DELETE}).
-     *
-     * <p>Unlike {@code moduleName} — a module <i>identity</i>, which is resolved at render time and
-     * deliberately never overwritten here — {@code valueQualifier} <i>is</i> a prefix by definition (it
-     * renders verbatim as {@code <qualifier>:<value>}), so resolving it in place stores the right kind of
-     * thing. It has to happen here rather than at render time because {@code renderComplexAnnotations}
-     * collapses the tree into a rendered string well before any emitter sees it.
-     *
-     * <p>Registers each property's declared module so the qualifier resolves by identity where the model
-     * provides one; a qualifier naming an unregistered or ambiguous module is left untouched rather than
-     * guessed at. Recurses through nested properties and choice branches, since an enum literal's
-     * qualifier lives on the selected branch of a nested choice.
+     * Must happen here rather than at render time since {@code renderComplexAnnotations} collapses the
+     * tree into a string first. Recurses through nested properties and choice branches.
      */
     private static void requalifyProperties(Map<String, Value> properties, ModulePrefixContext prefixes) {
         if (properties == null) {
@@ -162,8 +131,7 @@ public class SchemaDrivenFunctionBuilder extends AbstractFunctionBuilder {
         }
         Codedata codedata = property.getCodedata();
         if (codedata != null) {
-            // Register (never overwrite) the declared module, so an identity-carrying qualifier below
-            // can be resolved precisely instead of by bare prefix.
+            // Register (never overwrite) the declared module for precise qualifier resolution.
             if (codedata.getModuleName() != null && !codedata.getModuleName().isBlank()) {
                 prefixes.prefixFor(codedata.getOrgName(), codedata.getModuleName());
             }
@@ -210,11 +178,8 @@ public class SchemaDrivenFunctionBuilder extends AbstractFunctionBuilder {
     }
 
     /**
-     * Collapses every COMPLEX_FUNCTION_ANNOTATION property (the granular MAPPING_FIELD /
-     * FIELD_VALUE_CHOICE tree the UI edits) into an ANNOTATION_ATTACHMENT property carrying the
-     * rendered mapping body, which the generic wire emitter turns into
-     * {@code @<module>:<Name> {field: value, ...}}. A tree whose fields are all unchecked renders no
-     * attachment (the property is disabled instead). Public for testing.
+     * Collapses every COMPLEX_FUNCTION_ANNOTATION property into an ANNOTATION_ATTACHMENT property
+     * carrying the rendered mapping body. Public for testing.
      */
     public static void renderComplexAnnotations(Function function) {
         if (function == null) {
@@ -244,12 +209,7 @@ public class SchemaDrivenFunctionBuilder extends AbstractFunctionBuilder {
     @Override
     public Function getModelFromSource(ModelFromSourceContext context) {
         Function function = super.getModelFromSource(context);
-        // The bundled schema. Stamp the connector identity so the follow-up addFunction/updateFunction
-        // routes back to this builder (FunctionBuilderRouter reads org/pkg/module off the function's
-        // Codedata).
-        // Reading an existing function already knows the exact version from the source's ModuleID
-        // (context.version()), so the bundled tier can pick the version-appropriate variant directly.
-        Optional<TriggerUISchemaModel> triggerModel = ConnectorModelReader.getInstance()
+        Optional<TriggerUISchemaModel> triggerModel = TriggerModelReader.getInstance()
                 .getSchemaDrivenTriggerModel(context.orgName(), context.moduleName(), context.version());
         if (triggerModel.isPresent()) {
             overlayConnectorMetadata(function, triggerModel.get(), context.serviceType());
@@ -258,12 +218,7 @@ public class SchemaDrivenFunctionBuilder extends AbstractFunctionBuilder {
         return function;
     }
 
-    /**
-     * Overlays the connector's curated function/parameter metadata onto a source-parsed function from
-     * the bundled unified {@link TriggerUISchemaModel}. The source parse
-     * yields the real names/types/ranges; the connector model supplies the human labels, descriptions
-     * and type constraints the raw source cannot. Package-visible for testing.
-     */
+    /** Overlays curated function/parameter metadata onto a source-parsed function. Package-visible for testing. */
     static void overlayConnectorMetadata(Function function, TriggerUISchemaModel triggerModel, String serviceType) {
         TriggerUISchemaModel.FunctionModel model = findFunctionModel(triggerModel, serviceType,
                 function.getName() != null ? function.getName().getValue() : null);

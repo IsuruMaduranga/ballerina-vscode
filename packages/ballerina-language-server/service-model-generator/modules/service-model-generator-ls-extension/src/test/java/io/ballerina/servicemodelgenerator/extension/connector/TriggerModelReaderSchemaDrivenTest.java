@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 import java.util.Optional;
 
 /**
- * Tests the Phase-D integration seam on {@link ConnectorModelReader}: the resolve+introspect+synthesize
+ * Tests the Phase-D integration seam on {@link TriggerModelReader}: the resolve+introspect+synthesize
  * fallback for a connector not bundled in this jar.
  *
  * <p>{@code testResolveGracefullyDegradesForUnpublishedPackage} exercises a real, if narrow, defect
@@ -47,7 +47,7 @@ import java.util.Optional;
  *
  * @since 1.10.0
  */
-public class ConnectorModelReaderSchemaDrivenTest {
+public class TriggerModelReaderSchemaDrivenTest {
 
     private static final String ORG = "testorg";
     private static final String MODULE = "triggerfixture";
@@ -55,12 +55,12 @@ public class ConnectorModelReaderSchemaDrivenTest {
     @Test
     public void testResolveGracefullyDegradesForUnpublishedPackage() {
         // testorg/triggerfixture is not a real Central package; this must resolve to empty, not throw.
-        Optional<TriggerUISchemaModel> model = ConnectorModelReader.getInstance()
+        Optional<TriggerUISchemaModel> model = TriggerModelReader.getInstance()
                 .getSchemaDrivenTriggerModel(ORG, MODULE);
         Assert.assertTrue(model.isEmpty());
-        Assert.assertFalse(ConnectorModelReader.getInstance().hasSchemaDrivenModel(ORG, MODULE));
+        Assert.assertFalse(TriggerModelReader.getInstance().hasSchemaDrivenModel(ORG, MODULE));
 
-        Optional<ServiceInitModel> initModel = ConnectorModelReader.getInstance()
+        Optional<ServiceInitModel> initModel = TriggerModelReader.getInstance()
                 .getSchemaDrivenServiceInitModel(ORG, MODULE);
         Assert.assertTrue(initModel.isEmpty());
     }
@@ -69,7 +69,7 @@ public class ConnectorModelReaderSchemaDrivenTest {
     public void testBundledConnectorUnaffected() {
         // A bundled connector (e.g. kafka) must still resolve via the classpath registry, not the new
         // resolve+synthesize fallback -- zero regression for the existing curated set.
-        Optional<TriggerUISchemaModel> kafka = ConnectorModelReader.getInstance()
+        Optional<TriggerUISchemaModel> kafka = TriggerModelReader.getInstance()
                 .getSchemaDrivenTriggerModel("ballerinax", "kafka");
         Assert.assertTrue(kafka.isPresent());
         Assert.assertEquals(kafka.get().moduleName(), "kafka");
@@ -77,7 +77,7 @@ public class ConnectorModelReaderSchemaDrivenTest {
 
     @Test
     public void testUnknownConnectorResolvesEmpty() {
-        Optional<TriggerUISchemaModel> unknown = ConnectorModelReader.getInstance()
+        Optional<TriggerUISchemaModel> unknown = TriggerModelReader.getInstance()
                 .getSchemaDrivenTriggerModel("no-such-org", "no-such-module");
         Assert.assertTrue(unknown.isEmpty());
     }

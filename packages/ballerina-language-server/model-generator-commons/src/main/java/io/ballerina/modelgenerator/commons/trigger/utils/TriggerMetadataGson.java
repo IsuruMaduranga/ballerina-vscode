@@ -35,15 +35,9 @@ import java.util.List;
 
 /**
  * The {@link Gson} instance for deserializing a {@code trigger-metadata.json} document into a
- * {@link TriggerMetadataModel}.
- *
- * <p>The schema's one shape ambiguity (spec {@code README.md}/{@code spec.md} &sect;1 — "Every place
- * a Ballerina type is referenced ... uses the same shape"): a slot that may hold either a single type
- * or a union is written as a bare object ({@code {"name": "Caller"}}) for the single case and a JSON
- * array for the union case, but is always modeled in Java as {@code List<TypeRef>} so callers never
- * branch on the raw shape. This class registers the one adapter that normalizes both wire shapes onto
- * that one Java shape; every {@code List<TypeRef>} field in the model (params/returns/dataBinding
- * type constraints) shares this single rule.
+ * {@link TriggerMetadataModel}. Registers an adapter that normalizes a type-or-union slot (a bare
+ * object for the single case, a JSON array for the union) onto {@code List<TypeRef>}, so every such
+ * field in the model shares one rule.
  *
  * @since 1.10.0
  */
@@ -51,14 +45,9 @@ public final class TriggerMetadataGson {
 
     private static final Type TYPE_REF_LIST = new TypeToken<List<TypeRef>>() { }.getType();
 
-    // A separate, plain Gson instance dedicated to parsing individual TypeRef leaves from within the
-    // custom deserializer below. Gson's record support (ReflectiveTypeAdapterFactory$RecordAdapter)
-    // reuses a per-adapter constructor-args buffer across invocations; reentering the SAME Gson
-    // instance's adapter graph via JsonDeserializationContext.deserialize while an ancestor record
-    // (e.g. Param, HandlerOption) is still mid-populate can corrupt that buffer and misassign fields
-    // (observed as a ClassCastException between TypeRef and TypeRef[]). Using a wholly separate Gson
-    // object -- its own adapter cache, nothing shared with INSTANCE -- sidesteps the reentrancy
-    // regardless of which Gson version is on the classpath.
+    // Separate Gson instance: reentering INSTANCE's own adapter graph via JsonDeserializationContext
+    // while an ancestor record is still mid-populate corrupts Gson's per-adapter record buffer
+    // (observed as a ClassCastException between TypeRef and TypeRef[]).
     private static final Gson TYPE_REF_GSON = new Gson();
 
     private static final Gson INSTANCE = new GsonBuilder()
