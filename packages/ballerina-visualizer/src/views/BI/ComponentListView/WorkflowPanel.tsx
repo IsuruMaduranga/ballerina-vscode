@@ -35,12 +35,21 @@ export function WorkflowPanel() {
         });
     };
 
+    const handleDurableAgentClick = () => {
+        rpcClient.getVisualizerRpcClient().openView({
+            type: EVENT_TYPE.OPEN_VIEW,
+            location: {
+                view: MACHINE_VIEW.BIDurableAgentForm,
+            },
+        });
+    };
+
     return (
         <PanelViewMore>
             <TitleWrapper>
                 <Title variant="h2">Durable Workflow</Title>
                 <BodyText>
-                    Design static workflow logic that can be interrupted by events, use timer-based
+                    Design workflow logic that can be interrupted by events, use timer-based
                     activities, involve human tasks, and run for long periods with crash recovery enabled.
                 </BodyText>
             </TitleWrapper>
@@ -49,8 +58,15 @@ export function WorkflowPanel() {
                     id="workflow"
                     icon={<Icon name="bi-flowchart" />}
                     title="Durable Workflow"
-                    tooltip="Long-running workflow logic with events, timers, human tasks, and crash recovery."
+                    tooltip="Control-flow based long-running workflow logic with events, timers, human tasks, and crash recovery."
                     onClick={handleClick}
+                />
+                <ButtonCard
+                    id="durable-agent"
+                    icon={<Icon name="bi-ai-agent" />}
+                    title="Durable Agentic Workflow"
+                    tooltip="Agentic long-running workflow logic with events, timers, human tasks, and crash recovery."
+                    onClick={handleDurableAgentClick}
                 />
             </CardGrid>
         </PanelViewMore>

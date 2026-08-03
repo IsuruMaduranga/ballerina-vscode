@@ -73,7 +73,7 @@ import { cloneDeep } from "lodash";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import hljs from "highlight.js";
-import { COMPLETION_ITEM_KIND, CompletionItem, CompletionItemKind, convertCompletionItemKind, FnSignatureDocumentation, getAIModuleIcon } from "@wso2/ui-toolkit";
+import { COMPLETION_ITEM_KIND, CompletionItem, CompletionItemKind, convertCompletionItemKind, FnSignatureDocumentation, Icon, getAIModuleIcon } from "@wso2/ui-toolkit";
 import { FunctionDefinition, STNode } from "@wso2/syntax-tree";
 import { DocSection } from "../components/ExpressionEditor";
 
@@ -108,7 +108,11 @@ function convertAvailableNodeToPanelNode(
         description: node.metadata.description,
         enabled: node.enabled,
         metadata: node,
-        icon: node.codedata.node === "NEW_CONNECTION" ? (
+        icon: node.metadata.icon?.startsWith("bi-") ? (
+            // A codicon-style icon name distinguishes items sharing a node kind (e.g. durable
+            // agentic workflows in the same startable list as workflow functions).
+            <Icon name={node.metadata.icon} sx={{ fontSize: "16px", width: "16px", height: "16px" }} />
+        ) : node.codedata.node === "NEW_CONNECTION" ? (
             <ConnectorIcon
                 url={node.metadata.icon}
                 style={{ width: "16px", height: "16px", fontSize: "16px" }}
@@ -432,6 +436,9 @@ export function getContainerTitle(view: SidePanelView, activeNode: FlowNode, cli
             if (activeNode.codedata?.node === "AGENT_CALL" || activeNode.codedata?.node === "AGENT_RUN") {
                 return `AI Agent`;
             }
+            if (activeNode.codedata?.node === "MCP_TOOL_KIT") {
+                return "Add MCP Server";
+            }
             if (activeNode.codedata?.node === "KNOWLEDGE_BASE" && activeNode.codedata?.object === "VectorKnowledgeBase") {
                 return `ai: Vector Knowledge Base`;
             }
@@ -441,11 +448,9 @@ export function getContainerTitle(view: SidePanelView, activeNode: FlowNode, cli
             ) {
                 return `${clientName || activeNode.properties.connection.value} → ${activeNode.metadata.label}`;
             } else if (activeNode.codedata?.node === "DATA_MAPPER_CALL") {
-                return `${activeNode.codedata?.module ? activeNode.codedata?.module + " :" : ""} ${activeNode.codedata.symbol
-                    }`;
+                return `${activeNode.codedata.symbol}`;
             }
-            return `${activeNode.codedata?.module ? activeNode.codedata?.module + " :" : ""} ${activeNode.metadata.label
-                }`;
+            return `${activeNode.metadata.label}`;
         default:
             return "";
     }

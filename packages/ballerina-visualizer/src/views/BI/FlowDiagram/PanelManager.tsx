@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { Button, ThemeColors, Typography } from "@wso2/ui-toolkit";
 import { PanelContainer, NodeList, CardList, ExpressionFormField } from "@wso2/ballerina-side-panel";
 import {
     FlowNode,
@@ -50,6 +51,7 @@ const Container = styled.div`
     flex-direction: column;
     height: 100%;
 `;
+
 
 export enum SidePanelView {
     NODE_LIST = "NODE_LIST",
@@ -748,6 +750,7 @@ export function PanelManager(props: PanelManagerProps) {
 
             case SidePanelView.FORM:
                 return (
+                    <>
                     <FlowNodeForm
                         key={selectedNode?.id ?? 'no-node'}
                         fileName={fileName}
@@ -768,6 +771,7 @@ export function PanelManager(props: PanelManagerProps) {
                         handleOnFormSubmit={onSubmitForm}
                         navigateToPanel={onNavigateToPanel}
                     />
+                    </>
                 );
 
             case SidePanelView.ALL:
