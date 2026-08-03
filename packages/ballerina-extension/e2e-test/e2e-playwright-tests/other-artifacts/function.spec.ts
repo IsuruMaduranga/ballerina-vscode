@@ -17,7 +17,7 @@
  * under the License.
  */
 import { test } from '@playwright/test';
-import { createArtifactAndGetWebview, deleteArtifactFromTree, getWebview, BI_INTEGRATOR_LABEL, initTest, page } from '../utils/helpers';
+import { createArtifactAndGetWebview, deleteArtifactFromTree, domClick, getWebview, submitArtifactCreation, BI_INTEGRATOR_LABEL, initTest, page } from '../utils/helpers';
 import { Form } from '@wso2/playwright-vscode-tester';
 import { ProjectExplorer } from '../utils/pages';
 import { DEFAULT_PROJECT_NAME } from '../utils/helpers/constants';
@@ -43,9 +43,7 @@ export default function createTests() {
                     }
                 }
             });
-            // `force` — the floating Copilot orb/invite box has been observed to
-            // overlap and intercept pointer events on this button.
-            await form.submit('Create', true);
+            await submitArtifactCreation(artifactWebView);
             // Both the diagram node's title and the diagram's own title-bar
             // breadcrumb render the function name, so a plain text= locator
             // (substring match) resolves to 2 elements — .first() is enough
@@ -75,9 +73,7 @@ export default function createTests() {
                     }
                 }
             });
-            // `force` — the floating Copilot orb/invite box has been observed to
-            // overlap and intercept pointer events on this button.
-            await form.submit('Save', true);
+            await domClick(artifactWebView.getByRole('button', { name: 'Save' }));
             // Both the diagram node's title and the diagram's own title-bar
             // breadcrumb render the function name, so a plain text= locator
             // (substring match) resolves to 2 elements — .first() is enough
