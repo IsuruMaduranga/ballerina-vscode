@@ -1308,6 +1308,7 @@ public class CodeAnalyzer extends NodeVisitor {
         List<AgentCapabilityData> activities = new ArrayList<>();
         List<AgentCapabilityData> humanTasks = new ArrayList<>();
         List<AgentCapabilityData> agentTools = new ArrayList<>();
+        List<AgentCapabilityData> peers = new ArrayList<>();
         List<AgentCapabilityData> updateEvents = new ArrayList<>();
         for (MappingFieldNode field : ((MappingConstructorExpressionNode) configArg.expression()).fields()) {
             if (!(field instanceof SpecificFieldNode specificField) || specificField.valueExpr().isEmpty()) {
@@ -1357,12 +1358,14 @@ public class CodeAnalyzer extends NodeVisitor {
                 case "activities" -> collectDeclaredCapabilities(valueExpr, "activity", "activity",
                         Map.of("activity", "activity", "name", "name", "description", "description",
                                 "requiresApproval", "requiresApproval", "userRoles", "userRoles"), activities);
-                // Peers ride with the tools until they have an edit path of their own: the box
-                // routes a capability click by kind, and a kind with no form behind it opens the
-                // wrong one.
-                case "tools", "peers" -> collectDeclaredCapabilities(valueExpr, "tool", "tool",
+                case "tools" -> collectDeclaredCapabilities(valueExpr, "tool", "tool",
                         Map.of("tool", "tool", "name", "name", "description", "description",
                                 "requiresApproval", "requiresApproval", "userRoles", "userRoles"), agentTools);
+                // A peer is another durable agent this one delegates to, not a function it calls,
+                // and it has its own form — so it travels as its own capability kind.
+                case "peers" -> collectDeclaredCapabilities(valueExpr, "peer", "agent",
+                        Map.of("agent", "agent", "name", "name", "description", "description",
+                                "wait", "wait", "callbackChannel", "callbackChannel"), peers);
                 case "events" -> collectDeclaredCapabilities(valueExpr, "event", null,
                         Map.of("name", "name", "request", "requestType", "response", "responseType",
                                 "cardinality", "cardinality"), updateEvents);
@@ -1378,6 +1381,7 @@ public class CodeAnalyzer extends NodeVisitor {
         nodeBuilder.metadata().addData("humanTasks", humanTasks);
         nodeBuilder.metadata().addData("tools", agentTools);
         nodeBuilder.metadata().addData("events", updateEvents);
+        nodeBuilder.metadata().addData("peers", peers);
         // The declaration's own range lets a run-site box navigate to the agent's model.
         NonTerminalNode declarationNode = varNode;
         while (declarationNode != null && declarationNode.kind() != SyntaxKind.MODULE_VAR_DECL) {

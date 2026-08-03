@@ -3593,6 +3593,17 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     // Opens the edit form for an already-registered activity or human task (from clicking its
     // agent-box circle). The capability metadata carries the statement line range and its parsed
     // argument values, so the form opens pre-filled and saving rewrites that statement.
+    // The form behind each capability of the agent box. A kind with no entry here has no form,
+    // and is refused rather than routed to whichever branch happened to be last.
+    const durableCapabilityNodeKind = (type?: string): string | undefined =>
+        ({
+            activity: "DURABLE_AGENT_ADD_ACTIVITY",
+            event: "DURABLE_AGENT_REGISTER_EVENT",
+            tool: "DURABLE_AGENT_REGISTER_TOOL",
+            humanTask: "DURABLE_AGENT_HUMAN_TASK",
+            peer: "DURABLE_AGENT_PEER",
+        } as Record<string, string>)[type ?? ""];
+
     const handleOnEditDurableCapability = async (runNode: FlowNode, capability: any) => {
         const superseded = beginPanelNav();
         if (showSidePanel) {
@@ -3608,10 +3619,13 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             console.error(">>> Capability entry has no line range; opening a fresh form", capability);
             return;
         }
-        const nodeKind = capability?.type === "activity" ? "DURABLE_AGENT_ADD_ACTIVITY"
-            : capability?.type === "event" ? "DURABLE_AGENT_REGISTER_EVENT"
-                : capability?.type === "tool" ? "DURABLE_AGENT_REGISTER_TOOL"
-                    : "DURABLE_AGENT_HUMAN_TASK";
+        const nodeKind = durableCapabilityNodeKind(capability?.type);
+        if (!nodeKind) {
+            // Better to do nothing than to act on the wrong form: an unhandled kind used to fall
+            // through to the human task form, showing another capability's values.
+            console.error(">>> No form for capability kind", capability?.type, capability);
+            return;
+        }
         targetRef.current = lineRange;
         setTargetLineRange(lineRange);
         setShowProgressIndicator(true);
@@ -3663,10 +3677,13 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             return;
         }
         durableAgentObjectVarRef.current = agentVar;
-        const nodeKind = capability?.type === "activity" ? "DURABLE_AGENT_ADD_ACTIVITY"
-            : capability?.type === "event" ? "DURABLE_AGENT_REGISTER_EVENT"
-                : capability?.type === "tool" ? "DURABLE_AGENT_REGISTER_TOOL"
-                    : "DURABLE_AGENT_HUMAN_TASK";
+        const nodeKind = durableCapabilityNodeKind(capability?.type);
+        if (!nodeKind) {
+            // Better to do nothing than to act on the wrong form: an unhandled kind used to fall
+            // through to the human task form, showing another capability's values.
+            console.error(">>> No form for capability kind", capability?.type, capability);
+            return;
+        }
         setShowProgressIndicator(true);
         try {
             const response = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({

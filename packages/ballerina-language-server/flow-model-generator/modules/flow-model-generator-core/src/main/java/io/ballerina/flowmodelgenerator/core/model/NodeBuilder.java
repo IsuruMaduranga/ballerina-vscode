@@ -53,6 +53,7 @@ import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentAddActivityBu
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentDataResultBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentHumanTaskBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentPeerBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRegisterEventBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRegisterToolBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentResultBuilder;
@@ -223,6 +224,7 @@ public abstract class NodeBuilder implements DiagnosticHandler.DiagnosticCapable
         put(NodeKind.DURABLE_AGENT, DurableAgentBuilder::new);
         put(NodeKind.DURABLE_AGENT_ADD_ACTIVITY, DurableAgentAddActivityBuilder::new);
         put(NodeKind.DURABLE_AGENT_HUMAN_TASK, DurableAgentHumanTaskBuilder::new);
+        put(NodeKind.DURABLE_AGENT_PEER, DurableAgentPeerBuilder::new);
         put(NodeKind.DURABLE_AGENT_REGISTER_EVENT, DurableAgentRegisterEventBuilder::new);
         put(NodeKind.DURABLE_AGENT_REGISTER_TOOL, DurableAgentRegisterToolBuilder::new);
         put(NodeKind.DURABLE_AGENT_RUN, DurableAgentRunBuilder::new);
