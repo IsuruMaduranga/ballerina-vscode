@@ -522,6 +522,11 @@ public class CodeAnalyzer extends NodeVisitor {
         setFunctionProperties(functionName, expressionNode, remoteMethodCallActionNode, functionSymbol,
                 classSymbol.getName().orElse(""), metadataData);
 
+        // The generic "<module> : <label>" title reads "workflow : Run Child Workflo…" once it is
+        // clipped, and never says which workflow is being run. A child workflow statement keeps its
+        // own title with the target workflow underneath, the way the send node names its channel.
+        applyChildWorkflowMetadata(remoteMethodCallActionNode, functionName);
+
         if (isWorkflowCtxOperation(remoteMethodCallActionNode, classSymbol, CALL_ACTIVITY_METHOD_NAME)) {
             String builtinSymbol = resolveBuiltinActivitySymbol(remoteMethodCallActionNode.arguments());
             if (builtinSymbol != null) {
@@ -985,6 +990,40 @@ public class CodeAnalyzer extends NodeVisitor {
         SyntaxKind parentKind = callNode.parent().kind();
         boolean hasCheck = parentKind == SyntaxKind.CHECK_ACTION || parentKind == SyntaxKind.CHECK_EXPRESSION;
         nodeBuilder.properties().checkError(hasCheck);
+    }
+
+    /**
+     * Titles a child workflow statement after what it does, with the target workflow as its second
+     * line. Does nothing for any other remote call.
+     *
+     * @param callNode     the {@code ctx->...} call being analyzed
+     * @param methodName   the context method invoked
+     */
+    private void applyChildWorkflowMetadata(NonTerminalNode callNode, String methodName) {
+        String label = switch (methodName) {
+            case Constants.Workflow.RUN_CHILD_WORKFLOW_METHOD_NAME ->
+                    Constants.Workflow.RUN_CHILD_WORKFLOW_LABEL;
+            case Constants.Workflow.CALL_CHILD_WORKFLOW_METHOD_NAME ->
+                    Constants.Workflow.CALL_CHILD_WORKFLOW_LABEL;
+            case Constants.Workflow.WAIT_CHILD_WORKFLOW_METHOD_NAME ->
+                    Constants.Workflow.WAIT_CHILD_WORKFLOW_LABEL;
+            case Constants.Workflow.SEND_DATA_CHILD_WORKFLOW_METHOD_NAME ->
+                    Constants.Workflow.SEND_DATA_CHILD_WORKFLOW_LABEL;
+            default -> null;
+        };
+        if (label == null) {
+            return;
+        }
+        nodeBuilder.metadata().label(label);
+        // run/call name the workflow directly; the wait and the send take the handle the run
+        // returned, so their first argument is the best available identification of the target.
+        String target = callNode instanceof RemoteMethodCallActionNode remoteCall
+                && !remoteCall.arguments().isEmpty()
+                && remoteCall.arguments().get(0) instanceof PositionalArgumentNode positional
+                ? positional.expression().toSourceCode().trim() : null;
+        if (target != null && !target.isEmpty()) {
+            nodeBuilder.metadata().description(target);
+        }
     }
 
     /**
