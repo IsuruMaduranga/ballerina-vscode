@@ -213,7 +213,8 @@
       {
         "metadata": {
           "label": "",
-          "description": ""
+          "description": "",
+          "badge": "Tool"
         },
         "kind": "REMOTE",
         "accessor": {
@@ -452,8 +453,8 @@
               "moduleName": "mcp"
             },
             "value": "{\n        description: string `\n            **Description**: Get current weather conditions for a location\n            **Parameters**:\n            - location (string, required): City name or coordinates (e.g., \"London\", \"40.7128,-74.0060\")\n            `\n    }",
-            "enabled": false,
-            "editable": false,
+            "enabled": true,
+            "editable": true,
             "optional": false,
             "advanced": false
           }
@@ -462,7 +463,8 @@
       {
         "metadata": {
           "label": "",
-          "description": ""
+          "description": "",
+          "badge": "Tool"
         },
         "kind": "REMOTE",
         "accessor": {

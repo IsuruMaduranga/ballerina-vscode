@@ -28,11 +28,12 @@ import io.ballerina.projects.Project;
  * @param orgName       the organization name of the Ballerina package
  * @param packageName   the name of the Ballerina package
  * @param moduleName    the name of the Ballerina module
+ * @param version       the version of the Ballerina package
  * @param project       the Ballerina project
  * @param semanticModel the semantic model of the Ballerina source code
  * @param document      the Ballerina document
  * @since 1.3.0
  */
-public record GetServiceInitModelContext(String orgName, String packageName, String moduleName, Project project,
-                                         SemanticModel semanticModel, Document document) {
+public record GetServiceInitModelContext(String orgName, String packageName, String moduleName, String version,
+                                         Project project, SemanticModel semanticModel, Document document) {
 }

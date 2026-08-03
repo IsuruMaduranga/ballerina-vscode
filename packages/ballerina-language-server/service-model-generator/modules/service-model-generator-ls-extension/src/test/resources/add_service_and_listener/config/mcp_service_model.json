@@ -21,11 +21,8 @@
           "argType": "SOURCE_ANNOTATION"
         },
         "placeholder": "MCP Service",
-        "valueType": "EXPRESSION",
-        "valueTypeConstraint": "string",
         "value": "\"Health Care MCP\"",
         "items": [],
-        "typeMembers": [],
         "enabled": true,
         "editable": true,
         "optional": false,
@@ -40,11 +37,8 @@
           "argType": "SOURCE_ANNOTATION"
         },
         "placeholder": "\"1.0.0\"",
-        "valueType": "EXPRESSION",
-        "valueTypeConstraint": "string",
         "value": "\"1.0.0\"",
         "items": [],
-        "typeMembers": [],
         "enabled": true,
         "editable": true,
         "optional": false,
@@ -59,11 +53,8 @@
           "argType": "LISTENER_PARAM_REQUIRED"
         },
         "placeholder": "8080",
-        "valueType": "EXPRESSION",
-        "valueTypeConstraint": "int",
         "value": "8080",
         "items": [],
-        "typeMembers": [],
         "enabled": true,
         "editable": true,
         "optional": false,
@@ -78,11 +69,8 @@
           "argType": "SERVICE_BASE_PATH"
         },
         "placeholder": "/mcp",
-        "valueType": "EXPRESSION",
-        "valueTypeConstraint": "string",
         "value": "/mcp",
         "items": [],
-        "typeMembers": [],
         "enabled": true,
         "editable": true,
         "optional": false,
@@ -96,8 +84,6 @@
         "codedata": {
           "type": "LISTENER_VAR_NAME"
         },
-        "valueType": "IDENTIFIER",
-        "valueTypeConstraint": "Global",
         "value": "mcpListener",
         "enabled": true,
         "editable": true,
@@ -132,7 +118,7 @@
             "character": 3
           }
         },
-        "newText": "\nlistener mcp:Listener mcpListener = new (8080);\n@mcp:ServiceConfig {\n\tinfo: {\n\t\tname: \"Health Care MCP\",\n\t\tversion: \"1.0.0\"\n\t}\n}\nservice mcp:Service /mcp on mcpListener {\n\n}\n"
+        "newText": "\nlistener mcp:Listener mcpListener = new (8080);\nservice /mcp on mcpListener {\n\n}\n"
       }
     ]
   }
