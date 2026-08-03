@@ -30,6 +30,7 @@ import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.modelgenerator.commons.SearchResult;
+import io.ballerina.projects.Module;
 import io.ballerina.projects.Package;
 import io.ballerina.projects.Project;
 import io.ballerina.tools.text.LineRange;
@@ -125,10 +126,8 @@ class ActivitySearchCommand extends SearchCommand {
         // compilation fails (e.g. an unresolvable dependency pinned in Dependencies.toml) is skipped
         // so the rest of the list — including the prebuilt activities — still renders.
         currentPackage.modules().forEach(module -> {
-            SemanticModel semanticModel;
-            try {
-                semanticModel = module.getCompilation().getSemanticModel();
-            } catch (RuntimeException e) {
+            SemanticModel semanticModel = semanticModelOf(currentPackage, module);
+            if (semanticModel == null) {
                 return;
             }
             semanticModel.moduleSymbols().stream()
@@ -161,9 +160,12 @@ class ActivitySearchCommand extends SearchCommand {
         });
 
         if (itemNodeKind == NodeKind.DURABLE_AGENT_ADD_ACTIVITY) {
-            // Builtin (prebuilt) activities are workflow-only for now: the declaration form
-            // cannot bind their connection yet. A dedicated add-builtin-activity flow for the
-            // agent is tracked separately.
+            // Builtin (prebuilt) activities are workflow-only for now. Their client can be bound
+            // at registration like any other, but they also take arguments the model cannot
+            // supply either — callRestAPI's message accepts an http:Request — so the agent needs
+            // a data-only view of them. Tracked separately; a connection-based activity written
+            // through the "Create Activity from a Connection" wizard is data-only apart from its
+            // client and registers here today.
             buildAgentToolNodes(currentPackage, orgName, moduleName, version);
             return;
         }
@@ -176,6 +178,29 @@ class ActivitySearchCommand extends SearchCommand {
         addBuiltinNode(builtinCategory, BUILTIN_REST_LABEL, BUILTIN_REST_DESCRIPTION, BUILTIN_REST_FUNCTION);
         addBuiltinNode(builtinCategory, BUILTIN_SOAP_LABEL, BUILTIN_SOAP_DESCRIPTION, BUILTIN_SOAP_FUNCTION);
         addBuiltinNode(builtinCategory, BUILTIN_EMAIL_LABEL, BUILTIN_EMAIL_DESCRIPTION, BUILTIN_EMAIL_FUNCTION);
+    }
+
+    /**
+     * Resolves a module's semantic model, retrying once through a fresh package compilation.
+     *
+     * <p>Right after a write the designer issues two searches at once, and a module compiled
+     * concurrently with the reload that write triggers can fail. Skipping on that first failure
+     * makes the search answer "this project defines no activities", which blanks the list the
+     * user is looking at — indistinguishable from a project that genuinely has none. A module
+     * that is actually broken fails the retry too and is still skipped, so the rest of the list
+     * (including the prebuilt activities) renders.
+     */
+    private static SemanticModel semanticModelOf(Package currentPackage, Module module) {
+        try {
+            return module.getCompilation().getSemanticModel();
+        } catch (RuntimeException firstAttempt) {
+            try {
+                PackageUtil.getCompilation(currentPackage);
+                return module.getCompilation().getSemanticModel();
+            } catch (RuntimeException secondAttempt) {
+                return null;
+            }
+        }
     }
 
     // The tool sections of the durable agent's Add Tool/Activity list. MCP Tools leads with
