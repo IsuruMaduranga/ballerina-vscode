@@ -461,6 +461,20 @@ export function SendDataNodeWidget(props: SendDataNodeWidgetProps) {
                 onClick={onConnectionClick}
                 style={{ cursor: readOnly ? "default" : "pointer" }}
             >
+                <defs>
+                    <marker
+                        id={`${model.node.id}-send-arrow`}
+                        markerWidth="4"
+                        markerHeight="4"
+                        refX="3"
+                        refY="2"
+                        viewBox="0 0 4 4"
+                        orient="auto"
+                    >
+                        <path d="M0,0 L4,2 L0,4 Z" fill={arrowColor} />
+                    </marker>
+                </defs>
+                {/* An arrow, not just a dashed line: the data travels towards the target. */}
                 <line
                     x1="0"
                     y1={boxCenterY}
@@ -469,6 +483,7 @@ export function SendDataNodeWidget(props: SendDataNodeWidgetProps) {
                     stroke={arrowColor}
                     strokeWidth={1.5}
                     strokeDasharray="5 3"
+                    markerEnd={`url(#${model.node.id}-send-arrow)`}
                 />
                 <rect
                     x={boxX}

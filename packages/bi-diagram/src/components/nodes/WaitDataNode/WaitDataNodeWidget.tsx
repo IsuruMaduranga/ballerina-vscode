@@ -93,7 +93,8 @@ export namespace NodeStyles {
         justify-content: center;
         width: ${WAIT_DATA_CIRCLE_SIZE}px;
         height: ${WAIT_DATA_CIRCLE_SIZE}px;
-        border-radius: 50%;
+        /* Square base, so a wait reads as the same kind of thing as a send. */
+        border-radius: 10px;
         border: 2px solid
             ${(props: NodeStyleProp) =>
                 props.hasError
