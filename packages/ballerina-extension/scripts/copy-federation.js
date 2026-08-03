@@ -17,10 +17,12 @@
  */
 
 // Copies the visualizer's Module Federation remote into resources/jslibs/federation.
-// The visualizer used to push these files here from its own postbuild, which only runs
-// when the visualizer actually builds — on a rush cache hit it does not. Pulling from the
-// extension instead makes packaging depend on build-federation/ existing on disk (restored
-// or freshly built), and leaves resources/jslibs owned by exactly one project.
+// The visualizer's own postbuild:federation also writes here, but that only runs when
+// the visualizer actually builds — on a rush cache hit it does not. Doing the copy from
+// the extension makes packaging depend on build-federation/ existing on disk (restored
+// or freshly built) rather than on the visualizer's side effect.
+// The push is kept for the visualizer-only dev loop; this pull replaces the directory
+// wholesale, so the two cannot disagree about what ships.
 const fs = require('fs');
 const path = require('path');
 
