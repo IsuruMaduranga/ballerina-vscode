@@ -37,6 +37,19 @@ let artifactRecoveryInProgress = false;
 // otherwise rebuild concurrently, each run racing the others' structure updates.
 let pendingStructureRebuild: Promise<ProjectStructureResponse | undefined> = Promise.resolve(undefined);
 
+// Single-flight: `updateProjectArtifacts` runs fire-and-forget per notification, so a burst
+// of notifications arriving before the first one resolves would otherwise each fetch project
+// info independently. Share one in-flight fetch instead of one per notification.
+let pendingProjectInfoFetch: Promise<ProjectInfo | undefined> | null = null;
+
+function fetchProjectInfoSingleFlight(projectPath: string): Promise<ProjectInfo | undefined> {
+    if (!pendingProjectInfoFetch) {
+        pendingProjectInfoFetch = StateMachine.langClient().getProjectInfo({ projectPath })
+            .finally(() => { pendingProjectInfoFetch = null; });
+    }
+    return pendingProjectInfoFetch;
+}
+
 export async function buildProjectsStructure(
     projectInfo: ProjectInfo,
     langClient: ExtendedLangClient,
@@ -175,7 +188,7 @@ export async function updateProjectArtifacts(publishedArtifacts: ArtifactsNotifi
         // `rootPath` is the workspace root for a workspace project and the package root
         // for a standalone integration/library — which can still gain a sibling package,
         // e.g. when another integration/library is added via AI chat.
-        const projectInfo = await StateMachine.langClient().getProjectInfo({ projectPath: rootPath });
+        const projectInfo = await fetchProjectInfoSingleFlight(rootPath);
         if (!projectInfo) {
             console.warn("[updateProjectArtifacts] Project info not found for the project:", rootPath);
             return;
