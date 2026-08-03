@@ -39,6 +39,37 @@ const DURABLE_AGENT_REGISTER_NODE_KINDS = new Set([
     "DURABLE_AGENT_HUMAN_TASK",
 ]);
 
+// Workflow and durable-agent statements are actions on the context or the agent — `ctx->callActivity`,
+// `ctx->runChildWorkflow`, `agent.sendData` — not calls into a module's API. Titling them
+// "workflow : <label>" misreads what they are, so they keep their plain action label.
+const WORKFLOW_ACTION_NODE_KINDS = new Set([
+    "ACTIVITY_CALL",
+    "CONNECTION_ACTIVITY_CALL",
+    "HUMAN_TASK",
+    "SEND_DATA",
+    "WAIT_DATA",
+    "UPDATE_DATA",
+    "WORKFLOW_RUN",
+    "CHILD_WORKFLOW_RUN",
+    "CHILD_WORKFLOW_CALL",
+    "CHILD_WORKFLOW_WAIT",
+    "CHILD_WORKFLOW_SEND_DATA",
+    "DURABLE_AGENT_RUN",
+    "DURABLE_AGENT_START",
+    "DURABLE_AGENT_UPDATE",
+    "DURABLE_AGENT_RESULT",
+    "DURABLE_AGENT_DATA_RESULT",
+]);
+
+export function isWorkflowActionNode(nodeOrKind?: FlowNode | string) {
+    if (!nodeOrKind) {
+        return false;
+    }
+
+    const nodeKind = typeof nodeOrKind === "string" ? nodeOrKind : nodeOrKind.codedata?.node;
+    return typeof nodeKind === "string" && WORKFLOW_ACTION_NODE_KINDS.has(nodeKind);
+}
+
 export function isDurableAgentRegisterNode(nodeOrKind?: FlowNode | string) {
     if (!nodeOrKind) {
         return false;
@@ -292,6 +323,12 @@ export function getNodeTitle(node: FlowNode) {
     }
 
     const label = node.metadata.label.includes(".") ? node.metadata.label.split(".").pop() : node.metadata.label;
+
+    // An action keeps its own name: the module prefix would describe where the API lives, which is
+    // not what these statements are.
+    if (isWorkflowActionNode(node)) {
+        return label;
+    }
 
     if (node.codedata?.org === "ballerina" || node.codedata?.org === "ballerinax") {
         const module = node.codedata.module?.includes(".")
