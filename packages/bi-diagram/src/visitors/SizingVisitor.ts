@@ -543,6 +543,28 @@ export class SizingVisitor implements BaseVisitor {
         this.createWaitDataNode(node);
     }
 
+    // Child workflow nodes reuse the workflow-run/send/wait shapes, so they are measured with them.
+    endVisitChildWorkflowRun(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        // The workflow-run widget is a base node, so it must be measured as one.
+        this.createBaseNode(node);
+    }
+
+    endVisitChildWorkflowCall(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        this.endVisitChildWorkflowRun(node, parent);
+    }
+
+    endVisitChildWorkflowSendData(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        this.createSendDataNode(node);
+    }
+
+    endVisitChildWorkflowWait(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        this.createWaitDataNode(node);
+    }
+
     // The durable agent send/wait nodes reuse the workflow shapes, so they have to be measured
     // the same way — otherwise the widget draws at a size the layout never reserved.
     endVisitDurableAgentUpdate(node: FlowNode, parent?: FlowNode): void {

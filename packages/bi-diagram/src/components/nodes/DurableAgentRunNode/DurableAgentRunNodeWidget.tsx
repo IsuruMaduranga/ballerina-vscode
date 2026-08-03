@@ -391,6 +391,7 @@ type DurableAgentNodeMetadata = NodeMetadata & {
     activities?: ToolData[];
     humanTasks?: ToolData[];
     events?: ToolData[];
+    peers?: ToolData[];
     agentName?: string;
     agentBox?: boolean;
 };
@@ -402,7 +403,7 @@ type AgentCapability = ToolData & {
 
 type CapabilityItem = {
     data: AgentCapability;
-    kind: "tool" | "activity" | "humanTask" | "event";
+    kind: "tool" | "activity" | "humanTask" | "event" | "peer";
 };
 
 // Capabilities addable from the agent box's "+" affordances, each pinned to a fixed anchor.
@@ -627,6 +628,9 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
     const rightItems: CapabilityItem[] = [
         ...(nodeMetadata?.tools || []).map((tool: ToolData): CapabilityItem => ({ data: tool, kind: "tool" })),
         ...(nodeMetadata?.activities || []).map((activity: AgentCapability): CapabilityItem => ({ data: activity, kind: "activity" })),
+        // A peer is another agentic workflow this one delegates to, so it hangs off the same
+        // side as the other things the model can invoke.
+        ...(nodeMetadata?.peers || []).map((peer: AgentCapability): CapabilityItem => ({ data: peer, kind: "peer" })),
     ];
 
     // Capability circles rendered on the left side: human tasks and events (arrows point into the box).
@@ -650,6 +654,11 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
     const sideSvgWidth = NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH + 10;
 
     const renderCapabilityIcon = (item: CapabilityItem) => {
+        if (item.kind === "peer") {
+            // Delegating to a peer runs another durable agent, so it is marked as an agentic
+            // workflow rather than as a plain tool function.
+            return <Icon name="bi-ai-agent" sx={{ fontSize: "24px" }} />;
+        }
         if (item.kind === "activity") {
             return <Icon name="bi-task" sx={{ fontSize: "24px" }} />;
         }

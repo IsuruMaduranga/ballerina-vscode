@@ -807,6 +807,38 @@ export class NodeFactoryVisitor implements BaseVisitor {
         }
     }
 
+    // A child workflow is still a workflow being run, so it uses the workflow-run node with its
+    // target beside it rather than a generic call box titled with the truncated method name.
+    beginVisitChildWorkflowRun(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        if (node.id) {
+            this.createWorkflowRunNode(node);
+            this.addSuggestionsButton(node);
+        }
+    }
+
+    beginVisitChildWorkflowCall(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        this.beginVisitChildWorkflowRun(node, parent);
+    }
+
+    beginVisitChildWorkflowSendData(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        if (node.id) {
+            this.createSendDataNode(node);
+            this.addSuggestionsButton(node);
+        }
+    }
+
+    // Waiting on a child workflow suspends the caller, so it takes the wait shape.
+    beginVisitChildWorkflowWait(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        if (node.id) {
+            this.createWaitDataNode(node);
+            this.addSuggestionsButton(node);
+        }
+    }
+
     // A durable agent's data-event send renders as the workflow send node: same shape, and the
     // square on the right points at the agent instead of a workflow.
     beginVisitDurableAgentUpdate(node: FlowNode, parent?: FlowNode): void {
