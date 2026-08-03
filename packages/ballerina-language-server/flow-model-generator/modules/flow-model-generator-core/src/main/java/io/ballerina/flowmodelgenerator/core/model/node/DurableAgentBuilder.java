@@ -18,6 +18,7 @@
 
 package io.ballerina.flowmodelgenerator.core.model.node;
 
+import io.ballerina.flowmodelgenerator.core.AiUtils;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
@@ -91,10 +92,13 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
                 // The creation wizard creates the shared WSO2 default provider when none exists.
                 modelVar = "wso2ModelProvider";
             }
-            String instructions = description.replace("`", "'");
+            // A backtick in the description is escaped as an interpolation rather than rewritten,
+            // so the prompt the user typed survives the round trip through the box's edit form.
+            String role = AiUtils.replaceBackticksForStringTemplate(funcName);
+            String instructions = AiUtils.replaceBackticksForStringTemplate(description);
             String declaration = "final workflow:DurableAgent " + funcName + " = check new ({"
-                    + "systemPrompt: {role: string `" + funcName + "`, instructions: string `"
-                    + instructions + "`}, model: " + modelVar + "});";
+                    + "systemPrompt: {role: " + role + ", instructions: " + instructions
+                    + "}, model: " + modelVar + "});";
             sourceBuilder
                     .token()
                         .skipFormatting()

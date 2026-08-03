@@ -375,13 +375,11 @@ public class DurableAgentRunBuilder extends CallBuilder {
         // itself is not rewritten here.
         if (WorkflowUtil.isDurableAgentObjectTarget(sourceBuilder)) {
             String agentVarName = sourceBuilder.flowNode.codedata().parentSymbol();
-            String role = sourceBuilder.getProperty(ROLE_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString()).orElse("").replace("`", "'");
-            String instructions = sourceBuilder.getProperty(INSTRUCTIONS_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString()).orElse("").replace("`", "'");
+            String role = promptFieldSource(sourceBuilder.getProperty(ROLE_KEY).orElse(null));
+            String instructions = promptFieldSource(sourceBuilder.getProperty(INSTRUCTIONS_KEY).orElse(null));
             String modelValue = sourceBuilder.getProperty(MODEL_KEY)
                     .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            String promptText = "{role: string `" + role + "`, instructions: string `" + instructions + "`}";
+            String promptText = "{role: " + role + ", instructions: " + instructions + "}";
             java.util.LinkedHashMap<String, String> fields = new java.util.LinkedHashMap<>();
             fields.put(SYSTEM_PROMPT_KEY, promptText);
             if (!modelValue.isBlank()) {
@@ -392,5 +390,30 @@ public class DurableAgentRunBuilder extends CallBuilder {
 
         throw new IllegalStateException("Cannot generate the agent source: "
                 + "the durable agent declaration target is missing");
+    }
+
+    /**
+     * Renders a Role/Instructions field as the expression to write into the declaration's
+     * {@code systemPrompt}, following the same convention as the AI agent node.
+     *
+     * <p>A prompt field's value reaches here either as the prompt text or as the string-template
+     * expression it was read from, so wrapping it unconditionally double-wraps an unchanged field
+     * on every save. {@link AiUtils#replaceBackticksForStringTemplate} handles both, and escapes a
+     * backtick inside the prompt as an interpolation instead of rewriting it to something else —
+     * which is what {@link AiUtils#restoreBackticksFromStringTemplate} reverses when the form is
+     * populated. When the field holds an expression rather than a prompt (a config variable, say),
+     * it is written through as-is.
+     *
+     * @param property the Role or Instructions property, or null when absent
+     * @return the expression source for the field
+     */
+    private static String promptFieldSource(Property property) {
+        if (property == null) {
+            return "string ``";
+        }
+        String value = property.value() == null ? "" : property.value().toString();
+        boolean promptSelected = property.types() != null && property.types().stream()
+                .anyMatch(type -> type.fieldType() == Property.ValueType.PROMPT && type.selected());
+        return promptSelected ? AiUtils.replaceBackticksForStringTemplate(value) : value;
     }
 }

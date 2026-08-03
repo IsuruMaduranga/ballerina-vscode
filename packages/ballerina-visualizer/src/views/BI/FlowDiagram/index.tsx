@@ -192,6 +192,13 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     // True while the ACTIVITY_LIST panel was opened from the durable agent's "Add Activity"
     // node: in-list searches must keep hiding builtins and produce DURABLE_AGENT_ADD_ACTIVITY items.
     const durableAgentActivityListRef = useRef<boolean>(false);
+    // Sticky for the duration of the "Create Activity from a Connection" wizard, which spans
+    // writes of its own; see handleOnAddActivityFromConnection.
+    const activityWizardForAgentRef = useRef<boolean>(false);
+
+    // Whether the activity list/wizard currently on screen belongs to a durable agent.
+    const inDurableAgentActivityFlow = () =>
+        durableAgentActivityListRef.current || activityWizardForAgentRef.current;
     // Set while a capability add/edit was started from an OBJECT-MODEL agent box
     // (`final workflow:DurableAgent x = ...`): capability forms must edit the declaration's
     // config literal, so their codedata targets the agent variable instead of ctx statements.
@@ -220,6 +227,33 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     // the pre-compile state comes back with no activities at all, and whichever response
     // lands last wins. While this is set, only the dedicated refresh writes the list.
     const activityRefreshOwnsPanelRef = useRef<boolean>(false);
+    const activityRefreshReleaseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Claimed by every post-write activity refresh — the list rebuild after "Create Activity"
+    // as well as the resolve-and-open-the-call-form flow of "Create Activity from a Connection".
+    // Both re-render the panel, and the list component issues a search of its own each time it
+    // mounts; without ownership that search races the refresh across the recompile boundary.
+    const acquireActivityPanel = () => {
+        if (activityRefreshReleaseRef.current) {
+            clearTimeout(activityRefreshReleaseRef.current);
+            activityRefreshReleaseRef.current = null;
+        }
+        activityRefreshOwnsPanelRef.current = true;
+    };
+
+    // Ownership is held briefly past the refresh so a panel search issued before it started
+    // cannot overwrite the list when its response arrives late. A pending release from an
+    // earlier refresh is cancelled first — otherwise its timer would hand the panel back
+    // while a newer refresh is still running.
+    const releaseActivityPanel = () => {
+        if (activityRefreshReleaseRef.current) {
+            clearTimeout(activityRefreshReleaseRef.current);
+        }
+        activityRefreshReleaseRef.current = setTimeout(() => {
+            activityRefreshOwnsPanelRef.current = false;
+            activityRefreshReleaseRef.current = null;
+        }, 2000);
+    };
 
     // Marks a user-driven panel action: invalidates in-flight refreshes, then reports whether
     // this action's own async continuation has since been superseded by a later action.
@@ -666,7 +700,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 });
                 const epoch = panelNavEpochRef.current;
                 const superseded = () => panelNavEpochRef.current !== epoch;
-                activityRefreshOwnsPanelRef.current = true;
+                acquireActivityPanel();
                 let response = await searchActivities();
                 // The just-created activity may not be compiled into the search results yet
                 // (compiles run to seconds on ai/mcp projects). Retry while the new identifier
@@ -705,11 +739,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 console.error(">>> Error refreshing activities", error);
             } finally {
                 setShowProgressIndicator(false);
-                // Hold ownership briefly after applying so a panel search issued before this
-                // refresh started cannot overwrite the list when its response arrives late.
-                setTimeout(() => {
-                    activityRefreshOwnsPanelRef.current = false;
-                }, 2000);
+                releaseActivityPanel();
             }
         } else {
             console.log(">>> ACTIVITY_LIST not found in navigation stack, closing panel");
@@ -791,10 +821,14 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                             const currentSelectedNode = selectedNodeRef.current;
                             if (
                                 currentSelectedNode &&
+                                // A node being created is not in this model: its line range is the
+                                // insertion point, which matches whatever already starts there.
+                                !currentSelectedNode.codedata?.isNew &&
                                 typeof currentSelectedNode?.properties?.variable?.value === "string"
                             ) {
                                 const updatedSelectedNode = searchNodesByStartLine(model.flowModel.nodes, currentSelectedNode?.codedata.lineRange.startLine);
-                                if (updatedSelectedNode) {
+                                if (updatedSelectedNode
+                                        && updatedSelectedNode.codedata?.node === currentSelectedNode.codedata?.node) {
                                     selectedNodeRef.current = updatedSelectedNode;
                                     setSelectedNodeId(updatedSelectedNode.id);
                                 }
@@ -888,14 +922,25 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             });
     }
 
+    // Keeps an open edit form pointed at its node across model refreshes: the refreshed model
+    // carries fresh ids, so the form has to adopt the matching node or it saves against a stale
+    // one. Two matches must never be adopted, because nodes are matched on start line alone:
+    //   - A node being created is not in the model yet. Its codedata carries the insertion point,
+    //     and for a durable agent capability that is the line the enclosing EVENT_START starts on
+    //     — adopting it turns the open capability form into "Start", and saving it writes against
+    //     the wrong node.
+    //   - A match of a different node kind is not the same node.
     useEffect(() => {
-        if (model && selectedNodeRef.current?.codedata?.lineRange?.startLine && sidePanelView === SidePanelView.FORM) {
-            const matchingNode = findNodeByStartLine(model, selectedNodeRef.current.codedata.lineRange.startLine);
-            // Only update refs if we found a matching node and it's different from the current one
-            if (matchingNode && matchingNode.id !== selectedNodeRef.current.id) {
-                selectedNodeRef.current = matchingNode;
-                changeTargetRange(matchingNode.codedata.lineRange)
-            }
+        const openNode = selectedNodeRef.current;
+        if (!model || sidePanelView !== SidePanelView.FORM
+                || !openNode?.codedata?.lineRange?.startLine || openNode.codedata.isNew) {
+            return;
+        }
+        const matchingNode = findNodeByStartLine(model, openNode.codedata.lineRange.startLine);
+        if (matchingNode && matchingNode.id !== openNode.id
+                && matchingNode.codedata?.node === openNode.codedata?.node) {
+            selectedNodeRef.current = matchingNode;
+            changeTargetRange(matchingNode.codedata.lineRange);
         }
     }, [model]);
 
@@ -1802,47 +1847,10 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 }
 
                 // Selecting a project activity from the list is a complete choice — append it to
-                // the agent declaration's activities list directly (no intermediate form).
+                // the agent declaration's activities list directly (no intermediate form),
+                // unless it needs a binding.
                 setShowProgressIndicator(true);
-                rpcClient
-                    .getBIDiagramRpcClient()
-                    .getNodeTemplate({
-                        position: targetRef.current.startLine,
-                        filePath: model?.fileName || fileName,
-                        id: node.codedata,
-                    })
-                    .then(async (response) => {
-                        const activityNode = applyDurableAgentObjectTarget(response.flowNode);
-                        // An activity with parameters the model cannot supply (a client, say)
-                        // carries binding selectors: open the form so the connection is chosen
-                        // rather than registering an entry that could never be invoked.
-                        if (Object.keys(activityNode.properties ?? {}).some((key) => key.startsWith("bindings."))) {
-                            activityNode.codedata.isNew = true;
-                            activityNode.codedata.lineRange = {
-                                fileName: model?.fileName,
-                                startLine: targetRef.current.startLine,
-                                endLine: targetRef.current.startLine,
-                            } as any;
-                            selectedNodeRef.current = activityNode;
-                            nodeTemplateRef.current = activityNode;
-                            showEditForm.current = false;
-                            setSidePanelView(SidePanelView.FORM);
-                            setShowSidePanel(true);
-                            return;
-                        }
-                        activityNode.codedata.isNew = true;
-                        activityNode.codedata.lineRange = {
-                            fileName: model?.fileName,
-                            startLine: targetRef.current.startLine,
-                            endLine: targetRef.current.startLine,
-                        } as any;
-                        await rpcClient.getBIDiagramRpcClient().getSourceCode({
-                            filePath: model.fileName,
-                            flowNode: activityNode,
-                        });
-                        durableAgentActivityListRef.current = false;
-                        finishCapabilityOpAfterRefresh();
-                    })
+                addActivityToDurableAgent(node.codedata, fileName)
                     .catch((error) => {
                         console.error(">>> Error adding the activity to the agent", error);
                     })
@@ -2749,20 +2757,29 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     };
 
     const handleOnAddActivityFromConnection = () => {
+        // The wizard can create a connection on the way, and that write runs the ordinary
+        // post-write reset — which can clear the flag that says this list belongs to an agent
+        // while the wizard itself stays open. Remember it here, where the flow is unambiguous.
+        activityWizardForAgentRef.current = durableAgentActivityListRef.current;
         pushToNavigationStack(sidePanelView, categories, selectedNodeRef.current, selectedClientName.current);
         setSidePanelView(SidePanelView.ACTIVITY_FROM_CONNECTION);
         setShowSidePanel(true);
     };
 
     const handleActivityFromConnectionCreated = async (activityName: string) => {
-        if (durableAgentActivityListRef.current) {
-            // The agent registers activities on its declaration; there is no call form to fill.
-            await handleActivityFromConnectionCreatedReturnToList();
-            return;
-        }
-        // After the activity function is generated, open its call form with the new activity selected —
-        // the workflow data is wired into the call there.
+        // After the activity function is generated, resolve it and continue with it selected: in a
+        // workflow that is its call form (where the workflow data is wired into the call); for an
+        // agent it is the register form, whose binding selector picks the client the wizard
+        // generated as the activity's first parameter.
+        const agentList = inDurableAgentActivityFlow();
+        // Re-establish the canonical flag from the wizard's own record of the flow, so the list
+        // and every selection made from it after this point stay in the agent's mode.
+        durableAgentActivityListRef.current = agentList;
         setShowProgressIndicator(true);
+        // Own the list panel for the whole resolve: the write re-renders the panel, and the list
+        // component's own mount search — answered from the pre-compile state, so with no activities
+        // at all — would otherwise land last and blank the list behind this flow.
+        acquireActivityPanel();
         try {
             // The activity is generated in functions.bal, so the workflow file is untouched and the
             // original insertion point (targetRef, from the diagram "+") stays valid — use it so the
@@ -2773,7 +2790,11 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 const response = await rpcClient.getBIDiagramRpcClient().search({
                     position: { startLine: insertLine, endLine: insertLine },
                     filePath: model?.fileName,
-                    queryMap: undefined,
+                    // The agent's list carries its own node kind, so the resolved item's codedata
+                    // yields the register template rather than the workflow call template.
+                    queryMap: agentList
+                        ? { excludeBuiltins: "true", nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" }
+                        : undefined,
                     searchKind: "ACTIVITY_CALL",
                 });
                 const panelCategories = convertFunctionCategoriesToSidePanelCategories(
@@ -2795,6 +2816,10 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             }
 
             if (newActivityNode) {
+                if (agentList) {
+                    await addActivityToDurableAgent(newActivityNode.codedata);
+                    return;
+                }
                 const template = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
                     position: insertLine,
                     filePath: model?.fileName,
@@ -2810,12 +2835,14 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 return;
             }
             // Fallback: could not resolve the new activity — just refresh the activity list.
-            await handleActivityAdded(activityName);
+            await (agentList ? handleActivityFromConnectionCreatedReturnToList() : handleActivityAdded(activityName));
         } catch (error) {
-            console.error(">>> Error opening call form for the created activity", error);
-            await handleActivityAdded(activityName);
+            console.error(">>> Error continuing with the created activity", error);
+            await (agentList ? handleActivityFromConnectionCreatedReturnToList() : handleActivityAdded(activityName));
         } finally {
             setShowProgressIndicator(false);
+            releaseActivityPanel();
+            activityWizardForAgentRef.current = false;
         }
     };
 
@@ -2825,10 +2852,14 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     // activity is selectable, and keep the existing targetRef for the eventual call insertion.
     const handleActivityFromConnectionCreatedReturnToList = async () => {
         const superseded = capturePanelNav();
+        // Same restore as the create path: a connection written inside the wizard can have
+        // cleared the canonical flag while the wizard stayed open.
+        durableAgentActivityListRef.current = inDurableAgentActivityFlow();
         // Restore the activity-list frame (the form's back-button target) before the async refresh, so
         // the panel lands on the activity list even when the stack lookup below finds nothing.
         popNavigationStackUntilView(SidePanelView.ACTIVITY_LIST);
         setShowProgressIndicator(true);
+        acquireActivityPanel();
         try {
             // The activity is generated in functions.bal, so the workflow file this flow was launched
             // from is untouched and the original insertion point (targetRef, from the diagram "+") is
@@ -2841,7 +2872,12 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             const response = await rpcClient.getBIDiagramRpcClient().search({
                 position: { startLine: insertLine, endLine: insertLine },
                 filePath: model?.fileName,
-                queryMap: undefined,
+                // In the agent's list the items must carry the agent's node kind: a list rebuilt
+                // with the workflow kind looks identical but sends every selection to the
+                // workflow call form instead of registering it on the agent.
+                queryMap: inDurableAgentActivityFlow()
+                    ? { excludeBuiltins: "true", nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" }
+                    : undefined,
                 searchKind: "ACTIVITY_CALL",
             });
             const panelCategories = convertFunctionCategoriesToSidePanelCategories(
@@ -2862,6 +2898,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             console.error(">>> Error returning to the activity list after activity creation", error);
         } finally {
             setShowProgressIndicator(false);
+            releaseActivityPanel();
+            // The wizard is done; the canonical flag now carries the flow.
+            activityWizardForAgentRef.current = false;
         }
     };
 
@@ -3316,6 +3355,42 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             } as any;
         }
         return node;
+    };
+
+    // Appends a project activity to the agent declaration's activities. An activity that takes
+    // something the model cannot supply — the client of a connection-based activity, say — comes
+    // back with a binding selector per such parameter: those open the register form so the
+    // connection is picked, because an entry registered without it could never be invoked.
+    // Everything else is a complete choice and is written straight to the declaration.
+    const addActivityToDurableAgent = async (activityCodedata: AvailableNode["codedata"], fileName?: string) => {
+        const response = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
+            position: targetRef.current.startLine,
+            filePath: model?.fileName || fileName,
+            // The kind is forced: the same activity listed for a workflow carries the call kind,
+            // and the agent needs the registration template for it.
+            id: { ...activityCodedata, node: "DURABLE_AGENT_ADD_ACTIVITY" } as typeof activityCodedata,
+        });
+        const activityNode = applyDurableAgentObjectTarget(response.flowNode);
+        activityNode.codedata.isNew = true;
+        activityNode.codedata.lineRange = {
+            fileName: model?.fileName,
+            startLine: targetRef.current.startLine,
+            endLine: targetRef.current.startLine,
+        } as any;
+        if (Object.keys(activityNode.properties ?? {}).some((key) => key.startsWith("bindings."))) {
+            selectedNodeRef.current = activityNode;
+            nodeTemplateRef.current = activityNode;
+            showEditForm.current = false;
+            setSidePanelView(SidePanelView.FORM);
+            setShowSidePanel(true);
+            return;
+        }
+        await rpcClient.getBIDiagramRpcClient().getSourceCode({
+            filePath: model.fileName,
+            flowNode: activityNode,
+        });
+        durableAgentActivityListRef.current = false;
+        finishCapabilityOpAfterRefresh();
     };
 
     // Adds a workflow activity to the durable agent: the registerActivities statement is
@@ -4205,13 +4280,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 onAddFunction={handleOnAddFunction}
                 onAddWorkflow={handleOnAddWorkflow}
                 onAddActivity={handleOnAddActivity}
-                onAddActivityFromConnection={
-                    // A connection-based activity takes the client as a parameter, which the
-                    // model cannot supply and the declaration form cannot bind yet, so the
-                    // durable agent's list does not offer it (tracked in
-                    // wso2/product-integrator#1976 with the built-in activities).
-                    durableAgentActivityListRef.current ? undefined : handleOnAddActivityFromConnection
-                }
+                onAddActivityFromConnection={handleOnAddActivityFromConnection}
                 onActivityFromConnectionCreated={handleActivityFromConnectionCreated}
                 onActivityFromConnectionCreatedReturnToList={handleActivityFromConnectionCreatedReturnToList}
                 onAddNPFunction={handleOnAddNPFunction}
