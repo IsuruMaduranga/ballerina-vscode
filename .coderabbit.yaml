@@ -1,20 +1,10 @@
-# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
-#
 # CodeRabbit config - https://docs.coderabbit.ai/getting-started/yaml-configuration
-# Only the root .coderabbit.yaml is read. A copy inside a package does nothing.
-#
-# Precedence, high to low: workspace and org global overrides, THIS FILE, central
-# YAML, repo UI, org UI, workspace UI, schema defaults. Global overrides beat this
-# file, so if any are set, nothing here applies.
 #
 # `inheritance` is on, so anything left unset keeps resolving from the dashboard
-# instead of snapping back to a schema default. CodeRabbit ran on dashboard config
-# here for a while and that was worth keeping. So only set a value when there is a
+# instead of snapping back to a schema default. So only set a value when there is a
 # reason: CI already covers it, a tracked issue says so, or the rules below depend
 # on it. Arrays merge child-first, so an org-level path_instructions entry lands
 # after ours rather than replacing it.
-#
-# To see what actually applies, comment `@coderabbitai configuration` on a PR.
 inheritance: true
 
 tone_instructions: >-
@@ -28,6 +18,29 @@ reviews:
   # `assertive` cannot quietly change how all of it is applied.
   profile: chill
   request_changes_workflow: false
+
+  # The Playwright E2E suite runs only when a PR carries this label, or when the
+  # base branch ends in `.x` (see .github/workflows/pull-request.yml). Nothing in
+  # the PR template mentions that, so UI changes routinely merge without it.
+  #
+  # Listing a label here restricts CodeRabbit to suggesting only from this list,
+  # which is the intent -- this is the one label that changes what CI runs.
+  labeling_instructions:
+    - label: 'Checks/Run Ballerina UI Tests'
+      instructions: >-
+        Suggest this label when the PR changes user-facing editor behavior:
+        React components under packages/*/src, webview panels, side panels,
+        diagram rendering, form or expression editors, or anything under
+        packages/ballerina-extension/src/views. Do not suggest it for changes
+        limited to the language server, build config, tests, or documentation.
+
+  # labeling_instructions only reaches the author through the walkthrough, so this
+  # has to stay on for the suggestion to appear at all.
+  suggested_labels: true
+  # Left off deliberately. Applying this label starts a full Playwright run, so a
+  # misjudged PR would burn CI with no one having agreed to it. Suggest, and let
+  # the author decide.
+  auto_apply_labels: false
 
   auto_review:
     base_branches:
@@ -201,6 +214,14 @@ reviews:
           Flag an unguarded onDidChangeTextDocument that leads to an RPC
           notification.
 
+        - E2E COVERAGE. When the change introduces a new UI feature or a major
+          flow that the suites under
+          packages/ballerina-extension/e2e-test/e2e-playwright-tests/ do not
+          already cover, encourage adding an E2E test and point at the authoring
+          workflow in .claude/skills/ballerina-e2e-writer/SKILL.md. Encourage, do
+          not require -- promotion into the suite is a deliberate step and
+          test.list.ts controls ordering.
+
         CI runs no ESLint or Prettier on this repo, and six packages are still on
         legacy tslint, so these are not caught anywhere else.
 
@@ -266,27 +287,6 @@ reviews:
         touched. Phrase it as a question. Refactors, dependency bumps, and
         config-only PRs legitimately have no test change, and nagging on those
         trains people to ignore you.
-
-    # E2E label prompt
-    - path: '**'
-      instructions: |
-        E2E SUITE GATING. The Playwright suite does not run on most PRs. Per
-        .github/workflows/pull-request.yml it runs only when the PR carries the
-        label `Checks/Run Ballerina UI Tests`, or when the base branch ends in
-        `.x`. Nothing in the PR template mentions this, so it is easy to miss.
-
-        When a PR contains significant UI changes -- webview components, side
-        panels, diagram rendering, form or editor behavior -- ask the author to
-        add the `Checks/Run Ballerina UI Tests` label before merge. Related
-        labels: `Checks/Run LS Tests` (also auto-added when
-        packages/ballerina-language-server/ changes) and `Runner/AWS`.
-
-        When the PR introduces a new UI feature or a major UI flow that the suites
-        under packages/ballerina-extension/e2e-test/e2e-playwright-tests/ do not
-        already cover, encourage adding an E2E test and point at the authoring
-        workflow in .claude/skills/ballerina-e2e-writer/SKILL.md. Encourage, do
-        not require -- promotion into the suite is a deliberate step and
-        test.list.ts controls ordering.
 
   # Tools default to on, and with inheritance an omitted tool keeps whatever the
   # dashboard says. So these are only the ones worth turning off.
