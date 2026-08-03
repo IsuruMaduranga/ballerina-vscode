@@ -1060,21 +1060,18 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
     }
 
     async getConfigVariablesV2(params: ConfigVariableRequest): Promise<ConfigVariableResponse> {
-        return new Promise(async (resolve) => {
-            const projectPath = StateMachine.context().projectPath;
-            const showLibraryConfigVariables = extension.ballerinaExtInstance.showLibraryConfigVariables();
+        const projectPath = StateMachine.context().projectPath;
+        const showLibraryConfigVariables = extension.ballerinaExtInstance.showLibraryConfigVariables();
 
-            // if params includeLibraries is not set, then use settings
-            const includeLibraries = params?.includeLibraries !== undefined
-                ? params.includeLibraries
-                : showLibraryConfigVariables !== false;
+        // if params includeLibraries is not set, then use settings
+        const includeLibraries = params?.includeLibraries !== undefined
+            ? params.includeLibraries
+            : showLibraryConfigVariables !== false;
 
-            const variables = await StateMachine.langClient().getConfigVariablesV2({
-                projectPath: projectPath,
-                includeLibraries
-            }) as ConfigVariableResponse;
-            resolve(variables);
-        });
+        return await StateMachine.langClient().getConfigVariablesV2({
+            projectPath: projectPath,
+            includeLibraries
+        }) as ConfigVariableResponse;
     }
 
     async updateConfigVariablesV2(params: UpdateConfigVariableRequestV2): Promise<UpdateConfigVariableResponseV2> {
