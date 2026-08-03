@@ -30,6 +30,7 @@ import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Property;
 import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
 import io.ballerina.flowmodelgenerator.core.utils.FileSystemUtils;
+import io.ballerina.modelgenerator.commons.ParameterData;
 import org.ballerinalang.langserver.common.utils.NameUtil;
 import org.eclipse.lsp4j.TextEdit;
 
@@ -64,6 +65,11 @@ public class ChildWorkflowRunBuilder extends NodeBuilder {
     public static final String INPUT_KEY = "input";
     public static final String INPUT_LABEL = "Input";
     public static final String INPUT_DOC = "Input data for the child workflow";
+    // Which workflow is started is the first thing this statement says, so the form shows it
+    // rather than leaving it implicit in whatever the palette was clicked on.
+    public static final String WORKFLOW_NAME_KEY = "workflow";
+    public static final String WORKFLOW_NAME_LABEL = "Child Workflow";
+    public static final String WORKFLOW_NAME_DOC = "The workflow to start as a child of this one";
     private static final String DEFAULT_VARIABLE_NAME = "childWorkflowId";
 
     @Override
@@ -89,6 +95,27 @@ public class ChildWorkflowRunBuilder extends NodeBuilder {
                     .symbol(codedata.symbol())
                     .version(codedata.version());
         }
+
+        // Pre-selected to whatever the list was clicked on, and editable so the choice can be
+        // changed — and read — from the form itself.
+        String selectedWorkflow = codedata != null && codedata.symbol() != null ? codedata.symbol() : "";
+        properties().custom()
+                .metadata()
+                    .label(WORKFLOW_NAME_LABEL)
+                    .description(WORKFLOW_NAME_DOC)
+                    .stepOut()
+                .type()
+                    .fieldType(Property.ValueType.SINGLE_SELECT)
+                    .options(SendDataBuilder.getAvailableWorkflowFunctions(context))
+                    .selected(true)
+                    .stepOut()
+                .codedata()
+                    .kind(ParameterData.Kind.REQUIRED.name())
+                    .stepOut()
+                .value(selectedWorkflow)
+                .editable(true)
+                .stepOut()
+                .addProperty(WORKFLOW_NAME_KEY);
 
         TypeSymbol inputType = findSelectedWorkflowInputType(context, codedata);
         if (inputType != null) {
@@ -121,7 +148,12 @@ public class ChildWorkflowRunBuilder extends NodeBuilder {
 
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
-        String childWorkflowFunction = sourceBuilder.flowNode.codedata().symbol();
+        // The form's selection wins, so changing it in the form changes the generated call; the
+        // codedata symbol is what the palette selected and remains the fallback.
+        String childWorkflowFunction = sourceBuilder.getProperty(WORKFLOW_NAME_KEY)
+                .map(property -> property.value() == null ? "" : property.value().toString().trim())
+                .filter(value -> !value.isBlank())
+                .orElseGet(() -> sourceBuilder.flowNode.codedata().symbol());
         if (childWorkflowFunction == null || childWorkflowFunction.isBlank()) {
             throw new IllegalStateException("A workflow function symbol is required for CHILD_WORKFLOW_RUN");
         }

@@ -205,7 +205,7 @@ public class SendDataBuilder extends FunctionCall {
      * @param context The template context
      * @return List of options containing workflow function names
      */
-    private List<Option> getAvailableWorkflowFunctions(TemplateContext context) {
+    public static List<Option> getAvailableWorkflowFunctions(TemplateContext context) {
         List<Option> options = new ArrayList<>();
         Package currentPackage = PackageUtil.loadProject(context.workspaceManager(), context.filePath())
                 .currentPackage();
