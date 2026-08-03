@@ -812,7 +812,10 @@ export class NodeFactoryVisitor implements BaseVisitor {
     beginVisitChildWorkflowRun(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
         if (node.id) {
-            this.createWorkflowRunNode(node);
+            // Starting a child workflow is an action on the context, so it reads as one: the
+            // statement on the left, the variable it binds in the middle, and an arrow to the
+            // workflow being run.
+            this.createApiCallNode(node);
             this.addSuggestionsButton(node);
         }
     }

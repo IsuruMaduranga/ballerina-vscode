@@ -54,6 +54,10 @@ public class ChildWorkflowSendDataBuilder extends NodeBuilder {
     public static final String DESCRIPTION = SEND_DATA_CHILD_WORKFLOW_DESCRIPTION;
 
     public static final String CHILD_WORKFLOW_ID_KEY = "childWorkflowId";
+    public static final String WORKFLOW_NAME_KEY = "workflow";
+    public static final String WORKFLOW_NAME_LABEL = "Child Workflow";
+    public static final String WORKFLOW_NAME_DOC =
+            "The workflow the child workflow ID belongs to; its data events are offered below";
     public static final String DATA_NAME_KEY = "dataName";
     public static final String DATA_KEY = "data";
 
@@ -83,14 +87,38 @@ public class ChildWorkflowSendDataBuilder extends NodeBuilder {
                 .stepOut()
                 .addProperty(CHILD_WORKFLOW_ID_KEY);
 
+        // Which workflow the ID belongs to is not derivable from the ID expression, and the data
+        // event has to be picked from that workflow's declared channels — so the form asks for
+        // the workflow, then the channel, the way the plain send-data form does.
         properties().custom()
                 .metadata()
-                    .label("Data Name")
+                    .label(WORKFLOW_NAME_LABEL)
+                    .description(WORKFLOW_NAME_DOC)
+                    .stepOut()
+                .type()
+                    .fieldType(Property.ValueType.SINGLE_SELECT)
+                    .options(SendDataBuilder.getAvailableWorkflowFunctions(context))
+                    .selected(true)
+                    .stepOut()
+                .value("")
+                .editable(true)
+                .stepOut()
+                .addProperty(WORKFLOW_NAME_KEY);
+
+        properties().custom()
+                .metadata()
+                    .label("Data Event")
                     .description("The data event name: the field name of the child workflow's "
                             + "data-events record this payload is delivered to.")
                     .stepOut()
-                .type().fieldType(Property.ValueType.EXPRESSION).ballerinaType("string").selected(true).stepOut()
+                .type()
+                    .fieldType(Property.ValueType.SINGLE_SELECT)
+                    .ballerinaType("string")
+                    .options(List.of())
+                    .selected(true)
+                    .stepOut()
                 .placeholder("\"dataName\"")
+                .value("")
                 .editable(true)
                 .stepOut()
                 .addProperty(DATA_NAME_KEY);

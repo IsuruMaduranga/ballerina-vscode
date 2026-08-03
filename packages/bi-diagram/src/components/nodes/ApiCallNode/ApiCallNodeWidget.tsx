@@ -265,7 +265,14 @@ export function ApiCallNodeWidget(props: ApiCallNodeWidgetProps) {
     const processFunctionProperty = (model.node.properties as any)?.processFunction;
     const connectionValue = connectionProperty?.value as string | undefined;
     const fallbackEndpointValue = processFunctionProperty?.value as string | undefined;
-    const endpointLabel = connectionValue ?? fallbackEndpointValue ?? "";
+    // A child workflow statement targets a workflow rather than a connection: the form carries it
+    // as the selected workflow, and a statement read back from source carries it as the node's
+    // second line, so the arrow points at the workflow being run either way.
+    const workflowValue = (model.node.properties as any)?.workflow?.value as string | undefined;
+    const childWorkflowTarget = model.node.codedata?.node?.startsWith("CHILD_WORKFLOW")
+        ? model.node.metadata?.description
+        : undefined;
+    const endpointLabel = connectionValue ?? fallbackEndpointValue ?? workflowValue ?? childWorkflowTarget ?? "";
     const connectorType = (connectionProperty?.metadata?.data as NodeMetadata | undefined)?.connectorType;
 
     useEffect(() => {

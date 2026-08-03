@@ -546,8 +546,9 @@ export class SizingVisitor implements BaseVisitor {
     // Child workflow nodes reuse the workflow-run/send/wait shapes, so they are measured with them.
     endVisitChildWorkflowRun(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
-        // The workflow-run widget is a base node, so it must be measured as one.
-        this.createBaseNode(node);
+        // Measured as the action it is drawn as, so the layout reserves the arrow and the
+        // target square to its right.
+        this.createApiCallNode(node);
     }
 
     endVisitChildWorkflowCall(node: FlowNode, parent?: FlowNode): void {
