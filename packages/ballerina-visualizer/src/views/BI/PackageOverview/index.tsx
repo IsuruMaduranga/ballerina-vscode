@@ -45,6 +45,7 @@ import { TitleBar } from "../../../components/TitleBar";
 import { PublishToCentralButton } from "./PublishToCentralButton";
 import { LibraryOverview } from "./LibraryOverview";
 import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
+import { useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
 
 const SpinnerContainer = styled.div`
     display: flex;
@@ -825,6 +826,8 @@ export function PackageOverview(props: PackageOverviewProps) {
     const [isInProject, setIsInProject] = useState(false);
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
     const [isNPSupported, setIsNPSupported] = useState<boolean>(false);
+    const aiPanelOpen = useAiPanelOpen();
+    const showHero = !isLibrary && !aiPanelOpen;
     const fetchContext = useCallback(() => {
         rpcClient
             .getBIDiagramRpcClient()
@@ -1127,12 +1130,12 @@ export function PackageOverview(props: PackageOverviewProps) {
                         </HeaderControls>
                     </HeaderRow>
                 )}
-                {!isLibrary && (
+                {showHero && (
                     <HeroRow>
                         <CopilotHeroBox />
                     </HeroRow>
                 )}
-                <MainContent fullWidth={isLibrary} withHero={!isLibrary}>
+                <MainContent fullWidth={isLibrary} withHero={showHero}>
                     <LeftContent>
                         <DiagramPanel noPadding={true} noBorder={isLibrary}>
                             {showAlert && (
