@@ -1208,18 +1208,16 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
 
     /**
      * Resolves a trigger picker entry's basic info. When {@code trigger_properties.json} already
-     * carries {@code version}/{@code icon}/{@code kind} for this entry, builds {@link TriggerBasicInfo}
-     * straight from those scalars -- no {@code TriggerUISchemaModel} is parsed or cached, so listing the full
-     * picker never pays the cost of reading every connector's (potentially large, deeply-nested) schema
-     * just to render a list row. Only an entry missing those fields (a legacy trigger with no
-     * schema-driven model, e.g. Solace, or one not yet backfilled) falls back to the fuller
-     * {@link #getTriggerBasicInfoByName(String, String)} resolution chain.
+     * carries {@code version}/{@code kind} for this entry, builds {@link TriggerBasicInfo} straight from
+     * those scalars (deriving the icon URL from {@code orgName}/{@code packageName}/{@code version}) --
+     * no {@code TriggerUISchemaModel} is parsed or cached just to render a list row. Only an entry
+     * missing those fields (a legacy trigger with no schema-driven model, e.g. Solace, or one not yet
+     * backfilled) falls back to the fuller {@link #getTriggerBasicInfoByName(String, String)} chain.
      *
      * <p>Package-visible for unit testing without a full LS bootstrap.
      */
     Optional<TriggerBasicInfo> getTriggerBasicInfoByName(TriggerProperty triggerProperty) {
-        if (triggerProperty.version() != null && triggerProperty.icon() != null
-                && triggerProperty.kind() != null) {
+        if (triggerProperty.version() != null && triggerProperty.kind() != null) {
             return Optional.of(toTriggerBasicInfo(triggerProperty));
         }
 
@@ -1239,8 +1237,10 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
         String label = triggerProperty.triggerName() != null ? triggerProperty.triggerName() : triggerProperty.name();
         String protocol = getProtocol(triggerProperty.name());
         int id = triggerProperty.name().hashCode();
+        String icon = CommonUtils.generateIcon(triggerProperty.orgName(), triggerProperty.packageName(),
+                triggerProperty.version());
         return new TriggerBasicInfo(id, label, triggerProperty.orgName(), triggerProperty.packageName(),
                 triggerProperty.name(), triggerProperty.version(), triggerProperty.kind(), label, "",
-                protocol, triggerProperty.icon());
+                protocol, icon);
     }
 }

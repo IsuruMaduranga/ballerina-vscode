@@ -206,8 +206,8 @@ public class SchemaDrivenSourceGeneratorTest {
 
     @Test
     public void testFtpsProtocolChoiceAndSecureSocket() {
-        // FTPS was missing from the schema-driven model entirely (ftp_init.json's hardcoded-builder
-        // era supported it). Selecting it must emit `protocol = ftp:FTPS` plus the advanced
+        // FTPS was missing from the schema-driven model entirely (the pre-migration hardcoded builder
+        // supported it). Selecting it must emit `protocol = ftp:FTPS` plus the advanced
         // `secureSocket` field.
         ServiceInitModel model = TriggerModelReader.getInstance().getBundledServiceInitModel("ftp").orElseThrow();
         Value protocol = listenerConfigProperties(model).get("protocol");
@@ -227,9 +227,10 @@ public class SchemaDrivenSourceGeneratorTest {
 
     @Test
     public void testSftpSupportsBasicAuthenticationAlongsideCertificateAuth() {
-        // ftp_init.json's SFTP branch offered No Auth / Basic Auth / Certificate Auth as alternatives;
-        // the schema-driven model previously hardcoded private-key auth as the only option. Selecting
-        // Basic Authentication for SFTP must fold into `auth.credentials.{username,password}`.
+        // The pre-migration hardcoded builder's SFTP branch offered No Auth / Basic Auth / Certificate
+        // Auth as alternatives; the schema-driven model previously hardcoded private-key auth as the
+        // only option. Selecting Basic Authentication for SFTP must fold into
+        // `auth.credentials.{username,password}`.
         ServiceInitModel model = TriggerModelReader.getInstance().getBundledServiceInitModel("ftp").orElseThrow();
         Value protocol = listenerConfigProperties(model).get("protocol");
         selectChoiceByValue(protocol, "SFTP");

@@ -11,7 +11,6 @@
     ],
     "triggerName": "Kafka",
     "version": "4.5.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_kafka_4.5.0.png",
     "kind": "event"
   },
   "2": {
@@ -25,7 +24,6 @@
     ],
     "triggerName": "RabbitMQ",
     "version": "3.6.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_rabbitmq_3.6.0.png",
     "kind": "event"
   },
   "3": {
@@ -38,7 +36,6 @@
     ],
     "triggerName": "MQTT",
     "version": "1.4.1",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_mqtt_1.4.1.png",
     "kind": "event"
   },
   "4": {
@@ -54,7 +51,6 @@
     ],
     "triggerName": "Azure Service Bus",
     "version": "3.10.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_asb_3.10.0.png",
     "kind": "event"
   },
   "5": {
@@ -67,7 +63,6 @@
     ],
     "triggerName": "Salesforce",
     "version": "8.7.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_salesforce_8.7.0.png",
     "kind": "event"
   },
   "6": {
@@ -81,7 +76,6 @@
     ],
     "triggerName": "Twilio",
     "version": "0.10.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_trigger.twilio_0.10.0.png",
     "kind": "event"
   },
   "7": {
@@ -94,7 +88,6 @@
     ],
     "triggerName": "GitHub",
     "version": "0.10.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_trigger.github_0.10.0.png",
     "kind": "event"
   },
   "8": {
@@ -110,7 +103,6 @@
     ],
     "triggerName": "FTP / SFTP",
     "version": "2.19.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_ftp_2.19.0.png",
     "kind": "file"
   },
   "9": {
@@ -125,7 +117,6 @@
     ],
     "triggerName": "Directory",
     "version": "1.13.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_file_1.13.0.png",
     "kind": "file"
   },
   "10": {
@@ -137,7 +128,6 @@
     ],
     "triggerName": "MCP Service",
     "version": "1.2.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_mcp_1.2.0.png",
     "kind": "mcp"
   },
   "11": {
@@ -161,7 +151,6 @@
     ],
     "triggerName": "Shopify",
     "version": "1.6.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_trigger.shopify_1.6.0.png",
     "kind": "event"
   },
   "13": {
@@ -175,7 +164,6 @@
     ],
     "triggerName": "CDC for Microsoft SQL Server",
     "version": "1.18.1",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_mssql_1.18.1.png",
     "kind": "event"
   },
   "14": {
@@ -190,7 +178,6 @@
     ],
     "triggerName": "CDC for PostgreSQL",
     "version": "1.18.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_postgresql_1.18.0.png",
     "kind": "event"
   },
   "15": {
@@ -204,7 +191,6 @@
     ],
     "triggerName": "CDC for MySQL",
     "version": "1.18.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_mysql_1.18.0.png",
     "kind": "event"
   },
   "16": {
@@ -217,7 +203,6 @@
     ],
     "triggerName": "HubSpot",
     "version": "0.12.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_trigger.hubspot_0.12.0.png",
     "kind": "event"
   }
 }
