@@ -1,45 +1,20 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 #
-# CodeRabbit configuration - https://docs.coderabbit.ai/getting-started/yaml-configuration
+# CodeRabbit config - https://docs.coderabbit.ai/getting-started/yaml-configuration
+# Only the root .coderabbit.yaml is read. A copy inside a package does nothing.
 #
-# Only a .coderabbit.yaml at the repo root is read; a copy inside a package has
-# no effect.
+# Precedence, high to low: workspace and org global overrides, THIS FILE, central
+# YAML, repo UI, org UI, workspace UI, schema defaults. Global overrides beat this
+# file, so if any are set, nothing here applies.
 #
-# Precedence, highest to lowest: workspace global overrides, org global
-# overrides, THIS FILE, central YAML, repository UI settings, org UI settings,
-# workspace UI settings, schema defaults.
+# `inheritance` is on, so anything left unset keeps resolving from the dashboard
+# instead of snapping back to a schema default. CodeRabbit ran on dashboard config
+# here for a while and that was worth keeping. So only set a value when there is a
+# reason: CI already covers it, a tracked issue says so, or the rules below depend
+# on it. Arrays merge child-first, so an org-level path_instructions entry lands
+# after ours rather than replacing it.
 #
-# `inheritance` is enabled below. It defaults to false, and leaving it off would
-# mean only the highest-priority source applies -- this file would become the
-# entire configuration and every dashboard setting for this repo would stop
-# taking effect, including the ones already in use before this file existed.
-# CodeRabbit was configured through the dashboard for a while, so discarding
-# that was not the intent. With inheritance on:
-#
-#   - Values set here win, since repository YAML outranks all the UI levels.
-#   - Values NOT set here fall through to central YAML, then the repo, org, and
-#     workspace UI settings, then schema defaults -- so existing dashboard
-#     configuration keeps working for everything this file is silent about.
-#   - Because of that, this file deliberately stays narrow. A setting is stated
-#     only where there is a concrete reason for it: a verified overlap with CI, a
-#     decision recorded in a tracked issue, or something the review design here
-#     depends on. Everything else is left out so it keeps resolving from the
-#     dashboard rather than being silently reset to a schema default.
-#   - Arrays merge as "child items first, then unique parent items appended", so
-#     an org-level path_instructions entry would be appended after ours rather
-#     than replaced.
-#   - Org- or workspace-level *global overrides* outrank this file either way. If
-#     any are set, settings here are silently ignored. Run
-#     `@coderabbitai configuration` on a PR to see the effective config with its
-#     per-setting source, and confirm these values are attributed to the
-#     repository YAML.
-#
-# Baseline is `chill`. The blocklist in the first path_instructions block is the
-# only thing meant to be raised loudly. request_changes_workflow is off, so the
-# bot never gates the merge button.
-
-# Fill values this file leaves undefined from the dashboard rather than from
-# schema defaults. See the precedence note above.
+# To see what actually applies, comment `@coderabbitai configuration` on a PR.
 inheritance: true
 
 tone_instructions: >-
@@ -48,11 +23,9 @@ tone_instructions: >-
   VS Code listeners. Everything else is a suggestion.
 
 reviews:
-  # These two match the schema defaults, but they are stated because the whole
-  # design depends on them: a chill baseline with a short hard-flag list, and a
-  # bot that comments rather than gating the merge button. If the dashboard ever
-  # moves to `assertive` or enables the request-changes workflow, omitting these
-  # would silently change how every path instruction below is applied.
+  # Both match the schema default, but every instruction below assumes a chill
+  # baseline that comments rather than blocks. Pinned so an org-level switch to
+  # `assertive` cannot quietly change how all of it is applied.
   profile: chill
   request_changes_workflow: false
 
@@ -66,13 +39,12 @@ reviews:
       - 'staging/.*'
 
   path_filters:
-    # --- Build output. Gitignored, listed anyway so a stray commit is filtered.
+    # Build output. Gitignored already; listed so a stray commit is still skipped.
     - '!**/node_modules/**'
     - '!**/dist/**'
-    # 'build' and 'lib' are scoped to the package root on purpose. A bare
-    # '**/build/**' also swallows .github/actions/build/action.yml, and a bare
-    # '**/lib/**' swallows packages/ballerina-extension/test/lib/index.ts --
-    # both hand-written.
+    # Scoped to the package root: a bare '**/build/**' also catches
+    # .github/actions/build/action.yml, and '**/lib/**' catches
+    # packages/ballerina-extension/test/lib/index.ts.
     - '!packages/*/build/**'
     - '!packages/*/build-app/**'
     - '!packages/*/lib/**'
@@ -86,20 +58,18 @@ reviews:
     # Build-time copy of packages/ballerina-grammar/syntaxes/.
     - '!packages/ballerina-extension/grammar/ballerina-grammar/**'
 
-    # --- Not this repo's code. Separate git repo; git tracks it as a single
-    # gitlink entry with no trailing path, so both forms are needed.
+    # Separate repo. Git tracks it as one gitlink with no trailing path, so both
+    # forms are needed.
     - '!submodules'
     - '!submodules/**'
 
-    # --- Machine-generated content that IS tracked.
-    # ~10k expected-output blobs for the language server. Reviewing them is noise.
+    # Generated content that is tracked anyway.
+    # ~10k expected-output blobs for the language server.
     - '!packages/ballerina-language-server/**/src/test/resources/**'
-    # main/resources is NOT excluded wholesale. It holds large generated data
-    # blobs (moduleInfo.json 452K, node_templates.json 316K, search_list.json,
-    # the trigger definitions) alongside hand-written files that matter --
-    # META-INF/services SPI registrations in particular. Miss one of those and
-    # the language server silently fails to load the extension. Exclude the
-    # data, keep the rest reviewable.
+    # Only the JSON under main/resources, not the whole tree. It mixes big
+    # generated blobs (moduleInfo.json is 452K) with hand-written files that
+    # matter -- miss a META-INF/services entry and the LS silently fails to load
+    # an extension.
     - '!packages/ballerina-language-server/**/src/main/resources/**/*.json'
     - '!packages/ballerina-extension/test/data/**'
     - '!packages/ballerina-extension/ui-test/data/**'
@@ -109,22 +79,21 @@ reviews:
     - '!packages/syntax-tree/src/syntax-tree-interfaces.ts'
     - '!packages/syntax-tree/src/check-kind-util.ts'
     - '!packages/syntax-tree/src/base-visitor.ts'
-    # Downloaded from wso2/code-quality-tools, tracked despite the build/ path.
+    # Vendored from wso2/code-quality-tools, tracked despite the build/ path.
     - '!packages/ballerina-language-server/build-config/checkstyle/build/**'
 
-    # --- Lockfiles, rush state, and media.
+    # Lockfiles, rush state, media.
     - '!**/pnpm-lock.yaml'
     - '!**/package-lock.json'
     - '!common/config/rush/repo-state.json'
     - '!docs/**/images/**'
     - '!resources/images/**'
 
-    # Deliberately NOT filtered despite its size: packages/ballerina-extension/
-    # package.json. Its `contributes` block is where command and setting
-    # regressions land.
+    # packages/ballerina-extension/package.json stays reviewable despite its size.
+    # Its `contributes` block is where command and setting regressions land.
 
   path_instructions:
-    # ---------------------------------------------------------------- blocklist
+    # Blocklist
     - path: '**/*.{ts,tsx,java}'
       instructions: |
         These four are the only findings to raise as blocking. State them plainly
@@ -151,7 +120,7 @@ reviews:
            packages/ballerina-extension/src/views/ already get this wrong; do not
            treat surrounding code as the standard.
 
-    # ------------------------------------------------------------ repo mechanics
+    # Repo mechanics
     - path: '**/*.{ts,tsx,json}'
       instructions: |
         Conventions specific to this Rush monorepo. Each is written down in
@@ -179,7 +148,7 @@ reviews:
           common/config/rush/pnpm-config.json under globalOverrides, not to
           .trivyignore. .trivyignore must stay one plain ID per line.
 
-    # -------------------------------------------------------------- RPC boundary
+    # RPC boundary
     - path: 'packages/{ballerina-core,ballerina-rpc-client,ballerina-extension}/**/*.ts'
       instructions: |
         The extension-to-webview contract is a three-layer split that has to move
@@ -208,7 +177,7 @@ reviews:
           side becomes an unhandled promise rejection inside the webview with no
           user-visible error.
 
-    # ------------------------------------------------------------ React webviews
+    # React webviews
     - path: 'packages/*/src/**/*.tsx'
       instructions: |
         - useEffect dependency arrays and stale closures. `react-hooks/
@@ -235,7 +204,7 @@ reviews:
         CI runs no ESLint or Prettier on this repo, and six packages are still on
         legacy tslint, so these are not caught anywhere else.
 
-    # ----------------------------------------------------------- Java LS backend
+    # Java LS backend
     - path: 'packages/ballerina-language-server/**/*.java'
       instructions: |
         Do NOT comment on formatting, naming, import order, line length, javadoc
@@ -258,7 +227,7 @@ reviews:
         - Cancellation tokens accepted and then ignored on long operations.
         - New behavior with no TestNG coverage.
 
-    # ------------------------------------------------------------------- tests
+    # Test files
     - path: '**/{*.test.ts,*.test.tsx,*.spec.ts,*.spec.tsx,e2e-test/**,jest.*.js}'
       instructions: |
         - JEST CONFIG FILENAMES (hard rule). Only a file named exactly
@@ -282,7 +251,8 @@ reviews:
         - Review test quality where tests exist: hardcoded sleeps instead of
           waits, missing assertions, mocking so broad the test asserts nothing.
 
-    # ------------------------------------------------- test coverage expectations
+    # Test coverage. Separate from the block above because "a test is missing"
+    # has to fire on the source file, not on a test file that may not exist.
     - path: 'packages/**/*.{ts,tsx,java}'
       instructions: |
         Test expectations, split by how hard the rule is.
@@ -297,7 +267,7 @@ reviews:
         config-only PRs legitimately have no test change, and nagging on those
         trains people to ignore you.
 
-    # ------------------------------------------------------------- E2E label rule
+    # E2E label prompt
     - path: '**'
       instructions: |
         E2E SUITE GATING. The Playwright suite does not run on most PRs. Per
@@ -318,36 +288,29 @@ reviews:
         not require -- promotion into the suite is a deliberate step and
         test.list.ts controls ordering.
 
-  # Every tool defaults to enabled: true, and with inheritance on an omitted tool
-  # resolves from the dashboard. So only tools we can point at a concrete reason
-  # for are listed; everything else defers to whatever the team already set.
-  # Each entry below turns a tool OFF because something in CI already covers it,
-  # or because of a decision recorded in a tracked issue.
+  # Tools default to on, and with inheritance an omitted tool keeps whatever the
+  # dashboard says. So these are only the ones worth turning off.
   tools:
-    # 2156 .java files, and the Gradle build runs checkstyle (wso2
-    # code-quality-tools v1.4) plus spotbugs on every PR inside Build_Stage.
-    # Enabling this would report the same findings twice.
+    # 2156 .java files, and Gradle runs checkstyle + spotbugs on every PR in
+    # Build_Stage. Enabling this reports the same findings twice.
     pmd:
       enabled: false
 
-    # Trivy already runs in reusable-build.yml and schedule.yml, governed by
-    # .trivyignore. osvScanner covers the same dependency-CVE ground.
+    # Trivy already runs in reusable-build.yml and schedule.yml. osvScanner
+    # covers the same dependency-CVE ground.
     trivy:
       enabled: false
     osvScanner:
       enabled: false
 
-    # By decision, not because of CI. Six packages are still on legacy tslint
-    # (ballerina-extension, ballerina-low-code-diagram, syntax-tree,
-    # graphql-design-diagram, statement-editor, data-mapper), the rest are split
-    # across .eslintrc and flat config, data-mapper and overview-view have
-    # conflicting configs, and four packages have a lint script that cannot
-    # succeed. The rules worth enforcing are in path_instructions above instead.
+    # Off by decision, not because CI covers it -- nothing lints TypeScript here.
+    # The configs are too uneven to act on: six packages still use tslint, the
+    # rest split across .eslintrc and flat config, data-mapper and overview-view
+    # have conflicting configs, and four packages have a lint script that cannot
+    # run. The rules worth keeping are in path_instructions above.
     #
-    # TODO: set this to true once the ESLint migration lands. Tracked in
-    # wso2-enterprise/integration-engineering#2167, which covers migrating the
-    # six tslint packages, converging on one flat config, and adding a lint job
-    # to pull-request.yml. CodeRabbit has no tslint integration, so those six
-    # packages cannot be covered by this tool until they move.
+    # TODO: set to true once the ESLint migration lands --
+    # wso2-enterprise/integration-engineering#2167. CodeRabbit has no tslint
+    # integration, so those six packages stay uncovered until they move.
     eslint:
       enabled: false
