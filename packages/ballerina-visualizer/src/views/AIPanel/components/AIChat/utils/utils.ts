@@ -38,12 +38,12 @@ export function getOnboardingOpens(): number {
 
 const THINKING_ENABLED_KEY = "copilotThinkingEnabled";
 
-/** Extended-thinking preference. Default ON — only an explicit "false" disables it. */
+/** Extended-thinking preference. Beta, so default OFF — only an explicit "true" enables it. */
 export function getThinkingPreference(): boolean {
     try {
-        return localStorage.getItem(THINKING_ENABLED_KEY) !== "false";
+        return localStorage.getItem(THINKING_ENABLED_KEY) === "true";
     } catch {
-        return true;
+        return false;
     }
 }
 

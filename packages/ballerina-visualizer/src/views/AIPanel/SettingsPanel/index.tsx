@@ -23,6 +23,7 @@ import { Button, Codicon, Icon } from "@wso2/ui-toolkit";
 import { AIChatView, DangerActionButton, PrimaryActionButton, SuccessActionButton, ToggleSwitch } from "../styles";
 import { AIMachineEventType, AgentsMdFileInfoDTO, McpServerStatusDTO, SkillEntry } from "@wso2/ballerina-core";
 import { CustomizeRow, CustomizeEntry } from "./CustomizeRow";
+import { ExperimentalTag } from "../components/ExperimentalTag";
 import type { PanelRoute } from "../components/AIChat";
 import { getThinkingPreference, setThinkingPreference } from "../components/AIChat/utils/utils";
 
@@ -101,6 +102,14 @@ const SettingLabel = styled.span`
     font-size: 13px;
     color: var(--vscode-foreground);
     font-family: var(--vscode-font-family);
+`;
+
+/** Label plus an inline badge (e.g. the beta tag) on one baseline. */
+const SettingLabelRow = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
 `;
 
 const SettingDescription = styled.span`
@@ -387,10 +396,17 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
                     <SectionHeader>Thinking</SectionHeader>
                     <SettingRow>
                         <SettingInfo>
-                            <SettingLabel>Thinking Mode</SettingLabel>
+                            <SettingLabelRow>
+                                <SettingLabel>Thinking Mode</SettingLabel>
+                                <ExperimentalTag
+                                    size="sm"
+                                    label="Beta"
+                                    tooltip="Thinking Mode is in beta and may change."
+                                />
+                            </SettingLabelRow>
                             <SettingDescription>
                                 Let the Copilot reason before responding on harder requests.
-                                Disable if it overthinks or feels slow on simple requests.
+                                Enable for complex work; it can feel slower on simple requests.
                             </SettingDescription>
                         </SettingInfo>
                         <ToggleSwitch
