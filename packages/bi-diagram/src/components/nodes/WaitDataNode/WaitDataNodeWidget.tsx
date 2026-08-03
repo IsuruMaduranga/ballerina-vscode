@@ -26,7 +26,12 @@ import { MoreVertIcon } from "../../../resources";
 import { useDiagramContext } from "../../DiagramContext";
 import { BreakpointMenu } from "../../BreakNodeMenu/BreakNodeMenu";
 import { DiagnosticsPopUp } from "../../DiagnosticsPopUp";
-import { getDiffContainerStyles, getDiffTitleStyles, nodeHasError } from "../../../utils/node";
+import {
+    getAgentDataEventName,
+    getDiffContainerStyles,
+    getDiffTitleStyles,
+    nodeHasError,
+} from "../../../utils/node";
 import { WaitDataNodeModel } from "./WaitDataNodeModel";
 import {
     HIGHLIGHT_NODE_BORDER_COLOR,
@@ -169,6 +174,17 @@ function normalizeNodePropertyValue(value?: string): string {
 }
 
 function getWaitDataInfo(node: FlowNode): { title: string; subtitle: string } {
+    // A durable agent's wait names the channel it is waiting on. The call itself carries only the
+    // correlation token, so the channel comes from metadata — the language server recovers it from
+    // the sendData that issued the token.
+    const agentDataEvent = getAgentDataEventName(node);
+    if (agentDataEvent) {
+        return {
+            title: `Wait for ${agentDataEvent}`,
+            subtitle: normalizeNodePropertyValue((node.properties as any)?.variable?.value as string | undefined),
+        };
+    }
+
     // New format: dataWaits repeatable property
     const dataWaits = (node.properties as any)?.dataWaits?.value;
     if (dataWaits && typeof dataWaits === "object") {

@@ -27,7 +27,12 @@ import { MoreVertIcon } from "../../../resources";
 import NodeIcon from "../../NodeIcon";
 import { useDiagramContext } from "../../DiagramContext";
 import { DiagnosticsPopUp } from "../../DiagnosticsPopUp";
-import { getDiffContainerStyles, getDiffTitleStyles, nodeHasError } from "../../../utils/node";
+import {
+    getAgentDataEventName,
+    getDiffContainerStyles,
+    getDiffTitleStyles,
+    nodeHasError,
+} from "../../../utils/node";
 import { BreakpointMenu } from "../../BreakNodeMenu/BreakNodeMenu";
 import {
     DRAFT_NODE_BORDER_WIDTH,
@@ -235,9 +240,13 @@ export function SendDataNodeWidget(props: SendDataNodeWidgetProps) {
     const processFunctionProperty = (model.node.properties as any)?.processFunction;
     const connectionValue = connectionProperty?.value as string | undefined;
     const fallbackWorkflowValue = processFunctionProperty?.value as string | undefined;
-    const dataName = normalizeNodePropertyValue(dataNameProperty?.value as string | undefined);
+    // A durable agent's send carries the channel and the agent it drives as metadata rather than
+    // as form properties, so the same node reads "Send to <event>" with the agent as its target.
+    const agentDataEvent = getAgentDataEventName(model.node);
+    const agentName = (model.node.metadata?.data as { agentName?: string } | undefined)?.agentName;
+    const dataName = normalizeNodePropertyValue(dataNameProperty?.value as string | undefined) || agentDataEvent;
     const workflowName = getWorkflowName(
-        (workflowProperty?.value as string | undefined) ?? connectionValue ?? fallbackWorkflowValue
+        (workflowProperty?.value as string | undefined) ?? connectionValue ?? fallbackWorkflowValue ?? agentName
     );
     const nodeTitle = dataName ? `Send to ${dataName}` : "Send Data";
     const canViewWorkflow = Boolean(workflowName);

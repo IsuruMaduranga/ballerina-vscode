@@ -987,6 +987,174 @@ public class CodeAnalyzer extends NodeVisitor {
         nodeBuilder.properties().checkError(hasCheck);
     }
 
+    /**
+     * The node kind for a durable agent's driving method, or null when the method is not one of
+     * them. {@code run} is excluded — it renders the agent box and is handled on its own.
+     */
+    private static NodeKind durableAgentCallKind(String methodName) {
+        return switch (methodName) {
+            case Constants.Workflow.AGENT_SEND_DATA_METHOD_NAME -> NodeKind.DURABLE_AGENT_UPDATE;
+            case Constants.Workflow.AGENT_WAIT_DATA_RESULT_METHOD_NAME,
+                 Constants.Workflow.AGENT_GET_DATA_RESULT_METHOD_NAME -> NodeKind.DURABLE_AGENT_DATA_RESULT;
+            case Constants.Workflow.AGENT_WAIT_RESULT_METHOD_NAME,
+                 Constants.Workflow.AGENT_GET_RESULT_METHOD_NAME -> NodeKind.DURABLE_AGENT_RESULT;
+            default -> null;
+        };
+    }
+
+    /**
+     * Attaches what the send/wait/result widgets render for a durable agent call: the label, the
+     * agent variable the call drives (drawn as the dashed agent box), and — for a data event —
+     * the channel name, so the node reads "Send to &lt;event&gt;" / "Wait for &lt;event&gt;" the
+     * way the equivalent workflow nodes do.
+     */
+    private void populateDurableAgentObjectCall(MethodCallExpressionNode callNode, ExpressionNode agentRef,
+                                                FunctionSymbol functionSymbol, String methodName,
+                                                NodeKind nodeKind) {
+        String agentVarName = agentRef.toSourceCode().trim();
+        boolean waits = Constants.Workflow.AGENT_WAIT_DATA_RESULT_METHOD_NAME.equals(methodName)
+                || Constants.Workflow.AGENT_WAIT_RESULT_METHOD_NAME.equals(methodName);
+        String label = switch (nodeKind) {
+            case DURABLE_AGENT_UPDATE -> Constants.Workflow.AGENT_SEND_DATA_LABEL;
+            case DURABLE_AGENT_DATA_RESULT -> waits ? Constants.Workflow.AGENT_WAIT_DATA_RESULT_LABEL
+                    : Constants.Workflow.AGENT_DATA_RESULT_LABEL;
+            default -> waits ? Constants.Workflow.AGENT_WAIT_RESULT_LABEL
+                    : Constants.Workflow.AGENT_RESULT_LABEL;
+        };
+        String description = switch (nodeKind) {
+            case DURABLE_AGENT_UPDATE -> Constants.Workflow.AGENT_SEND_DATA_DESCRIPTION;
+            case DURABLE_AGENT_DATA_RESULT -> Constants.Workflow.AGENT_DATA_RESULT_DESCRIPTION;
+            default -> Constants.Workflow.AGENT_RESULT_DESCRIPTION;
+        };
+
+        nodeBuilder
+                .symbolInfo(functionSymbol)
+                .metadata()
+                    .label(label)
+                    .description(description)
+                    .stepOut()
+                .codedata()
+                    .node(nodeKind)
+                    .org(WORKFLOW_ORG)
+                    .module(WORKFLOW_MODULE)
+                    .object(Constants.Workflow.DURABLE_AGENT_OBJECT_CLASS_NAME)
+                    .parentSymbol(agentVarName)
+                    .symbol(methodName);
+
+        // The widgets key the dashed target box on the agent name, and the wait affordance on
+        // whether the call suspends the caller.
+        nodeBuilder.metadata().addData("agentName", agentVarName);
+        nodeBuilder.metadata().addData("waits", waits);
+
+        String dataEventName = resolveDurableAgentDataEventName(callNode, nodeKind);
+        if (dataEventName != null) {
+            nodeBuilder.metadata().addData("dataName", dataEventName);
+        }
+
+        SyntaxKind parentKind = callNode.parent().kind();
+        boolean hasCheck = parentKind == SyntaxKind.CHECK_ACTION || parentKind == SyntaxKind.CHECK_EXPRESSION;
+        nodeBuilder.properties().checkError(hasCheck);
+    }
+
+    /**
+     * The data-event channel a durable agent call concerns.
+     *
+     * <p>{@code sendData} names the channel directly. The result reads do not — they take the
+     * correlation token the send returned — so the channel is recovered by following that token
+     * back to the {@code sendData} call that produced it, which is what lets the wait node say
+     * what it is waiting for. Returns null when the channel is not a literal, or the token does
+     * not trace back to a send in this function.
+     */
+    private String resolveDurableAgentDataEventName(MethodCallExpressionNode callNode, NodeKind nodeKind) {
+        SeparatedNodeList<FunctionArgumentNode> arguments = callNode.arguments();
+        if (nodeKind == NodeKind.DURABLE_AGENT_UPDATE) {
+            // sendData(instanceId, "<event>", data)
+            return arguments.size() > 1 ? stringLiteralArgument(arguments.get(1)) : null;
+        }
+        if (nodeKind != NodeKind.DURABLE_AGENT_DATA_RESULT || arguments.size() < 2) {
+            return null;
+        }
+        String tokenName = arguments.get(1) instanceof PositionalArgumentNode positional
+                ? positional.expression().toSourceCode().trim() : null;
+        if (tokenName == null || tokenName.isEmpty()) {
+            return null;
+        }
+        return findSendDataEventForToken(callNode, tokenName);
+    }
+
+    // Walks the enclosing function for `<...> <tokenName> = <agent>.sendData(id, "<event>", ...)`
+    // and returns that event name.
+    private String findSendDataEventForToken(NonTerminalNode fromNode, String tokenName) {
+        NonTerminalNode scope = fromNode;
+        while (scope != null && scope.kind() != SyntaxKind.FUNCTION_DEFINITION
+                && scope.kind() != SyntaxKind.RESOURCE_ACCESSOR_DEFINITION
+                && scope.kind() != SyntaxKind.OBJECT_METHOD_DEFINITION) {
+            scope = scope.parent();
+        }
+        if (scope == null) {
+            return null;
+        }
+        DurableAgentSendDataFinder finder = new DurableAgentSendDataFinder(tokenName);
+        scope.accept(finder);
+        return finder.eventName();
+    }
+
+    private static String stringLiteralArgument(FunctionArgumentNode argument) {
+        if (!(argument instanceof PositionalArgumentNode positional)) {
+            return null;
+        }
+        ExpressionNode expression = positional.expression();
+        if (expression.kind() != SyntaxKind.STRING_LITERAL) {
+            return null;
+        }
+        String text = expression.toSourceCode().trim();
+        return text.length() >= 2 && text.startsWith("\"") && text.endsWith("\"")
+                ? text.substring(1, text.length() - 1) : text;
+    }
+
+    /**
+     * Finds the {@code sendData} call whose result was bound to a given token variable, so a
+     * later result read can name the channel it belongs to.
+     */
+    private static class DurableAgentSendDataFinder extends NodeVisitor {
+
+        private final String tokenName;
+        private String eventName;
+
+        DurableAgentSendDataFinder(String tokenName) {
+            this.tokenName = tokenName;
+        }
+
+        String eventName() {
+            return eventName;
+        }
+
+        @Override
+        public void visit(VariableDeclarationNode variableDeclarationNode) {
+            if (eventName == null
+                    && variableDeclarationNode.typedBindingPattern().bindingPattern().toSourceCode().trim()
+                            .equals(tokenName)) {
+                variableDeclarationNode.initializer().ifPresent(this::captureSendDataEvent);
+            }
+            if (eventName == null) {
+                super.visit(variableDeclarationNode);
+            }
+        }
+
+        private void captureSendDataEvent(ExpressionNode initializer) {
+            ExpressionNode expression = initializer;
+            if (expression instanceof CheckExpressionNode check) {
+                expression = check.expression();
+            }
+            if (expression instanceof MethodCallExpressionNode call
+                    && Constants.Workflow.AGENT_SEND_DATA_METHOD_NAME
+                            .equals(getIdentifierName(call.methodName()))
+                    && call.arguments().size() > 1) {
+                eventName = stringLiteralArgument(call.arguments().get(1));
+            }
+        }
+    }
+
     // Parses the agent variable's `check new ({...})` config literal and attaches the agent-box
     // metadata: agent role/instructions, model, and the capability lists.
     private void populateAgentDeclarationMetadata(ExpressionNode agentVarRef) {
@@ -3597,11 +3765,23 @@ public class CodeAnalyzer extends NodeVisitor {
         // the agent box (role/instructions/model/capabilities from the config literal) inside
         // the caller's flow diagram.
         if (Constants.Workflow.DURABLE_AGENT_OBJECT_CLASS_NAME.equals(classSymbol.getName().orElse(""))
-                && isWorkflowModule(classSymbol.getModule())
-                && Constants.Workflow.AGENT_OBJECT_RUN_METHOD_NAME.equals(functionName)) {
-            startNode(NodeKind.DURABLE_AGENT_RUN, methodCallExpressionNode.parent());
-            populateDurableAgentObjectRun(methodCallExpressionNode, expressionNode, functionSymbol, functionName);
-            return;
+                && isWorkflowModule(classSymbol.getModule())) {
+            if (Constants.Workflow.AGENT_OBJECT_RUN_METHOD_NAME.equals(functionName)) {
+                startNode(NodeKind.DURABLE_AGENT_RUN, methodCallExpressionNode.parent());
+                populateDurableAgentObjectRun(methodCallExpressionNode, expressionNode, functionSymbol, functionName);
+                return;
+            }
+            // The agent's other driving methods have their own node kinds, and the palette
+            // already writes them — without mapping the calls back, reading the file renders
+            // them as plain `workflow : sendData` method calls instead of the send/wait nodes
+            // the equivalent workflow flow gets.
+            NodeKind agentCallKind = durableAgentCallKind(functionName);
+            if (agentCallKind != null) {
+                startNode(agentCallKind, methodCallExpressionNode.parent());
+                populateDurableAgentObjectCall(methodCallExpressionNode, expressionNode, functionSymbol,
+                        functionName, agentCallKind);
+                return;
+            }
         }
 
         if (isAgentClass(classSymbol)) {

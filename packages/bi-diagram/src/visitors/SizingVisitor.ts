@@ -43,7 +43,7 @@ import {
     WAIT_DATA_DETAILS_WIDTH,
     WHILE_NODE_WIDTH,
 } from "../resources/constants";
-import { reverseCustomNodeId } from "../utils/node";
+import { isWaitingAgentCall, reverseCustomNodeId } from "../utils/node";
 import { Branch, FlowNode } from "../utils/types";
 
 export class SizingVisitor implements BaseVisitor {
@@ -541,6 +541,27 @@ export class SizingVisitor implements BaseVisitor {
     endVisitWaitData(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
         this.createWaitDataNode(node);
+    }
+
+    // The durable agent send/wait nodes reuse the workflow shapes, so they have to be measured
+    // the same way — otherwise the widget draws at a size the layout never reserved.
+    endVisitDurableAgentUpdate(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        this.createSendDataNode(node);
+    }
+
+    endVisitDurableAgentDataResult(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        if (isWaitingAgentCall(node)) {
+            this.createWaitDataNode(node);
+        } else {
+            this.createBaseNode(node);
+        }
+    }
+
+    endVisitDurableAgentResult(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        this.endVisitDurableAgentDataResult(node, parent);
     }
 
     endVisitNpFunction(node: FlowNode, parent?: FlowNode): void {

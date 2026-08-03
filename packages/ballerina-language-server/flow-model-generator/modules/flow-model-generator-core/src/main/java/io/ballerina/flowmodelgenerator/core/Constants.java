@@ -221,9 +221,14 @@ public class Constants {
         public static final String AGENT_RESULT_DESCRIPTION =
                 "Read a durable agent instance's final result";
         public static final String AGENT_GET_DATA_RESULT_METHOD_NAME = "getDataResult";
-        public static final String AGENT_DATA_RESULT_LABEL = "Get Agent Data Result";
+        public static final String AGENT_DATA_RESULT_LABEL = "Get Data Event Result";
         public static final String AGENT_DATA_RESULT_DESCRIPTION =
                 "Read the agent's answer for a sent data event by its correlation token";
+        // Titles for the waiting variants, which suspend the caller until the agent answers.
+        // The diagram renders these with the wait affordance; the data-event wait names the
+        // channel it is waiting on, resolved from the sendData call that issued the token.
+        public static final String AGENT_WAIT_RESULT_LABEL = "Wait for Result";
+        public static final String AGENT_WAIT_DATA_RESULT_LABEL = "Wait for Data Event Result";
     }
 
     // Constants used for AI

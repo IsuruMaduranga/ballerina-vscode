@@ -48,6 +48,25 @@ export function isDurableAgentRegisterNode(nodeOrKind?: FlowNode | string) {
     return typeof nodeKind === "string" && DURABLE_AGENT_REGISTER_NODE_KINDS.has(nodeKind);
 }
 
+/**
+ * Whether a durable agent call suspends the caller until the agent answers.
+ *
+ * The waiting and non-waiting reads share a node kind — `waitForDataResult`/`getDataResult` and
+ * `waitForResult`/`getResult` — so the flag the language server attaches is what decides between
+ * the wait shape and a plain node.
+ */
+export function isWaitingAgentCall(node?: FlowNode) {
+    return (node?.metadata?.data as { waits?: boolean } | undefined)?.waits === true;
+}
+
+/**
+ * The data-event channel a durable agent send/wait concerns, used as the node's title so it reads
+ * "Send to &lt;event&gt;" / "Wait for &lt;event&gt;". Absent when the channel is not statically known.
+ */
+export function getAgentDataEventName(node?: FlowNode) {
+    return (node?.metadata?.data as { dataName?: string } | undefined)?.dataName;
+}
+
 export interface DiffStatePresentation {
     symbol: "+" | "−" | "~";
     label: "Added" | "Removed" | "Modified";

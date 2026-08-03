@@ -40,7 +40,13 @@ import {
     WHILE_NODE_WIDTH,
 } from "../resources/constants";
 import { createNodesLink } from "../utils/diagram";
-import { getBranchInLinkId, getBranchLabel, getCustomNodeId, reverseCustomNodeId } from "../utils/node";
+import {
+    getBranchInLinkId,
+    getBranchLabel,
+    getCustomNodeId,
+    isWaitingAgentCall,
+    reverseCustomNodeId,
+} from "../utils/node";
 import { Branch, FlowNode, NodeModel } from "../utils/types";
 import { EndNodeModel } from "../components/nodes/EndNode";
 import { ErrorNodeModel } from "../components/nodes/ErrorNode";
@@ -799,6 +805,37 @@ export class NodeFactoryVisitor implements BaseVisitor {
             this.createWaitDataNode(node);
             this.addSuggestionsButton(node);
         }
+    }
+
+    // A durable agent's data-event send renders as the workflow send node: same shape, and the
+    // square on the right points at the agent instead of a workflow.
+    beginVisitDurableAgentUpdate(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        if (node.id) {
+            this.createSendDataNode(node);
+            this.addSuggestionsButton(node);
+        }
+    }
+
+    // The result reads come in a waiting and a non-waiting form on the same node kind
+    // (waitForDataResult/getDataResult, waitForResult/getResult). Only the waiting form
+    // suspends the caller, so only it gets the wait shape.
+    beginVisitDurableAgentDataResult(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        if (!node.id) {
+            return;
+        }
+        if (isWaitingAgentCall(node)) {
+            this.createWaitDataNode(node);
+        } else {
+            this.createBaseNode(node);
+        }
+        this.addSuggestionsButton(node);
+    }
+
+    beginVisitDurableAgentResult(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        this.beginVisitDurableAgentDataResult(node, parent);
     }
 
     beginVisitResourceActionCall(node: FlowNode, parent?: FlowNode): void {
