@@ -63,8 +63,30 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_O
  */
 class ActivitySearchCommand extends SearchCommand {
 
+    // Durable agents reuse this search as their single "Add Tool/Activity" list: selected
+    // activities become `activities` entries of the agent declaration, and the list additionally
+    // offers the project's AI tools (@ai:AgentTool functions, ai toolkit variables) and an MCP
+    // server entry. Builtin (prebuilt) activities are workflow-only.
+    private static final String EXCLUDE_BUILTINS_KEY = "excludeBuiltins";
+    private static final String NODE_KIND_KEY = "nodeKind";
+
+    private static final String MCP_SERVER_LABEL = "Use MCP Server";
+
+    private final boolean excludeBuiltins;
+    private final NodeKind itemNodeKind;
+
     public ActivitySearchCommand(Project project, LineRange position, Map<String, String> queryMap) {
         super(project, position, queryMap);
+        this.excludeBuiltins = queryMap != null && "true".equals(queryMap.get(EXCLUDE_BUILTINS_KEY));
+        NodeKind kind = NodeKind.ACTIVITY_CALL;
+        if (queryMap != null && queryMap.get(NODE_KIND_KEY) != null) {
+            try {
+                kind = NodeKind.valueOf(queryMap.get(NODE_KIND_KEY));
+            } catch (IllegalArgumentException e) {
+                // Unknown node kind in the query — keep the default.
+            }
+        }
+        this.itemNodeKind = kind;
     }
 
     @Override
@@ -121,7 +143,7 @@ class ActivitySearchCommand extends SearchCommand {
                                 .orElse("Workflow activity function");
 
                         Codedata codedata = new Codedata.Builder<>(null)
-                                .node(NodeKind.ACTIVITY_CALL)
+                                .node(itemNodeKind)
                                 .org(orgName)
                                 .module(moduleName)
                                 .symbol(funcName)
@@ -131,17 +153,80 @@ class ActivitySearchCommand extends SearchCommand {
                         Metadata metadata = new Metadata.Builder<>(null)
                                 .label(funcName)
                                 .description(description)
+                                .icon(itemNodeKind == NodeKind.DURABLE_AGENT_ADD_ACTIVITY ? "bi-task" : null)
                                 .build();
 
                         activityCategory.node(new AvailableNode(metadata, codedata, true));
                     });
         });
 
+        if (itemNodeKind == NodeKind.DURABLE_AGENT_ADD_ACTIVITY) {
+            // Builtin (prebuilt) activities are workflow-only for now: the declaration form
+            // cannot bind their connection yet. A dedicated add-builtin-activity flow for the
+            // agent is tracked separately.
+            buildAgentToolNodes(currentPackage, orgName, moduleName, version);
+            return;
+        }
+
         // Add prebuilt activities section
+        if (excludeBuiltins) {
+            return;
+        }
         Category.Builder builtinCategory = rootBuilder.stepIn(Category.Name.BUILTIN_ACTIVITIES);
         addBuiltinNode(builtinCategory, BUILTIN_REST_LABEL, BUILTIN_REST_DESCRIPTION, BUILTIN_REST_FUNCTION);
         addBuiltinNode(builtinCategory, BUILTIN_SOAP_LABEL, BUILTIN_SOAP_DESCRIPTION, BUILTIN_SOAP_FUNCTION);
         addBuiltinNode(builtinCategory, BUILTIN_EMAIL_LABEL, BUILTIN_EMAIL_DESCRIPTION, BUILTIN_EMAIL_FUNCTION);
+    }
+
+    // The tool sections of the durable agent's Add Tool/Activity list. MCP Tools leads with
+    // the creation wizard and lists the project's toolkit variables; Tools lists the
+    // project's @ai:AgentTool functions. Both resolve selections to the register-tool form.
+    private void buildAgentToolNodes(Package currentPackage, String orgName, String moduleName, String version) {
+        Category.Builder mcpCategory = rootBuilder.stepIn(Category.Name.AGENT_MCP_TOOLS);
+        if (matchesQuery(MCP_SERVER_LABEL)) {
+            Codedata mcpCodedata = new Codedata.Builder<>(null)
+                    .node(NodeKind.MCP_TOOL_KIT)
+                    .build();
+            Metadata mcpMetadata = new Metadata.Builder<>(null)
+                    .label(MCP_SERVER_LABEL)
+                    .description("Connect to an MCP server and expose its tools to the agent")
+                    .icon("bi-plus")
+                    .build();
+            mcpCategory.node(new AvailableNode(mcpMetadata, mcpCodedata, true));
+        }
+        Category.Builder toolsCategory = rootBuilder.stepIn(Category.Name.AGENT_TOOLBOX);
+        currentPackage.modules().forEach(module -> {
+            SemanticModel semanticModel;
+            try {
+                semanticModel = module.getCompilation().getSemanticModel();
+            } catch (RuntimeException e) {
+                return;
+            }
+            semanticModel.moduleSymbols().stream()
+                    .filter(symbol -> WorkflowUtil.isAiAgentToolFunction(symbol)
+                            || WorkflowUtil.isAiToolKitVariable(symbol))
+                    .filter(symbol -> matchesQuery(symbol.getName().orElse("")))
+                    .forEach(symbol -> {
+                        String name = symbol.getName().orElse("");
+                        boolean isToolKit = WorkflowUtil.isAiToolKitVariable(symbol);
+                        Codedata codedata = new Codedata.Builder<>(null)
+                                .node(NodeKind.DURABLE_AGENT_REGISTER_TOOL)
+                                .org(orgName)
+                                .module(moduleName)
+                                .symbol(name)
+                                .version(version)
+                                .build();
+                        Metadata metadata = new Metadata.Builder<>(null)
+                                .label(name)
+                                .description(isToolKit
+                                        ? "MCP toolkit available in the integration"
+                                        : "Agent tool function in the integration")
+                                .icon(isToolKit ? "bi-mcp" : "bi-function")
+                                .build();
+                        (isToolKit ? mcpCategory : toolsCategory)
+                                .node(new AvailableNode(metadata, codedata, true));
+                    });
+        });
     }
 
     private void addBuiltinNode(Category.Builder category, String label, String description, String symbol) {

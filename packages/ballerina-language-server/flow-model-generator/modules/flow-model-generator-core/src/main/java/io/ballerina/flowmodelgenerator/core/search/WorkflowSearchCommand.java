@@ -20,6 +20,7 @@ package io.ballerina.flowmodelgenerator.core.search;
 
 import io.ballerina.compiler.api.symbols.FunctionSymbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
+import io.ballerina.flowmodelgenerator.core.Constants;
 import io.ballerina.flowmodelgenerator.core.model.AvailableNode;
 import io.ballerina.flowmodelgenerator.core.model.Category;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
@@ -99,7 +100,6 @@ class WorkflowSearchCommand extends SearchCommand {
                                 .flatMap(doc -> doc.description())
                                 .orElse("Workflow process function");
 
-                        // Build the codedata with WORKFLOW_RUN node kind
                         Codedata codedata = new Codedata.Builder<>(null)
                                 .node(NodeKind.WORKFLOW_RUN)
                                 .org(orgName)
@@ -115,6 +115,34 @@ class WorkflowSearchCommand extends SearchCommand {
 
                         AvailableNode node = new AvailableNode(metadata, codedata, true);
                         workflowCategory.node(node);
+                    });
+
+            // Durable agentic workflows list in the same category as the workflow functions
+            // (one startable list, distinguished by icon): selecting one generates
+            // `agent.run(...)` instead of `workflow:run(...)`.
+            module.getCompilation().getSemanticModel().moduleSymbols().stream()
+                    .filter(symbol -> symbol.kind() == SymbolKind.VARIABLE)
+                    .filter(WorkflowUtil::isDurableAgentVariable)
+                    .filter(symbol -> matchesQuery(symbol.getName().orElse("")))
+                    .forEach(symbol -> {
+                        String agentName = symbol.getName().orElse("");
+
+                        Codedata codedata = new Codedata.Builder<>(null)
+                                .node(NodeKind.WORKFLOW_RUN)
+                                .org(orgName)
+                                .module(moduleName)
+                                .symbol(agentName)
+                                .object(Constants.Workflow.DURABLE_AGENT_OBJECT_CLASS_NAME)
+                                .version(version)
+                                .build();
+
+                        Metadata metadata = new Metadata.Builder<>(null)
+                                .label(agentName)
+                                .description("Durable agentic workflow")
+                                .icon("bi-ai-agent")
+                                .build();
+
+                        workflowCategory.node(new AvailableNode(metadata, codedata, true));
                     });
         });
     }

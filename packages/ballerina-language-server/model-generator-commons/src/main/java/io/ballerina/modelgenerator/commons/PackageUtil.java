@@ -42,6 +42,7 @@ import io.ballerina.projects.environment.ResolutionOptions;
 import io.ballerina.projects.environment.ResolutionRequest;
 import io.ballerina.projects.environment.ResolutionResponse;
 import io.ballerina.projects.repos.TempDirCompilationCache;
+import io.ballerina.projects.util.ProjectConstants;
 import org.ballerinalang.langserver.LSClientLogger;
 import org.ballerinalang.langserver.commons.BallerinaCompilerApi;
 import org.ballerinalang.langserver.commons.eventsync.exceptions.EventSyncException;
@@ -206,16 +207,29 @@ public class PackageUtil {
      */
     public static Optional<Package> getModulePackage(BuildProject buildProject, String org, String name,
                                                      String version) {
-        ResolutionRequest resolutionRequest = ResolutionRequest.from(
+        Optional<Package> resolved = resolveModulePackage(buildProject,
                 PackageDescriptor.from(PackageOrg.from(org), PackageName.from(name), PackageVersion.from(version)));
+        if (resolved.isPresent()) {
+            return resolved;
+        }
+        // Unreleased versions (e.g. an in-development ballerina/workflow build) are not on
+        // central; fall back to the local repository, where such builds are published.
+        return resolveModulePackage(buildProject,
+                PackageDescriptor.from(PackageOrg.from(org), PackageName.from(name), PackageVersion.from(version),
+                        ProjectConstants.LOCAL_REPOSITORY_NAME));
+    }
 
+    private static Optional<Package> resolveModulePackage(BuildProject buildProject,
+                                                          PackageDescriptor packageDescriptor) {
+        ResolutionRequest resolutionRequest = ResolutionRequest.from(packageDescriptor);
         Collection<ResolutionResponse> resolutionResponses =
                 buildProject.projectEnvironmentContext().getService(PackageResolver.class)
                         .resolvePackages(Collections.singletonList(resolutionRequest),
                                 ResolutionOptions.builder().setOffline(FORCE_OFFLINE).setSticky(false).build());
         Optional<ResolutionResponse> resolutionResponse = resolutionResponses.stream().findFirst();
+        // resolvedPackage() is null when the version cannot be resolved (e.g. not on central,
+        // or offline and absent from the local repositories).
         if (resolutionResponse.isEmpty() || resolutionResponse.get().resolvedPackage() == null) {
-            // Offline and the package could not be resolved from the local repositories.
             return Optional.empty();
         }
 
