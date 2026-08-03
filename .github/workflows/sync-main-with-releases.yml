@@ -4,7 +4,7 @@ on:
     types:
       - closed
     branches:
-      - 'stable/ballerina**'
+      - '*.*.x'
 
 jobs:
   sync-main:

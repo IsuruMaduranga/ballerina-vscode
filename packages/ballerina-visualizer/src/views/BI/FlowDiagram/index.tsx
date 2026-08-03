@@ -21,6 +21,7 @@ import { TraceAnimationEvent } from "@wso2/ballerina-core";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import styled from "@emotion/styled";
 import { removeMcpServerFromAgentNode, findAgentNodeFromAgentCallNode, findFlowNode, removeAgentNode, confirmAgentCallDeletion } from "../AIChatAgent/utils";
+import { DIAGRAM_REFRESH_DEBOUNCE_MS } from "../diagramRefreshDebounce";
 import { MemoizedDiagram, setTraceAnimationActive, setTraceAnimationInactive } from "@wso2/bi-diagram";
 import {
     BIAvailableNodesRequest,
@@ -86,6 +87,7 @@ import { DiagramSkeleton } from "../../../components/Skeletons";
 import { AI_COMPONENT_PROGRESS_MESSAGE, AI_COMPONENT_PROGRESS_MESSAGE_TIMEOUT, FORM_LOADING_MESSAGE, GET_DEFAULT_EMBEDDING_PROVIDER, GET_DEFAULT_MODEL_PROVIDER, LOADING_MESSAGE } from "../../../constants";
 import { ConnectionListItem } from "@wso2/wso2-platform-core";
 import { usePlatformExtContext } from "../../../providers/platform-ext-ctx-provider";
+import { requestMiniChatOpen } from "../../../components/AgentStatusOrb/shared";
 
 const Container = styled.div`
     width: 100%;
@@ -347,7 +349,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const debouncedGetFlowModel = useCallback(
         debounce(() => {
             getFlowModel();
-        }, 1000),
+        }, DIAGRAM_REFRESH_DEBOUNCE_MS),
         [hasDraft]
     );
 
@@ -1076,8 +1078,12 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             autoSubmit: options?.autoSubmit ?? false,
         };
 
-        // Use the standard pattern - import from utils/commands
-        rpcClient.getAiPanelRpcClient().openAIPanel(aiPrompt);
+        // Auto-submitted actions (currently diagnostics fixes) retain their
+        // full-panel flow. The between-node magic wand is interactive, so keep
+        // it in the ambient mini chat and carry the insertion context with it.
+        if (options?.autoSubmit || !requestMiniChatOpen(aiPrompt)) {
+            rpcClient.getAiPanelRpcClient().openAIPanel(aiPrompt);
+        }
     };
 
     const handleSearch = useCallback(async (searchText: string, functionType: FUNCTION_TYPE, searchKind: SearchKind) => {

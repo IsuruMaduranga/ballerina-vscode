@@ -41,12 +41,11 @@ export const WEBVIEW_WS_EVENTS = {
     CHAT_NOTIFY: "bi.chat.notify",
 } as const;
 
-/** Request envelope the form sends; the bridge unwraps it. The per-session
- *  `token` is required only in websocket (embedded) mode. */
+/** Request envelope the form sends; the bridge unwraps it. Authentication is
+ *  handled once during the websocket handshake, so requests carry no token. */
 export interface WebviewWsRequest {
     action: string;
     params?: unknown;
-    token?: string;
 }
 
 export interface WebviewWsResponseMessage {
