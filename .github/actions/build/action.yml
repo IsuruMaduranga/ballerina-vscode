@@ -132,12 +132,15 @@ runs:
         version=$(node -p "require('./packages/ballerina-extension/package.json').version")
         vsix="packages/ballerina-extension/vsix/ballerina-${version}.vsix"
         entry='extension/resources/jslibs/federation/remoteEntry.js'
-        if ! unzip -l "$vsix" | grep -qF "$entry"; then
+        # Listed once into a variable: piping unzip into 'grep -q' lets grep exit on the
+        # first match, and the resulting SIGPIPE fails the pipeline under pipefail.
+        listing=$(unzip -Z1 "$vsix")
+        if ! grep -Fxq "$entry" <<<"$listing"; then
           echo "::error::${vsix} is missing ${entry}; the BI project form cannot be federated."
-          unzip -l "$vsix" | grep -F 'resources/jslibs/federation' || echo "No federation files at all."
+          grep -F 'resources/jslibs/federation' <<<"$listing" || echo "No federation files at all."
           exit 1
         fi
-        count=$(unzip -l "$vsix" | grep -cF 'extension/resources/jslibs/federation/')
+        count=$(grep -cF 'extension/resources/jslibs/federation/' <<<"$listing")
         echo "Federation assets present in ${vsix}: ${count} file(s)."
 
     - name: Compress build
