@@ -106,6 +106,21 @@
     "kind": "file"
   },
   "9": {
+    "name": "smb",
+    "orgName": "ballerina",
+    "packageName": "smb",
+    "keywords": [
+      "SMB",
+      "network share",
+      "remote file",
+      "file",
+      "event"
+    ],
+    "triggerName": "SMB",
+    "version": "2.0.0",
+    "kind": "file"
+  },
+  "10": {
     "name": "file",
     "orgName": "ballerina",
     "packageName": "file",
@@ -119,7 +134,7 @@
     "version": "1.13.0",
     "kind": "file"
   },
-  "10": {
+  "11": {
     "name": "mcp",
     "orgName": "ballerina",
     "packageName": "mcp",
@@ -130,7 +145,7 @@
     "version": "1.2.0",
     "kind": "mcp"
   },
-  "11": {
+  "12": {
     "name": "solace",
     "orgName": "ballerinax",
     "packageName": "solace",
@@ -141,7 +156,7 @@
     ],
     "triggerName": "Solace"
   },
-  "12": {
+  "13": {
     "name": "trigger.shopify",
     "orgName": "ballerinax",
     "packageName": "trigger.shopify",
@@ -153,7 +168,7 @@
     "version": "1.6.0",
     "kind": "event"
   },
-  "13": {
+  "14": {
     "name": "mssql",
     "orgName": "ballerinax",
     "packageName": "mssql",
@@ -166,7 +181,7 @@
     "version": "1.18.1",
     "kind": "event"
   },
-  "14": {
+  "15": {
     "name": "postgresql",
     "orgName": "ballerinax",
     "packageName": "postgresql",
@@ -180,7 +195,7 @@
     "version": "1.18.0",
     "kind": "event"
   },
-  "15": {
+  "16": {
     "name": "mysql",
     "orgName": "ballerinax",
     "packageName": "mysql",
@@ -193,7 +208,7 @@
     "version": "1.18.0",
     "kind": "event"
   },
-  "16": {
+  "17": {
     "name": "trigger.hubspot",
     "orgName": "ballerinax",
     "packageName": "trigger.hubspot",
