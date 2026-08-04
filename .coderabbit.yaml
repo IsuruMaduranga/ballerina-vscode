@@ -18,9 +18,11 @@ reviews:
   # `assertive` cannot quietly change how all of it is applied.
   profile: chill
   request_changes_workflow: false
-  # Same reason: a dashboard `fail_commit_status` would let the bot gate merges
-  # through the check instead of the review.
-  commit_status: false
+  # Same reason. This one fails the active review-status surface -- the check
+  # run, or the legacy commit-status mirror when `review_progress` is off --
+  # whenever a review errors, so a CodeRabbit-side failure would block the
+  # merge. It already defaults to false; pinned so inheritance cannot flip it.
+  fail_commit_status: false
 
   # The Playwright E2E suite runs only when a PR carries this label, or when the
   # base branch ends in `.x` (see .github/workflows/pull-request.yml). Nothing in
