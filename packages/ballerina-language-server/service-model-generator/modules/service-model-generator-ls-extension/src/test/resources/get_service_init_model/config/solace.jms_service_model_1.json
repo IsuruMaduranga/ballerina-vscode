@@ -524,131 +524,149 @@
                       "optional": true,
                       "advanced": false
                     },
-                    "secureSocket": {
+                    "advancedConfig": {
                       "metadata": {
-                        "label": "Secure Socket",
-                        "description": "The SSL/TLS configuration for secure connections."
+                        "label": "Advanced Configurations",
+                        "description": "Advanced TLS, timeout, and retry settings."
                       },
-                      "codedata": {
-                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                        "originalName": "secureSocket",
-                        "path": "secureSocket"
-                      },
-                      "value": "",
-                      "types": [
-                        {
-                          "fieldType": "RECORD_MAP_EXPRESSION",
-                          "ballerinaType": "jms:SecureSocket",
-                          "typeMembers": [
+                      "properties": {
+                        "secureSocket": {
+                          "metadata": {
+                            "label": "Secure Socket",
+                            "description": "The SSL/TLS configuration for secure connections."
+                          },
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "secureSocket",
+                            "path": "secureSocket"
+                          },
+                          "value": "",
+                          "types": [
                             {
-                              "type": "SecureSocket",
-                              "packageInfo": "ballerinax:solace.jms:0.1.0",
-                              "packageName": "solace.jms",
-                              "kind": "RECORD_TYPE",
+                              "fieldType": "RECORD_MAP_EXPRESSION",
+                              "ballerinaType": "jms:SecureSocket",
+                              "typeMembers": [
+                                {
+                                  "type": "SecureSocket",
+                                  "packageInfo": "ballerinax:solace.jms:0.1.0",
+                                  "packageName": "solace.jms",
+                                  "kind": "RECORD_TYPE",
+                                  "selected": false
+                                }
+                              ],
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "jms:SecureSocket",
                               "selected": false
                             }
                           ],
-                          "selected": true
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": true
                         },
-                        {
-                          "fieldType": "EXPRESSION",
-                          "ballerinaType": "jms:SecureSocket",
-                          "selected": false
-                        }
-                      ],
-                      "enabled": true,
-                      "editable": true,
-                      "optional": true,
-                      "advanced": true
-                    },
-                    "connectTimeout": {
-                      "metadata": {
-                        "label": "Connect Timeout",
-                        "description": "The maximum time in seconds for a connection attempt."
-                      },
-                      "codedata": {
-                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                        "originalName": "connectTimeout",
-                        "path": "connectTimeout"
-                      },
-                      "placeholder": "30",
-                      "value": "",
-                      "types": [
-                        {
-                          "fieldType": "NUMBER",
-                          "ballerinaType": "decimal",
-                          "selected": true
-                        },
-                        {
-                          "fieldType": "EXPRESSION",
-                          "ballerinaType": "decimal",
-                          "selected": false
-                        }
-                      ],
-                      "enabled": true,
-                      "editable": true,
-                      "optional": true,
-                      "advanced": true
-                    },
-                    "readTimeout": {
-                      "metadata": {
-                        "label": "Read Timeout",
-                        "description": "The maximum time in seconds for reading connection replies."
-                      },
-                      "codedata": {
-                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                        "originalName": "readTimeout",
-                        "path": "readTimeout"
-                      },
-                      "placeholder": "10",
-                      "value": "",
-                      "types": [
-                        {
-                          "fieldType": "NUMBER",
-                          "ballerinaType": "decimal",
-                          "selected": true
-                        },
-                        {
-                          "fieldType": "EXPRESSION",
-                          "ballerinaType": "decimal",
-                          "selected": false
-                        }
-                      ],
-                      "enabled": true,
-                      "editable": true,
-                      "optional": true,
-                      "advanced": true
-                    },
-                    "retryConfig": {
-                      "metadata": {
-                        "label": "Retry Config",
-                        "description": "Retry configuration for connection attempts."
-                      },
-                      "codedata": {
-                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                        "originalName": "retryConfig",
-                        "path": "retryConfig"
-                      },
-                      "value": "",
-                      "types": [
-                        {
-                          "fieldType": "RECORD_MAP_EXPRESSION",
-                          "ballerinaType": "jms:RetryConfiguration",
-                          "typeMembers": [
+                        "connectTimeout": {
+                          "metadata": {
+                            "label": "Connect Timeout",
+                            "description": "The maximum time in seconds for a connection attempt."
+                          },
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "connectTimeout",
+                            "path": "connectTimeout"
+                          },
+                          "placeholder": "30",
+                          "value": "",
+                          "types": [
                             {
-                              "type": "RetryConfiguration",
-                              "packageInfo": "ballerinax:solace.jms:0.1.0",
-                              "packageName": "solace.jms",
-                              "kind": "RECORD_TYPE",
+                              "fieldType": "NUMBER",
+                              "ballerinaType": "decimal",
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "decimal",
                               "selected": false
                             }
                           ],
-                          "selected": true
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": true
                         },
+                        "readTimeout": {
+                          "metadata": {
+                            "label": "Read Timeout",
+                            "description": "The maximum time in seconds for reading connection replies."
+                          },
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "readTimeout",
+                            "path": "readTimeout"
+                          },
+                          "placeholder": "10",
+                          "value": "",
+                          "types": [
+                            {
+                              "fieldType": "NUMBER",
+                              "ballerinaType": "decimal",
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "decimal",
+                              "selected": false
+                            }
+                          ],
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": true
+                        },
+                        "retryConfig": {
+                          "metadata": {
+                            "label": "Retry Config",
+                            "description": "Retry configuration for connection attempts."
+                          },
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "retryConfig",
+                            "path": "retryConfig"
+                          },
+                          "value": "",
+                          "types": [
+                            {
+                              "fieldType": "RECORD_MAP_EXPRESSION",
+                              "ballerinaType": "jms:RetryConfiguration",
+                              "typeMembers": [
+                                {
+                                  "type": "RetryConfiguration",
+                                  "packageInfo": "ballerinax:solace.jms:0.1.0",
+                                  "packageName": "solace.jms",
+                                  "kind": "RECORD_TYPE",
+                                  "selected": false
+                                }
+                              ],
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "jms:RetryConfiguration",
+                              "selected": false
+                            }
+                          ],
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": true
+                        }
+                      },
+                      "types": [
                         {
-                          "fieldType": "EXPRESSION",
-                          "ballerinaType": "jms:RetryConfiguration",
-                          "selected": false
+                          "fieldType": "GROUP_SECTION",
+                          "selected": true
                         }
                       ],
                       "enabled": true,
@@ -686,244 +704,20 @@
                 "description": "No compatible listener of this type is present in the project."
               },
               "properties": {
-                "listenerConfig": {
+                "existingListener": {
                   "metadata": {
-                    "label": "Listener Configurations",
-                    "description": "Configuration of the selected listener."
+                    "label": "Listener",
+                    "description": "Select an existing listener to attach to."
                   },
-                  "properties": {
-                    "existingListener": {
-                      "metadata": {
-                        "label": "Select Listener",
-                        "description": "Select from the existing jms listeners"
-                      },
-                      "value": "solaceJmsListener",
-                      "items": [
-                        "solaceJmsListener"
-                      ],
-                      "properties": {
-                        "solaceJmsListener": {
-                          "metadata": {
-                            "label": "solaceJmsListener",
-                            "description": "jms listener: solaceJmsListener"
-                          },
-                          "value": "solaceJmsListener",
-                          "properties": {
-                            "url": {
-                              "metadata": {
-                                "label": "Broker URL",
-                                "description": "The broker URL with format: [protocol:]host[:port]."
-                              },
-                              "codedata": {
-                                "argType": "LISTENER_PARAM_REQUIRED",
-                                "originalName": "url",
-                                "position": 1
-                              },
-                              "placeholder": "smf://localhost:55555",
-                              "value": "\"smf://localhost:55555\"",
-                              "types": [
-                                {
-                                  "fieldType": "TEXT",
-                                  "ballerinaType": "string",
-                                  "selected": true
-                                },
-                                {
-                                  "fieldType": "EXPRESSION",
-                                  "ballerinaType": "string",
-                                  "selected": false
-                                }
-                              ],
-                              "enabled": true,
-                              "editable": false,
-                              "optional": false,
-                              "advanced": false
-                            },
-                            "messageVpn": {
-                              "metadata": {
-                                "label": "Message VPN",
-                                "description": "The name of the message VPN to connect to."
-                              },
-                              "codedata": {
-                                "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                                "originalName": "messageVpn",
-                                "path": "messageVpn"
-                              },
-                              "placeholder": "default",
-                              "value": "\"default\"",
-                              "types": [
-                                {
-                                  "fieldType": "TEXT",
-                                  "ballerinaType": "string",
-                                  "selected": true
-                                },
-                                {
-                                  "fieldType": "EXPRESSION",
-                                  "ballerinaType": "string",
-                                  "selected": false
-                                }
-                              ],
-                              "enabled": true,
-                              "editable": false,
-                              "optional": false,
-                              "advanced": false
-                            },
-                            "auth": {
-                              "metadata": {
-                                "label": "Authentication",
-                                "description": "The authentication configuration (basic, Kerberos, or OAuth2)."
-                              },
-                              "value": "",
-                              "choices": [
-                                {
-                                  "metadata": {
-                                    "label": "Basic Authentication",
-                                    "description": "Username and password authentication."
-                                  },
-                                  "value": "true",
-                                  "properties": {},
-                                  "types": [
-                                    {
-                                      "fieldType": "FORM",
-                                      "selected": true
-                                    }
-                                  ],
-                                  "enabled": false,
-                                  "editable": false,
-                                  "optional": false,
-                                  "advanced": false
-                                },
-                                {
-                                  "metadata": {
-                                    "label": "Kerberos Authentication",
-                                    "description": "Kerberos (GSS-KRB) authentication."
-                                  },
-                                  "value": "true",
-                                  "properties": {},
-                                  "types": [
-                                    {
-                                      "fieldType": "FORM",
-                                      "selected": true
-                                    }
-                                  ],
-                                  "enabled": false,
-                                  "editable": false,
-                                  "optional": false,
-                                  "advanced": false
-                                },
-                                {
-                                  "metadata": {
-                                    "label": "OAuth 2.0 Authentication",
-                                    "description": "OAuth 2.0 token-based authentication."
-                                  },
-                                  "value": "true",
-                                  "properties": {
-                                    "tokenType": {
-                                      "metadata": {
-                                        "label": "Token Type",
-                                        "description": "Choose which OAuth 2.0 token to authenticate with."
-                                      },
-                                      "value": "",
-                                      "choices": [
-                                        {
-                                          "metadata": {
-                                            "label": "Access Token",
-                                            "description": "Authenticate using an OAuth 2.0 access token."
-                                          },
-                                          "value": "true",
-                                          "properties": {},
-                                          "types": [
-                                            {
-                                              "fieldType": "FORM",
-                                              "selected": true
-                                            }
-                                          ],
-                                          "enabled": true,
-                                          "editable": false,
-                                          "optional": false,
-                                          "advanced": false
-                                        },
-                                        {
-                                          "metadata": {
-                                            "label": "OIDC Token",
-                                            "description": "Authenticate using an OpenID Connect (OIDC) ID token."
-                                          },
-                                          "value": "true",
-                                          "properties": {},
-                                          "types": [
-                                            {
-                                              "fieldType": "FORM",
-                                              "selected": true
-                                            }
-                                          ],
-                                          "enabled": false,
-                                          "editable": false,
-                                          "optional": false,
-                                          "advanced": false
-                                        }
-                                      ],
-                                      "types": [
-                                        {
-                                          "fieldType": "CHOICE",
-                                          "selected": true
-                                        }
-                                      ],
-                                      "enabled": true,
-                                      "editable": false,
-                                      "optional": false,
-                                      "advanced": false
-                                    }
-                                  },
-                                  "types": [
-                                    {
-                                      "fieldType": "FORM",
-                                      "selected": true
-                                    }
-                                  ],
-                                  "enabled": true,
-                                  "editable": false,
-                                  "optional": false,
-                                  "advanced": false
-                                }
-                              ],
-                              "types": [
-                                {
-                                  "fieldType": "CHOICE",
-                                  "selected": true
-                                }
-                              ],
-                              "enabled": true,
-                              "editable": false,
-                              "optional": false,
-                              "advanced": false
-                            }
-                          },
-                          "types": [
-                            {
-                              "fieldType": "FORM",
-                              "selected": true
-                            }
-                          ],
-                          "enabled": true,
-                          "editable": false,
-                          "optional": false,
-                          "advanced": false
-                        }
-                      },
-                      "types": [
-                        {
-                          "fieldType": "SINGLE_SELECT",
-                          "selected": true
-                        }
-                      ],
-                      "enabled": true,
-                      "editable": true,
-                      "optional": false,
-                      "advanced": false
-                    }
+                  "codedata": {
+                    "type": "KEY_EXISTING_LISTENER"
                   },
+                  "value": "",
+                  "items": [],
                   "types": [
                     {
-                      "fieldType": "GROUP_SECTION",
+                      "fieldType": "MULTIPLE_SELECT_LISTENER",
+                      "ballerinaType": "jms:Listener",
                       "selected": true
                     }
                   ],

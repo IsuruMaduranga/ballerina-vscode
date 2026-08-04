@@ -658,34 +658,52 @@
                     }
                   ]
                 },
-                "serverName": {
+                "advancedConfig": {
                   "metadata": {
-                    "label": "Server Name",
-                    "description": "Unique name to register this server with the JCo framework (defaults to a generated UUID)."
+                    "label": "Advanced Configurations",
+                    "description": "Advanced server configuration options."
                   },
-                  "placeholder": "",
-                  "value": "",
+                  "types": [
+                    {
+                      "fieldType": "GROUP_SECTION",
+                      "selected": true
+                    }
+                  ],
                   "enabled": true,
                   "editable": true,
                   "optional": true,
                   "advanced": true,
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_REQUIRED",
-                    "originalName": "serverName",
-                    "position": 2
-                  },
-                  "types": [
-                    {
-                      "fieldType": "TEXT",
-                      "ballerinaType": "string",
-                      "selected": true
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "string",
-                      "selected": false
+                  "properties": {
+                    "serverName": {
+                      "metadata": {
+                        "label": "Server Name",
+                        "description": "Unique name to register this server with the JCo framework (defaults to a generated UUID)."
+                      },
+                      "placeholder": "",
+                      "value": "",
+                      "enabled": true,
+                      "editable": true,
+                      "optional": true,
+                      "advanced": true,
+                      "codedata": {
+                        "argType": "LISTENER_PARAM_REQUIRED",
+                        "originalName": "serverName",
+                        "position": 2
+                      },
+                      "types": [
+                        {
+                          "fieldType": "TEXT",
+                          "ballerinaType": "string",
+                          "selected": true
+                        },
+                        {
+                          "fieldType": "EXPRESSION",
+                          "ballerinaType": "string",
+                          "selected": false
+                        }
+                      ]
                     }
-                  ]
+                  }
                 }
               }
             }

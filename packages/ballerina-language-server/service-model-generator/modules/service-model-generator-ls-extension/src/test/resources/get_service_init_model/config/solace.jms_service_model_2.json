@@ -524,131 +524,149 @@
                       "optional": true,
                       "advanced": false
                     },
-                    "secureSocket": {
+                    "advancedConfig": {
                       "metadata": {
-                        "label": "Secure Socket",
-                        "description": "The SSL/TLS configuration for secure connections."
+                        "label": "Advanced Configurations",
+                        "description": "Advanced TLS, timeout, and retry settings."
                       },
-                      "codedata": {
-                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                        "originalName": "secureSocket",
-                        "path": "secureSocket"
-                      },
-                      "value": "",
-                      "types": [
-                        {
-                          "fieldType": "RECORD_MAP_EXPRESSION",
-                          "ballerinaType": "jms:SecureSocket",
-                          "typeMembers": [
+                      "properties": {
+                        "secureSocket": {
+                          "metadata": {
+                            "label": "Secure Socket",
+                            "description": "The SSL/TLS configuration for secure connections."
+                          },
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "secureSocket",
+                            "path": "secureSocket"
+                          },
+                          "value": "",
+                          "types": [
                             {
-                              "type": "SecureSocket",
-                              "packageInfo": "ballerinax:solace.jms:0.1.0",
-                              "packageName": "solace.jms",
-                              "kind": "RECORD_TYPE",
+                              "fieldType": "RECORD_MAP_EXPRESSION",
+                              "ballerinaType": "jms:SecureSocket",
+                              "typeMembers": [
+                                {
+                                  "type": "SecureSocket",
+                                  "packageInfo": "ballerinax:solace.jms:0.1.0",
+                                  "packageName": "solace.jms",
+                                  "kind": "RECORD_TYPE",
+                                  "selected": false
+                                }
+                              ],
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "jms:SecureSocket",
                               "selected": false
                             }
                           ],
-                          "selected": true
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": true
                         },
-                        {
-                          "fieldType": "EXPRESSION",
-                          "ballerinaType": "jms:SecureSocket",
-                          "selected": false
-                        }
-                      ],
-                      "enabled": true,
-                      "editable": true,
-                      "optional": true,
-                      "advanced": true
-                    },
-                    "connectTimeout": {
-                      "metadata": {
-                        "label": "Connect Timeout",
-                        "description": "The maximum time in seconds for a connection attempt."
-                      },
-                      "codedata": {
-                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                        "originalName": "connectTimeout",
-                        "path": "connectTimeout"
-                      },
-                      "placeholder": "30",
-                      "value": "",
-                      "types": [
-                        {
-                          "fieldType": "NUMBER",
-                          "ballerinaType": "decimal",
-                          "selected": true
-                        },
-                        {
-                          "fieldType": "EXPRESSION",
-                          "ballerinaType": "decimal",
-                          "selected": false
-                        }
-                      ],
-                      "enabled": true,
-                      "editable": true,
-                      "optional": true,
-                      "advanced": true
-                    },
-                    "readTimeout": {
-                      "metadata": {
-                        "label": "Read Timeout",
-                        "description": "The maximum time in seconds for reading connection replies."
-                      },
-                      "codedata": {
-                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                        "originalName": "readTimeout",
-                        "path": "readTimeout"
-                      },
-                      "placeholder": "10",
-                      "value": "",
-                      "types": [
-                        {
-                          "fieldType": "NUMBER",
-                          "ballerinaType": "decimal",
-                          "selected": true
-                        },
-                        {
-                          "fieldType": "EXPRESSION",
-                          "ballerinaType": "decimal",
-                          "selected": false
-                        }
-                      ],
-                      "enabled": true,
-                      "editable": true,
-                      "optional": true,
-                      "advanced": true
-                    },
-                    "retryConfig": {
-                      "metadata": {
-                        "label": "Retry Config",
-                        "description": "Retry configuration for connection attempts."
-                      },
-                      "codedata": {
-                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                        "originalName": "retryConfig",
-                        "path": "retryConfig"
-                      },
-                      "value": "",
-                      "types": [
-                        {
-                          "fieldType": "RECORD_MAP_EXPRESSION",
-                          "ballerinaType": "jms:RetryConfiguration",
-                          "typeMembers": [
+                        "connectTimeout": {
+                          "metadata": {
+                            "label": "Connect Timeout",
+                            "description": "The maximum time in seconds for a connection attempt."
+                          },
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "connectTimeout",
+                            "path": "connectTimeout"
+                          },
+                          "placeholder": "30",
+                          "value": "",
+                          "types": [
                             {
-                              "type": "RetryConfiguration",
-                              "packageInfo": "ballerinax:solace.jms:0.1.0",
-                              "packageName": "solace.jms",
-                              "kind": "RECORD_TYPE",
+                              "fieldType": "NUMBER",
+                              "ballerinaType": "decimal",
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "decimal",
                               "selected": false
                             }
                           ],
-                          "selected": true
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": true
                         },
+                        "readTimeout": {
+                          "metadata": {
+                            "label": "Read Timeout",
+                            "description": "The maximum time in seconds for reading connection replies."
+                          },
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "readTimeout",
+                            "path": "readTimeout"
+                          },
+                          "placeholder": "10",
+                          "value": "",
+                          "types": [
+                            {
+                              "fieldType": "NUMBER",
+                              "ballerinaType": "decimal",
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "decimal",
+                              "selected": false
+                            }
+                          ],
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": true
+                        },
+                        "retryConfig": {
+                          "metadata": {
+                            "label": "Retry Config",
+                            "description": "Retry configuration for connection attempts."
+                          },
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "retryConfig",
+                            "path": "retryConfig"
+                          },
+                          "value": "",
+                          "types": [
+                            {
+                              "fieldType": "RECORD_MAP_EXPRESSION",
+                              "ballerinaType": "jms:RetryConfiguration",
+                              "typeMembers": [
+                                {
+                                  "type": "RetryConfiguration",
+                                  "packageInfo": "ballerinax:solace.jms:0.1.0",
+                                  "packageName": "solace.jms",
+                                  "kind": "RECORD_TYPE",
+                                  "selected": false
+                                }
+                              ],
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "jms:RetryConfiguration",
+                              "selected": false
+                            }
+                          ],
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": true
+                        }
+                      },
+                      "types": [
                         {
-                          "fieldType": "EXPRESSION",
-                          "ballerinaType": "jms:RetryConfiguration",
-                          "selected": false
+                          "fieldType": "GROUP_SECTION",
+                          "selected": true
                         }
                       ],
                       "enabled": true,

@@ -550,160 +550,178 @@
                     }
                   ]
                 },
-                "secureSocket": {
+                "advancedConfig": {
                   "metadata": {
-                    "label": "Secure Socket",
-                    "description": "The SSL/TLS configuration for secure connections."
+                    "label": "Advanced Configurations",
+                    "description": "Advanced TLS, transaction, timeout, and retry settings."
                   },
-                  "value": "",
+                  "types": [
+                    {
+                      "fieldType": "GROUP_SECTION",
+                      "selected": true
+                    }
+                  ],
                   "enabled": true,
                   "editable": true,
                   "optional": true,
                   "advanced": true,
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                    "originalName": "secureSocket",
-                    "path": "secureSocket"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "RECORD_MAP_EXPRESSION",
-                      "ballerinaType": "solace:SecureSocket",
-                      "typeMembers": [
+                  "properties": {
+                    "secureSocket": {
+                      "metadata": {
+                        "label": "Secure Socket",
+                        "description": "The SSL/TLS configuration for secure connections."
+                      },
+                      "value": "",
+                      "enabled": true,
+                      "editable": true,
+                      "optional": true,
+                      "advanced": true,
+                      "codedata": {
+                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                        "originalName": "secureSocket",
+                        "path": "secureSocket"
+                      },
+                      "types": [
                         {
-                          "type": "SecureSocket",
-                          "packageInfo": "ballerinax:solace:0.4.0",
-                          "packageName": "solace",
-                          "kind": "RECORD_TYPE",
+                          "fieldType": "RECORD_MAP_EXPRESSION",
+                          "ballerinaType": "solace:SecureSocket",
+                          "typeMembers": [
+                            {
+                              "type": "SecureSocket",
+                              "packageInfo": "ballerinax:solace:0.4.0",
+                              "packageName": "solace",
+                              "kind": "RECORD_TYPE",
+                              "selected": false
+                            }
+                          ],
+                          "selected": true
+                        },
+                        {
+                          "fieldType": "EXPRESSION",
+                          "ballerinaType": "solace:SecureSocket",
                           "selected": false
                         }
-                      ],
-                      "selected": true
+                      ]
                     },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "solace:SecureSocket",
-                      "selected": false
-                    }
-                  ]
-                },
-                "transacted": {
-                  "metadata": {
-                    "label": "Transacted",
-                    "description": "Enable transacted messaging. When enabled, commit/rollback from any attached service affects all of them."
-                  },
-                  "value": "false",
-                  "enabled": true,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": true,
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                    "originalName": "transacted",
-                    "path": "transacted"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "FLAG",
-                      "ballerinaType": "boolean",
-                      "selected": true
-                    }
-                  ]
-                },
-                "connectTimeout": {
-                  "metadata": {
-                    "label": "Connect Timeout",
-                    "description": "The maximum time in seconds for a connection attempt."
-                  },
-                  "placeholder": "30",
-                  "value": "",
-                  "enabled": true,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": true,
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                    "originalName": "connectTimeout",
-                    "path": "connectTimeout"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "NUMBER",
-                      "ballerinaType": "decimal",
-                      "selected": true
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "decimal",
-                      "selected": false
-                    }
-                  ]
-                },
-                "readTimeout": {
-                  "metadata": {
-                    "label": "Read Timeout",
-                    "description": "The maximum time in seconds for reading connection replies."
-                  },
-                  "placeholder": "10",
-                  "value": "",
-                  "enabled": true,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": true,
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                    "originalName": "readTimeout",
-                    "path": "readTimeout"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "NUMBER",
-                      "ballerinaType": "decimal",
-                      "selected": true
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "decimal",
-                      "selected": false
-                    }
-                  ]
-                },
-                "retryConfig": {
-                  "metadata": {
-                    "label": "Retry Config",
-                    "description": "Retry configuration for connection attempts."
-                  },
-                  "value": "",
-                  "enabled": true,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": true,
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                    "originalName": "retryConfig",
-                    "path": "retryConfig"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "RECORD_MAP_EXPRESSION",
-                      "ballerinaType": "solace:RetryConfiguration",
-                      "typeMembers": [
+                    "transacted": {
+                      "metadata": {
+                        "label": "Transacted",
+                        "description": "Enable transacted messaging. When enabled, commit/rollback from any attached service affects all of them."
+                      },
+                      "value": "false",
+                      "enabled": true,
+                      "editable": true,
+                      "optional": true,
+                      "advanced": true,
+                      "codedata": {
+                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                        "originalName": "transacted",
+                        "path": "transacted"
+                      },
+                      "types": [
                         {
-                          "type": "RetryConfiguration",
-                          "packageInfo": "ballerinax:solace:0.4.0",
-                          "packageName": "solace",
-                          "kind": "RECORD_TYPE",
+                          "fieldType": "FLAG",
+                          "ballerinaType": "boolean",
+                          "selected": true
+                        }
+                      ]
+                    },
+                    "connectTimeout": {
+                      "metadata": {
+                        "label": "Connect Timeout",
+                        "description": "The maximum time in seconds for a connection attempt."
+                      },
+                      "placeholder": "30",
+                      "value": "",
+                      "enabled": true,
+                      "editable": true,
+                      "optional": true,
+                      "advanced": true,
+                      "codedata": {
+                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                        "originalName": "connectTimeout",
+                        "path": "connectTimeout"
+                      },
+                      "types": [
+                        {
+                          "fieldType": "NUMBER",
+                          "ballerinaType": "decimal",
+                          "selected": true
+                        },
+                        {
+                          "fieldType": "EXPRESSION",
+                          "ballerinaType": "decimal",
                           "selected": false
                         }
-                      ],
-                      "selected": true
+                      ]
                     },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "solace:RetryConfiguration",
-                      "selected": false
+                    "readTimeout": {
+                      "metadata": {
+                        "label": "Read Timeout",
+                        "description": "The maximum time in seconds for reading connection replies."
+                      },
+                      "placeholder": "10",
+                      "value": "",
+                      "enabled": true,
+                      "editable": true,
+                      "optional": true,
+                      "advanced": true,
+                      "codedata": {
+                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                        "originalName": "readTimeout",
+                        "path": "readTimeout"
+                      },
+                      "types": [
+                        {
+                          "fieldType": "NUMBER",
+                          "ballerinaType": "decimal",
+                          "selected": true
+                        },
+                        {
+                          "fieldType": "EXPRESSION",
+                          "ballerinaType": "decimal",
+                          "selected": false
+                        }
+                      ]
+                    },
+                    "retryConfig": {
+                      "metadata": {
+                        "label": "Retry Config",
+                        "description": "Retry configuration for connection attempts."
+                      },
+                      "value": "",
+                      "enabled": true,
+                      "editable": true,
+                      "optional": true,
+                      "advanced": true,
+                      "codedata": {
+                        "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                        "originalName": "retryConfig",
+                        "path": "retryConfig"
+                      },
+                      "types": [
+                        {
+                          "fieldType": "RECORD_MAP_EXPRESSION",
+                          "ballerinaType": "solace:RetryConfiguration",
+                          "typeMembers": [
+                            {
+                              "type": "RetryConfiguration",
+                              "packageInfo": "ballerinax:solace:0.4.0",
+                              "packageName": "solace",
+                              "kind": "RECORD_TYPE",
+                              "selected": false
+                            }
+                          ],
+                          "selected": true
+                        },
+                        {
+                          "fieldType": "EXPRESSION",
+                          "ballerinaType": "solace:RetryConfiguration",
+                          "selected": false
+                        }
+                      ]
                     }
-                  ]
+                  }
                 }
               }
             }

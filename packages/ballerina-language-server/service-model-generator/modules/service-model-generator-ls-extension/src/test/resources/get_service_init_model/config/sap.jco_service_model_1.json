@@ -632,28 +632,46 @@
                       "optional": false,
                       "advanced": false
                     },
-                    "serverName": {
+                    "advancedConfig": {
                       "metadata": {
-                        "label": "Server Name",
-                        "description": "Unique name to register this server with the JCo framework (defaults to a generated UUID)."
+                        "label": "Advanced Configurations",
+                        "description": "Advanced server configuration options."
                       },
-                      "codedata": {
-                        "argType": "LISTENER_PARAM_REQUIRED",
-                        "originalName": "serverName",
-                        "position": 2
+                      "properties": {
+                        "serverName": {
+                          "metadata": {
+                            "label": "Server Name",
+                            "description": "Unique name to register this server with the JCo framework (defaults to a generated UUID)."
+                          },
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_REQUIRED",
+                            "originalName": "serverName",
+                            "position": 2
+                          },
+                          "placeholder": "",
+                          "value": "",
+                          "types": [
+                            {
+                              "fieldType": "TEXT",
+                              "ballerinaType": "string",
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "string",
+                              "selected": false
+                            }
+                          ],
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": true
+                        }
                       },
-                      "placeholder": "",
-                      "value": "",
                       "types": [
                         {
-                          "fieldType": "TEXT",
-                          "ballerinaType": "string",
+                          "fieldType": "GROUP_SECTION",
                           "selected": true
-                        },
-                        {
-                          "fieldType": "EXPRESSION",
-                          "ballerinaType": "string",
-                          "selected": false
                         }
                       ],
                       "enabled": true,
@@ -691,297 +709,20 @@
                 "description": "No compatible listener of this type is present in the project."
               },
               "properties": {
-                "listenerConfig": {
+                "existingListener": {
                   "metadata": {
-                    "label": "Listener Configurations",
-                    "description": "Configuration of the selected listener."
+                    "label": "Listener",
+                    "description": "Select an existing SAP JCo listener to attach to."
                   },
-                  "properties": {
-                    "existingListener": {
-                      "metadata": {
-                        "label": "Select Listener",
-                        "description": "Select from the existing jco listeners"
-                      },
-                      "value": "sapJcoListener",
-                      "items": [
-                        "sapJcoListener"
-                      ],
-                      "properties": {
-                        "sapJcoListener": {
-                          "metadata": {
-                            "label": "sapJcoListener",
-                            "description": "jco listener: sapJcoListener"
-                          },
-                          "value": "sapJcoListener",
-                          "properties": {
-                            "serverOrAdvancedConfig": {
-                              "metadata": {
-                                "label": "Server Configuration",
-                                "description": "Choose between structured server configuration or raw JCo properties."
-                              },
-                              "value": "",
-                              "choices": [
-                                {
-                                  "metadata": {
-                                    "label": "Server Configuration",
-                                    "description": "Provide SAP gateway and connection details."
-                                  },
-                                  "codedata": {
-                                    "position": 1,
-                                    "castType": "jco:ServerConfig"
-                                  },
-                                  "value": "true",
-                                  "properties": {
-                                    "gwhost": {
-                                      "metadata": {
-                                        "label": "Gateway Host",
-                                        "description": "SAP gateway host to register the server with."
-                                      },
-                                      "codedata": {
-                                        "argType": "LISTENER_PARAM_CONFIG_FIELD",
-                                        "originalName": "gwhost",
-                                        "position": 1,
-                                        "path": "gwhost"
-                                      },
-                                      "placeholder": "sap-gw.example.com",
-                                      "value": "\"sap-gw.example.com\"",
-                                      "types": [
-                                        {
-                                          "fieldType": "TEXT",
-                                          "ballerinaType": "string",
-                                          "selected": true
-                                        },
-                                        {
-                                          "fieldType": "EXPRESSION",
-                                          "ballerinaType": "string",
-                                          "selected": false
-                                        }
-                                      ],
-                                      "enabled": true,
-                                      "editable": false,
-                                      "optional": false,
-                                      "advanced": false
-                                    },
-                                    "gwserv": {
-                                      "metadata": {
-                                        "label": "Gateway Service",
-                                        "description": "SAP gateway service name or port number."
-                                      },
-                                      "codedata": {
-                                        "argType": "LISTENER_PARAM_CONFIG_FIELD",
-                                        "originalName": "gwserv",
-                                        "position": 1,
-                                        "path": "gwserv"
-                                      },
-                                      "placeholder": "3300",
-                                      "value": "\"3300\"",
-                                      "types": [
-                                        {
-                                          "fieldType": "TEXT",
-                                          "ballerinaType": "string",
-                                          "selected": true
-                                        },
-                                        {
-                                          "fieldType": "EXPRESSION",
-                                          "ballerinaType": "string",
-                                          "selected": false
-                                        }
-                                      ],
-                                      "enabled": true,
-                                      "editable": false,
-                                      "optional": false,
-                                      "advanced": false
-                                    },
-                                    "progid": {
-                                      "metadata": {
-                                        "label": "Program ID",
-                                        "description": "Program ID registered in the SAP system via transaction SM59."
-                                      },
-                                      "codedata": {
-                                        "argType": "LISTENER_PARAM_CONFIG_FIELD",
-                                        "originalName": "progid",
-                                        "position": 1,
-                                        "path": "progid"
-                                      },
-                                      "placeholder": "JCO_LISTENER",
-                                      "value": "\"JCO_LISTENER\"",
-                                      "types": [
-                                        {
-                                          "fieldType": "TEXT",
-                                          "ballerinaType": "string",
-                                          "selected": true
-                                        },
-                                        {
-                                          "fieldType": "EXPRESSION",
-                                          "ballerinaType": "string",
-                                          "selected": false
-                                        }
-                                      ],
-                                      "enabled": true,
-                                      "editable": false,
-                                      "optional": false,
-                                      "advanced": false
-                                    },
-                                    "repositoryDestination": {
-                                      "metadata": {
-                                        "label": "Repository Destination",
-                                        "description": "Repository destination used to look up RFC and IDoc metadata."
-                                      },
-                                      "value": "",
-                                      "choices": [
-                                        {
-                                          "metadata": {
-                                            "label": "Destination Configurations",
-                                            "description": "Provide SAP connection credentials directly; the listener registers them as an internal JCo destination automatically."
-                                          },
-                                          "value": "true",
-                                          "properties": {},
-                                          "types": [
-                                            {
-                                              "fieldType": "FORM",
-                                              "selected": true
-                                            }
-                                          ],
-                                          "enabled": false,
-                                          "editable": false,
-                                          "optional": false,
-                                          "advanced": false
-                                        },
-                                        {
-                                          "metadata": {
-                                            "label": "Destination ID",
-                                            "description": "The destination ID of an already-initialised JCo client."
-                                          },
-                                          "value": "true",
-                                          "properties": {
-                                            "destinationId": {
-                                              "metadata": {
-                                                "label": "Destination ID",
-                                                "description": "The destination ID of an already-initialised JCo client."
-                                              },
-                                              "codedata": {
-                                                "argType": "LISTENER_PARAM_CONFIG_FIELD",
-                                                "originalName": "repositoryDestination",
-                                                "position": 1,
-                                                "path": "repositoryDestination"
-                                              },
-                                              "placeholder": "MY_SAP_DEST",
-                                              "value": "\"MY_SAP_DEST\"",
-                                              "types": [
-                                                {
-                                                  "fieldType": "TEXT",
-                                                  "ballerinaType": "string",
-                                                  "selected": true
-                                                },
-                                                {
-                                                  "fieldType": "EXPRESSION",
-                                                  "ballerinaType": "string",
-                                                  "selected": false
-                                                }
-                                              ],
-                                              "enabled": true,
-                                              "editable": false,
-                                              "optional": false,
-                                              "advanced": false
-                                            }
-                                          },
-                                          "types": [
-                                            {
-                                              "fieldType": "FORM",
-                                              "selected": true
-                                            }
-                                          ],
-                                          "enabled": true,
-                                          "editable": false,
-                                          "optional": false,
-                                          "advanced": false
-                                        }
-                                      ],
-                                      "types": [
-                                        {
-                                          "fieldType": "CHOICE",
-                                          "selected": true
-                                        }
-                                      ],
-                                      "enabled": true,
-                                      "editable": false,
-                                      "optional": false,
-                                      "advanced": false
-                                    }
-                                  },
-                                  "types": [
-                                    {
-                                      "fieldType": "FORM",
-                                      "selected": true
-                                    }
-                                  ],
-                                  "enabled": true,
-                                  "editable": false,
-                                  "optional": false,
-                                  "advanced": false
-                                },
-                                {
-                                  "metadata": {
-                                    "label": "Advanced Properties",
-                                    "description": "Provide raw JCo properties as key-value pairs (e.g. jco.server.gwhost)."
-                                  },
-                                  "codedata": {
-                                    "position": 1,
-                                    "castType": "jco:AdvancedConfig"
-                                  },
-                                  "value": "true",
-                                  "properties": {},
-                                  "types": [
-                                    {
-                                      "fieldType": "FORM",
-                                      "selected": true
-                                    }
-                                  ],
-                                  "enabled": false,
-                                  "editable": false,
-                                  "optional": false,
-                                  "advanced": false
-                                }
-                              ],
-                              "types": [
-                                {
-                                  "fieldType": "CHOICE",
-                                  "selected": true
-                                }
-                              ],
-                              "enabled": true,
-                              "editable": false,
-                              "optional": false,
-                              "advanced": false
-                            }
-                          },
-                          "types": [
-                            {
-                              "fieldType": "FORM",
-                              "selected": true
-                            }
-                          ],
-                          "enabled": true,
-                          "editable": false,
-                          "optional": false,
-                          "advanced": false
-                        }
-                      },
-                      "types": [
-                        {
-                          "fieldType": "SINGLE_SELECT",
-                          "selected": true
-                        }
-                      ],
-                      "enabled": true,
-                      "editable": true,
-                      "optional": false,
-                      "advanced": false
-                    }
+                  "codedata": {
+                    "type": "KEY_EXISTING_LISTENER"
                   },
+                  "value": "",
+                  "items": [],
                   "types": [
                     {
-                      "fieldType": "GROUP_SECTION",
+                      "fieldType": "SINGLE_SELECT_LISTENER",
+                      "ballerinaType": "sap.jco:Listener",
                       "selected": true
                     }
                   ],
