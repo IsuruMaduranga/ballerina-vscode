@@ -46,6 +46,8 @@ class AgentStatusManager {
     private status: AgentRunStatus = { state: 'idle', aiPanelOpen: false, timestamp: Date.now() };
     private runActive = false;
     private resetTimer: NodeJS.Timeout | undefined;
+    /** Panel on screen right now, as opposed to `status.aiPanelOpen`, which is merely alive. */
+    private aiPanelVisible = false;
 
     init(context: vscode.ExtensionContext): void {
         if (this.statusBarItem) {
@@ -56,7 +58,6 @@ class AgentStatusManager {
         this.statusBarItem.command = SHARED_COMMANDS.OPEN_AI_PANEL;
         context.subscriptions.push(this.statusBarItem, new vscode.Disposable(() => this.clearResetTimer()));
         this.render();
-        this.statusBarItem.show();
     }
 
     runStarted(generationId: string): void {
@@ -126,15 +127,37 @@ class AgentStatusManager {
             return;
         }
         this.status = { ...this.status, aiPanelOpen: open, timestamp: Date.now() };
-        // Opening the panel acknowledges a finished/failed run — reset to idle
-        // so the 'Done — click to open' nudge doesn't reappear when the panel
-        // is closed again within the terminal-state window.
-        if (open && !this.runActive && (this.status.state === 'completed' || this.status.state === 'error')) {
-            this.clearResetTimer();
-            this.status = { ...this.status, state: 'idle', label: undefined };
+        if (open) {
+            this.acknowledgeTerminalState();
         }
         this.render();
         this.broadcast();
+    }
+
+    setAiPanelVisible(visible: boolean): void {
+        if (this.aiPanelVisible === visible) {
+            return;
+        }
+        this.aiPanelVisible = visible;
+        const acknowledged = visible && this.acknowledgeTerminalState();
+        this.render();
+        if (acknowledged) {
+            this.broadcast();
+        }
+    }
+
+    /**
+     * Seeing the panel acknowledges a finished/failed run — reset to idle so the
+     * 'Done — click to open' nudge doesn't reappear once the panel is closed or
+     * hidden again within the terminal-state window.
+     */
+    private acknowledgeTerminalState(): boolean {
+        if (this.runActive || (this.status.state !== 'completed' && this.status.state !== 'error')) {
+            return false;
+        }
+        this.clearResetTimer();
+        this.status = { ...this.status, state: 'idle', label: undefined };
+        return true;
     }
 
     getStatus(): AgentRunStatus {
@@ -164,6 +187,13 @@ class AgentStatusManager {
         if (!this.statusBarItem) {
             return;
         }
+        // Only worth a slot in the status bar when there is live status to report
+        // and no panel on screen already reporting it. A panel that is open but
+        // hidden behind another tab still needs the status bar.
+        if (this.status.state === 'idle' || this.aiPanelVisible) {
+            this.statusBarItem.hide();
+            return;
+        }
         const label = truncate(this.status.label, STATUS_BAR_LABEL_MAX);
         switch (this.status.state) {
             case 'running':
@@ -182,7 +212,6 @@ class AgentStatusManager {
                 this.statusBarItem.text = `$(error) Copilot error`;
                 this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
                 break;
-            case 'idle':
             default:
                 this.statusBarItem.text = `$(bi-ai-chat) WSO2 Integrator Copilot`;
                 this.statusBarItem.backgroundColor = undefined;
@@ -192,6 +221,7 @@ class AgentStatusManager {
         tooltip.appendMarkdown(`**WSO2 Integrator Copilot**${this.status.label ? ` — ${this.status.label}` : ''}\n\n`);
         tooltip.appendMarkdown('Click to open the Copilot chat.');
         this.statusBarItem.tooltip = tooltip;
+        this.statusBarItem.show();
     }
 
     private broadcast(): void {
