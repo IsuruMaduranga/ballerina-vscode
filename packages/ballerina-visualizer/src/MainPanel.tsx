@@ -392,7 +392,8 @@ const MainPanel = () => {
                         case MACHINE_VIEW.BIDiagram:
                             const { default: DiagramWrapper } = await import("./views/BI/DiagramWrapper");
                             if (isStaleNavigation()) return;
-                            rpcClient.getLangClientRpcClient().getSTByRange({
+                            // Awaited so the code after the switch sees the view as settled.
+                            await rpcClient.getLangClientRpcClient().getSTByRange({
                                 documentIdentifier: {
                                     uri: URI.file(value.documentUri).toString(),
                                 },
