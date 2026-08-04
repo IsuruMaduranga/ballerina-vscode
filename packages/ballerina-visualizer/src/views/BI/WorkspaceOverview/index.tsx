@@ -36,6 +36,7 @@ import { Markdown } from "../../../components/Markdown";
 import { AlertBoxWithClose } from "../../AIPanel/AlertBoxWithClose";
 import { PackageListView } from "./PackageListView";
 import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
+import { useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
 import { getWorkspaceProjectScopes } from "../PackageOverview/utils";
 import { usePlatformExtContext } from "../../../providers/platform-ext-ctx-provider";
 
@@ -737,6 +738,7 @@ export function WorkspaceOverview({ isInDevant }: WorkspaceOverviewProps) {
 
     const [showAlert, setShowAlert] = React.useState(false);
     const [icpActionLoading, setIcpActionLoading] = React.useState<IcpAction | null>(null);
+    const aiPanelOpen = useAiPanelOpen();
 
     const { data: devantMetadata, refetch: refetchDevantMetadata } = useQuery({
         queryKey: ["project-devant-metadata"],
@@ -1061,9 +1063,11 @@ export function WorkspaceOverview({ isInDevant }: WorkspaceOverviewProps) {
                 </TitleContainer>
             </HeaderRow>
 
-            <HeroRow>
-                <CopilotHeroBox />
-            </HeroRow>
+            {!aiPanelOpen && (
+                <HeroRow>
+                    <CopilotHeroBox />
+                </HeroRow>
+            )}
 
             <MainContent hasDeployment={hasStandardIntegrations}>
                 <LeftContent>
