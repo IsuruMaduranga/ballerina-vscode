@@ -1333,6 +1333,7 @@ export async function runWizardMigrationEnhancement(): Promise<void> {
             const completedPackages = new Set<string>(tomlData?.completedPackages ?? []);
             const results: PackageEnhancementResult[] = [];
             let resumeInjected = false;
+            let stagesPerPackage = 0;
 
             // Suppress per-stage "stop" events so the wizard doesn't prematurely
             // show "completed" after the first package. The real final "stop" is
@@ -1363,6 +1364,7 @@ export async function runWizardMigrationEnhancement(): Promise<void> {
                 const pkgName = readPackageName(fullPkgPath) ?? pkgRelPath;
                 const manifest = buildCrossPackageManifest(projectRoot, packagePaths, pkgRelPath);
                 const stages = getPerProjectEnhancementStages(pkgName, pkgRelPath, pkgIdx, packagePaths.length, manifest, buildMigrationContext(projectRoot));
+                stagesPerPackage = stages.length;
                 if (!resumeInjected) {
                     injectResumePreamble(projectRoot, stages);
                     resumeInjected = true;
@@ -1426,8 +1428,8 @@ export async function runWizardMigrationEnhancement(): Promise<void> {
                             packageIndex: packagePaths.length,
                             totalPackages: packagePaths.length,
                             packageName: "",
-                            stageOffset: packagePaths.length * 4,
-                            totalStagesOverall: packagePaths.length * 4 + 1,
+                            stageOffset: packagePaths.length * stagesPerPackage,
+                            totalStagesOverall: packagePaths.length * stagesPerPackage + 1,
                         });
                         debugLogger.logMilestone("Workspace validation — completed (wizard)");
                     } catch (wsError) {

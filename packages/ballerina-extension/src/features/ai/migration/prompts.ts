@@ -441,7 +441,7 @@ function getStage1Prompt(context: MigrationContext): string {
     return `## Your Task — Stage 1: Source Inventory & Gap Analysis
 
 This is a **read-only stage** — you will NOT edit any files. Your sole output is a structured inventory
-that Stage 1 will use as its work plan.
+that Stage 2 will use as its work plan.
 
 > **Do NOT edit any Ballerina files.** Do NOT create documentation files. Just list and categorise.
 
@@ -449,7 +449,7 @@ that Stage 1 will use as its work plan.
 
 The rule-based migration tool may silently drop ${platformName} constructs without leaving a \`// TODO\`
 marker — for example, DataWeave scripts with complex logic, RAML/WSDL-defined types, substitution
-variables, or secondary flow files. Stage 1 would miss these if it only scanned for TODO comments.
+variables, or secondary flow files. Stage 2 would miss these if it only scanned for TODO comments.
 This stage surfaces the complete scope before any editing begins.
 
 ### Workflow — Follow This Exact Order
@@ -544,7 +544,7 @@ Your sole focus: ensure **every construct in the ${platformName} source project 
 represented in the Ballerina output**. A later stage handles compilation diagnostics, tests, and documentation.
 
 > **Do NOT** create any documentation files. **Do NOT** fix compilation errors unless they block you
-> from implementing a construct (Stage 2 does that). **Do NOT** create any \`*_new.bal\` or copy files.
+> from implementing a construct (Stage 3 does that). **Do NOT** create any \`*_new.bal\` or copy files.
 
 ### Core Principle: Source Is Ground Truth
 
@@ -556,9 +556,9 @@ what the migration tool flagged with \`// TODO\`.
 
 ### Workflow — Follow This Exact Order
 
-**Phase A: Load your work plan from Stage 0**
+**Phase A: Load your work plan from Stage 1**
 
-The Stage 0 inventory is in your context (from the previous stage output). Use it as your work list.
+The Stage 1 inventory is in your context (from the previous stage output). Use it as your work list.
 Process source files in this priority order:
 1. ❌ Missing — constructs the tool silently dropped (highest priority)
 2. ⚠️ Partial — constructs with \`// TODO\` or \`// FIXME\` markers
@@ -640,7 +640,7 @@ source constructs and implemented missing ones. Your sole focus is achieving **z
 diagnostics** across all source files (excluding \`tests/\`).
 
 > **Do NOT** create \`ENHANCEMENT_SUMMARY.md\` or any documentation files during this stage.
-> **Do NOT** work on test files — that is Stage 3.
+> **Do NOT** work on test files — that is Stage 4.
 > Focus entirely on fixing compilation errors.
 
 ### Workflow
@@ -809,7 +809,7 @@ After the checklist passes, create \`ENHANCEMENT_SUMMARY.md\` in the package roo
 ## Changes Made
 
 ### Source Constructs Implemented
-List constructs that were missing or incomplete in the migration output and were implemented in Stage 1.
+List constructs that were missing or incomplete in the migration output and were implemented in Stage 2.
 
 ### TODO / FIXME Resolutions
 List every TODO/FIXME resolved: file, original comment, what was implemented.
@@ -818,10 +818,10 @@ List every TODO/FIXME resolved: file, original comment, what was implemented.
 List places where original source was missing and a best-effort implementation was produced.
 
 ### Compilation Fixes
-List diagnostics fixed in Stage 2.
+List diagnostics fixed in Stage 3.
 
 ### Test Changes
-Summarise Stage 3 work: tests updated, added, mocks added, scenarios not covered.
+Summarise Stage 4 work: tests updated, added, mocks added, scenarios not covered.
 
 ## Remaining Scoped TODOs
 List all remaining \`// TODO\` comments (best-effort notes only).
@@ -866,7 +866,7 @@ function getStage6Prompt(context: MigrationContext): string {
     return `## Your Task — Stage 6: Idiomatic Refactoring
 
 Stages 1–5 produced functionally correct, compilable Ballerina code migrated from ${platform}.
-Stage 5 refactors that code toward idiomatic Ballerina style without changing any observable behaviour.
+Stage 6 refactors that code toward idiomatic Ballerina style without changing any observable behaviour.
 
 **Scope constraint — public symbols are frozen:**
 Only modify \`private\` functions, types, and variables. Functions, types, and \`public\` variables
@@ -988,7 +988,7 @@ fix any remaining cross-package issues so that all packages build together succe
 
 ### Important Notes
 
-- Do NOT re-run Stage 2–5 work here — only fix errors that span package boundaries.
+- Do NOT re-run Stage 2–6 work here — only fix errors that span package boundaries.
 - Only make changes that are strictly necessary to achieve zero workspace-level errors.
 - Do NOT create \`ENHANCEMENT_SUMMARY.md\` or any documentation in this stage.
 
