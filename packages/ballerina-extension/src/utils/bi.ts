@@ -976,17 +976,19 @@ export function resolveCreateLandingContext(
  * and shows a bare spinner until it finds its own package in the list, so navigating first
  * (with the refresh still in flight) is what makes that spinner visible instead of the page.
  */
-export async function refreshProjectInfoAndWait(): Promise<void> {
+export async function refreshProjectInfoAndWait(): Promise<boolean> {
     const ctx = StateMachine.context();
     const projectPath = ctx.workspacePath || ctx.projectPath;
     if (!projectPath || !ctx.langClient) {
-        return;
+        return false;
     }
     try {
         const projectInfo = await ctx.langClient.getProjectInfo({ projectPath });
         await StateMachine.updateProjectInfoAndRebuild(projectInfo);
+        return true;
     } catch (error) {
         console.error("[IntegrationWizard] Failed to refresh project info before navigating:", error);
+        return false;
     }
 }
 

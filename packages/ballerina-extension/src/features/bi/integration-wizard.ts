@@ -132,8 +132,9 @@ export async function createIntegration(params: CreateIntegrationRequest): Promi
         } else {
             // Refresh BEFORE navigating: the package overview fetches project structure
             // on mount, so navigating first would show it a spinner instead of the page.
-            await refreshProjectInfoAndWait();
-            openPackageOverview(packageRoot);
+            if (await refreshProjectInfoAndWait()) {
+                openPackageOverview(packageRoot);
+            }
         }
         return;
     }

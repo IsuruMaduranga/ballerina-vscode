@@ -822,8 +822,9 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
                 // The project was already open, so the new package is the news: land on
                 // its own overview. Refresh BEFORE navigating — that view fetches project
                 // structure on mount, so navigating first would show it a bare spinner.
-                await refreshProjectInfoAndWait();
-                openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.PackageOverview, projectPath: packageRoot });
+                if (await refreshProjectInfoAndWait()) {
+                    openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.PackageOverview, projectPath: packageRoot });
+                }
             } catch (error) {
                 window.showErrorMessage("Error adding integration to existing project");
                 console.error("Error adding integration to existing project:", error);
