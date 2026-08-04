@@ -142,9 +142,9 @@ export function CopilotHeroBox() {
         return subscribeAgentRunStatus(rpcClient, setStatus);
     }, [rpcClient]);
 
-    // Unlike the floating orb, the hero box always renders: with no status yet
-    // (or an older host without the RPC) it is still the AI entry point, just
-    // in its idle prompt form.
+    // Unlike the floating orb, a missing status does not hide the box: with no
+    // status yet (or an older host without the RPC) it is still the AI entry
+    // point, just in its idle prompt form.
     const state = status?.state ?? "idle";
     const active = state !== "idle";
     const colors = ORB_COLORS[state];
