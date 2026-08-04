@@ -51,6 +51,12 @@ const FormSection = styled.div`
     width: 100%;
 `;
 
+/** Marks the active choice on the label as well as the radio, so which option the
+ *  fields below belong to is never ambiguous. */
+const ChoiceLabel = styled.span<{ selected: boolean }>`
+    font-weight: ${(props: { selected: boolean }) => (props.selected ? 500 : 400)};
+`;
+
 export function ChoiceForm(props: ChoiceFormProps) {
     const { field, recordTypeFields } = props;
     const { form } = useFormContext();
@@ -173,13 +179,17 @@ export function ChoiceForm(props: ChoiceFormProps) {
                 <RadioButtonGroup
                     id="choice-options"
                     label={field.documentation}
-                    defaultValue={selectedOption}
+                    defaultValue={String(selectedOption)}
                     defaultChecked={true}
-                    value={selectedOption}
+                    value={String(selectedOption)}
                     options={field.choices.map((choice, index) => ({
                         id: index.toString(),
                         value: index + 1,
-                        content: choice.metadata.label,
+                        content: (
+                            <ChoiceLabel selected={selectedOption === index + 1}>
+                                {choice.metadata.label}
+                            </ChoiceLabel>
+                        ),
                         disabled: field.editable === false || !choice.editable
                     }))}
                     onChange={(e) => {
