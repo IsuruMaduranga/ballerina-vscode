@@ -19,7 +19,7 @@
 import { useEffect, useState } from "react";
 import styled from "@emotion/styled";
 import { keyframes } from "@emotion/react";
-import { AgentRunState, AgentRunStatus, ChatNotify } from "@wso2/ballerina-core";
+import { AgentRunState, AgentRunStatus, ChatNotify, MACHINE_VIEW } from "@wso2/ballerina-core";
 import { BallerinaRpcClient, useRpcContext } from "@wso2/ballerina-rpc-client";
 import type { MiniChatPrompt } from "./promptHandoff";
 
@@ -372,16 +372,43 @@ function notifyOrbSuppressed() {
     orbSuppressListeners.forEach((listener) => listener(orbSuppressCount > 0));
 }
 
-/** Hides the floating orb while the caller is mounted. */
-export function useSuppressAgentStatusOrb(): void {
+/** Hides the floating orb while the caller is mounted and `suppressed` holds. */
+export function useSuppressAgentStatusOrb(suppressed = true): void {
     useEffect(() => {
+        if (!suppressed) {
+            return;
+        }
         orbSuppressCount++;
         notifyOrbSuppressed();
         return () => {
             orbSuppressCount--;
             notifyOrbSuppressed();
         };
-    }, []);
+    }, [suppressed]);
+}
+
+/**
+ * The hubs and design canvases the ambient orb belongs on. Forms, wizards, list
+ * and settings pages, setup/welcome pages, Copilot's own views and anything still
+ * loading go without it, so a view added later has to opt in here rather than
+ * inherit the overlay.
+ */
+const VIEWS_WITH_ORB: ReadonlySet<MACHINE_VIEW> = new Set([
+    MACHINE_VIEW.PackageOverview,
+    MACHINE_VIEW.BIComponentView,
+    MACHINE_VIEW.BIDiagram,
+    MACHINE_VIEW.ServiceDesigner,
+    MACHINE_VIEW.BIServiceClassDesigner,
+    MACHINE_VIEW.AIAgentDesigner,
+    MACHINE_VIEW.ERDiagram,
+    MACHINE_VIEW.TypeDiagram,
+    MACHINE_VIEW.GraphQLDiagram,
+    MACHINE_VIEW.DataMapper,
+    MACHINE_VIEW.InlineDataMapper,
+]);
+
+export function viewHidesAgentStatusOrb(view: MACHINE_VIEW | null | undefined): boolean {
+    return !view || !VIEWS_WITH_ORB.has(view);
 }
 
 export function subscribeOrbSuppressed(listener: (suppressed: boolean) => void): () => void {

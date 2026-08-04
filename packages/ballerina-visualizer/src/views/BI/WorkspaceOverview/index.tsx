@@ -35,7 +35,6 @@ import { VSCodeLink } from "@vscode/webview-ui-toolkit/react";
 import { Markdown } from "../../../components/Markdown";
 import { AlertBoxWithClose } from "../../AIPanel/AlertBoxWithClose";
 import { PackageListView } from "./PackageListView";
-import { useSuppressAgentStatusOrb } from "../../../components/AgentStatusOrb/shared";
 import { getWorkspaceProjectScopes } from "../PackageOverview/utils";
 import { usePlatformExtContext } from "../../../providers/platform-ext-ctx-provider";
 
@@ -733,8 +732,6 @@ export function WorkspaceOverview({ isInDevant, isICPSupported }: WorkspaceOverv
 
     const [showAlert, setShowAlert] = React.useState(false);
     const [icpActionLoading, setIcpActionLoading] = React.useState<IcpAction | null>(null);
-
-    useSuppressAgentStatusOrb();
 
     const { data: devantMetadata, refetch: refetchDevantMetadata } = useQuery({
         queryKey: ["project-devant-metadata"],
