@@ -385,6 +385,14 @@ public class DurableAgentRunBuilder extends CallBuilder {
             if (!modelValue.isBlank()) {
                 fields.put(MODEL_KEY, modelValue);
             }
+            // The form offers the reasoning cap, so a change to it has to reach the declaration;
+            // otherwise the field accepts an edit that goes nowhere.
+            String maxIterValue = sourceBuilder.getProperty(MAX_ITER_KEY)
+                    .map(property -> property.value() == null ? "" : property.value().toString().trim())
+                    .orElse("");
+            if (!maxIterValue.isBlank()) {
+                fields.put(MAX_ITER_KEY, maxIterValue);
+            }
             return WorkflowUtil.setAgentConfigFields(sourceBuilder, agentVarName, fields);
         }
 

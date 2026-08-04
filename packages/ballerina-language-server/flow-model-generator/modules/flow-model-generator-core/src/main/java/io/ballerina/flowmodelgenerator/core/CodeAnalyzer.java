@@ -1438,6 +1438,11 @@ public class CodeAnalyzer extends NodeVisitor {
                     DurableAgentRunBuilder.convertModelToSelect(nodeBuilder,
                             DurableAgentRunBuilder.modelProviderOptions(semanticModel));
                 }
+                // The reasoning cap is part of the declaration, so the configuration form has to
+                // show the declared value rather than opening blank on it.
+                case "maxIter" -> addAgentCallProperty(DurableAgentRunBuilder.MAX_ITER_KEY,
+                        "Maximum Iterations", "Maximum LLM reasoning iterations per turn",
+                        valueExpr.toSourceCode().trim());
                 case "activities" -> collectDeclaredCapabilities(valueExpr, "activity", "activity",
                         Map.of("activity", "activity", "name", "name", "description", "description",
                                 "requiresApproval", "requiresApproval", "userRoles", "userRoles"), activities);
