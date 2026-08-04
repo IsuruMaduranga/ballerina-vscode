@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import { Markdown } from "../../../components/Markdown";
 import { VSCodeLink } from "@vscode/webview-ui-toolkit/react";
 import {
     DIRECTORY_MAP,
@@ -973,7 +973,7 @@ export function LibraryOverview({ projectStructure, isNPSupported, projectPath, 
                     </ReadmeHeaderRow>
                     <ReadmeContentArea>
                         {readmeContent ? (
-                            <ReactMarkdown>{readmeContent}</ReactMarkdown>
+                            <Markdown>{readmeContent}</Markdown>
                         ) : (
                             <EmptyReadmeContainer>
                                 <Typography variant="body2" sx={{ color: "var(--vscode-descriptionForeground)" }}>

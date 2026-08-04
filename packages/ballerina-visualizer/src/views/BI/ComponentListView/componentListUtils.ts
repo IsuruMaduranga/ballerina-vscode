@@ -25,13 +25,14 @@ export function isBetaModule(moduleName: string) {
 }
 
 /**
- * Case-insensitive substring match for the artifact gallery's page-level search. An empty query
- * matches everything (the gallery shows its full catalog until the user types).
+ * Whether a card matches the Add-Artifact search query (case-insensitive substring
+ * over the title plus any `extraTerms`, e.g. package/module names). An empty/blank
+ * query matches everything, so panels show all cards.
  */
-export function matchesArtifactQuery(query: string, ...texts: (string | undefined)[]): boolean {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) {
+export function cardMatchesSearch(title: string, query?: string, ...extraTerms: (string | undefined)[]): boolean {
+    const q = (query ?? "").trim().toLowerCase();
+    if (q === "") {
         return true;
     }
-    return texts.some((text) => text?.toLowerCase().includes(normalized));
+    return [title, ...extraTerms].filter(Boolean).join(" ").toLowerCase().includes(q);
 }

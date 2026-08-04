@@ -131,6 +131,7 @@ interface ArtifactFormProps {
     onValidityChange?: (isValid: boolean) => void;
     recordsOnly?: boolean;
     serverValidationErrors?: ValidationResult[];
+    footerActionButton?: boolean;
 }
 
 export function ArtifactForm(props: ArtifactFormProps) {
@@ -169,7 +170,8 @@ export function ArtifactForm(props: ArtifactFormProps) {
         recordsOnly,
         secondarySubmitText,
         onSecondarySubmit,
-        serverValidationErrors
+        serverValidationErrors,
+        footerActionButton
     } = props;
 
     const { rpcClient } = useRpcContext();
@@ -1122,6 +1124,7 @@ export function ArtifactForm(props: ArtifactFormProps) {
                               }
                             : undefined
                     }
+                    footerActionButton={footerActionButton}
                 />
             )}
             {

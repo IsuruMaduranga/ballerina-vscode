@@ -16,7 +16,6 @@
  * under the License.
  */
 import React, { useEffect, useState } from 'react';
-import { Icon } from '@wso2/ui-toolkit';
 import { useRpcContext } from '@wso2/ballerina-rpc-client';
 import { DIRECTORY_MAP, EVENT_TYPE, MACHINE_VIEW } from '@wso2/ballerina-core';
 
@@ -24,7 +23,8 @@ import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
 import { useVisualizerContext } from '../../../Context';
-import { matchesArtifactQuery } from './componentListUtils';
+import { OTHER_ARTIFACT_CARDS } from '../components/artifactCards';
+import { cardMatchesSearch } from './componentListUtils';
 
 interface OtherArtifactsPanelProps {
     isNPSupported: boolean;
@@ -34,7 +34,7 @@ interface OtherArtifactsPanelProps {
 }
 
 export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
-    const { isNPSupported, isLibrary = false, searchQuery = "" } = props;
+    const { isNPSupported, isLibrary = false } = props;
     const { rpcClient } = useRpcContext();
     const { setPopupMessage } = useVisualizerContext();
     const [experimentalEnabled, setExperimentalEnabled] = useState(false);
@@ -100,17 +100,12 @@ export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
         }
     };
 
-    const cards = [
-        { id: "bi-function", testId: "function", icon: "bi-function", title: "Function", key: DIRECTORY_MAP.FUNCTION, isBeta: false, show: true },
-        { id: "bi-ai-function", icon: "bi-ai-function", title: "Natural Function", key: DIRECTORY_MAP.NP_FUNCTION, isBeta: true, show: showNaturalFunctions },
-        { id: "data-mapper", icon: "dataMapper", title: "Data Mapper", key: DIRECTORY_MAP.DATA_MAPPER, isBeta: false, show: true },
-        { id: "type", icon: "bi-type", title: "Type", key: DIRECTORY_MAP.TYPE, isBeta: false, show: true },
-        { id: "connection", icon: "bi-connection", title: "Connection", key: DIRECTORY_MAP.CONNECTION, isBeta: false, show: true },
-        { id: "configurable", icon: "bi-config", title: "Configuration", key: DIRECTORY_MAP.CONFIGURABLE, isBeta: false, show: true },
-    ].filter((card) => card.show && matchesArtifactQuery(searchQuery, card.title));
-
-    // While the user is searching, a section with no matches disappears entirely.
-    if (searchQuery.trim() && cards.length === 0) {
+    const q = props.searchQuery;
+    const cards = OTHER_ARTIFACT_CARDS.filter(
+        (card) =>
+            (showNaturalFunctions || !card.requiresNaturalFunctions) && cardMatchesSearch(card.displayName, q)
+    );
+    if (cards.length === 0) {
         return null;
     }
 
@@ -125,12 +120,11 @@ export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
             <CardGrid>
                 {cards.map((card) => (
                     <ButtonCard
-                        key={card.id}
                         id={card.id}
-                        data-testid={card.testId}
-                        icon={<Icon name={card.icon} />}
-                        title={card.title}
-                        onClick={() => handleClick(card.key)}
+                        key={card.id}
+                        icon={card.icon}
+                        title={card.displayName}
+                        onClick={() => handleClick(card.directoryKey)}
                         isBeta={card.isBeta}
                     />
                 ))}

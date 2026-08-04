@@ -32,7 +32,7 @@ import { Typography, Codicon, ProgressRing, Button, Icon, Divider } from "@wso2/
 import styled from "@emotion/styled";
 import { ThemeColors } from "@wso2/ui-toolkit";
 import { VSCodeLink } from "@vscode/webview-ui-toolkit/react";
-import ReactMarkdown from "react-markdown";
+import { Markdown } from "../../../components/Markdown";
 import { AlertBoxWithClose } from "../../AIPanel/AlertBoxWithClose";
 import { PackageListView } from "./PackageListView";
 import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
@@ -1148,7 +1148,7 @@ export function WorkspaceOverview({ isInDevant }: WorkspaceOverviewProps) {
                             </SectionHeader>
                             {readmeContent ? (
                                 <ReadmeContent>
-                                    <ReactMarkdown>{readmeContent}</ReactMarkdown>
+                                    <Markdown>{readmeContent}</Markdown>
                                 </ReadmeContent>
                             ) : (
                                 <EmptyReadmeContainer>
