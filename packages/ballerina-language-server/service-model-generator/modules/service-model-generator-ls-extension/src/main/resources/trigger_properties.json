@@ -284,5 +284,51 @@
     "version": "1.0.0",
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_azure.storage.files_1.0.0.png",
     "kind": "file"
+  },
+  "22": {
+    "name": "whatsapp.business",
+    "orgName": "ballerinax",
+    "packageName": "whatsapp.business",
+    "keywords": [
+      "whatsapp",
+      "messaging",
+      "webhook",
+      "event"
+    ],
+    "triggerName": "WhatsApp Business",
+    "version": "2.0.1",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_whatsapp.business_2.0.1.png",
+    "kind": "event"
+  },
+  "23": {
+    "name": "telegram",
+    "orgName": "ballerinax",
+    "packageName": "telegram",
+    "keywords": [
+      "telegram",
+      "messaging",
+      "webhook",
+      "event"
+    ],
+    "triggerName": "Telegram",
+    "version": "0.9.1",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_telegram_0.9.1.png",
+    "kind": "event"
+  },
+  "24": {
+    "name": "googleapis.chat",
+    "orgName": "ballerinax",
+    "packageName": "googleapis.chat",
+    "keywords": [
+      "google",
+      "chat",
+      "messaging",
+      "webhook",
+      "event"
+    ],
+    "triggerName": "Google Chat",
+    "version": "0.1.0",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_googleapis.chat_0.1.0.png",
+    "kind": "event"
   }
 }

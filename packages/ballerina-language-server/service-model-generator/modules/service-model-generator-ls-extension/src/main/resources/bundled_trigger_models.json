@@ -22,5 +22,8 @@
   "oracledb": "trigger-models/oracledb.json",
   "solace": "trigger-models/solace.json",
   "solace.jms": "trigger-models/solace.jms.json",
-  "sap.jco": "trigger-models/sap.jco.json"
+  "sap.jco": "trigger-models/sap.jco.json",
+  "whatsapp.business": "trigger-models/whatsapp.business.json",
+  "telegram": "trigger-models/telegram.json",
+  "googleapis.chat": "trigger-models/googleapis.chat.json"
 }
