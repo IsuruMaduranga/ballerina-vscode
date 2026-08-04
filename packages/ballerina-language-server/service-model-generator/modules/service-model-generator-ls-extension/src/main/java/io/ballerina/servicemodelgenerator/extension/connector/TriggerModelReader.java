@@ -106,7 +106,9 @@ public class TriggerModelReader {
             try {
                 return SemanticVersion.from(version).greaterThanOrEqualTo(SemanticVersion.from(minVersion));
             } catch (RuntimeException e) {
-                // Unparsable version: treat as a match, resolving to the newest document.
+                // Unparsable version: treat as a match, resolving to the newest document. Deliberate --
+                // matches what a fresh project resolves to; only the rare unparsable-version case
+                // regresses toward a possibly-incompatible newer shape.
                 return true;
             }
         }

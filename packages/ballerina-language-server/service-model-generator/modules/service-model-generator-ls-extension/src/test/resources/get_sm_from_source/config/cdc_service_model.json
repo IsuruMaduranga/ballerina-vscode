@@ -10,35 +10,16 @@
     "offset": 1
   },
   "response": {
-    "id": "17",
-    "name": "CDC for Microsoft SQL Server",
+    "id": "0",
+    "name": "Microsoft SQL Server CDC",
     "type": "mssql",
-    "displayName": "CDC for Microsoft SQL Server",
+    "displayName": "Microsoft SQL Server CDC",
     "moduleName": "mssql",
     "orgName": "ballerinax",
-    "version": "1.17.0",
+    "version": "1.18.1",
     "packageName": "mssql",
     "listenerProtocol": "mssql",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_mssql_1.17.0.png",
-    "documentation": {
-      "metadata": {
-        "label": "Description",
-        "description": "The description of the class"
-      },
-      "codedata": {
-        "type": "DOCUMENTATION"
-      },
-      "types": [
-        {
-          "fieldType": "TEXT",
-          "selected": true
-        }
-      ],
-      "enabled": true,
-      "editable": true,
-      "optional": true,
-      "advanced": false
-    },
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_mssql_1.18.1.png",
     "properties": {
       "listener": {
         "metadata": {
@@ -91,27 +72,14 @@
       },
       "serviceType": {
         "metadata": {
-          "label": "Service Type",
-          "description": ""
+          "label": "CDC Service",
+          "description": "Handles SQL Server change-data-capture events (row reads, inserts, updates, deletes) delivered by the attached MSSQL CDC listener."
         },
-        "codedata": {
-          "type": "SERVICE_TYPE"
-        },
-        "placeholder": "Service",
+        "placeholder": "cdc:Service",
         "value": "Service",
         "types": [
           {
-            "fieldType": "SINGLE_SELECT",
-            "options": [
-              {
-                "label": "",
-                "value": ""
-              },
-              {
-                "label": "Service",
-                "value": "Service"
-              }
-            ],
+            "fieldType": "TYPE",
             "selected": true
           }
         ],
@@ -120,41 +88,31 @@
         "optional": false,
         "advanced": false
       },
-      "readOnlyMetadata": {
-        "codedata": {
-          "type": "READONLY"
-        },
-        "placeholder": "false",
-        "value": {
-          "Table Name": [
-            "db1.schema1.t1"
-          ]
-        },
-        "types": [
-          {
-            "fieldType": "SINGLE_SELECT",
-            "selected": true
-          }
-        ],
-        "enabled": true,
-        "editable": true,
-        "optional": false,
-        "advanced": false
-      },
-      "annotServiceConfig": {
+      "serviceConfig": {
         "metadata": {
-          "label": "ServiceConfig",
-          "description": "ServiceConfig"
+          "label": "Service Config",
+          "description": "Advanced CDC configuration"
         },
         "codedata": {
-          "type": "ANNOTATION_ATTACHMENT",
+          "type": "SERVICE_ANNOTATION",
           "originalName": "ServiceConfig",
-          "moduleName": "cdc"
+          "moduleName": "cdc",
+          "path": ""
         },
         "value": "{\n    tables: \"db1.schema1.t1\"\n}",
         "types": [
           {
-            "fieldType": "EXPRESSION",
+            "fieldType": "RECORD_MAP_EXPRESSION",
+            "ballerinaType": "cdc:CdcServiceConfig",
+            "typeMembers": [
+              {
+                "type": "cdc:CdcServiceConfig",
+                "packageInfo": "ballerinax:cdc:1.3.0",
+                "packageName": "cdc",
+                "kind": "RECORD_TYPE",
+                "selected": true
+              }
+            ],
             "selected": true
           }
         ],
@@ -184,20 +142,20 @@
       {
         "metadata": {
           "label": "onRead",
-          "description": "Triggers initially to read existing records from the monitored table"
+          "description": "Triggered for each row present in the table when the initial snapshot is taken (and, for tables using function-based CDC query mode, for rows read outside of change events)."
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
             "label": "onRead",
-            "description": "Triggers initially to read existing records from the monitored table"
+            "description": "Triggered for each row present in the table when the initial snapshot is taken (and, for tables using function-based CDC query mode, for rows read outside of change events)."
           },
           "placeholder": "onRead",
           "value": "onRead",
           "types": [
             {
               "fieldType": "IDENTIFIER",
-              "selected": false
+              "selected": true
             }
           ],
           "enabled": true,
@@ -208,17 +166,25 @@
         "parameters": [
           {
             "metadata": {
-              "label": "afterEntry",
-              "description": "The existing record from the monitored table"
+              "label": "Message Configuration",
+              "description": "Define the shape of the database row bound to this parameter."
             },
             "kind": "DATA_BINDING",
             "type": {
               "metadata": {
-                "label": "Parameter Type",
-                "description": "The type of the parameter"
+                "label": "Message Configuration",
+                "description": "Define the shape of the database row bound to this parameter."
+              },
+              "codedata": {
+                "type": "PAYLOAD_TYPE",
+                "template": "{{type}}",
+                "defaultType": "record {}",
+                "boundType": "AfterEntrySchema",
+                "bindable": true,
+                "nameEditable": false
               },
               "placeholder": "record {}",
-              "value": "record {}",
+              "value": "AfterEntrySchema",
               "types": [
                 {
                   "fieldType": "TYPE",
@@ -227,15 +193,15 @@
               ],
               "enabled": true,
               "editable": true,
-              "optional": true,
+              "optional": false,
               "advanced": false
             },
             "name": {
               "metadata": {
-                "label": "afterEntry",
-                "description": "The existing record from the monitored table"
+                "label": "Message Configuration",
+                "description": "Define the shape of the database row bound to this parameter."
               },
-              "placeholder": "afterEntry",
+              "placeholder": "after",
               "value": "afterEntry",
               "types": [
                 {
@@ -244,29 +210,11 @@
                 }
               ],
               "enabled": true,
-              "editable": true,
+              "editable": false,
               "optional": false,
               "advanced": false
             },
-            "defaultValue": {
-              "metadata": {
-                "label": "Default Value",
-                "description": "The default value of the parameter"
-              },
-              "placeholder": "",
-              "value": "",
-              "types": [
-                {
-                  "fieldType": "EXPRESSION",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
-              "advanced": false
-            },
-            "enabled": false,
+            "enabled": true,
             "editable": true,
             "optional": false,
             "advanced": false,
@@ -275,10 +223,10 @@
           },
           {
             "metadata": {
-              "label": "tableName",
-              "description": "The name of the table where the record was created"
+              "label": "Table Name",
+              "description": "Restrict this handler to a single table when the listener watches more than one (fully-qualified table name)."
             },
-            "kind": "REQUIRED",
+            "kind": "OPTIONAL",
             "type": {
               "metadata": {
                 "label": "Parameter Type",
@@ -299,8 +247,8 @@
             },
             "name": {
               "metadata": {
-                "label": "tableName",
-                "description": "The name of the table where the record was created"
+                "label": "Table Name",
+                "description": "Restrict this handler to a single table when the listener watches more than one (fully-qualified table name)."
               },
               "placeholder": "tableName",
               "value": "tableName",
@@ -311,32 +259,14 @@
                 }
               ],
               "enabled": true,
-              "editable": true,
+              "editable": false,
               "optional": false,
-              "advanced": false
-            },
-            "defaultValue": {
-              "metadata": {
-                "label": "Default Value",
-                "description": "The default value of the parameter"
-              },
-              "placeholder": "",
-              "value": "",
-              "types": [
-                {
-                  "fieldType": "EXPRESSION",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
               "advanced": false
             },
             "enabled": true,
             "editable": true,
             "optional": true,
-            "advanced": false,
+            "advanced": true,
             "hidden": false,
             "isGraphqlId": false
           }
@@ -346,7 +276,7 @@
           "isGraphqlId": false,
           "metadata": {
             "label": "Return Type",
-            "description": "The return type of the function"
+            "description": "The return type of the function."
           },
           "placeholder": "error?",
           "value": "error?",
@@ -363,7 +293,7 @@
         },
         "enabled": true,
         "optional": true,
-        "editable": false,
+        "editable": true,
         "canAddParameters": false,
         "codedata": {
           "lineRange": {
@@ -376,19 +306,264 @@
               "line": 17,
               "offset": 5
             }
-          }
-        }
+          },
+          "orgName": "ballerinax",
+          "packageName": "mssql",
+          "moduleName": "mssql",
+          "version": "1.18.1"
+        },
+        "properties": {},
+        "group": "onRead",
+        "repeatable": "FALSE",
+        "nameEditable": false
       },
       {
         "metadata": {
+          "label": "onUpdate",
+          "description": "Triggered when a row in a captured table is updated."
+        },
+        "kind": "REMOTE",
+        "name": {
+          "metadata": {
+            "label": "onUpdate",
+            "description": "Triggered when a row in a captured table is updated."
+          },
+          "placeholder": "onUpdate",
+          "value": "onUpdate",
+          "types": [
+            {
+              "fieldType": "IDENTIFIER",
+              "selected": true
+            }
+          ],
+          "enabled": true,
+          "editable": false,
+          "optional": false,
+          "advanced": false
+        },
+        "parameters": [
+          {
+            "metadata": {
+              "label": "Message Configuration",
+              "description": "Define the shape of the database row bound to this parameter."
+            },
+            "kind": "DATA_BINDING",
+            "type": {
+              "metadata": {
+                "label": "Message Configuration",
+                "description": "Define the shape of the database row bound to this parameter."
+              },
+              "codedata": {
+                "type": "PAYLOAD_TYPE",
+                "template": "{{type}}",
+                "defaultType": "record {}",
+                "boundType": "",
+                "bindable": true,
+                "nameEditable": false
+              },
+              "placeholder": "record {}",
+              "value": "record {}",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": false,
+              "advanced": false
+            },
+            "name": {
+              "metadata": {
+                "label": "Message Configuration",
+                "description": "Define the shape of the database row bound to this parameter."
+              },
+              "placeholder": "before",
+              "value": "beforeEntry",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": false,
+              "optional": false,
+              "advanced": false
+            },
+            "enabled": true,
+            "editable": true,
+            "optional": false,
+            "advanced": false,
+            "hidden": false,
+            "isGraphqlId": false
+          },
+          {
+            "metadata": {
+              "label": "Message Configuration",
+              "description": "Define the shape of the database row bound to this parameter."
+            },
+            "kind": "DATA_BINDING",
+            "type": {
+              "metadata": {
+                "label": "Message Configuration",
+                "description": "Define the shape of the database row bound to this parameter."
+              },
+              "codedata": {
+                "type": "PAYLOAD_TYPE",
+                "template": "{{type}}",
+                "defaultType": "record {}",
+                "boundType": "",
+                "bindable": true,
+                "nameEditable": false
+              },
+              "placeholder": "record {}",
+              "value": "record {}",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": true,
+              "optional": false,
+              "advanced": false
+            },
+            "name": {
+              "metadata": {
+                "label": "Message Configuration",
+                "description": "Define the shape of the database row bound to this parameter."
+              },
+              "placeholder": "after",
+              "value": "afterEntry",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": false,
+              "optional": false,
+              "advanced": false
+            },
+            "enabled": true,
+            "editable": true,
+            "optional": false,
+            "advanced": false,
+            "hidden": false,
+            "isGraphqlId": false
+          },
+          {
+            "metadata": {
+              "label": "Table Name",
+              "description": "Restrict this handler to a single table when the listener watches more than one (fully-qualified table name)."
+            },
+            "kind": "OPTIONAL",
+            "type": {
+              "metadata": {
+                "label": "Parameter Type",
+                "description": "The type of the parameter"
+              },
+              "placeholder": "string",
+              "value": "string",
+              "types": [
+                {
+                  "fieldType": "TYPE",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": false,
+              "optional": true,
+              "advanced": false
+            },
+            "name": {
+              "metadata": {
+                "label": "Table Name",
+                "description": "Restrict this handler to a single table when the listener watches more than one (fully-qualified table name)."
+              },
+              "placeholder": "tableName",
+              "value": "tableName",
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
+              "enabled": true,
+              "editable": false,
+              "optional": false,
+              "advanced": false
+            },
+            "enabled": true,
+            "editable": true,
+            "optional": true,
+            "advanced": true,
+            "hidden": false,
+            "isGraphqlId": false
+          }
+        ],
+        "returnType": {
+          "hasError": true,
+          "isGraphqlId": false,
+          "metadata": {
+            "label": "Return Type",
+            "description": "The return type of the function."
+          },
+          "placeholder": "error?",
+          "value": "error?",
+          "types": [
+            {
+              "fieldType": "TYPE",
+              "selected": true
+            }
+          ],
+          "enabled": true,
+          "editable": false,
+          "optional": true,
+          "advanced": false
+        },
+        "enabled": true,
+        "optional": true,
+        "editable": true,
+        "canAddParameters": false,
+        "codedata": {
+          "lineRange": {
+            "fileName": "main.bal",
+            "startLine": {
+              "line": 19,
+              "offset": 4
+            },
+            "endLine": {
+              "line": 25,
+              "offset": 5
+            }
+          },
+          "orgName": "ballerinax",
+          "packageName": "mssql",
+          "moduleName": "mssql",
+          "version": "1.18.1"
+        },
+        "properties": {},
+        "group": "onUpdate",
+        "repeatable": "FALSE",
+        "nameEditable": false
+      }
+    ],
+    "schemaFunctions": [
+      {
+        "metadata": {
           "label": "onCreate",
-          "description": "Triggers when a new record is created in the monitored table"
+          "description": "Triggered when a new row is inserted into a captured table."
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
             "label": "onCreate",
-            "description": "Triggers when a new record is created in the monitored table"
+            "description": "Triggered when a new row is inserted into a captured table."
           },
           "placeholder": "onCreate",
           "value": "onCreate",
@@ -406,14 +581,22 @@
         "parameters": [
           {
             "metadata": {
-              "label": "afterEntry",
-              "description": "The new record created in the monitored table"
+              "label": "Message Configuration",
+              "description": "Define the shape of the database row bound to this parameter."
             },
             "kind": "DATA_BINDING",
             "type": {
               "metadata": {
-                "label": "Parameter Type",
-                "description": "The type of the parameter"
+                "label": "Message Configuration",
+                "description": "Define the shape of the database row bound to this parameter."
+              },
+              "codedata": {
+                "type": "PAYLOAD_TYPE",
+                "template": "{{type}}",
+                "defaultType": "record {}",
+                "boundType": "",
+                "bindable": true,
+                "nameEditable": false
               },
               "placeholder": "record {}",
               "value": "record {}",
@@ -425,16 +608,16 @@
               ],
               "enabled": true,
               "editable": true,
-              "optional": true,
+              "optional": false,
               "advanced": false
             },
             "name": {
               "metadata": {
-                "label": "afterEntry",
-                "description": "The new record created in the monitored table"
+                "label": "Message Configuration",
+                "description": "Define the shape of the database row bound to this parameter."
               },
-              "placeholder": "afterEntry",
-              "value": "afterEntry",
+              "placeholder": "after",
+              "value": "after",
               "types": [
                 {
                   "fieldType": "IDENTIFIER",
@@ -442,26 +625,8 @@
                 }
               ],
               "enabled": true,
-              "editable": true,
+              "editable": false,
               "optional": false,
-              "advanced": false
-            },
-            "defaultValue": {
-              "metadata": {
-                "label": "Default Value",
-                "description": "The default value of the parameter"
-              },
-              "placeholder": "",
-              "value": "",
-              "types": [
-                {
-                  "fieldType": "EXPRESSION",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
               "advanced": false
             },
             "enabled": true,
@@ -473,8 +638,8 @@
           },
           {
             "metadata": {
-              "label": "tableName",
-              "description": "The name of the table where the record was created"
+              "label": "Table Name",
+              "description": "Restrict this handler to a single table when the listener watches more than one (fully-qualified table name)."
             },
             "kind": "OPTIONAL",
             "type": {
@@ -497,8 +662,8 @@
             },
             "name": {
               "metadata": {
-                "label": "tableName",
-                "description": "The name of the table where the record was created"
+                "label": "Table Name",
+                "description": "Restrict this handler to a single table when the listener watches more than one (fully-qualified table name)."
               },
               "placeholder": "tableName",
               "value": "tableName",
@@ -509,32 +674,14 @@
                 }
               ],
               "enabled": true,
-              "editable": true,
+              "editable": false,
               "optional": false,
               "advanced": false
             },
-            "defaultValue": {
-              "metadata": {
-                "label": "Default Value",
-                "description": "The default value of the parameter"
-              },
-              "placeholder": "",
-              "value": "",
-              "types": [
-                {
-                  "fieldType": "EXPRESSION",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
-              "advanced": false
-            },
-            "enabled": true,
+            "enabled": false,
             "editable": true,
             "optional": true,
-            "advanced": false,
+            "advanced": true,
             "hidden": false,
             "isGraphqlId": false
           }
@@ -544,7 +691,7 @@
           "isGraphqlId": false,
           "metadata": {
             "label": "Return Type",
-            "description": "The return type of the function"
+            "description": "The return type of the function."
           },
           "placeholder": "error?",
           "value": "error?",
@@ -561,284 +708,29 @@
         },
         "enabled": false,
         "optional": true,
-        "editable": false,
-        "canAddParameters": false
-      },
-      {
-        "metadata": {
-          "label": "onUpdate",
-          "description": "Triggers when an existing record is updated in the monitored table"
-        },
-        "kind": "REMOTE",
-        "name": {
-          "metadata": {
-            "label": "onUpdate",
-            "description": "Triggers when an existing record is updated in the monitored table"
-          },
-          "placeholder": "onUpdate",
-          "value": "onUpdate",
-          "types": [
-            {
-              "fieldType": "IDENTIFIER",
-              "selected": false
-            }
-          ],
-          "enabled": true,
-          "editable": false,
-          "optional": false,
-          "advanced": false
-        },
-        "parameters": [
-          {
-            "metadata": {
-              "label": "beforeEntry",
-              "description": "The record before the update in the monitored table"
-            },
-            "kind": "REQUIRED",
-            "type": {
-              "metadata": {
-                "label": "Parameter Type",
-                "description": "The type of the parameter"
-              },
-              "placeholder": "record {}",
-              "value": "record {}",
-              "types": [
-                {
-                  "fieldType": "TYPE",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
-              "advanced": false
-            },
-            "name": {
-              "metadata": {
-                "label": "beforeEntry",
-                "description": "The record before the update in the monitored table"
-              },
-              "placeholder": "beforeEntry",
-              "value": "afterEntry",
-              "types": [
-                {
-                  "fieldType": "IDENTIFIER",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": false,
-              "advanced": false
-            },
-            "defaultValue": {
-              "metadata": {
-                "label": "Default Value",
-                "description": "The default value of the parameter"
-              },
-              "placeholder": "",
-              "value": "",
-              "types": [
-                {
-                  "fieldType": "EXPRESSION",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
-              "advanced": false
-            },
-            "enabled": true,
-            "editable": true,
-            "optional": false,
-            "advanced": false,
-            "hidden": false,
-            "isGraphqlId": false
-          },
-          {
-            "metadata": {
-              "label": "afterEntry",
-              "description": "The record after the update in the monitored table"
-            },
-            "kind": "DATA_BINDING",
-            "type": {
-              "metadata": {
-                "label": "Parameter Type",
-                "description": "The type of the parameter"
-              },
-              "placeholder": "record {}",
-              "value": "record {}",
-              "types": [
-                {
-                  "fieldType": "TYPE",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
-              "advanced": false
-            },
-            "name": {
-              "metadata": {
-                "label": "afterEntry",
-                "description": "The record after the update in the monitored table"
-              },
-              "placeholder": "afterEntry",
-              "value": "afterEntry",
-              "types": [
-                {
-                  "fieldType": "IDENTIFIER",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": false,
-              "advanced": false
-            },
-            "defaultValue": {
-              "metadata": {
-                "label": "Default Value",
-                "description": "The default value of the parameter"
-              },
-              "placeholder": "",
-              "value": "",
-              "types": [
-                {
-                  "fieldType": "EXPRESSION",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
-              "advanced": false
-            },
-            "enabled": false,
-            "editable": true,
-            "optional": false,
-            "advanced": false,
-            "hidden": false,
-            "isGraphqlId": false
-          },
-          {
-            "metadata": {
-              "label": "tableName",
-              "description": "The name of the table where the record was created"
-            },
-            "kind": "REQUIRED",
-            "type": {
-              "metadata": {
-                "label": "Parameter Type",
-                "description": "The type of the parameter"
-              },
-              "placeholder": "string",
-              "value": "string",
-              "types": [
-                {
-                  "fieldType": "TYPE",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": false,
-              "optional": true,
-              "advanced": false
-            },
-            "name": {
-              "metadata": {
-                "label": "tableName",
-                "description": "The name of the table where the record was created"
-              },
-              "placeholder": "tableName",
-              "value": "tableName",
-              "types": [
-                {
-                  "fieldType": "IDENTIFIER",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": false,
-              "advanced": false
-            },
-            "defaultValue": {
-              "metadata": {
-                "label": "Default Value",
-                "description": "The default value of the parameter"
-              },
-              "placeholder": "",
-              "value": "",
-              "types": [
-                {
-                  "fieldType": "EXPRESSION",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
-              "advanced": false
-            },
-            "enabled": true,
-            "editable": true,
-            "optional": true,
-            "advanced": false,
-            "hidden": false,
-            "isGraphqlId": false
-          }
-        ],
-        "returnType": {
-          "hasError": true,
-          "isGraphqlId": false,
-          "metadata": {
-            "label": "Return Type",
-            "description": "The return type of the function"
-          },
-          "placeholder": "error?",
-          "value": "error?",
-          "types": [
-            {
-              "fieldType": "TYPE",
-              "selected": true
-            }
-          ],
-          "enabled": true,
-          "editable": false,
-          "optional": true,
-          "advanced": false
-        },
-        "enabled": true,
-        "optional": true,
-        "editable": false,
+        "editable": true,
         "canAddParameters": false,
         "codedata": {
-          "lineRange": {
-            "fileName": "main.bal",
-            "startLine": {
-              "line": 19,
-              "offset": 4
-            },
-            "endLine": {
-              "line": 25,
-              "offset": 5
-            }
-          }
-        }
+          "orgName": "ballerinax",
+          "packageName": "mssql",
+          "moduleName": "mssql",
+          "version": "1.18.1"
+        },
+        "properties": {},
+        "group": "onCreate",
+        "repeatable": "FALSE",
+        "nameEditable": false
       },
       {
         "metadata": {
           "label": "onDelete",
-          "description": "Triggers when a record is deleted from the monitored table"
+          "description": "Triggered when a row is deleted from a captured table."
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
             "label": "onDelete",
-            "description": "Triggers when a record is deleted from the monitored table"
+            "description": "Triggered when a row is deleted from a captured table."
           },
           "placeholder": "onDelete",
           "value": "onDelete",
@@ -856,14 +748,22 @@
         "parameters": [
           {
             "metadata": {
-              "label": "beforeEntry",
-              "description": "The record before the deletion in the monitored table"
+              "label": "Message Configuration",
+              "description": "Define the shape of the database row bound to this parameter."
             },
             "kind": "DATA_BINDING",
             "type": {
               "metadata": {
-                "label": "Parameter Type",
-                "description": "The type of the parameter"
+                "label": "Message Configuration",
+                "description": "Define the shape of the database row bound to this parameter."
+              },
+              "codedata": {
+                "type": "PAYLOAD_TYPE",
+                "template": "{{type}}",
+                "defaultType": "record {}",
+                "boundType": "",
+                "bindable": true,
+                "nameEditable": false
               },
               "placeholder": "record {}",
               "value": "record {}",
@@ -875,16 +775,16 @@
               ],
               "enabled": true,
               "editable": true,
-              "optional": true,
+              "optional": false,
               "advanced": false
             },
             "name": {
               "metadata": {
-                "label": "beforeEntry",
-                "description": "The record before the deletion in the monitored table"
+                "label": "Message Configuration",
+                "description": "Define the shape of the database row bound to this parameter."
               },
-              "placeholder": "beforeEntry",
-              "value": "beforeEntry",
+              "placeholder": "before",
+              "value": "before",
               "types": [
                 {
                   "fieldType": "IDENTIFIER",
@@ -892,26 +792,8 @@
                 }
               ],
               "enabled": true,
-              "editable": true,
+              "editable": false,
               "optional": false,
-              "advanced": false
-            },
-            "defaultValue": {
-              "metadata": {
-                "label": "Default Value",
-                "description": "The default value of the parameter"
-              },
-              "placeholder": "",
-              "value": "",
-              "types": [
-                {
-                  "fieldType": "EXPRESSION",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
               "advanced": false
             },
             "enabled": true,
@@ -923,8 +805,8 @@
           },
           {
             "metadata": {
-              "label": "tableName",
-              "description": "The name of the table where the record was created"
+              "label": "Table Name",
+              "description": "Restrict this handler to a single table when the listener watches more than one (fully-qualified table name)."
             },
             "kind": "OPTIONAL",
             "type": {
@@ -947,8 +829,8 @@
             },
             "name": {
               "metadata": {
-                "label": "tableName",
-                "description": "The name of the table where the record was created"
+                "label": "Table Name",
+                "description": "Restrict this handler to a single table when the listener watches more than one (fully-qualified table name)."
               },
               "placeholder": "tableName",
               "value": "tableName",
@@ -959,32 +841,14 @@
                 }
               ],
               "enabled": true,
-              "editable": true,
+              "editable": false,
               "optional": false,
               "advanced": false
             },
-            "defaultValue": {
-              "metadata": {
-                "label": "Default Value",
-                "description": "The default value of the parameter"
-              },
-              "placeholder": "",
-              "value": "",
-              "types": [
-                {
-                  "fieldType": "EXPRESSION",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
-              "advanced": false
-            },
-            "enabled": true,
+            "enabled": false,
             "editable": true,
             "optional": true,
-            "advanced": false,
+            "advanced": true,
             "hidden": false,
             "isGraphqlId": false
           }
@@ -994,7 +858,7 @@
           "isGraphqlId": false,
           "metadata": {
             "label": "Return Type",
-            "description": "The return type of the function"
+            "description": "The return type of the function."
           },
           "placeholder": "error?",
           "value": "error?",
@@ -1011,19 +875,29 @@
         },
         "enabled": false,
         "optional": true,
-        "editable": false,
-        "canAddParameters": false
+        "editable": true,
+        "canAddParameters": false,
+        "codedata": {
+          "orgName": "ballerinax",
+          "packageName": "mssql",
+          "moduleName": "mssql",
+          "version": "1.18.1"
+        },
+        "properties": {},
+        "group": "onDelete",
+        "repeatable": "FALSE",
+        "nameEditable": false
       },
       {
         "metadata": {
           "label": "onError",
-          "description": "Triggers when an error occurs during event processing before mandatory functions are invoked"
+          "description": "Triggered when an error occurs during CDC event processing."
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
             "label": "onError",
-            "description": "Triggers when an error occurs during event processing before mandatory functions are invoked"
+            "description": "Triggered when an error occurs during CDC event processing."
           },
           "placeholder": "onError",
           "value": "onError",
@@ -1041,8 +915,8 @@
         "parameters": [
           {
             "metadata": {
-              "label": "cdcError",
-              "description": "The error occurred during message processing"
+              "label": "err",
+              "description": "The error that occurred during event processing."
             },
             "kind": "REQUIRED",
             "type": {
@@ -1050,8 +924,8 @@
                 "label": "Parameter Type",
                 "description": "The type of the parameter"
               },
-              "placeholder": "cdc:Error",
-              "value": "cdc:Error",
+              "placeholder": "cdc:Error?",
+              "value": "cdc:Error?",
               "types": [
                 {
                   "fieldType": "TYPE",
@@ -1065,11 +939,11 @@
             },
             "name": {
               "metadata": {
-                "label": "cdcError",
-                "description": "The error occurred during message processing"
+                "label": "err",
+                "description": "The error that occurred during event processing."
               },
-              "placeholder": "cdcError",
-              "value": "cdcError",
+              "placeholder": "err",
+              "value": "err",
               "types": [
                 {
                   "fieldType": "IDENTIFIER",
@@ -1077,30 +951,12 @@
                 }
               ],
               "enabled": true,
-              "editable": true,
+              "editable": false,
               "optional": false,
               "advanced": false
             },
-            "defaultValue": {
-              "metadata": {
-                "label": "Default Value",
-                "description": "The default value of the parameter"
-              },
-              "placeholder": "",
-              "value": "",
-              "types": [
-                {
-                  "fieldType": "EXPRESSION",
-                  "selected": true
-                }
-              ],
-              "enabled": true,
-              "editable": true,
-              "optional": true,
-              "advanced": false
-            },
             "enabled": true,
-            "editable": true,
+            "editable": false,
             "optional": false,
             "advanced": false,
             "hidden": false,
@@ -1108,14 +964,14 @@
           }
         ],
         "returnType": {
-          "hasError": false,
+          "hasError": true,
           "isGraphqlId": false,
           "metadata": {
             "label": "Return Type",
-            "description": "The return type of the function"
+            "description": "The return type of the function."
           },
-          "placeholder": "",
-          "value": "",
+          "placeholder": "error?",
+          "value": "error?",
           "types": [
             {
               "fieldType": "TYPE",
@@ -1129,8 +985,18 @@
         },
         "enabled": false,
         "optional": true,
-        "editable": false,
-        "canAddParameters": false
+        "editable": true,
+        "canAddParameters": false,
+        "codedata": {
+          "orgName": "ballerinax",
+          "packageName": "mssql",
+          "moduleName": "mssql",
+          "version": "1.18.1"
+        },
+        "properties": {},
+        "group": "onError",
+        "repeatable": "FALSE",
+        "nameEditable": false
       }
     ]
   }

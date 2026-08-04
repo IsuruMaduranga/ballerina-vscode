@@ -269,7 +269,7 @@
             "character": 0
           }
         },
-        "newText": "\nimport ballerinax/mssql;\n"
+        "newText": "\nimport ballerinax/mssql;\n\nimport ballerinax/cdc;\n\nimport ballerinax/mssql.cdc.driver as _;\n"
       },
       {
         "range": {
@@ -282,7 +282,7 @@
             "character": 0
           }
         },
-        "newText": "\nlistener mssql:Listener mssqlCdcListener = new (database = {hostname : \"localhost\", port : 1433, username : \"sa\", password : \"Test@1234\", databaseNames : [\"testdb\"]});\nservice mssql:Service on mssqlCdcListener {\n\n}\n"
+        "newText": "\nlistener mssql:CdcListener mssqlCdcListener = new (database = {hostname : \"localhost\", port : 1433, username : \"sa\", password : \"Test@1234\", databaseNames : [\"testdb\"]}, options = {skippedOperations: [\"u\"]});\nservice cdc:Service on mssqlCdcListener {\n\n}\n"
       }
     ]
   }

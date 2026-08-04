@@ -1014,7 +1014,9 @@ public final class SchemaDrivenSourceGenerator {
                     .add(code);
         }
 
-        private void addIncludedArg(String name, String valueText) {
+        // Package-private (not private): exercised directly by ListenerArgsTest's skip-list merge
+        // regression suite.
+        void addIncludedArg(String name, String valueText) {
             included.add(new IncludedArg(name, valueText));
         }
 

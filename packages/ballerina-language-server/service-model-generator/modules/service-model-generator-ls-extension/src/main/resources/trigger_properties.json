@@ -9,7 +9,9 @@
       "messaging",
       "event"
     ],
-    "triggerName": "Kafka"
+    "triggerName": "Kafka",
+    "version": "4.5.0",
+    "kind": "event"
   },
   "2": {
     "name": "rabbitmq",
@@ -20,7 +22,9 @@
       "network",
       "event"
     ],
-    "triggerName": "RabbitMQ"
+    "triggerName": "RabbitMQ",
+    "version": "3.6.0",
+    "kind": "event"
   },
   "3": {
     "name": "mqtt",
@@ -30,7 +34,9 @@
       "mqtt",
       "event"
     ],
-    "triggerName": "MQTT"
+    "triggerName": "MQTT",
+    "version": "1.4.1",
+    "kind": "event"
   },
   "4": {
     "name": "asb",
@@ -43,7 +49,9 @@
       "azure service bus",
       "event"
     ],
-    "triggerName": "Azure Service Bus"
+    "triggerName": "Azure Service Bus",
+    "version": "3.10.0",
+    "kind": "event"
   },
   "5": {
     "name": "salesforce",
@@ -53,7 +61,9 @@
       "salesforce",
       "event"
     ],
-    "triggerName": "Salesforce"
+    "triggerName": "Salesforce",
+    "version": "8.7.0",
+    "kind": "event"
   },
   "6": {
     "name": "trigger.twilio",
@@ -64,7 +74,9 @@
       "event",
       "sms"
     ],
-    "triggerName": "Twilio"
+    "triggerName": "Twilio",
+    "version": "0.10.0",
+    "kind": "event"
   },
   "7": {
     "name": "trigger.github",
@@ -74,7 +86,9 @@
       "github",
       "event"
     ],
-    "triggerName": "GitHub"
+    "triggerName": "GitHub",
+    "version": "0.10.0",
+    "kind": "event"
   },
   "8": {
     "name": "ftp",
@@ -86,7 +100,10 @@
       "remote file",
       "file",
       "event"
-    ]
+    ],
+    "triggerName": "FTP / SFTP",
+    "version": "2.19.0",
+    "kind": "file"
   },
   "9": {
     "name": "file",
@@ -97,7 +114,10 @@
       "directory",
       "service",
       "event"
-    ]
+    ],
+    "triggerName": "Directory",
+    "version": "1.13.0",
+    "kind": "file"
   },
   "10": {
     "name": "mcp",
@@ -105,7 +125,10 @@
     "packageName": "mcp",
     "keywords": [
       "mcp"
-    ]
+    ],
+    "triggerName": "MCP Service",
+    "version": "1.2.0",
+    "kind": "mcp"
   },
   "11": {
     "name": "solace",
@@ -126,7 +149,9 @@
       "shopify",
       "event"
     ],
-    "triggerName": "Shopify"
+    "triggerName": "Shopify",
+    "version": "1.6.0",
+    "kind": "event"
   },
   "13": {
     "name": "mssql",
@@ -136,7 +161,10 @@
       "mssql",
       "cdc",
       "event"
-    ]
+    ],
+    "triggerName": "CDC for Microsoft SQL Server",
+    "version": "1.18.1",
+    "kind": "event"
   },
   "14": {
     "name": "postgresql",
@@ -147,7 +175,10 @@
       "postgres",
       "cdc",
       "event"
-    ]
+    ],
+    "triggerName": "CDC for PostgreSQL",
+    "version": "1.18.0",
+    "kind": "event"
   },
   "15": {
     "name": "mysql",
@@ -157,7 +188,10 @@
       "mysql",
       "cdc",
       "event"
-    ]
+    ],
+    "triggerName": "CDC for MySQL",
+    "version": "1.18.0",
+    "kind": "event"
   },
   "16": {
     "name": "trigger.hubspot",
@@ -167,6 +201,8 @@
       "hubspot",
       "event"
     ],
-    "triggerName": "HubSpot"
+    "triggerName": "HubSpot",
+    "version": "0.12.0",
+    "kind": "event"
   }
 }
