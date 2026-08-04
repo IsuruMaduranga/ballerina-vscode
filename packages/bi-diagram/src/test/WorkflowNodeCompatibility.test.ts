@@ -20,7 +20,6 @@ import { traverseFlow } from "@wso2/ballerina-core";
 
 import {
     LABEL_HEIGHT,
-    LABEL_WIDTH,
     NODE_GAP_X,
     NODE_HEIGHT,
     NODE_WIDTH,
@@ -97,7 +96,7 @@ describe("Workflow Nodes", () => {
         // left rather than the right.
         const halfNodeWidth = NODE_WIDTH / 2;
 
-        const expectedLeftWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH;
+        const expectedLeftWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT;
 
         expect(waitDataNode.viewState.lw).toBe(expectedLeftWidth);
         expect(waitDataNode.viewState.rw).toBe(halfNodeWidth);

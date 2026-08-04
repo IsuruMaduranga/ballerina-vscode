@@ -124,7 +124,7 @@ export class SizingVisitor implements BaseVisitor {
         // The widths are the node's own bounds, not an inner box's: passing the body's half-width
         // while the container reached further left put the body off the node's centre, and the
         // links bent sideways to meet it. LABEL_WIDTH keeps the source's name from being clipped.
-        const containerLeftWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH;
+        const containerLeftWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT;
         const containerRightWidth = halfNodeWidth;
         const containerHeight = NODE_HEIGHT + LABEL_HEIGHT;
         this.setNodeSize(node, containerLeftWidth, containerRightWidth, containerHeight);

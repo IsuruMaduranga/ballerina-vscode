@@ -271,8 +271,12 @@ export function ApiCallNodeWidget(props: ApiCallNodeWidgetProps) {
     const workflowValue = (model.node.properties as any)?.workflow?.value as string | undefined;
     const isWorkflowTarget = model.node.codedata?.node?.startsWith("CHILD_WORKFLOW")
         || model.node.codedata?.node === "WORKFLOW_RUN";
-    // Read back from source these carry the workflow they run as the node's second line.
-    const childWorkflowTarget = isWorkflowTarget ? model.node.metadata?.description : undefined;
+    // A child workflow statement carries the workflow it concerns as its second line. A workflow
+    // run does not — its second line is the node's own description, so using it here printed the
+    // documentation instead of a name. Only the child statements may fall back to it.
+    const childWorkflowTarget = model.node.codedata?.node?.startsWith("CHILD_WORKFLOW")
+        ? model.node.metadata?.description
+        : undefined;
     const endpointLabel = connectionValue ?? fallbackEndpointValue ?? workflowValue ?? childWorkflowTarget ?? "";
     const connectorType = (connectionProperty?.metadata?.data as NodeMetadata | undefined)?.connectorType;
 
