@@ -65,7 +65,7 @@ export async function addArtifact(artifactName: string, testId: string) {
         await addIntegrationBtn.click({ force: true });
         const card = artifactWebView.locator(`#${testId}`);
         await card.waitFor();
-        await card.click({ force: true });
+        await domClick(card);
         // The Type step's "Next" is right-aligned (not full-width), so it doesn't
         // sit under the orb's bottom-center dock point — a coordinate click is fine.
         await artifactWebView.getByRole('button', { name: 'Next' }).click({ force: true, timeout: 60000 });
@@ -75,7 +75,7 @@ export async function addArtifact(artifactName: string, testId: string) {
     await addArtifactBtn.click({ force: true });
     const card = artifactWebView.locator(`#${testId}`);
     await card.waitFor();
-    await card.click({ force: true, timeout: 60000 });
+    await domClick(card);
 }
 
 /**

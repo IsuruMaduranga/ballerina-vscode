@@ -208,6 +208,7 @@ import {
     createEmptyBIWorkspace,
     deleteProjectFromWorkspace,
     openInVSCode,
+    refreshProjectInfoAndWait,
     validateProjectPath,
     getSuggestedProjectDefaults
 } from "../../utils/bi";
@@ -819,10 +820,11 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
             try {
                 const packageRoot = await addProjectToExistingWorkspace(params);
                 // The project was already open, so the new package is the news: land on
-                // its own overview. The refresh is silent because a non-silent one
-                // navigates to the project overview and would clobber that.
-                openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.PackageOverview, projectPath: packageRoot });
-                StateMachine.refreshProjectInfo({ silent: true });
+                // its own overview. Refresh BEFORE navigating — that view fetches project
+                // structure on mount, so navigating first would show it a bare spinner.
+                if (await refreshProjectInfoAndWait()) {
+                    openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.PackageOverview, projectPath: packageRoot });
+                }
             } catch (error) {
                 window.showErrorMessage("Error adding integration to existing project");
                 console.error("Error adding integration to existing project:", error);

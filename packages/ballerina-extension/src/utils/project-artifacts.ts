@@ -284,7 +284,16 @@ async function rebuildAndPublishArtifacts(
         pendingStructureRebuild = rebuild;
         const rebuiltStructure = await rebuild;
         entryLocations = collectPublishedArtifacts(publishedArtifacts, rebuiltStructure);
-        if (untrackedProjectPaths.length > 0) {
+        // Skip the fallback if the window is ALREADY showing one of the newly-tracked
+        // packages: a create flow that scaffolds a package and then deliberately
+        // navigates to its overview (e.g. the Create Integration wizard adding into an
+        // open project) fires several of these untracked-package notifications, one per
+        // scaffolded file — without this check, each one would override that navigation
+        // with the workspace overview a moment after it happened.
+        const alreadyViewingAddedPackage =
+            StateMachine.context().view === MACHINE_VIEW.PackageOverview &&
+            untrackedProjectPaths.some((p) => isSamePath(p, StateMachine.context().projectPath));
+        if (untrackedProjectPaths.length > 0 && !alreadyViewingAddedPackage) {
             // Where the fire-and-forget refresh this replaces used to land the window
             // when a package joined the project: the overview is the view guaranteed to
             // be consistent with the rebuilt structure.
