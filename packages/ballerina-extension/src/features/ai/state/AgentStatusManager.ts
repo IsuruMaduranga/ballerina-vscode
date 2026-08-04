@@ -127,9 +127,6 @@ class AgentStatusManager {
             return;
         }
         this.status = { ...this.status, aiPanelOpen: open, timestamp: Date.now() };
-        if (open) {
-            this.acknowledgeTerminalState();
-        }
         this.render();
         this.broadcast();
     }
@@ -139,7 +136,9 @@ class AgentStatusManager {
             return;
         }
         this.aiPanelVisible = visible;
-        const acknowledged = visible && this.acknowledgeTerminalState();
+        // Either direction means the panel has been on screen: becoming visible
+        // shows the outcome, and going hidden means it was visible until now.
+        const acknowledged = this.acknowledgeTerminalState();
         this.render();
         if (acknowledged) {
             this.broadcast();
