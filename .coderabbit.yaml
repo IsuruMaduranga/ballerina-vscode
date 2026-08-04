@@ -3,8 +3,8 @@
 # `inheritance` is on, so anything left unset keeps resolving from the dashboard
 # instead of snapping back to a schema default. So only set a value when there is a
 # reason: CI already covers it, a tracked issue says so, or the rules below depend
-# on it. Arrays merge child-first, so an org-level path_instructions entry lands
-# after ours rather than replacing it.
+# on it. Arrays merge child-first: an org-level path_instructions entry lands
+# after ours, or is dropped entirely if it carries the same `path`.
 inheritance: true
 
 tone_instructions: >-
@@ -18,13 +18,18 @@ reviews:
   # `assertive` cannot quietly change how all of it is applied.
   profile: chill
   request_changes_workflow: false
+  # Same reason: a dashboard `fail_commit_status` would let the bot gate merges
+  # through the check instead of the review.
+  commit_status: false
 
   # The Playwright E2E suite runs only when a PR carries this label, or when the
   # base branch ends in `.x` (see .github/workflows/pull-request.yml). Nothing in
   # the PR template mentions that, so UI changes routinely merge without it.
   #
   # Listing a label here restricts CodeRabbit to suggesting only from this list,
-  # which is the intent -- this is the one label that changes what CI runs.
+  # which is the intent. `Checks/Run LS Tests` also changes what CI runs but is
+  # left out on purpose: the `ls` path filter turns it on automatically, so a
+  # suggestion adds nothing. This label has no such fallback.
   labeling_instructions:
     - label: 'Checks/Run Ballerina UI Tests'
       instructions: >-
@@ -116,8 +121,11 @@ reviews:
            credential in source or in a test fixture.
 
         2. LICENSE HEADER. Every new source file needs the WSO2 Apache-2.0
-           header. Copy the exact 17-line form from the top of
-           packages/ballerina-core/src/index.ts. New files use year 2026.
+           header, and the form differs by language. For .ts and .tsx, copy the
+           17-line form from the top of packages/ballerina-core/src/index.ts.
+           For .java, match the 15-line form used by sibling files in the same
+           package -- the Java headers use different wording from the
+           TypeScript one, so do not carry it across. New files use year 2026.
 
         3. BREAKING A PUBLISHED SURFACE. Flag changes to the exported extension
            API, to RPC message contracts, or to public Java interfaces when the
@@ -157,9 +165,13 @@ reviews:
           belong in their own commit against their own repo (AGENTS.md,
           "Submodule changes are not monorepo changes").
 
-        - CVE HANDLING. A fixable CVE goes to
-          common/config/rush/pnpm-config.json under globalOverrides, not to
-          .trivyignore. .trivyignore must stay one plain ID per line.
+    # CVE suppressions. Its own entry because .trivyignore has no extension, so
+    # no `**/*.{ext}` glob above reaches it.
+    - path: '{.trivyignore,common/config/rush/pnpm-config.json}'
+      instructions: |
+        A fixable CVE goes to common/config/rush/pnpm-config.json under
+        globalOverrides, not to .trivyignore. .trivyignore must stay one plain
+        ID per line.
 
     # RPC boundary
     - path: 'packages/{ballerina-core,ballerina-rpc-client,ballerina-extension}/**/*.ts'
