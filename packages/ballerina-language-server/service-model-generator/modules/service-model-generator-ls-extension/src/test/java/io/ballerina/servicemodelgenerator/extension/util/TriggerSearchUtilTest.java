@@ -34,6 +34,7 @@ import org.testng.annotations.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -128,11 +129,11 @@ public class TriggerSearchUtilTest {
 
     @Test
     public void testSearchCentralScopesToBallerinaAndBallerinaxOnly() {
-        // Central's search-packages 'q' string only accepts a single 'org:<name>' token per call, so
-        // searchCentral issues one call per allowed org, concurrently, and merges -- verify both org-scoped
-        // queries actually happen (order is not guaranteed since they race), and that a package returned
-        // under a non-ballerina/ballerinax org can never appear (the fake never even offers one, mirroring
-        // what a real org: filter would enforce).
+        // search-packages scopes by a dedicated 'org' parameter (not an 'org:<name>' token inside 'q'),
+        // so searchCentral issues one call per allowed org, concurrently, and merges -- verify both
+        // org-scoped queries actually happen (order is not guaranteed since they race), and that a
+        // package returned under a non-ballerina/ballerinax org can never appear (the fake never even
+        // offers one, mirroring what a real 'org' filter would enforce).
         FakeCentralAPI central = new FakeCentralAPI();
         central.responsesByOrg.put("ballerina", new PackageResponse(
                 List.of(pkg("ballerina", "mqtt", "1.0.0", List.of("mqtt", "listener"), "MQTT", "mqtt-icon")),
@@ -144,13 +145,52 @@ public class TriggerSearchUtilTest {
         List<TriggerBasicInfo> results = TriggerSearchUtil.searchCentral(central, "trigger", null, null, Set.of());
 
         Assert.assertEquals(central.queriesSent.size(), 2, "one search call per allowed org");
-        Assert.assertTrue(central.queriesSent.stream().anyMatch(q -> q.get("q").endsWith("org:ballerina")));
-        Assert.assertTrue(central.queriesSent.stream().anyMatch(q -> q.get("q").endsWith("org:ballerinax")));
+        Assert.assertTrue(central.queriesSent.stream().anyMatch(q -> "ballerina".equals(q.get("org"))));
+        Assert.assertTrue(central.queriesSent.stream().anyMatch(q -> "ballerinax".equals(q.get("org"))));
         Assert.assertEquals(results.size(), 2, "results from both allowed orgs are merged");
         Assert.assertTrue(results.stream().anyMatch(r -> r.orgName().equals("ballerina")
                 && r.packageName().equals("mqtt")));
         Assert.assertTrue(results.stream().anyMatch(r -> r.orgName().equals("ballerinax")
                 && r.packageName().equals("kafka")));
+    }
+
+    @Test
+    public void testSearchCentralOneOrgFailureDoesNotDiscardTheOther() {
+        // Each per-org future must degrade to an empty list on its own failure, rather than the
+        // CompletionException from a failing future.join() propagating out and wiping every org's
+        // results via the outer catch(Throwable).
+        FakeCentralAPI central = new FakeCentralAPI();
+        central.responsesByOrg.put("ballerina", new PackageResponse(
+                List.of(pkg("ballerina", "mqtt", "1.0.0", List.of("mqtt", "listener"), "MQTT", "mqtt-icon")),
+                List.of(), null, 1, 0, 30));
+        central.failingOrgs.add("ballerinax");
+
+        List<TriggerBasicInfo> results = TriggerSearchUtil.searchCentral(central, "trigger", null, null, Set.of());
+
+        Assert.assertEquals(results.size(), 1, "the failing org must not discard the succeeding org's results");
+        Assert.assertEquals(results.getFirst().orgName(), "ballerina");
+    }
+
+    @Test
+    public void testSearchCentralInterleavesAcrossOrgsUnderTruncation() {
+        // ballerina alone has enough matches to fill a small limit; interleaving (rather than merging
+        // org-by-org in ALLOWED_ORGS order) must still let ballerinax survive truncation.
+        FakeCentralAPI central = new FakeCentralAPI();
+        central.responsesByOrg.put("ballerina", new PackageResponse(
+                List.of(
+                        pkg("ballerina", "a", "1.0.0", List.of("trigger"), "", ""),
+                        pkg("ballerina", "b", "1.0.0", List.of("trigger"), "", ""),
+                        pkg("ballerina", "c", "1.0.0", List.of("trigger"), "", "")),
+                List.of(), null, 3, 0, 30));
+        central.responsesByOrg.put("ballerinax", new PackageResponse(
+                List.of(pkg("ballerinax", "kafka", "1.0.0", List.of("trigger"), "", "")),
+                List.of(), null, 1, 0, 30));
+
+        List<TriggerBasicInfo> results = TriggerSearchUtil.searchCentral(central, "trigger", 2, null, Set.of());
+
+        Assert.assertEquals(results.size(), 2, "truncated to the requested limit");
+        Assert.assertTrue(results.stream().anyMatch(r -> r.orgName().equals("ballerinax")),
+                "ballerinax must not be truncated away entirely just because ballerina alone fills the limit");
     }
 
     @Test
@@ -181,7 +221,7 @@ public class TriggerSearchUtilTest {
 
     /**
      * A minimal {@link CentralAPI} test double: records every {@code searchPackages} query and returns a
-     * canned {@link PackageResponse} keyed by the query's {@code org:<name>} token, so
+     * canned {@link PackageResponse} keyed by the query's {@code org} parameter, so
      * {@code searchCentral}'s per-org querying can be verified without a network call.
      * {@code searchCentral} now issues its per-org queries concurrently, so {@code searchPackages} may be
      * invoked from multiple threads at once -- {@code queriesSent} must therefore be a thread-safe list.
@@ -189,18 +229,18 @@ public class TriggerSearchUtilTest {
     private static final class FakeCentralAPI implements CentralAPI {
 
         final Map<String, PackageResponse> responsesByOrg = new HashMap<>();
+        final Set<String> failingOrgs = Collections.synchronizedSet(new HashSet<>());
         final List<Map<String, String>> queriesSent = Collections.synchronizedList(new ArrayList<>());
 
         @Override
         public PackageResponse searchPackages(Map<String, String> queryMap) {
             queriesSent.add(queryMap);
-            String q = queryMap.get("q");
-            for (Map.Entry<String, PackageResponse> entry : responsesByOrg.entrySet()) {
-                if (q != null && q.endsWith("org:" + entry.getKey())) {
-                    return entry.getValue();
-                }
+            String org = queryMap.get("org");
+            if (failingOrgs.contains(org)) {
+                throw new RuntimeException("simulated Central failure for org '" + org + "'");
             }
-            return new PackageResponse(List.of(), List.of(), null, 0, 0, 30);
+            PackageResponse response = responsesByOrg.get(org);
+            return response != null ? response : new PackageResponse(List.of(), List.of(), null, 0, 0, 30);
         }
 
         @Override

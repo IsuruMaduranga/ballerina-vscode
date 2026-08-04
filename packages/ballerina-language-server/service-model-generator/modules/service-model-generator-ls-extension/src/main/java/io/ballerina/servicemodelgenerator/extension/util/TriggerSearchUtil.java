@@ -33,6 +33,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Discovers event-integration <b>trigger</b> packages on Ballerina Central for the "Search more"
@@ -48,6 +52,8 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class TriggerSearchUtil {
 
+    private static final Logger LOGGER = Logger.getLogger(TriggerSearchUtil.class.getName());
+
     private static final int DEFAULT_LIMIT = 30;
     private static final String EVENT_TYPE = "event";
     private static final String DEFAULT_QUERY = "trigger";
@@ -55,6 +61,15 @@ public final class TriggerSearchUtil {
     private static final String TRIGGER_TAG_KEYWORD = "type/trigger";
     private static final String TRIGGER_MODULE_PREFIX = "trigger.";
     private static final List<String> ALLOWED_ORGS = List.of("ballerina", "ballerinax");
+
+    // A dedicated pool, not the shared ForkJoinPool.commonPool(): searchCentral's blocking Central HTTP
+    // calls must not compete with (or nest inside) every other parallel stream in the LS.
+    private static final ExecutorService CENTRAL_SEARCH_EXECUTOR = Executors.newFixedThreadPool(
+            ALLOWED_ORGS.size(), runnable -> {
+                Thread thread = new Thread(runnable, "trigger-central-search");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private TriggerSearchUtil() {
     }
@@ -73,28 +88,48 @@ public final class TriggerSearchUtil {
             int effectiveOffset = offset == null || offset < 0 ? 0 : offset;
 
             // One org can't be expressed per call (see ALLOWED_ORGS), so the per-org Central calls are
-            // independent - run them concurrently rather than paying their latency serially.
+            // independent -- run them concurrently on a dedicated executor rather than paying their
+            // latency serially. Each future degrades to an empty list on its own failure (rather than
+            // letting future.join() below throw) so that, e.g., a ballerinax timeout does not discard
+            // ballerina's already-successful results too.
             List<CompletableFuture<List<TriggerBasicInfo>>> futures = ALLOWED_ORGS.stream()
                     .map(org -> CompletableFuture.supplyAsync(() -> {
                         Map<String, String> queryMap = new HashMap<>();
-                        queryMap.put("q", effectiveQuery + " org:" + org);
+                        // "org" is a dedicated searchPackages parameter (see SearchListGenerator/
+                        // PackageListGenerator's established usage) -- unlike searchSymbols, an
+                        // "org:<name>" token embedded in "q" is not a documented searchPackages filter.
+                        queryMap.put("q", effectiveQuery);
+                        queryMap.put("org", org);
                         queryMap.put("limit", String.valueOf(effectiveLimit));
                         queryMap.put("offset", String.valueOf(effectiveOffset));
                         PackageResponse response = central.searchPackages(queryMap);
                         return toTriggerResults(response, existingKeys);
+                    }, CENTRAL_SEARCH_EXECUTOR).exceptionally(e -> {
+                        LOGGER.log(Level.FINE, "Central trigger search failed for org '" + org + "'", e);
+                        return List.of();
                     }))
                     .toList();
 
+            List<List<TriggerBasicInfo>> perOrgResults = futures.stream().map(CompletableFuture::join).toList();
+
+            // Merge round-robin across orgs rather than org-by-org, so a later org in ALLOWED_ORGS (e.g.
+            // ballerinax, where nearly all trigger connectors live) is never entirely truncated away just
+            // because an earlier org's results alone already filled effectiveLimit.
             List<TriggerBasicInfo> results = new ArrayList<>();
             Set<String> seen = new HashSet<>();
-            for (CompletableFuture<List<TriggerBasicInfo>> future : futures) {
-                for (TriggerBasicInfo info : future.join()) {
+            int maxPerOrg = perOrgResults.stream().mapToInt(List::size).max().orElse(0);
+            for (int i = 0; i < maxPerOrg && results.size() < effectiveLimit; i++) {
+                for (List<TriggerBasicInfo> orgResults : perOrgResults) {
+                    if (i >= orgResults.size() || results.size() >= effectiveLimit) {
+                        continue;
+                    }
+                    TriggerBasicInfo info = orgResults.get(i);
                     if (seen.add(info.orgName() + "/" + info.packageName())) {
                         results.add(info);
                     }
                 }
             }
-            return results.size() > effectiveLimit ? results.subList(0, effectiveLimit) : results;
+            return results;
         } catch (Throwable e) {
             return List.of();
         }
@@ -128,6 +163,7 @@ public final class TriggerSearchUtil {
             }
             return results;
         } catch (Throwable e) {
+            LOGGER.log(Level.FINE, "Local-repository trigger search failed", e);
             return List.of();
         }
     }

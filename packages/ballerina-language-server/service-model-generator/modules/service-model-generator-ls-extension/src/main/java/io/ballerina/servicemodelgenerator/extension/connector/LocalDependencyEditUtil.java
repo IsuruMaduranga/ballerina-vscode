@@ -24,8 +24,11 @@ import io.ballerina.projects.PackageManifest;
 import io.ballerina.projects.Project;
 import io.ballerina.projects.util.ProjectConstants;
 import io.ballerina.toml.syntax.tree.DocumentNode;
+import io.ballerina.toml.syntax.tree.KeyValueNode;
 import io.ballerina.toml.syntax.tree.SyntaxKind;
+import io.ballerina.toml.syntax.tree.TableArrayNode;
 import io.ballerina.toml.syntax.tree.TableNode;
+import io.ballerina.tools.text.LineRange;
 import org.ballerinalang.langserver.commons.toml.common.TomlSyntaxTreeUtil;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
@@ -60,11 +63,15 @@ public final class LocalDependencyEditUtil {
 
     /**
      * Adds a {@code [[dependency]]} edit for {@code org/name} at {@code version} to {@code edits}
-     * (keyed by {@code Ballerina.toml}'s path, alongside the caller's source edits), unless the project
-     * already declares a {@code [[dependency]]} for that org/name -- re-adding the same local connector
-     * must not produce a duplicate stanza. A missing project/Ballerina.toml is a silent no-op: the
-     * connector's schema still resolved and source was still generated, this is strictly an
-     * additional convenience the caller can proceed without.
+     * (keyed by {@code Ballerina.toml}'s path, alongside the caller's source edits). If the project
+     * already declares a {@code [[dependency]]} for that org/name at the same version, this is a
+     * no-op -- re-adding the same local connector must not produce a duplicate stanza. If it's declared
+     * at a <b>different</b> version, the existing stanza's version is replaced in place instead: bumping
+     * a connector (e.g. {@code 0.1.0} -> {@code 0.2.0}) and re-pushing it is the routine workflow for a
+     * developer iterating locally, and leaving the stale version pinned would otherwise resolve the
+     * wrong package or fail to build, with nothing surfaced to explain why. A missing project/
+     * Ballerina.toml is a silent no-op: the connector's schema still resolved and source was still
+     * generated, this is strictly an additional convenience the caller can proceed without.
      */
     public static void addIfMissing(Map<String, List<TextEdit>> edits, Project project, String org, String name,
                                     String version) {
@@ -72,28 +79,79 @@ public final class LocalDependencyEditUtil {
             return;
         }
         Package currentPackage = project.currentPackage();
-        if (alreadyDeclared(currentPackage.manifest(), org, name)) {
-            return;
-        }
         Optional<BallerinaToml> toml = currentPackage.ballerinaToml();
         if (toml.isEmpty()) {
             return;
         }
-        TextEdit tomlEdit = createLocalDependencyEdit(toml.get(), org, name, version);
         String tomlPath = project.sourceRoot().resolve(ProjectConstants.BALLERINA_TOML).toString();
+        Optional<String> declaredVersion = declaredVersion(currentPackage.manifest(), org, name);
+        if (declaredVersion.isPresent()) {
+            if (declaredVersion.get().equals(version)) {
+                return;
+            }
+            findVersionValueEdit(toml.get(), org, name, version)
+                    .ifPresent(edit -> edits.computeIfAbsent(tomlPath, ignored -> new ArrayList<>()).add(edit));
+            return;
+        }
+        TextEdit tomlEdit = createLocalDependencyEdit(toml.get(), org, name, version);
         edits.computeIfAbsent(tomlPath, ignored -> new ArrayList<>()).add(tomlEdit);
     }
 
-    private static boolean alreadyDeclared(PackageManifest manifest, String org, String name) {
+    private static Optional<String> declaredVersion(PackageManifest manifest, String org, String name) {
         if (manifest == null || manifest.dependencies() == null) {
-            return false;
+            return Optional.empty();
         }
         for (PackageManifest.Dependency dependency : manifest.dependencies()) {
             if (org.equals(dependency.org().value()) && name.equals(dependency.name().value())) {
-                return true;
+                return Optional.of(dependency.version().toString());
             }
         }
-        return false;
+        return Optional.empty();
+    }
+
+    /**
+     * A {@link TextEdit} replacing the {@code version} value of the {@code [[dependency]]} stanza
+     * matching {@code org}/{@code name} with {@code newVersion}, in place.
+     */
+    private static Optional<TextEdit> findVersionValueEdit(BallerinaToml toml, String org, String name,
+                                                           String newVersion) {
+        DocumentNode tomlSyntaxTree = toml.tomlDocument().syntaxTree().rootNode();
+        for (var member : tomlSyntaxTree.members()) {
+            if (member.kind() != SyntaxKind.TABLE_ARRAY) {
+                continue;
+            }
+            TableArrayNode tableArrayNode = (TableArrayNode) member;
+            if (!"dependency".equals(tableArrayNode.identifier().toSourceCode().trim())) {
+                continue;
+            }
+            String declaredOrg = null;
+            String declaredName = null;
+            KeyValueNode versionField = null;
+            for (KeyValueNode field : tableArrayNode.fields()) {
+                switch (field.identifier().toSourceCode().trim()) {
+                    case "org" -> declaredOrg = unquote(field.value().toSourceCode());
+                    case "name" -> declaredName = unquote(field.value().toSourceCode());
+                    case "version" -> versionField = field;
+                    default -> { }
+                }
+            }
+            if (org.equals(declaredOrg) && name.equals(declaredName) && versionField != null) {
+                LineRange valueRange = versionField.value().lineRange();
+                Range range = new Range(
+                        new Position(valueRange.startLine().line(), valueRange.startLine().offset()),
+                        new Position(valueRange.endLine().line(), valueRange.endLine().offset()));
+                return Optional.of(new TextEdit(range, "\"" + newVersion + "\""));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static String unquote(String raw) {
+        String trimmed = raw.trim();
+        if (trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+            return trimmed.substring(1, trimmed.length() - 1);
+        }
+        return trimmed;
     }
 
     /**

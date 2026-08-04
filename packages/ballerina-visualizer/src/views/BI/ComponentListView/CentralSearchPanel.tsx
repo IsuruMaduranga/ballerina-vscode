@@ -46,6 +46,8 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     const { rpcClient } = useRpcContext();
     const [searching, setSearching] = useState<boolean>(true);
     const [results, setResults] = useState<ServiceModel[]>([]);
+    // Never deduped against Central/bundled results: the same org/name resolved from the local
+    // repository is a distinct artifact (a different, in-development version) worth showing separately.
     const [localRepositoryResults, setLocalRepositoryResults] = useState<ServiceModel[]>([]);
     // Experimental, opt-in via a VS Code setting — read once per mount rather than per keystroke.
     const [additionalTriggerSearchEnabled, setAdditionalTriggerSearchEnabled] = useState<boolean>(false);
@@ -134,9 +136,6 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     // Central may echo a package already available locally; the local sections already show those.
     const localTriggerIds = new Set(props.triggers.local.map((t) => `${t.orgName}/${t.packageName}`));
     const visibleResults = results.filter((item) => !localTriggerIds.has(`${item.orgName}/${item.packageName}`));
-    // Never deduped against Central/bundled results: the same org/name resolved from the local
-    // repository is a distinct artifact (a different, in-development version) worth showing separately.
-    const visibleLocalRepositoryResults = localRepositoryResults;
 
     return (
         <>
@@ -165,7 +164,7 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                         ))}
                 </CardGrid>
             </PanelViewMore>
-            {!searching && visibleLocalRepositoryResults.length > 0 && (
+            {!searching && localRepositoryResults.length > 0 && (
                 <PanelViewMore>
                     <TitleWrapper>
                         <Title variant="h2">Local Central Search Results</Title>
@@ -175,7 +174,7 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                         </BodyText>
                     </TitleWrapper>
                     <CardGrid>
-                        {visibleLocalRepositoryResults.map((item) => (
+                        {localRepositoryResults.map((item) => (
                             <ButtonCard
                                 id={`local-repo-trigger-${item.moduleName.replace(/\./g, '-')}`}
                                 key={`local/${item.orgName}/${item.packageName}`}

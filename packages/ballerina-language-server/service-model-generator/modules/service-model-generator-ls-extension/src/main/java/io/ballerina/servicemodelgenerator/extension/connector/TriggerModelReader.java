@@ -54,6 +54,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Reads the unified {@code trigger-ui-schema.json} for a connector: from a bundled classpath resource
@@ -65,6 +67,8 @@ import java.util.Optional;
  * @since 1.8.0
  */
 public class TriggerModelReader {
+
+    private static final Logger LOGGER = Logger.getLogger(TriggerModelReader.class.getName());
 
     private static final TriggerModelReader INSTANCE = new TriggerModelReader();
 
@@ -439,6 +443,8 @@ public class TriggerModelReader {
             }
             return synthesizeTriggerModel(metadata.get(), pkg.get(), moduleName);
         } catch (Throwable e) {
+            LOGGER.log(Level.FINE, "Local-repository trigger model resolution failed for "
+                    + orgName + "/" + moduleName, e);
             return Optional.empty();
         }
     }
@@ -518,8 +524,9 @@ public class TriggerModelReader {
     }
 
     /**
-     * Resolves the listener init-form template via {@link ListenerUtil#getListenerModelByName}.
-     * Returns {@code null} on any resolution failure rather than throwing.
+     * Resolves the listener init-form template via
+     * {@link ListenerUtil#getListenerModelFromConnectorPackage}. Returns {@code null} on any resolution
+     * failure rather than throwing.
      */
     private static Listener resolveListenerModel(TriggerMetadataModel metadata, SemanticModel semanticModel,
                                                  String orgName, String packageName, String moduleName,
@@ -533,7 +540,7 @@ public class TriggerModelReader {
                     .setModuleName(moduleName)
                     .setVersion(version)
                     .build();
-            return ListenerUtil.getListenerModelByName(codedata, semanticModel, null).orElse(null);
+            return ListenerUtil.getListenerModelFromConnectorPackage(codedata, semanticModel, null).orElse(null);
         } catch (Throwable e) {
             return null;
         }

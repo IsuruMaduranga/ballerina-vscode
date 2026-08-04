@@ -345,12 +345,18 @@ public class ListenerUtil {
         return split[split.length - 1];
     }
 
-    public static Optional<Listener> getListenerModelByName(Codedata codedata, SemanticModel semanticModel,
-                                                            ModuleInfo moduleInfo) {
-        // `semanticModel` here is the connector's own package semantic model (see
-        // ConnectorModelReader#synthesizeTriggerModel), not a user file's -- passing it through to the
-        // builder is what lets a local-repository connector's "Listener" class resolve at all, since it
-        // isn't Central-indexed for FunctionDataBuilder's own moduleInfo-based derivation to find.
+    /**
+     * Like {@link #getListenerModelByName(Codedata, SemanticModel, ModuleInfo, boolean)}, but
+     * {@code semanticModel} here is expected to be the <b>connector's own package</b> semantic model
+     * (see {@code TriggerModelReader#synthesizeTriggerModel}), not the current file's -- distinct
+     * meanings for the same parameter type is why this has its own name rather than being another
+     * overload distinguished only by arity. Passing it through to the builder is what lets a
+     * local-repository connector's "Listener" class resolve at all, since it isn't Central-indexed for
+     * FunctionDataBuilder's own moduleInfo-based derivation to find.
+     */
+    public static Optional<Listener> getListenerModelFromConnectorPackage(Codedata codedata,
+                                                                          SemanticModel semanticModel,
+                                                                          ModuleInfo moduleInfo) {
         return getListenerModelByName(codedata, semanticModel, moduleInfo, true, semanticModel);
     }
 

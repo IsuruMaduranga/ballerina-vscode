@@ -1045,8 +1045,7 @@
           "optional": true,
           "advanced": false
         }
-      },
-      "isLocalRepository": false
+      }
     }
   }
 }

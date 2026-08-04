@@ -71,6 +71,25 @@ public class LocalDependencyEditUtilTest {
     }
 
     @Test
+    public void testVersionBumpReplacesExistingDeclarationInPlace() throws URISyntaxException {
+        // already_declared's Ballerina.toml pins testlocaldep/myconnector at 0.1.0 -- a developer who
+        // bumps and re-pushes their connector to 0.2.0 must get the existing stanza's version replaced,
+        // not a silent no-op (which would leave the stale 0.1.0 pinned) and not a duplicate stanza.
+        Project project = load("local_dependency/already_declared");
+        Map<String, List<TextEdit>> edits = new HashMap<>();
+
+        LocalDependencyEditUtil.addIfMissing(edits, project, "testlocaldep", "myconnector", "0.2.0");
+
+        Assert.assertEquals(edits.size(), 1, "the existing dependency's version must be replaced");
+        List<TextEdit> tomlEdits = edits.values().iterator().next();
+        Assert.assertEquals(tomlEdits.size(), 1, "no duplicate [[dependency]] stanza must be added");
+        TextEdit versionEdit = tomlEdits.get(0);
+        Assert.assertEquals(versionEdit.getNewText(), "\"0.2.0\"");
+        Assert.assertEquals(versionEdit.getRange().getStart().getLine(), versionEdit.getRange().getEnd().getLine(),
+                "the edit must replace only the version value, not the whole stanza");
+    }
+
+    @Test
     public void testDifferentConnectorStillAddedWhenAnotherIsAlreadyDeclared() throws URISyntaxException {
         // A different org/name than the one already declared must still get its own edit.
         Project project = load("local_dependency/already_declared");

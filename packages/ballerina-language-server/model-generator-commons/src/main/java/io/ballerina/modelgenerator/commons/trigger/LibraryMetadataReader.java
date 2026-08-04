@@ -46,6 +46,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Connector-agnostic entry point for reading the trigger model family (metadata JSON, UI schema JSON,
@@ -54,6 +56,8 @@ import java.util.Optional;
  * @since 1.10.0
  */
 public final class LibraryMetadataReader {
+
+    private static final Logger LOGGER = Logger.getLogger(LibraryMetadataReader.class.getName());
 
     private static final String TRIGGER_METADATA_RESOURCE_PATH = "resources/trigger-metadata.json";
     private static final String TRIGGER_UI_SCHEMA_RESOURCE_PATH = "resources/trigger-ui-schema.json";
@@ -151,6 +155,7 @@ public final class LibraryMetadataReader {
                 }
             }
         } catch (Throwable e) {
+            LOGGER.log(Level.FINE, "Listing local-repository modules failed", e);
             return List.of();
         }
         return modules;
@@ -179,6 +184,8 @@ public final class LibraryMetadataReader {
             ResolutionRequest request = ResolutionRequest.from(descriptor);
             return localRepository().getPackage(request, ResolutionOptions.builder().setOffline(true).build());
         } catch (Throwable e) {
+            LOGGER.log(Level.FINE, "Compiling local-repository package failed for "
+                    + moduleInfo.org() + "/" + moduleInfo.packageName(), e);
             return Optional.empty();
         }
     }
@@ -189,13 +196,21 @@ public final class LibraryMetadataReader {
     }
 
     /**
-     * The Ballerina local repository ({@code ~/.ballerina/repositories/local}), resolved via a throwaway
-     * sample project purely to obtain an {@link io.ballerina.projects.environment.Environment} -- mirrors
-     * {@link PackageUtil#getSampleProject()}'s existing use of the same trick for Central resolution.
+     * The Ballerina local repository ({@code ~/.ballerina/repositories/local}) handle, obtained once via
+     * a throwaway sample project's {@link io.ballerina.projects.environment.Environment} (mirroring
+     * {@link PackageUtil#getSampleProject()}'s existing use of the same trick for Central resolution) and
+     * cached from then on: {@link PackageUtil#getSampleProject()} builds a fresh temp-dir project on
+     * every call, and callers such as {@code TriggerSearchUtil#searchLocalRepository} invoke this
+     * repeatedly per search. The handle itself is a live lookup surface over the filesystem, not a cache
+     * of resolution results, so reusing it does not risk persisting a stale "not found".
      */
     private PackageRepository localRepository() {
-        return BallerinaUserHome.from(PackageUtil.getSampleProject().projectEnvironmentContext().environment())
-                .localPackageRepository();
+        return LocalRepositoryHolder.INSTANCE;
+    }
+
+    private static final class LocalRepositoryHolder {
+        private static final PackageRepository INSTANCE = BallerinaUserHome.from(
+                PackageUtil.getSampleProject().projectEnvironmentContext().environment()).localPackageRepository();
     }
 
     private Optional<TriggerMetadataModel> readPackagedMetadata(String moduleName) {
