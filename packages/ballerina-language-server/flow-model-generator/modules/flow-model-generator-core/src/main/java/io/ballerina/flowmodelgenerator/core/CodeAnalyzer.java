@@ -150,7 +150,10 @@ import io.ballerina.flowmodelgenerator.core.model.node.ChunkerBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.ClassInitBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataLoaderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataMapperBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentDataResultBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentResultBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRunBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentUpdateBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.EmbeddingProviderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.FailBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.FunctionCall;
@@ -1037,6 +1040,71 @@ public class CodeAnalyzer extends NodeVisitor {
     }
 
     /**
+     * Turns a durable agent call's arguments into the properties its form edits, keyed as the
+     * matching builder keys them so an existing statement opens with its own values.
+     */
+    private void populateDurableAgentCallArguments(MethodCallExpressionNode callNode, NodeKind nodeKind,
+                                                   boolean waits, String dataEventName) {
+        SeparatedNodeList<FunctionArgumentNode> arguments = callNode.arguments();
+        // Every one of these methods takes the instance to act on first.
+        addAgentCallProperty(DurableAgentUpdateBuilder.AGENT_ID_KEY, "Instance Id",
+                "The running agent's instance ID", positionalArgumentSource(arguments, 0));
+        switch (nodeKind) {
+            case DURABLE_AGENT_UPDATE -> {
+                if (dataEventName != null) {
+                    addAgentCallProperty(DurableAgentUpdateBuilder.EVENT_NAME_KEY, "Data Event",
+                            "The channel the payload is sent on", "\"" + dataEventName + "\"");
+                }
+                addAgentCallProperty(DurableAgentUpdateBuilder.DATA_KEY, "Data",
+                        "The payload sent on the channel", positionalArgumentSource(arguments, 2));
+            }
+            case DURABLE_AGENT_DATA_RESULT -> {
+                addAgentCallProperty(DurableAgentDataResultBuilder.TOKEN_KEY, "Correlation Token",
+                        "The correlation token the send returned", positionalArgumentSource(arguments, 1));
+                addAgentCallFlag(DurableAgentDataResultBuilder.WAIT_KEY, "Wait For Answer", waits);
+            }
+            default -> addAgentCallFlag(DurableAgentResultBuilder.WAIT_KEY, "Wait For Result", waits);
+        }
+    }
+
+    private void addAgentCallProperty(String key, String label, String doc, String value) {
+        if (value == null || value.isEmpty()) {
+            return;
+        }
+        nodeBuilder.properties().custom()
+                .metadata()
+                    .label(label)
+                    .description(doc)
+                    .stepOut()
+                .type(Property.ValueType.EXPRESSION)
+                .value(value)
+                .editable(true)
+                .stepOut()
+                .addProperty(key);
+    }
+
+    // The waiting and non-waiting reads differ only by which method was called, so the flag is
+    // derived from that rather than from an argument.
+    private void addAgentCallFlag(String key, String label, boolean value) {
+        nodeBuilder.properties().custom()
+                .metadata()
+                    .label(label)
+                    .stepOut()
+                .type(Property.ValueType.FLAG)
+                .value(String.valueOf(value))
+                .editable(true)
+                .stepOut()
+                .addProperty(key);
+    }
+
+    private static String positionalArgumentSource(SeparatedNodeList<FunctionArgumentNode> arguments, int index) {
+        if (arguments.size() <= index || !(arguments.get(index) instanceof PositionalArgumentNode positional)) {
+            return null;
+        }
+        return positional.expression().toSourceCode().trim();
+    }
+
+    /**
      * The node kind for a durable agent's driving method, or null when the method is not one of
      * them. {@code run} is excluded — it renders the agent box and is handled on its own.
      */
@@ -1099,6 +1167,11 @@ public class CodeAnalyzer extends NodeVisitor {
         if (dataEventName != null) {
             nodeBuilder.metadata().addData("dataName", dataEventName);
         }
+
+        // The call's arguments are what the form edits. Without them the form opened with its
+        // instance ID, payload and correlation token blank even though the statement supplied all
+        // three, and saving would have written those blanks back.
+        populateDurableAgentCallArguments(callNode, nodeKind, waits, dataEventName);
 
         SyntaxKind parentKind = callNode.parent().kind();
         boolean hasCheck = parentKind == SyntaxKind.CHECK_ACTION || parentKind == SyntaxKind.CHECK_EXPRESSION;
