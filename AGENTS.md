@@ -99,7 +99,7 @@ already covers extension + tests + LS attach.
 
 ### "Reproduce a CI failure locally"
 
-The PR workflow (`.github/workflows/pull-request.yml`) calls `.github/workflows/build.yml`
+The PR workflow (`.github/workflows/pull-request.yml`) calls `.github/workflows/reusable-build.yml`
 which delegates to the composite action at `.github/actions/build/action.yml`.
 That action ultimately does:
 
@@ -111,12 +111,17 @@ Running that exact command locally is the closest reproduction.
 
 ### "Change the LS jar shipped in the vsix"
 
-`packages/ballerina-extension/scripts/copy-ls.js` decides which jar lands in
-`ls/`. Read it before changing anything LS-related. Override knobs:
+The extension package's `copyLS` command copies the exact versioned jar into `ls/`.
+Rush builds or restores `ballerina-language-server` first through the `workspace:*`
+dependency. The jar is always that project's local `pack` output — there is no download
+path and nothing to select. To change the shipped jar, rebuild the LS
+(`rush build --to ballerina-language-server`).
 
-- `BALLERINA_LS_SOURCE=download` — always download from GH releases
-- `BALLERINA_LS_TAG=<tag>` — pin a specific release
-- *(default)* — prefer the local pack output, fall back to download
+**The version is authored in exactly one file:
+`packages/ballerina-extension/package.json`.** `vsce` reads it directly, and the
+language-server Gradle build reads the same manifest at configuration time. To change the
+extension and LS version, edit that field and nothing else. `-Pversion=<v>` remains
+available for a one-off Gradle build without changing the manifest.
 
 ### "Add a dependency to a package"
 
