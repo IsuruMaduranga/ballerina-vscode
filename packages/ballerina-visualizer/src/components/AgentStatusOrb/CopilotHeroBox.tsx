@@ -36,14 +36,13 @@ import {
 } from "./shared";
 
 /**
- * Inline "ask the Copilot" hero for the package overview landing page: a
- * prompt box that is the primary way into the Copilot. Submitting opens the
- * AI panel with the prompt auto-submitted into the agent. While a run is
- * active the box morphs into the orb + live status label (the same status
- * feed as the floating AgentStatusOrb), and clicking it opens the panel.
+ * Inline "ask the Copilot" prompt box in the package overview's design panel,
+ * the primary way into the Copilot from that page. Submitting opens the AI
+ * panel with the prompt auto-submitted into the agent. While a run is active
+ * the box morphs into the orb + live status label (the same status feed as the
+ * floating AgentStatusOrb), and clicking it opens the panel.
  *
- * While mounted it registers hero presence so the floating orb hides —
- * one copilot surface per view.
+ * While mounted it suppresses the floating orb — one copilot surface per view.
  */
 
 const HERO_ORB_SIZE = 44;
@@ -124,7 +123,7 @@ const SendButton = styled.button`
     }
 `;
 
-export function CopilotHeroBox() {
+export function CopilotHeroBox({ placeholder }: { placeholder: string }) {
     const { rpcClient } = useRpcContext();
     const [status, setStatus] = useState<AgentRunStatus | null>(null);
     const [text, setText] = useState("");
@@ -219,7 +218,7 @@ export function CopilotHeroBox() {
                                     submit();
                                 }
                             }}
-                            placeholder="What can I help you build or change?"
+                            placeholder={placeholder}
                             aria-label="Message WSO2 Integrator Copilot"
                         />
                         <SendButton

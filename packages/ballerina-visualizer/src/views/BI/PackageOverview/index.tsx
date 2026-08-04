@@ -1239,7 +1239,9 @@ export function PackageOverview(props: PackageOverviewProps) {
                             )}
                             {showHero && (
                                 <HeroRow>
-                                    <CopilotHeroBox />
+                                    <CopilotHeroBox
+                                        placeholder={isEmptyIntegration() ? "What would you like to build?" : "What would you like to change?"}
+                                    />
                                 </HeroRow>
                             )}
                         </DiagramPanel>
