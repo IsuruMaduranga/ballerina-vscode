@@ -915,7 +915,7 @@
         "parameters": [
           {
             "metadata": {
-              "label": "err",
+              "label": "cdcError",
               "description": "The error that occurred during event processing."
             },
             "kind": "REQUIRED",
@@ -924,8 +924,8 @@
                 "label": "Parameter Type",
                 "description": "The type of the parameter"
               },
-              "placeholder": "cdc:Error?",
-              "value": "cdc:Error?",
+              "placeholder": "cdc:Error",
+              "value": "cdc:Error",
               "types": [
                 {
                   "fieldType": "TYPE",
@@ -939,11 +939,11 @@
             },
             "name": {
               "metadata": {
-                "label": "err",
+                "label": "cdcError",
                 "description": "The error that occurred during event processing."
               },
-              "placeholder": "err",
-              "value": "err",
+              "placeholder": "cdcError",
+              "value": "cdcError",
               "types": [
                 {
                   "fieldType": "IDENTIFIER",
