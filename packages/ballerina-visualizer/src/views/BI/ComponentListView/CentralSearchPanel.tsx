@@ -102,9 +102,18 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     );
 
     useEffect(() => {
+        // The whole panel — including "More on Ballerina Central" — is still experimental,
+        // gated behind the same flag as the local-repository search.
+        if (!localCentralSearchEnabled) {
+            return;
+        }
         runSearch(props.query);
         return () => runSearch.cancel();
-    }, [props.query, runSearch]);
+    }, [props.query, runSearch, localCentralSearchEnabled]);
+
+    if (!localCentralSearchEnabled) {
+        return null;
+    }
 
     const handleSelect = async (model: ServiceModel, isLocalRepository: boolean) => {
         await rpcClient.getVisualizerRpcClient().openView({
@@ -156,7 +165,7 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                         ))}
                 </CardGrid>
             </PanelViewMore>
-            {localCentralSearchEnabled && !searching && visibleLocalRepositoryResults.length > 0 && (
+            {!searching && visibleLocalRepositoryResults.length > 0 && (
                 <PanelViewMore>
                     <TitleWrapper>
                         <Title variant="h2">Local Central Search Results</Title>
