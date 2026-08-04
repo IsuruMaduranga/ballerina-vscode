@@ -74,6 +74,7 @@ const FormFields = styled.div`
 `;
 
 export interface AIChatAgentWizardProps {
+    initialName?: string;
 }
 
 const AI_CHAT_AGENT_LISTENER = "chatAgentListener";
@@ -119,7 +120,7 @@ export function AIChatAgentWizard(props: AIChatAgentWizardProps) {
     // module name for ai agent
     const type = "ai";
     const { rpcClient } = useRpcContext();
-    const [agentName, setAgentName] = useState<string>("");
+    const [agentName, setAgentName] = useState<string>(props.initialName ?? "");
     const [nameError, setNameError] = useState<string>("");
     const [isCreating, setIsCreating] = useState<boolean>(false);
     const [currentStep, setCurrentStep] = useState<number>(0);

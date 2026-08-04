@@ -15,15 +15,18 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Icon } from '@wso2/ui-toolkit';
 import { useRpcContext } from '@wso2/ballerina-rpc-client';
 import { EVENT_TYPE, MACHINE_VIEW } from '@wso2/ballerina-core';
 
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
+import { ARTIFACT_CATEGORY_META, WORKFLOW_CARD } from '../components/artifactCards';
+import { cardMatchesSearch } from './componentListUtils';
 
-export function WorkflowPanel() {
+const CATEGORY = ARTIFACT_CATEGORY_META.workflow;
+
+export function WorkflowPanel({ searchQuery }: { searchQuery?: string }) {
     const { rpcClient } = useRpcContext();
 
     const handleClick = () => {
@@ -35,22 +38,23 @@ export function WorkflowPanel() {
         });
     };
 
+    if (!cardMatchesSearch(WORKFLOW_CARD.displayName, searchQuery)) {
+        return null;
+    }
+
     return (
         <PanelViewMore>
             <TitleWrapper>
-                <Title variant="h2">Durable Workflow</Title>
-                <BodyText>
-                    Design static workflow logic that can be interrupted by events, use timer-based
-                    activities, involve human tasks, and run for long periods with crash recovery enabled.
-                </BodyText>
+                <Title variant="h2">{CATEGORY.title}</Title>
+                <BodyText>{CATEGORY.description}</BodyText>
             </TitleWrapper>
             <CardGrid>
                 <ButtonCard
-                    id="workflow"
-                    icon={<Icon name="bi-flowchart" />}
-                    title="Durable Workflow"
-                    tooltip="Long-running workflow logic with events, timers, human tasks, and crash recovery."
+                    id={WORKFLOW_CARD.id}
+                    icon={WORKFLOW_CARD.icon}
+                    title={WORKFLOW_CARD.displayName}
                     onClick={handleClick}
+                    tooltip={WORKFLOW_CARD.tooltip}
                 />
             </CardGrid>
         </PanelViewMore>
