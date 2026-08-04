@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import styled from "@emotion/styled";
 import { keyframes } from "@emotion/react";
 import { AgentRunState, AgentRunStatus, ChatNotify, MACHINE_VIEW } from "@wso2/ballerina-core";
@@ -372,9 +372,13 @@ function notifyOrbSuppressed() {
     orbSuppressListeners.forEach((listener) => listener(orbSuppressCount > 0));
 }
 
-/** Hides the floating orb while the caller is mounted and `suppressed` holds. */
+/**
+ * Hides the floating orb while the caller is mounted and `suppressed` holds.
+ * Layout effect, not passive: suppression has to land in the same frame as the
+ * render that caused it, or the orb paints once over a view that opts out.
+ */
 export function useSuppressAgentStatusOrb(suppressed = true): void {
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!suppressed) {
             return;
         }
