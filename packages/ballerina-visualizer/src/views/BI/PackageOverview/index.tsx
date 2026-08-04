@@ -821,10 +821,11 @@ function DevantDashboard({ projectStructure, handleDeploy, goToDevant }: { proje
 interface PackageOverviewProps {
     projectPath: string;
     isInDevant: boolean;
+    isICPSupported?: boolean;
 }
 
 export function PackageOverview(props: PackageOverviewProps) {
-    const { projectPath, isInDevant } = props;
+    const { projectPath, isInDevant, isICPSupported } = props;
     const { rpcClient } = useRpcContext();
     const [readmeContent, setReadmeContent] = React.useState<string>("");
     const { platformExtState } = usePlatformExtContext();
@@ -863,12 +864,14 @@ export function PackageOverview(props: PackageOverviewProps) {
                 setReadmeContent(res.content);
             });
 
-        rpcClient
-            .getICPRpcClient()
-            .isIcpEnabled({ projectPath: '' })
-            .then((res) => {
-                setEnableICP(res.enabled);
-            });
+        if (isICPSupported) {
+            rpcClient
+                .getICPRpcClient()
+                .isIcpEnabled({ projectPath: '' })
+                .then((res) => {
+                    setEnableICP(res.enabled);
+                });
+        }
 
         rpcClient
             .getWorkflowManagementRpcClient()
@@ -876,14 +879,7 @@ export function PackageOverview(props: PackageOverviewProps) {
             .then((res) => {
                 setWorkflowMgmtEnabled(res.enabled);
             });
-
-        rpcClient
-            .getBIDiagramRpcClient()
-            .getReadmeContent({ projectPath })
-            .then((res) => {
-                setReadmeContent(res.content);
-            });
-    }, [rpcClient, projectPath]);
+    }, [rpcClient, projectPath, isICPSupported]);
 
     useEffect(() => {
         fetchContext();
@@ -1287,11 +1283,15 @@ export function PackageOverview(props: PackageOverviewProps) {
                                         hasDeployableIntegration={deployableIntegrationTypes.length > 0}
                                         projectPath={projectPath}
                                     />
-                                    <Divider sx={{ margin: "16px 0" }} />
-                                    <IntegrationControlPlane enabled={enabled} handleICP={handleICP} />
-                                    <div style={{ marginTop: 8 }}>
-                                        <LocalICPDeployment />
-                                    </div>
+                                    {isICPSupported && (
+                                        <>
+                                            <Divider sx={{ margin: "16px 0" }} />
+                                            <IntegrationControlPlane enabled={enabled} handleICP={handleICP} />
+                                            <div style={{ marginTop: 8 }}>
+                                                <LocalICPDeployment />
+                                            </div>
+                                        </>
+                                    )}
                                     {(projectStructure?.directoryMap?.[DIRECTORY_MAP.WORKFLOW]?.length ?? 0) > 0 && (
                                         <>
                                             <Divider sx={{ margin: "16px 0" }} />

@@ -726,9 +726,10 @@ function IntegrationControlPlane({
 
 interface WorkspaceOverviewProps {
     isInDevant: boolean;
+    isICPSupported?: boolean;
 }
 
-export function WorkspaceOverview({ isInDevant }: WorkspaceOverviewProps) {
+export function WorkspaceOverview({ isInDevant, isICPSupported }: WorkspaceOverviewProps) {
     const { rpcClient } = useRpcContext();
     const [readmeContent, setReadmeContent] = React.useState<string>("");
     const [projectCollection, setProjectCollection] = React.useState<ProjectStructureResponse>();
@@ -753,7 +754,7 @@ export function WorkspaceOverview({ isInDevant }: WorkspaceOverviewProps) {
     };
 
     const syncProjectICPStatus = async (projectPaths: string[]) => {
-        if (projectPaths.length === 0) {
+        if (!isICPSupported || projectPaths.length === 0) {
             setIcpStatusByProjectPath({});
             return;
         }
@@ -784,13 +785,6 @@ export function WorkspaceOverview({ isInDevant }: WorkspaceOverviewProps) {
                 rpcClient
                     .getBIDiagramRpcClient()
                     .handleReadmeContent({ projectPath: res.workspacePath, read: true })
-                    .then((res) => {
-                        setReadmeContent(res.content);
-                    });
-        
-                rpcClient
-                    .getBIDiagramRpcClient()
-                    .getReadmeContent({ projectPath: res.workspacePath })
                     .then((res) => {
                         setReadmeContent(res.content);
                     });
@@ -1124,7 +1118,7 @@ export function WorkspaceOverview({ isInDevant }: WorkspaceOverviewProps) {
                                 <PackageListView
                                     projectCollection={projectCollection}
                                     icpStatusByProjectPath={icpStatusByProjectPath}
-                                    showICPBadge={icpState !== "none"}
+                                    showICPBadge={isICPSupported && icpState !== "none"}
                                 />
                             )}
                         </ContentPanel>
@@ -1177,16 +1171,20 @@ export function WorkspaceOverview({ isInDevant }: WorkspaceOverviewProps) {
                                     deployableProjectPaths={deployableProjectPaths}
                                     libraryProjectPaths={libraryProjectPaths}
                                 />
-                                <Divider sx={{ margin: "16px 0" }} />
-                                <IntegrationControlPlane
-                                    icpState={icpState}
-                                    enabledCount={icpEnabledCount}
-                                    totalCount={icpProjectPaths.length}
-                                    onEnableAll={handleEnableAllICP}
-                                    onDisableAll={handleDisableAllICP}
-                                    onEnableRemaining={handleEnableRemainingICP}
-                                    icpActionLoading={icpActionLoading}
-                                />
+                                {isICPSupported && (
+                                    <>
+                                        <Divider sx={{ margin: "16px 0" }} />
+                                        <IntegrationControlPlane
+                                            icpState={icpState}
+                                            enabledCount={icpEnabledCount}
+                                            totalCount={icpProjectPaths.length}
+                                            onEnableAll={handleEnableAllICP}
+                                            onDisableAll={handleDisableAllICP}
+                                            onEnableRemaining={handleEnableRemainingICP}
+                                            icpActionLoading={icpActionLoading}
+                                        />
+                                    </>
+                                )}
                             </>
                         )}
                         {isInDevant && (
