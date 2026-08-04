@@ -163,17 +163,6 @@ export function ComponentListView(props: ComponentListViewProps) {
                     </FilterBar>
                     <AddPanel ref={addPanelRef}>
                         {!isLibrary && (
-                            <SearchBox
-                                placeholder="Search artifacts (e.g. Kafka, Salesforce, FTP)"
-                                value={searchQuery}
-                                onChange={setSearchQuery}
-                                iconPosition="start"
-                                aria-label="search-artifacts"
-                                data-testid="artifact-search-input"
-                                sx={{ width: '100%' }}
-                            />
-                        )}
-                        {!isLibrary && (
                             <>
                                 {showCategory("automation") && <AutomationPanel scope={scope} searchQuery={q} />}
                                 {showCategory("workflow") && <WorkflowPanel searchQuery={q} />}
