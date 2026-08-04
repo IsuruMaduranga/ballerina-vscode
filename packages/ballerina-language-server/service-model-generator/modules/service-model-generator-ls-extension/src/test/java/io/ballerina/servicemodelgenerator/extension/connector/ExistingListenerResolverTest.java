@@ -52,7 +52,7 @@ public class ExistingListenerResolverTest {
                 ExistingListenerResolver.collectTemplate(createNewBranch);
 
         // A parsed `new ({clientSecret: "s", callbackURL: "c"}, 8090)`:
-        LinkedHashMap<String, String> record = new LinkedHashMap<>();
+        LinkedHashMap<String, Object> record = new LinkedHashMap<>();
         record.put("clientSecret", "\"s\"");
         record.put("callbackURL", "\"c\"");
         ExistingListenerResolver.ParsedListener parsed = new ExistingListenerResolver.ParsedListener(
