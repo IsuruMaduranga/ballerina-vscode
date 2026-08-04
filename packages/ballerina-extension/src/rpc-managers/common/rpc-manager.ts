@@ -18,6 +18,7 @@
  * THIS FILE INCLUDES AUTO GENERATED CODE
  */
 import {
+    AgentRunStatus,
     BallerinaDiagnosticsRequest,
     BallerinaDiagnosticsResponse,
     CommandResponse,
@@ -57,6 +58,7 @@ import fs from "fs";
 import * as unzipper from 'unzipper';
 import { commands, env, MarkdownString, ProgressLocation, QuickPickItem, Uri, window, workspace } from "vscode";
 import { URI } from "vscode-uri";
+import { agentStatusManager } from "../../features/ai/state/AgentStatusManager";
 import { parse } from "@iarna/toml";
 import { load as loadYaml } from "js-yaml";
 import { extension } from "../../BalExtensionContext";
@@ -187,6 +189,10 @@ export class CommonRpcManager implements CommonRPCAPI {
 
             }
         });
+    }
+
+    async getAgentRunStatus(): Promise<AgentRunStatus> {
+        return agentStatusManager.getStatus();
     }
 
     async executeCommand(params: CommandsRequest): Promise<CommandsResponse> {
