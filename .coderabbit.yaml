@@ -35,11 +35,13 @@ reviews:
   labeling_instructions:
     - label: 'Checks/Run Ballerina UI Tests'
       instructions: >-
-        Suggest this label when the PR changes user-facing editor behavior:
-        React components under packages/*/src, webview panels, side panels,
-        diagram rendering, form or expression editors, or anything under
-        packages/ballerina-extension/src/views. Do not suggest it for changes
-        limited to the language server, build config, tests, or documentation.
+        A run is four parallel Playwright jobs capped at 60 minutes each, so
+        the default answer is no. Suggest this label only when the change
+        could break an end-to-end flow the suite actually covers; read
+        packages/ballerina-extension/e2e-test/e2e-playwright-tests/test.list.ts
+        to see what that is. Do not suggest it for styling, copy, or
+        layout-only changes, or for language server, build config, test, or
+        documentation changes.
 
   # labeling_instructions only reaches the author through the walkthrough, so this
   # has to stay on for the suggestion to appear at all.
