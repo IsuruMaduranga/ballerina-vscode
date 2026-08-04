@@ -44,6 +44,7 @@ import { TitleBar } from "../../../components/TitleBar";
 import { PublishToCentralButton } from "./PublishToCentralButton";
 import { LibraryOverview } from "./LibraryOverview";
 import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
+import { useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
 
 /** Only reachable from an empty integration, and it pulls in the whole wizard +
  *  artifact form tree — so keep it out of the overview's own chunk. */
@@ -834,9 +835,12 @@ export function PackageOverview(props: PackageOverviewProps) {
     const [isInProject, setIsInProject] = useState(false);
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
     const [isNPSupported, setIsNPSupported] = useState<boolean>(false);
+    const aiPanelOpen = useAiPanelOpen();
+    const showHero = !isLibrary && !aiPanelOpen;
     // Shows the Create Integration wizard in place of the overview, for an empty
     // integration whose owner skipped it at creation time.
     const [showAddIntegration, setShowAddIntegration] = useState<boolean>(false);
+
     const fetchContext = useCallback(() => {
         rpcClient
             .getBIDiagramRpcClient()
@@ -1165,12 +1169,12 @@ export function PackageOverview(props: PackageOverviewProps) {
                         </HeaderControls>
                     </HeaderRow>
                 )}
-                {!isLibrary && (
+                {showHero && (
                     <HeroRow>
                         <CopilotHeroBox />
                     </HeroRow>
                 )}
-                <MainContent fullWidth={isLibrary} withHero={!isLibrary}>
+                <MainContent fullWidth={isLibrary} withHero={showHero}>
                     <LeftContent>
                         <DiagramPanel noPadding={true} noBorder={isLibrary}>
                             {showAlert && (
