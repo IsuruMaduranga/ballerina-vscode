@@ -154,9 +154,42 @@
       "messaging",
       "event"
     ],
-    "triggerName": "Solace"
+    "triggerName": "Solace",
+    "version": "0.4.0",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_solace_0.4.0.png",
+    "kind": "event"
   },
   "13": {
+    "name": "solace.jms",
+    "orgName": "ballerinax",
+    "packageName": "solace.jms",
+    "keywords": [
+      "solace",
+      "jms",
+      "messaging",
+      "event"
+    ],
+    "triggerName": "Solace (JMS)",
+    "version": "0.1.0",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_solace.jms_0.1.0.png",
+    "kind": "event"
+  },
+  "14": {
+    "name": "oracledb",
+    "orgName": "ballerinax",
+    "packageName": "oracledb",
+    "keywords": [
+      "oracledb",
+      "oracle",
+      "cdc",
+      "event"
+    ],
+    "triggerName": "CDC for Oracle",
+    "version": "1.17.0",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_oracledb_1.17.0.png",
+    "kind": "event"
+  },
+  "15": {
     "name": "trigger.shopify",
     "orgName": "ballerinax",
     "packageName": "trigger.shopify",
@@ -168,7 +201,7 @@
     "version": "1.6.0",
     "kind": "event"
   },
-  "14": {
+  "16": {
     "name": "mssql",
     "orgName": "ballerinax",
     "packageName": "mssql",
@@ -181,7 +214,7 @@
     "version": "1.18.1",
     "kind": "event"
   },
-  "15": {
+  "17": {
     "name": "postgresql",
     "orgName": "ballerinax",
     "packageName": "postgresql",
@@ -195,7 +228,7 @@
     "version": "1.18.0",
     "kind": "event"
   },
-  "16": {
+  "18": {
     "name": "mysql",
     "orgName": "ballerinax",
     "packageName": "mysql",
@@ -208,7 +241,7 @@
     "version": "1.18.0",
     "kind": "event"
   },
-  "17": {
+  "19": {
     "name": "trigger.hubspot",
     "orgName": "ballerinax",
     "packageName": "trigger.hubspot",
@@ -218,6 +251,22 @@
     ],
     "triggerName": "HubSpot",
     "version": "0.12.0",
+    "kind": "event"
+  },
+  "20": {
+    "name": "sap.jco",
+    "orgName": "ballerinax",
+    "packageName": "sap.jco",
+    "keywords": [
+      "sap",
+      "jco",
+      "idoc",
+      "rfc",
+      "event"
+    ],
+    "triggerName": "SAP JCo",
+    "version": "2.0.1",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_sap.jco_2.0.1.png",
     "kind": "event"
   }
 }

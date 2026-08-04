@@ -29,7 +29,6 @@ import io.ballerina.servicemodelgenerator.extension.builder.service.DefaultServi
 import io.ballerina.servicemodelgenerator.extension.builder.service.GraphqlServiceBuilder;
 import io.ballerina.servicemodelgenerator.extension.builder.service.HttpServiceBuilder;
 import io.ballerina.servicemodelgenerator.extension.builder.service.SchemaDrivenServiceBuilder;
-import io.ballerina.servicemodelgenerator.extension.builder.service.SolaceServiceBuilder;
 import io.ballerina.servicemodelgenerator.extension.builder.service.TCPServiceBuilder;
 import io.ballerina.servicemodelgenerator.extension.connector.TriggerModelReader;
 import io.ballerina.servicemodelgenerator.extension.model.Service;
@@ -56,7 +55,6 @@ import java.util.function.Supplier;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.AI;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.GRAPHQL;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.HTTP;
-import static io.ballerina.servicemodelgenerator.extension.util.Constants.SOLACE;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.TCP;
 
 /**
@@ -67,18 +65,17 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.TCP;
  */
 public class ServiceBuilderRouter {
 
-    // RABBITMQ/KAFKA/MSSQL/POSTGRESQL/MYSQL/FTP/TRIGGER_GITHUB/TRIGGER_SHOPIFY/MCP (and ASB, never
-    // registered here) are deliberately absent: each now ships a bundled TriggerUISchemaModel schema (see
-    // TriggerModelReader.BUNDLED_TRIGGER_MODEL_RESOURCES), so useSchemaDrivenPath always routes
-    // them to SchemaDrivenServiceBuilder before this map is consulted — a hardcoded entry here
-    // would be dead code. HTTP/AI/TCP/GRAPHQL/SOLACE are not (yet) schema-driven and keep their
+    // RABBITMQ/KAFKA/MSSQL/POSTGRESQL/MYSQL/FTP/TRIGGER_GITHUB/TRIGGER_SHOPIFY/MCP/SOLACE (and ASB,
+    // never registered here) are deliberately absent: each now ships a bundled TriggerUISchemaModel
+    // schema (see TriggerModelReader.BUNDLED_TRIGGER_MODEL_RESOURCES), so useSchemaDrivenPath
+    // always routes them to SchemaDrivenServiceBuilder before this map is consulted — a hardcoded
+    // entry here would be dead code. HTTP/AI/TCP/GRAPHQL are not (yet) schema-driven and keep their
     // dedicated builders.
     private static final Map<String, Supplier<? extends ServiceNodeBuilder>> CONSTRUCTOR_MAP = new HashMap<>() {{
         put(HTTP, HttpServiceBuilder::new);
         put(AI, AiChatServiceBuilder::new);
         put(TCP, TCPServiceBuilder::new);
         put(GRAPHQL, GraphqlServiceBuilder::new);
-        put(SOLACE, SolaceServiceBuilder::new);
     }};
 
     public static ServiceNodeBuilder getServiceBuilder(String protocol) {

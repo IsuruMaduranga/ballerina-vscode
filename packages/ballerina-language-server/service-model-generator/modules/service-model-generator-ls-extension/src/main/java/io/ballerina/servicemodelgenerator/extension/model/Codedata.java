@@ -59,6 +59,7 @@ public class Codedata {
     // Payload: whether the bound parameter's identifier may be renamed in the edit UI (unset
     // defaults to editable). False for connectors that bind to a fixed, structural identifier.
     private Boolean nameEditable;
+    private String castType;
 
     public Codedata() {
     }
@@ -260,6 +261,14 @@ public class Codedata {
 
     public void setNameEditable(Boolean nameEditable) {
         this.nameEditable = nameEditable;
+    }
+
+    public String getCastType() {
+        return castType;
+    }
+
+    public void setCastType(String castType) {
+        this.castType = castType;
     }
 
     public static class Builder {

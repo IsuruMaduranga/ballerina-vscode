@@ -1152,7 +1152,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
      * {@code resources/trigger-metadata.json} plus semantic-API introspection of its {@code .bala} --
      * over the legacy sqlite index derived from {@code service_artifacts.json}. This lets a
      * schema-driven trigger appear in the picker with no {@code service_artifacts.json} entry or index
-     * rebuild; a trigger with neither source (e.g. HTTP, AI, TCP, GraphQL, Solace) falls through to the
+     * rebuild; a trigger with neither source (e.g. HTTP, AI, TCP, GraphQL) falls through to the
      * legacy index.
      *
      * <p>Package-visible for unit testing without a full LS bootstrap.
@@ -1211,7 +1211,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
      * carries {@code version}/{@code kind} for this entry, builds {@link TriggerBasicInfo} straight from
      * those scalars (deriving the icon URL from {@code orgName}/{@code packageName}/{@code version}) --
      * no {@code TriggerUISchemaModel} is parsed or cached just to render a list row. Only an entry
-     * missing those fields (a legacy trigger with no schema-driven model, e.g. Solace, or one not yet
+     * missing those fields (a legacy trigger with no schema-driven model, e.g. HTTP, or one not yet
      * backfilled) falls back to the fuller {@link #getTriggerBasicInfoByName(String, String)} chain.
      *
      * <p>Package-visible for unit testing without a full LS bootstrap.

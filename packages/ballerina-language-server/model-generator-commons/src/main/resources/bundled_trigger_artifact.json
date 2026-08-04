@@ -1,0 +1,39 @@
+{
+  "oracledb": {
+    "displayName": "CDC Oracle Service",
+    "icon": {
+      "glyph": "bi-oracledb",
+      "kind": "event"
+    },
+    "labelFields": [
+      "tables"
+    ]
+  },
+  "sap.jco": {
+    "displayName": "SAP JCo Event Integration",
+    "icon": {
+      "glyph": "bi-sap",
+      "color": "#0070F2",
+      "kind": "event"
+    }
+  },
+  "solace": {
+    "displayName": "Solace Event Integration",
+    "icon": {
+      "glyph": "bi-solace",
+      "kind": "event"
+    },
+    "labelFields": [
+      "queueName",
+      "topicName"
+    ]
+  },
+  "solace.jms": {
+    "displayName": "Solace (JMS) Event Integration",
+    "icon": {
+      "glyph": "bi-solace",
+      "color": "#00C895",
+      "kind": "event"
+    }
+  }
+}
