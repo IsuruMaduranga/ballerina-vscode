@@ -14,6 +14,7 @@
   "mysql": "trigger-models/mysql.json",
   "postgresql": "trigger-models/postgresql.json",
   "trigger.hubspot": "trigger-models/trigger.hubspot.json",
+  "azure.storage.files": "trigger-models/azure.storage.files.json",
   "mcp": [
     { "minVersion": "1.2.0", "resource": "trigger-models/mcp.json" },
     { "resource": "trigger-models/mcp_1.0.3.json" }
