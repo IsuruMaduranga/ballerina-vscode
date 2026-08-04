@@ -286,8 +286,11 @@ export function WaitDataNodeWidget(props: WaitDataNodeWidgetProps) {
 
     // Compute layout positions for the external arrow SVG
     const circleRadius = WAIT_DATA_CIRCLE_SIZE / 2;
+    // The body has to land on the node's centre line, so the space before it is exactly the left
+    // width minus half the body. Deriving it any other way leaves the body off-centre and the
+    // links bending to reach it.
     const svgWidth = model.node.viewState?.lw
-        ? Math.max(model.node.viewState.clw - model.node.viewState.lw, SOURCE_BOX_SIZE + NODE_GAP_X)
+        ? Math.max(model.node.viewState.lw - NODE_WIDTH / 2, SOURCE_BOX_SIZE + NODE_GAP_X)
         : SOURCE_BOX_SIZE + NODE_GAP_X;
     const svgHeight = NODE_HEIGHT + LABEL_HEIGHT;
     const svgMidY = (NODE_HEIGHT + LABEL_HEIGHT) / 2;

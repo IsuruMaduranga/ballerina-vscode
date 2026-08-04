@@ -39,7 +39,7 @@ import {
     NODE_TEXT_COLOR,
     NODE_WIDTH,
 } from "../../../resources/constants";
-import { Button, Item, Menu, MenuItem, ThemeColors } from "@wso2/ui-toolkit";
+import { Button, Icon, Item, Menu, MenuItem, ThemeColors } from "@wso2/ui-toolkit";
 import { MoreVertIcon } from "../../../resources";
 import { FlowNode } from "../../../utils/types";
 import NodeIcon from "../../NodeIcon";
@@ -269,9 +269,10 @@ export function ApiCallNodeWidget(props: ApiCallNodeWidgetProps) {
     // as the selected workflow, and a statement read back from source carries it as the node's
     // second line, so the arrow points at the workflow being run either way.
     const workflowValue = (model.node.properties as any)?.workflow?.value as string | undefined;
-    const childWorkflowTarget = model.node.codedata?.node?.startsWith("CHILD_WORKFLOW")
-        ? model.node.metadata?.description
-        : undefined;
+    const isWorkflowTarget = model.node.codedata?.node?.startsWith("CHILD_WORKFLOW")
+        || model.node.codedata?.node === "WORKFLOW_RUN";
+    // Read back from source these carry the workflow they run as the node's second line.
+    const childWorkflowTarget = isWorkflowTarget ? model.node.metadata?.description : undefined;
     const endpointLabel = connectionValue ?? fallbackEndpointValue ?? workflowValue ?? childWorkflowTarget ?? "";
     const connectorType = (connectionProperty?.metadata?.data as NodeMetadata | undefined)?.connectorType;
 
@@ -468,6 +469,19 @@ export function ApiCallNodeWidget(props: ApiCallNodeWidgetProps) {
                 onMouseEnter={() => !readOnly && setIsCircleHovered(true)}
                 onMouseLeave={() => setIsCircleHovered(false)}
             >
+                {isWorkflowTarget ? (
+                    <rect
+                        x="58"
+                        y="2"
+                        width="44"
+                        height="44"
+                        rx="12"
+                        fill={NODE_BG_COLOR}
+                        stroke={isCircleHovered && !disabled ? NODE_BORDER_SELECTED_COLOR : NODE_BORDER_COLOR}
+                        strokeWidth={1.5}
+                        opacity={disabled ? 0.7 : 1}
+                    />
+                ) : (
                 <circle
                     cx="80"
                     cy="24"
@@ -482,6 +496,7 @@ export function ApiCallNodeWidget(props: ApiCallNodeWidgetProps) {
                         transition: 'filter 0.1s ease',
                     }}
                 />
+                )}
                 <text
                     x="80"
                     y="66"
@@ -493,6 +508,9 @@ export function ApiCallNodeWidget(props: ApiCallNodeWidgetProps) {
                     {endpointLabel.length > 16 ? `${endpointLabel.slice(0, 16)}...` : endpointLabel}
                 </text>
                 <foreignObject x="68" y="12" width="24" height="24" fill={NODE_TEXT_COLOR}>
+                    {isWorkflowTarget ? (
+                        <Icon name="bi-flowchart" sx={{ width: 24, height: 24, fontSize: 24 }} />
+                    ) : (
                     <ConnectorIcon
                         url={model.node.metadata.icon}
                         style={{
@@ -505,6 +523,7 @@ export function ApiCallNodeWidget(props: ApiCallNodeWidgetProps) {
                         codedata={model.node?.codedata}
                         connectorType={connectorType}
                     />
+                    )}
                 </foreignObject>
                 <line
                     x1="0"
