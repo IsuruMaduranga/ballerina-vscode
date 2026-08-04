@@ -92,7 +92,10 @@ class TypeSearchCommand extends SearchCommand {
         // Obtain the imported project names
         Package currentPackage = project.currentPackage();
         PackageUtil.getCompilation(currentPackage);
-        moduleNames = currentPackage.getDefaultModule().moduleDependencies().stream()
+        Module currentModule = PackageModuleUtils.findModule(currentPackage,
+                        position == null ? null : position.fileName())
+                .orElse(currentPackage.getDefaultModule());
+        moduleNames = currentModule.moduleDependencies().stream()
                 .map(moduleDependency -> {
                     ModuleName name = moduleDependency.descriptor().name();
                     if (Objects.nonNull(name.moduleNamePart()) && !name.moduleNamePart().isEmpty()) {
