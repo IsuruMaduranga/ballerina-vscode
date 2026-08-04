@@ -54,6 +54,20 @@
     "kind": "event"
   },
   "5": {
+    "name": "aws.sqs",
+    "orgName": "ballerinax",
+    "packageName": "aws.sqs",
+    "keywords": [
+      "aws",
+      "sqs",
+      "messaging",
+      "event"
+    ],
+    "triggerName": "AWS SQS",
+    "version": "5.0.0",
+    "kind": "event"
+  },
+  "6": {
     "name": "salesforce",
     "orgName": "ballerinax",
     "packageName": "salesforce",
@@ -65,7 +79,7 @@
     "version": "8.7.0",
     "kind": "event"
   },
-  "6": {
+  "7": {
     "name": "trigger.twilio",
     "orgName": "ballerinax",
     "packageName": "trigger.twilio",
@@ -78,7 +92,7 @@
     "version": "0.10.0",
     "kind": "event"
   },
-  "7": {
+  "8": {
     "name": "trigger.github",
     "orgName": "ballerinax",
     "packageName": "trigger.github",
@@ -90,7 +104,7 @@
     "version": "0.10.0",
     "kind": "event"
   },
-  "8": {
+  "9": {
     "name": "ftp",
     "orgName": "ballerina",
     "packageName": "ftp",
@@ -105,7 +119,7 @@
     "version": "2.19.0",
     "kind": "file"
   },
-  "9": {
+  "10": {
     "name": "smb",
     "orgName": "ballerina",
     "packageName": "smb",
@@ -120,7 +134,7 @@
     "version": "2.0.0",
     "kind": "file"
   },
-  "10": {
+  "11": {
     "name": "file",
     "orgName": "ballerina",
     "packageName": "file",
@@ -134,7 +148,7 @@
     "version": "1.13.0",
     "kind": "file"
   },
-  "11": {
+  "12": {
     "name": "mcp",
     "orgName": "ballerina",
     "packageName": "mcp",
@@ -145,7 +159,7 @@
     "version": "1.2.0",
     "kind": "mcp"
   },
-  "12": {
+  "13": {
     "name": "solace",
     "orgName": "ballerinax",
     "packageName": "solace",
@@ -159,7 +173,7 @@
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_solace_0.4.0.png",
     "kind": "event"
   },
-  "13": {
+  "14": {
     "name": "solace.jms",
     "orgName": "ballerinax",
     "packageName": "solace.jms",
@@ -174,7 +188,7 @@
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_solace.jms_0.1.0.png",
     "kind": "event"
   },
-  "14": {
+  "15": {
     "name": "oracledb",
     "orgName": "ballerinax",
     "packageName": "oracledb",
@@ -189,7 +203,7 @@
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_oracledb_1.17.0.png",
     "kind": "event"
   },
-  "15": {
+  "16": {
     "name": "trigger.shopify",
     "orgName": "ballerinax",
     "packageName": "trigger.shopify",
@@ -201,7 +215,7 @@
     "version": "1.6.0",
     "kind": "event"
   },
-  "16": {
+  "17": {
     "name": "mssql",
     "orgName": "ballerinax",
     "packageName": "mssql",
@@ -214,7 +228,7 @@
     "version": "1.18.1",
     "kind": "event"
   },
-  "17": {
+  "18": {
     "name": "postgresql",
     "orgName": "ballerinax",
     "packageName": "postgresql",
@@ -228,7 +242,7 @@
     "version": "1.18.0",
     "kind": "event"
   },
-  "18": {
+  "19": {
     "name": "mysql",
     "orgName": "ballerinax",
     "packageName": "mysql",
@@ -241,7 +255,7 @@
     "version": "1.18.0",
     "kind": "event"
   },
-  "19": {
+  "20": {
     "name": "trigger.hubspot",
     "orgName": "ballerinax",
     "packageName": "trigger.hubspot",
@@ -253,7 +267,7 @@
     "version": "0.12.0",
     "kind": "event"
   },
-  "20": {
+  "21": {
     "name": "sap.jco",
     "orgName": "ballerinax",
     "packageName": "sap.jco",
@@ -269,7 +283,7 @@
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_sap.jco_2.0.1.png",
     "kind": "event"
   },
-  "21": {
+  "22": {
     "name": "azure.storage.files",
     "orgName": "ballerinax",
     "packageName": "azure.storage.files",
@@ -285,7 +299,7 @@
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_azure.storage.files_1.0.0.png",
     "kind": "file"
   },
-  "22": {
+  "23": {
     "name": "whatsapp.business",
     "orgName": "ballerinax",
     "packageName": "whatsapp.business",
@@ -300,7 +314,7 @@
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_whatsapp.business_2.0.1.png",
     "kind": "event"
   },
-  "23": {
+  "24": {
     "name": "telegram",
     "orgName": "ballerinax",
     "packageName": "telegram",
@@ -315,7 +329,7 @@
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_telegram_0.9.1.png",
     "kind": "event"
   },
-  "24": {
+  "25": {
     "name": "googleapis.chat",
     "orgName": "ballerinax",
     "packageName": "googleapis.chat",
