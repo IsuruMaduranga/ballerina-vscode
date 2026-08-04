@@ -16,10 +16,11 @@
  * under the License.
  */
 
+import { useEffect, useState } from "react";
 import styled from "@emotion/styled";
 import { keyframes } from "@emotion/react";
 import { AgentRunState, AgentRunStatus, ChatNotify } from "@wso2/ballerina-core";
-import { BallerinaRpcClient } from "@wso2/ballerina-rpc-client";
+import { BallerinaRpcClient, useRpcContext } from "@wso2/ballerina-rpc-client";
 import type { MiniChatPrompt } from "./promptHandoff";
 
 /** WSO2 brand orange — the pulse-icon color from wso2.com/about/brand. */
@@ -281,6 +282,25 @@ export function subscribeAgentRunStatus(
     return () => {
         statusListeners.delete(listener);
     };
+}
+
+/**
+ * True while the Copilot panel is open — inline copilot surfaces stand down so
+ * the panel is the only chat entry point. Seeded from the cached status so a
+ * remount does not flash the surface it is about to hide.
+ */
+export function useAiPanelOpen(): boolean {
+    const { rpcClient } = useRpcContext();
+    const [open, setOpen] = useState(() => currentStatus?.aiPanelOpen ?? false);
+
+    useEffect(() => {
+        if (!rpcClient) {
+            return;
+        }
+        return subscribeAgentRunStatus(rpcClient, (status) => setOpen(status?.aiPanelOpen ?? false));
+    }, [rpcClient]);
+
+    return open;
 }
 
 // ---------------------------------------------------------------------------

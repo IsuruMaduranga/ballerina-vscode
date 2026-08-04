@@ -32,9 +32,8 @@ import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { Typography, Codicon, ProgressRing, Button, Icon, Divider, CheckBox, ProgressIndicator, Overlay, Dropdown } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
 import { ThemeColors } from "@wso2/ui-toolkit";
-import ComponentDiagram from "../ComponentDiagram";
 import { VSCodeLink } from "@vscode/webview-ui-toolkit/react";
-import ReactMarkdown from "react-markdown";
+import { Markdown } from "../../../components/Markdown";
 import { IOpenInConsoleCmdParams, WICommandIds } from "@wso2/wso2-platform-core";
 import { AlertBoxWithClose } from "../../AIPanel/AlertBoxWithClose";
 import { getIntegrationTypes, validateComponentName } from "./utils";
@@ -45,6 +44,17 @@ import { TitleBar } from "../../../components/TitleBar";
 import { PublishToCentralButton } from "./PublishToCentralButton";
 import { LibraryOverview } from "./LibraryOverview";
 import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
+import { useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
+
+/** Only reachable from an empty integration, and it pulls in the whole wizard +
+ *  artifact form tree — so keep it out of the overview's own chunk. */
+const LazyAddIntegrationPanel = React.lazy(() => import("./AddIntegrationPanel"));
+
+/** The diagram engine (`@wso2/component-diagram` and its layout stack) is the
+ *  heaviest thing this view renders. Kept out of the overview's chunk so the page —
+ *  header, README, deployment panel — paints without waiting for it; the diagram
+ *  fills in a moment later, and the prefetcher usually has it warm before then. */
+const LazyComponentDiagram = React.lazy(() => import("../ComponentDiagram"));
 
 const SpinnerContainer = styled.div`
     display: flex;
@@ -825,6 +835,12 @@ export function PackageOverview(props: PackageOverviewProps) {
     const [isInProject, setIsInProject] = useState(false);
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
     const [isNPSupported, setIsNPSupported] = useState<boolean>(false);
+    const aiPanelOpen = useAiPanelOpen();
+    const showHero = !isLibrary && !aiPanelOpen;
+    // Shows the Create Integration wizard in place of the overview, for an empty
+    // integration whose owner skipped it at creation time.
+    const [showAddIntegration, setShowAddIntegration] = useState<boolean>(false);
+
     const fetchContext = useCallback(() => {
         rpcClient
             .getBIDiagramRpcClient()
@@ -916,6 +932,11 @@ export function PackageOverview(props: PackageOverviewProps) {
         setProjectStructure(prev => prev ? { ...prev, projectTitle: newTitle } : prev);
     }, [projectPath, rpcClient]);
 
+    // Returns to the overview. After a successful add the artifact was generated in
+    // the current session, so the backend's notifyCurrentWebview → fetchContext
+    // refresh is what turns the empty state into the component diagram.
+    const closeAddIntegration = useCallback(() => setShowAddIntegration(false), []);
+
     function isEmptyIntegration(): boolean {
         // Filter out connections that start with underscore
         const validConnections = projectStructure.directoryMap[DIRECTORY_MAP.CONNECTION]?.filter(
@@ -938,6 +959,27 @@ export function PackageOverview(props: PackageOverviewProps) {
             <SpinnerContainer>
                 <ProgressRing color={ThemeColors.PRIMARY} />
             </SpinnerContainer>
+        );
+    }
+
+    // Rendered in place of the overview (not on top of it) so the wizard gets the
+    // definite height its pinned-stepper layout needs. This component stays mounted
+    // throughout, so dismissing the wizard restores the overview instantly.
+    if (showAddIntegration) {
+        return (
+            <React.Suspense
+                fallback={
+                    <SpinnerContainer>
+                        <ProgressRing color={ThemeColors.PRIMARY} />
+                    </SpinnerContainer>
+                }
+            >
+                <LazyAddIntegrationPanel
+                    packageRoot={projectPath}
+                    integrationName={integrationTitle}
+                    onClose={closeAddIntegration}
+                />
+            </React.Suspense>
         );
     }
 
@@ -1127,12 +1169,12 @@ export function PackageOverview(props: PackageOverviewProps) {
                         </HeaderControls>
                     </HeaderRow>
                 )}
-                {!isLibrary && (
+                {showHero && (
                     <HeroRow>
                         <CopilotHeroBox />
                     </HeroRow>
                 )}
-                <MainContent fullWidth={isLibrary} withHero={!isLibrary}>
+                <MainContent fullWidth={isLibrary} withHero={showHero}>
                     <LeftContent>
                         <DiagramPanel noPadding={true} noBorder={isLibrary}>
                             {showAlert && (
@@ -1181,13 +1223,24 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 the Copilot box above
                                             </Typography>
                                             <ButtonContainer>
-                                                <Button appearance="primary" onClick={handleAddConstruct}>
-                                                    <Codicon name="add" sx={{ marginRight: 8 }} /> Add Artifact
+                                                {/* An empty integration means the creation wizard was
+                                                    skipped — offer it again here rather than the raw
+                                                    artifact list, so the guided flow can be resumed. */}
+                                                <Button appearance="primary" onClick={() => setShowAddIntegration(true)}>
+                                                    <Codicon name="add" sx={{ marginRight: 8 }} /> Add Integration
                                                 </Button>
                                             </ButtonContainer>
                                         </EmptyStateContainer>
                                     ) : (
-                                        <ComponentDiagram projectStructure={projectStructure} />
+                                        <React.Suspense
+                                            fallback={
+                                                <SpinnerContainer>
+                                                    <ProgressRing color={ThemeColors.PRIMARY} />
+                                                </SpinnerContainer>
+                                            }
+                                        >
+                                            <LazyComponentDiagram projectStructure={projectStructure} />
+                                        </React.Suspense>
                                     )}
                                 </DiagramContent>
                             )}
@@ -1209,7 +1262,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                                 </ReadmeHeaderContainer>
                                 <ReadmeContent>
                                     {readmeContent ? (
-                                        <ReactMarkdown>{readmeContent}</ReactMarkdown>
+                                        <Markdown>{readmeContent}</Markdown>
                                     ) : (
                                         <EmptyReadmeContainer>
                                             <Description variant="body2">

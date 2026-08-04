@@ -16,7 +16,6 @@
  * under the License.
  */
 import React, { useEffect, useState } from 'react';
-import { Icon } from '@wso2/ui-toolkit';
 import { useRpcContext } from '@wso2/ballerina-rpc-client';
 import { DIRECTORY_MAP, EVENT_TYPE, MACHINE_VIEW } from '@wso2/ballerina-core';
 
@@ -24,10 +23,13 @@ import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
 import { useVisualizerContext } from '../../../Context';
+import { OTHER_ARTIFACT_CARDS } from '../components/artifactCards';
+import { cardMatchesSearch } from './componentListUtils';
 
 interface OtherArtifactsPanelProps {
     isNPSupported: boolean;
     isLibrary?: boolean;
+    searchQuery?: string;
 }
 
 export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
@@ -97,6 +99,15 @@ export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
         }
     };
 
+    const q = props.searchQuery;
+    const cards = OTHER_ARTIFACT_CARDS.filter(
+        (card) =>
+            (showNaturalFunctions || !card.requiresNaturalFunctions) && cardMatchesSearch(card.displayName, q)
+    );
+    if (cards.length === 0) {
+        return null;
+    }
+
     return (
         <PanelViewMore>
             <TitleWrapper>
@@ -106,46 +117,16 @@ export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
                 </BodyText>
             </TitleWrapper>
             <CardGrid>
-                <ButtonCard
-                    id="bi-function"
-                    data-testid="function"
-                    icon={<Icon name="bi-function" />}
-                    title="Function"
-                    onClick={() => handleClick(DIRECTORY_MAP.FUNCTION)}
-                />
-                {showNaturalFunctions &&
+                {cards.map((card) => (
                     <ButtonCard
-                        id="bi-ai-function"
-                        icon={<Icon name="bi-ai-function" />}
-                        title="Natural Function"
-                        onClick={() => handleClick(DIRECTORY_MAP.NP_FUNCTION)}
-                        isBeta
+                        id={card.id}
+                        key={card.id}
+                        icon={card.icon}
+                        title={card.displayName}
+                        onClick={() => handleClick(card.directoryKey)}
+                        isBeta={card.isBeta}
                     />
-                }
-                <ButtonCard
-                    id="data-mapper"
-                    icon={<Icon name="dataMapper" />}
-                    title="Data Mapper"
-                    onClick={() => handleClick(DIRECTORY_MAP.DATA_MAPPER)}
-                />
-                <ButtonCard
-                    id="type"
-                    icon={<Icon name="bi-type" />}
-                    title="Type"
-                    onClick={() => handleClick(DIRECTORY_MAP.TYPE)}
-                />
-                <ButtonCard
-                    id="connection"
-                    icon={<Icon name="bi-connection" />}
-                    title="Connection"
-                    onClick={() => handleClick(DIRECTORY_MAP.CONNECTION)}
-                />
-                <ButtonCard
-                    id="configurable"
-                    icon={<Icon name="bi-config" />}
-                    title="Configuration"
-                    onClick={() => handleClick(DIRECTORY_MAP.CONFIGURABLE)}
-                />
+                ))}
             </CardGrid>
         </PanelViewMore>
     );

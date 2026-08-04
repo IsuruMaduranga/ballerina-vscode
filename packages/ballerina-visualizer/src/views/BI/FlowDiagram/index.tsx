@@ -3405,6 +3405,23 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         return null;
     };
 
+    // Where the expression editor may splice its probe statement while a capability form is open.
+    // For an object-model agent the capability entry sits inside the declaration's `check new
+    // ({...})` literal, so the probe goes to the declaration's start instead. For the statement
+    // model the entry IS a statement, and it is kept as-is: hoisting there would drop every
+    // variable declared between the entry and the run call out of scope for completions.
+    const probeRangeForCapability = (runNode: FlowNode, entryRange: LineRange): LineRange => {
+        const declRange = runNode?.codedata?.lineRange;
+        if (!agentVarFromRunNode(runNode) || !declRange?.startLine) {
+            return entryRange;
+        }
+        return {
+            fileName: declRange.fileName ?? entryRange.fileName,
+            startLine: declRange.startLine,
+            endLine: declRange.startLine,
+        } as LineRange;
+    };
+
     const resolveDurableAgentVar = (): string | null => {
         if (durableAgentObjectVarRef.current) {
             return durableAgentObjectVarRef.current;
@@ -3632,8 +3649,14 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             console.error(">>> No form for capability kind", capability?.type, capability);
             return;
         }
-        targetRef.current = lineRange;
-        setTargetLineRange(lineRange);
+        // Two distinct positions, and they must not be conflated. The entry's own range (above)
+        // is where the edit is written, and it points INSIDE the declaration's `check new
+        // ({...})` config literal. The expression editor, however, splices a statement to
+        // resolve types and completions, which cannot parse between mapping fields — so its
+        // target is the declaration's start, exactly as the add-capability handlers already do.
+        const probeRange = probeRangeForCapability(runNode, lineRange);
+        targetRef.current = probeRange;
+        setTargetLineRange(probeRange);
         setShowProgressIndicator(true);
         try {
             const response = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({

@@ -104,6 +104,14 @@ public class ExpressionEditorContext {
         return info;
     }
 
+    /**
+     * The position the probe statement is spliced at. Callers are responsible for sending a
+     * position where a statement parses: the editor splices
+     * {@code <type> __reserved__ = <expr>;} here, so a position inside an expression — a field of
+     * a mapping constructor, say — is the caller's bug, not something this context corrects.
+     *
+     * @return the resolved probe position
+     */
     public LinePosition startLine() {
         if (startLine == null) {
             startLine = normalizeStatementPosition(

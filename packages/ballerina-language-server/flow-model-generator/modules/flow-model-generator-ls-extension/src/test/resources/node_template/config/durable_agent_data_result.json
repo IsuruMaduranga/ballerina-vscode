@@ -13,7 +13,7 @@
   "output": {
     "id": "31",
     "metadata": {
-      "label": "Get Agent Data Result",
+      "label": "Get Data Event Result",
       "description": "Read the agent's answer for a sent data event by its correlation token"
     },
     "codedata": {

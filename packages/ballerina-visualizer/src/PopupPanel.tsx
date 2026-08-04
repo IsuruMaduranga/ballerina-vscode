@@ -23,7 +23,7 @@ import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { ThemeColors, Overlay } from "@wso2/ui-toolkit";
 import { URI, Utils } from "vscode-uri";
 import { CONNECTIONS_FILE } from "./constants";
-import { FunctionForm } from "./views/BI";
+import { FunctionForm } from "./views/BI/FunctionForm";
 import { DataMapper } from "./views/DataMapper";
 import AddConnectionPopup from "./views/BI/Connection/AddConnectionPopup";
 import { ConnectionConfigurationPopup } from "./views/BI/Connection/ConnectionConfigurationPopup";

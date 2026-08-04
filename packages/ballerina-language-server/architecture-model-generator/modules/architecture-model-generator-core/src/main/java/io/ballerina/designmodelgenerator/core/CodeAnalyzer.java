@@ -128,6 +128,11 @@ public class CodeAnalyzer extends NodeVisitor {
     private static final String HUMAN_TASK_NAME_ARG = "taskName";
     private static final String CALL_ACTIVITY_FN_ARG = "activityFunction";
     private static final String CALL_ACTIVITY_ARGS_ARG = "args";
+    // A durable agent is driven by methods on the agent object rather than by module functions,
+    // so its method and argument names are named here alongside the workflow ones.
+    private static final String AGENT_SEND_DATA_METHOD = "sendData";
+    private static final String AGENT_SEND_DATA_NAME_ARG = "eventName";
+    private static final String AGENT_RUN_METHOD = "run";
     private static final int SEND_DATA_NAME_ARG_INDEX = 2;
     private static final Map<String, String> BUILTIN_ACTIVITY_LABELS = Map.of(
             Constants.Workflow.BUILTIN_REST_FUNCTION, Constants.Workflow.BUILTIN_REST_LABEL,
@@ -436,8 +441,8 @@ public class CodeAnalyzer extends NodeVisitor {
         // agent.sendData(id, "channel", data): correlate with the declared event channel so the
         // overview draws the edge into the channel's in-port, like workflow:sendData does.
         String methodName = methodCallExpressionNode.methodName().toSourceCode().trim();
-        if ("sendData".equals(methodName)) {
-            String eventName = getStringArgValue(methodCallExpressionNode.arguments(), 1, "eventName");
+        if (AGENT_SEND_DATA_METHOD.equals(methodName)) {
+            String eventName = getStringArgValue(methodCallExpressionNode.arguments(), 1, AGENT_SEND_DATA_NAME_ARG);
             if (eventName != null && agent.getEvent(eventName).isPresent()) {
                 this.currentFunctionModel.addSentEvent(agent.getUuid(), eventName);
             } else {
@@ -445,7 +450,7 @@ public class CodeAnalyzer extends NodeVisitor {
             }
             return;
         }
-        if (!"run".equals(methodName)) {
+        if (!AGENT_RUN_METHOD.equals(methodName)) {
             // Read-only interactions (getResult/waitForResult/waitForDataResult/...) draw no
             // edge: like regular workflows, only run and data-event sends connect on the overview.
             return;

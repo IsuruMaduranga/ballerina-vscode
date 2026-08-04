@@ -775,6 +775,30 @@
                 "when": "ballerina.bi.workspaceSupported"
             },
             {
+                "command": "BI.project-explorer.convert",
+                "title": "Convert to Project",
+                "icon": "$(project)",
+                "group": "navigation",
+                "category": "WSO2 Integrator",
+                "when": "ballerina.bi.workspaceSupported"
+            },
+            {
+                "command": "BI.project-explorer.open-project",
+                "title": "Open Project",
+                "icon": "$(folder-opened)",
+                "group": "navigation",
+                "category": "WSO2 Integrator",
+                "when": "ballerina.bi.workspaceSupported"
+            },
+            {
+                "command": "BI.project-explorer.add-to-project",
+                "title": "Add to Project",
+                "icon": "$(add)",
+                "group": "navigation",
+                "category": "WSO2 Integrator",
+                "when": "ballerina.bi.workspaceSupported"
+            },
+            {
                 "command": "BI.project-explorer.overview",
                 "title": "Show Overview",
                 "icon": "$(ballerina-design-view)",
@@ -1183,6 +1207,14 @@
                     "when": "false"
                 },
                 {
+                    "command": "BI.project-explorer.open-project",
+                    "when": "false"
+                },
+                {
+                    "command": "BI.project-explorer.add-to-project",
+                    "when": "false"
+                },
+                {
                     "command": "BI.project-explorer.delete",
                     "when": "false"
                 },
@@ -1497,7 +1529,8 @@
         "build": "pnpm run compile && pnpm run lint && pnpm run postbuild",
         "rebuild": "pnpm run clean && pnpm run compile && pnpm run postbuild",
         "postbuild": "pnpm run copyLS && pnpm run copyFonts && pnpm run copyJSLibs && pnpm run clearVsix && pnpm run package && pnpm run copyVSIX",
-        "copyJSLibs": "copyfiles -f ../ballerina-visualizer/build/*.js resources/jslibs && copyfiles -f ../ballerina-visualizer/build/images/* resources/jslibs/images && copyfiles -f ../trace-visualizer/build/*.js resources/jslibs && copyfiles -f ../graphql/build/*.js resources/jslibs",
+        "copyJSLibs": "copyfiles -f ../ballerina-visualizer/build/*.js resources/jslibs && copyfiles -f ../ballerina-visualizer/build/images/* resources/jslibs/images && copyfiles -f ../trace-visualizer/build/*.js resources/jslibs && copyfiles -f ../graphql/build/*.js resources/jslibs && pnpm run copyFederation",
+        "copyFederation": "node ./scripts/copy-federation.js",
         "test:typecheck": "tsc --noEmit -p tsconfig.spec.json"
     },
     "dependencies": {
