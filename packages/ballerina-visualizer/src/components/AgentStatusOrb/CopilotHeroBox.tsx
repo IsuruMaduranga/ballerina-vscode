@@ -31,7 +31,7 @@ import {
     IconOverlay,
     activeStateLabel,
     AmbientFrame,
-    registerHeroPresence,
+    useSuppressAgentStatusOrb,
     subscribeAgentRunStatus,
 } from "./shared";
 
@@ -133,7 +133,7 @@ export function CopilotHeroBox() {
     const handleWebglFailed = useCallback(() => setWebglFailed(true), []);
     const inputRef = useRef<HTMLInputElement | null>(null);
 
-    useEffect(() => registerHeroPresence(), []);
+    useSuppressAgentStatusOrb();
 
     useEffect(() => {
         if (!rpcClient) {

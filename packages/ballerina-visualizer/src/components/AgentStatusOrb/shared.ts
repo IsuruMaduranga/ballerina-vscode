@@ -359,33 +359,35 @@ export function subscribeCopilotChatNotify(
 }
 
 // ---------------------------------------------------------------------------
-// Hero-box presence.
+// Floating-orb suppression.
 //
-// While a landing-page hero box is on screen it IS the copilot surface for
-// that view, so the floating orb hides itself to avoid showing two orbs.
+// A view opts out of the floating orb either because its own hero box is the
+// copilot surface there, or because it deliberately offers no ambient copilot.
 // ---------------------------------------------------------------------------
 
-let heroCount = 0;
-const heroListeners = new Set<(present: boolean) => void>();
+let orbSuppressCount = 0;
+const orbSuppressListeners = new Set<(suppressed: boolean) => void>();
 
-function notifyHeroPresence() {
-    heroListeners.forEach((listener) => listener(heroCount > 0));
+function notifyOrbSuppressed() {
+    orbSuppressListeners.forEach((listener) => listener(orbSuppressCount > 0));
 }
 
-/** Called by a hero box on mount; returns the matching unmount cleanup. */
-export function registerHeroPresence(): () => void {
-    heroCount++;
-    notifyHeroPresence();
-    return () => {
-        heroCount--;
-        notifyHeroPresence();
-    };
+/** Hides the floating orb while the caller is mounted. */
+export function useSuppressAgentStatusOrb(): void {
+    useEffect(() => {
+        orbSuppressCount++;
+        notifyOrbSuppressed();
+        return () => {
+            orbSuppressCount--;
+            notifyOrbSuppressed();
+        };
+    }, []);
 }
 
-export function subscribeHeroPresence(listener: (present: boolean) => void): () => void {
-    heroListeners.add(listener);
-    listener(heroCount > 0);
+export function subscribeOrbSuppressed(listener: (suppressed: boolean) => void): () => void {
+    orbSuppressListeners.add(listener);
+    listener(orbSuppressCount > 0);
     return () => {
-        heroListeners.delete(listener);
+        orbSuppressListeners.delete(listener);
     };
 }
