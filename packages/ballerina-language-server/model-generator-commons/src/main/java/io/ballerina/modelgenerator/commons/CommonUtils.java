@@ -1384,7 +1384,8 @@ public class CommonUtils {
     }
 
     /**
-     * Gets the view line range for a symbol if it belongs to the current package or a workspace project.
+     * Gets the view line range for a symbol in a default module if it belongs to the current package or a workspace
+     * project.
      *
      * <p>
      * TODO: The API currently relies on the syntax tree to determine the corresponding line range. The communication
@@ -1407,8 +1408,13 @@ public class CommonUtils {
             return Optional.empty();
         }
 
-        String symbolOrg = moduleId.get().orgName();
-        String symbolPackage = moduleId.get().packageName();
+        ModuleID symbolModule = moduleId.get();
+        String symbolOrg = symbolModule.orgName();
+        String symbolPackage = symbolModule.packageName();
+        // Integrator cannot open flow models for non-default modules.
+        if (!symbolModule.moduleName().equals(symbolPackage)) {
+            return Optional.empty();
+        }
         Location location = symbolLocation.get();
 
         // Only check if the organization matches
@@ -1418,7 +1424,7 @@ public class CommonUtils {
 
         // Check if the symbol belongs to any module in the current package.
         if (symbolPackage.equals(moduleInfo.packageName())) {
-            return findDocument(project, location, moduleId.get().moduleName())
+            return findDocument(project, location, symbolModule.moduleName())
                     .flatMap(document -> CommonUtil.findNode(symbol, document.syntaxTree()))
                     .map(Node::lineRange);
         }
@@ -1436,7 +1442,7 @@ public class CommonUtils {
             String wsPackageName = wsProject.currentPackage().packageName().value();
             if (wsPackageName.equals(symbolPackage)) {
                 // Use the sibling project and the symbol's owner module to get the document.
-                return findDocument(wsProject, location, moduleId.get().moduleName())
+                return findDocument(wsProject, location, symbolModule.moduleName())
                         .flatMap(document -> CommonUtil.findNode(symbol, document.syntaxTree()))
                         .map(Node::lineRange);
             }

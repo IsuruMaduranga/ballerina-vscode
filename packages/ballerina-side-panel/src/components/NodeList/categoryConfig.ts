@@ -48,7 +48,8 @@ export interface CategoryConfig {
 }
 
 export const normalizeCategoryTitle = (title: string): string => {
-    if (CURRENT_INTEGRATION_CATEGORY_ALIASES.has(title)) {
+    if (CURRENT_INTEGRATION_CATEGORY_ALIASES.has(title)
+        || title.toLowerCase().endsWith(`(${CURRENT_INTEGRATION_CATEGORY_TITLE.toLowerCase()})`)) {
         return CURRENT_INTEGRATION_CATEGORY_TITLE;
     }
     return title;

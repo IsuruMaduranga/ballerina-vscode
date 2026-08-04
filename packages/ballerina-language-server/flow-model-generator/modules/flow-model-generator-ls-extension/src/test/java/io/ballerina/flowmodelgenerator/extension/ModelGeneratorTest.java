@@ -67,7 +67,7 @@ public class ModelGeneratorTest extends AbstractLSTest {
     }
 
     @Test
-    public void testSubmoduleFunctionCall() throws IOException {
+    public void testSubmoduleFunctionCallDoesNotExposeView() throws IOException {
         String source = "submodule_function_call/main.bal";
         FlowModelGeneratorRequest request = new FlowModelGeneratorRequest(
                 getSourcePath(source), LinePosition.from(2, 0), LinePosition.from(4, 1));
@@ -84,9 +84,8 @@ public class ModelGeneratorTest extends AbstractLSTest {
             }
         }
         Assert.assertNotNull(functionCall, "Submodule function call was not generated");
-        JsonObject viewValue = functionCall.getAsJsonObject("properties")
-                .getAsJsonObject("view").getAsJsonObject("value");
-        Assert.assertEquals(viewValue.get("fileName").getAsString(), "functions.bal");
+        Assert.assertFalse(functionCall.getAsJsonObject("properties").has("view"),
+                "Submodule function call should not expose navigation");
     }
 
     @Override

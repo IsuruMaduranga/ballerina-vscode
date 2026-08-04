@@ -23,7 +23,7 @@
 // pattern for the fast tier.
 
 import React from "react";
-import { waitFor } from "@testing-library/react";
+import { fireEvent, waitFor } from "@testing-library/react";
 
 // NodeList reads useRpcContext from the @wso2/ballerina-rpc-client barrel; mock it to
 // delegate to the harness so the component and the Provider share one context.
@@ -79,6 +79,26 @@ describe("NodeList (rpc-driven)", () => {
         expect(container.textContent).toContain("Functions");
     });
 
+    it("offers function creation only for the current integration in a project", async () => {
+        const onAddFunction = jest.fn();
+        const categories = [{
+            title: "Within Project",
+            items: [
+                { title: "edi_kafka (Current Integration)", items: [node("local", "function1")] },
+                { title: "edi_parser", items: [node("workspace", "fromEdiString")] },
+            ],
+        }];
+        const { getByText, getAllByText } = renderWithRpc(
+            <NodeList {...props(categories)} onAddFunction={onAddFunction} />,
+            fakeRpc()
+        );
+
+        fireEvent.click(getByText("Within Project"));
+        await waitFor(() => expect(getAllByText("Create Function")).toHaveLength(1));
+        fireEvent.click(getByText("Create Function"));
+        expect(onAddFunction).toHaveBeenCalledTimes(1);
+    });
+
     // rpc feature-flag gating: the NP_FUNCTION node must appear only when the LS reports
     // natural-programming supported — a node wrongly listed/hidden is the #766-class of
     // "node not (correctly) listed in the UI", decided here on the FE from the rpc flag.
@@ -97,4 +117,3 @@ describe("NodeList (rpc-driven)", () => {
         expect((container.textContent ?? "").includes("Natural Function")).toBe(expectVisible);
     });
 });
-
