@@ -35,8 +35,6 @@ import { VSCodeLink } from "@vscode/webview-ui-toolkit/react";
 import { Markdown } from "../../../components/Markdown";
 import { AlertBoxWithClose } from "../../AIPanel/AlertBoxWithClose";
 import { PackageListView } from "./PackageListView";
-import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
-import { useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
 import { getWorkspaceProjectScopes } from "../PackageOverview/utils";
 import { usePlatformExtContext } from "../../../providers/platform-ext-ctx-provider";
 
@@ -83,11 +81,6 @@ const HeaderRow = styled.div`
     border-bottom: 1px solid var(--vscode-dropdown-border);
     flex-shrink: 0;
     margin: 16px 16px 0 16px;
-`;
-
-const HeroRow = styled.div`
-    margin: 16px 16px 0 16px;
-    flex-shrink: 0;
 `;
 
 const MainContent = styled.div<{ hasDeployment?: boolean }>`
@@ -739,7 +732,6 @@ export function WorkspaceOverview({ isInDevant, isICPSupported }: WorkspaceOverv
 
     const [showAlert, setShowAlert] = React.useState(false);
     const [icpActionLoading, setIcpActionLoading] = React.useState<IcpAction | null>(null);
-    const aiPanelOpen = useAiPanelOpen();
 
     const { data: devantMetadata, refetch: refetchDevantMetadata } = useQuery({
         queryKey: ["project-devant-metadata"],
@@ -1056,12 +1048,6 @@ export function WorkspaceOverview({ isInDevant, isICPSupported }: WorkspaceOverv
                     <ProjectSubtitle>Project</ProjectSubtitle>
                 </TitleContainer>
             </HeaderRow>
-
-            {!aiPanelOpen && (
-                <HeroRow>
-                    <CopilotHeroBox />
-                </HeroRow>
-            )}
 
             <MainContent hasDeployment={hasStandardIntegrations}>
                 <LeftContent>
