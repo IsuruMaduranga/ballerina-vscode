@@ -284,9 +284,15 @@ public class SchemaDrivenServiceBuilder extends AbstractServiceBuilder {
         if (listenerName == null) {
             return;
         }
+        String baseName = LISTENER_VAR_NAME.formatted(getProtocol(context.moduleName()));
+        Codedata codedata = listenerName.getCodedata();
+        String shippedName = listenerName.getValue();
+        if (codedata != null && Boolean.TRUE.equals(codedata.getPreserveValue())
+                && shippedName != null && !shippedName.isBlank()) {
+            baseName = shippedName.trim();
+        }
         String uniqueName = Utils.generateVariableIdentifier(context.semanticModel(), context.document(),
-                context.document().syntaxTree().rootNode().lineRange().endLine(),
-                LISTENER_VAR_NAME.formatted(getProtocol(context.moduleName())));
+                context.document().syntaxTree().rootNode().lineRange().endLine(), baseName);
         listenerName.setValue(uniqueName);
     }
 

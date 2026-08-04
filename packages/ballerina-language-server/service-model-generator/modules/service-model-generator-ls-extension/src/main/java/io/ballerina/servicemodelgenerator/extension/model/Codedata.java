@@ -59,6 +59,9 @@ public class Codedata {
     // Payload: whether the bound parameter's identifier may be renamed in the edit UI (unset
     // defaults to editable). False for connectors that bind to a fixed, structural identifier.
     private Boolean nameEditable;
+    // LISTENER_VAR_NAME: the node's shipped value is a connector-curated default the creation flow
+    // must keep as the base name (still made project-unique) instead of deriving a protocol-based one.
+    private Boolean preserveValue;
     private String castType;
 
     public Codedata() {
@@ -261,6 +264,14 @@ public class Codedata {
 
     public void setNameEditable(Boolean nameEditable) {
         this.nameEditable = nameEditable;
+    }
+
+    public Boolean getPreserveValue() {
+        return preserveValue;
+    }
+
+    public void setPreserveValue(Boolean preserveValue) {
+        this.preserveValue = preserveValue;
     }
 
     public String getCastType() {

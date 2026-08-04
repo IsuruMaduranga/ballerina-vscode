@@ -33,7 +33,8 @@ import java.util.Map;
 
 /**
  * Unit test for the unified {@code trigger-ui-schema.json} reader on {@link TriggerModelReader}:
- * deserializes the bundled worked examples (kafka / ftp / trigger.github / trigger.hubspot) from their
+ * deserializes the bundled worked examples (kafka / ftp / trigger.github / trigger.hubspot /
+ * azure.storage.files) from their
  * classpath resources without spinning up the language server. Verifies the distinctive shapes survive
  * Gson: the listener CHOICE, structured parameters (type/name as {@code Property} sub-nodes),
  * data-binding, composed payloads, and fully-derived multi-service-type handler sets.
@@ -142,6 +143,48 @@ public class TriggerModelReaderTest {
         Parameter payload = issues.functions().getFirst().parameters().getFirst();
         Assert.assertEquals(payload.name().value(), "payload");
         Assert.assertEquals(payload.type().types().getFirst().fieldType(), "TYPE");
+    }
+
+    @Test
+    public void testReadAzureStorageFiles() {
+        TriggerUISchemaModel model = read("azure.storage.files");
+        Assert.assertEquals(model.orgName(), "ballerinax");
+        Assert.assertEquals(model.moduleName(), "azure.storage.files");
+        Assert.assertEquals(model.shortDisplayName(), "Azure Files",
+                "the compact listener-list label ships in the model");
+        Assert.assertEquals(model.listenerKind(), "SINGLE_SELECT_LISTENER");
+        Assert.assertEquals(listenerFieldType(model), "CHOICE");
+
+        // The monitored path is a service-level annotation field surfaced in the init form.
+        Property path = model.initProperties().get("path");
+        Assert.assertNotNull(path, "path should be present under initProperties");
+        Assert.assertEquals(path.codedata().type(), "SERVICE_ANNOTATION");
+
+        ServiceTypeModel st = model.serviceTypes().getFirst();
+        // Like ftp, each file format is pre-expanded into its own addable schemaFunction.
+        Assert.assertTrue(st.functions() == null || st.functions().isEmpty());
+        FunctionModel onFileCsv = findFunction(st, "onFileCsv");
+        Assert.assertNotNull(onFileCsv, "onFileCsv should be present");
+        Assert.assertEquals(onFileCsv.kind(), "REMOTE");
+        Parameter content = onFileCsv.parameters().stream()
+                .filter(p -> "content".equals(p.name().value())).findFirst().orElseThrow();
+        Assert.assertEquals(content.kind(), "DATA_BINDING");
+        Assert.assertEquals(content.type().types().getFirst().fieldType(), "COMPLEX_PAYLOAD");
+    }
+
+    @Test
+    public void testAzureInitFormPreservesShippedListenerName() {
+        // azure.storage.files opts in to keeping its curated default listener name: the shipped value
+        // plus codedata.preserveValue must survive the JSON -> wire ServiceInitModel binding, since
+        // that flag is what stops SchemaDrivenServiceBuilder#refreshListenerName from replacing the
+        // name with the protocol-derived "filesListener".
+        ServiceInitModel init = TriggerModelReader.getInstance()
+                .getBundledServiceInitModel("azure.storage.files").orElseThrow();
+        Value listener = init.getProperties().get("listener");
+        Value createNew = listener.getChoices().stream().filter(Value::isEnabled).findFirst().orElseThrow();
+        Value varName = createNew.getProperties().get("listenerConfig").getProperties().get("listenerVarName");
+        Assert.assertEquals(varName.getValue(), "azFilesListener");
+        Assert.assertEquals(varName.getCodedata().getPreserveValue(), Boolean.TRUE);
     }
 
     @Test

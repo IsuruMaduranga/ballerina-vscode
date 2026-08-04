@@ -124,7 +124,7 @@ public final class TriggerModelSynthesizer {
         List<String> importStatements = collectImportStatements(authoring, identity);
 
         return Optional.of(new TriggerUISchemaModel(
-                SCHEMA_VERSION, id, displayName, "", orgName, packageName, moduleName, version,
+                SCHEMA_VERSION, id, displayName, null, "", orgName, packageName, moduleName, version,
                 kind, icon, kind, listenerKind, initProperties, serviceTypeModels, List.of(),
                 importStatements, null));
     }

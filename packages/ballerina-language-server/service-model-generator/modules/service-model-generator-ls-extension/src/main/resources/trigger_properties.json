@@ -268,5 +268,21 @@
     "version": "2.0.1",
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_sap.jco_2.0.1.png",
     "kind": "event"
+  },
+  "21": {
+    "name": "azure.storage.files",
+    "orgName": "ballerinax",
+    "packageName": "azure.storage.files",
+    "keywords": [
+      "azure",
+      "files",
+      "file share",
+      "file",
+      "event"
+    ],
+    "triggerName": "Azure Files",
+    "version": "1.0.0",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_azure.storage.files_1.0.0.png",
+    "kind": "file"
   }
 }

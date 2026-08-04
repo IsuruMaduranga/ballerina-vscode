@@ -29,6 +29,9 @@ import java.util.Map;
  * @param schemaVersion    the trigger UI schema format version
  * @param id               the trigger's unique identifier
  * @param displayName      the trigger's human-readable name
+ * @param shortDisplayName a compact name for space-constrained surfaces such as the listener list
+ *                         (e.g. {@code Azure Files} for {@code azure.storage.files}); absent -> callers
+ *                         fall back to a package-name-derived label
  * @param description      a short summary of the trigger
  * @param orgName          the organization publishing the connector
  * @param packageName      the connector's package name
@@ -54,6 +57,7 @@ public record TriggerUISchemaModel(
         String schemaVersion,
         String id,
         String displayName,
+        String shortDisplayName,
         String description,
         String orgName,
         String packageName,
