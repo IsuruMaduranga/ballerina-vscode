@@ -1,5 +1,6 @@
 {
   "ftp": "trigger-models/ftp.json",
+  "smb": "trigger-models/smb.json",
   "file": "trigger-models/file.json",
   "kafka": "trigger-models/kafka.json",
   "rabbitmq": "trigger-models/rabbitmq.json",
