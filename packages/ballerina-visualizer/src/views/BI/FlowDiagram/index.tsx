@@ -2595,10 +2595,16 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         }
 
         setShowProgressIndicator(true);
+        // In a caller's flow the agent box stands for the run call, so its form is that call's
+        // parameters — the query and input the palette asks for. The agent's own configuration
+        // (role, instructions, model, capabilities) belongs to its definition diagram.
+        const formCodedata = node.codedata?.node === "DURABLE_AGENT_RUN" && !agentOnlyView
+            ? ({ ...node.codedata, node: "DURABLE_AGENT_START" } as typeof node.codedata)
+            : node.codedata;
         rpcClient.getBIDiagramRpcClient().getNodeTemplate({
             position: targetRef.current.startLine,
             filePath: model.fileName,
-            id: node.codedata,
+            id: formCodedata,
         })
             .then((response: any) => {
                 if (response.errorMsg) {

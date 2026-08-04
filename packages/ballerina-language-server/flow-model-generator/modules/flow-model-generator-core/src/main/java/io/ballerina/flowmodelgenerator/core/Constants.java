@@ -204,7 +204,7 @@ public class Constants {
         public static final String RUN_DURABLE_AGENT_METHOD_NAME = "buildAndRunAgent";
         public static final String RUN_DURABLE_AGENT_LABEL = "Configure Agent";
         public static final String RUN_DURABLE_AGENT_DESCRIPTION =
-                "Build the agent from the registered capabilities and run the durable loop";
+                "Configure the agent's role, instructions, model and reasoning limit";
         public static final String RUN_DURABLE_AGENT_FUNCTION_NAME = "runDurableAgent";
         public static final String AGENT_SEND_DATA_METHOD_NAME = "sendData";
         public static final String AGENT_WAIT_DATA_RESULT_METHOD_NAME = "waitForDataResult";
