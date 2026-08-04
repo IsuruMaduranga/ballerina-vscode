@@ -36,6 +36,8 @@ export interface ParametersProps {
     onEditClick?: (param: ParameterModel) => void;
     showPayload: boolean;
     typeLabel?: string;
+    /** Hides the parameter name in the card and the editor (e.g. a fixed data-binding param). */
+    hideName?: boolean;
 }
 
 const ParamLabelContainer = styled.div`
@@ -76,7 +78,7 @@ const HeaderLabel = styled.div<CSSObject>`
 `;
 
 export function Parameters(props: ParametersProps) {
-    const { parameters, onChange, onEditClick, showPayload, typeLabel } = props;
+    const { parameters, onChange, onEditClick, showPayload, typeLabel, hideName } = props;
 
     const [editModel, setEditModel] = useState<ParameterModel | undefined>(undefined);
     const [editingIndex, setEditingIndex] = useState<number>(-1);
@@ -147,7 +149,7 @@ export function Parameters(props: ParametersProps) {
                                 <ParamType>
                                     {formattedTypeValue}
                                 </ParamType>
-                                {param.name?.value && (
+                                {!hideName && param.name?.value && (
                                     <ParamName>{param.name.value}</ParamName>
                                 )}
                             </ParamLabelContainer>
@@ -184,6 +186,7 @@ export function Parameters(props: ParametersProps) {
                             onSave={onSaveParam}
                             onCancel={onParamEditCancel}
                             typeLabel={typeLabel}
+                            hideName={hideName}
                         />
                     )}
                 </>

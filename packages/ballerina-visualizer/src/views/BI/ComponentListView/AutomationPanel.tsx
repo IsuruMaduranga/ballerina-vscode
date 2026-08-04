@@ -23,15 +23,18 @@ import { DIRECTORY_MAP, EVENT_TYPE, isSamePath, MACHINE_VIEW, SCOPE } from '@wso
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
-import { AutomationAlreadyExistsTooltip, OutOfScopeComponentTooltip } from './componentListUtils';
+import { AutomationAlreadyExistsTooltip, matchesArtifactQuery, OutOfScopeComponentTooltip } from './componentListUtils';
 
 interface AutomationPanelProps {
     scope: SCOPE;
+    /** Page-level gallery search; when set, only matching cards show. */
+    searchQuery?: string;
 };
 
 export function AutomationPanel(props: AutomationPanelProps) {
     const [automationExists, setAutomationExists] = useState(false);
     const { rpcClient } = useRpcContext();
+    const searchQuery = props.searchQuery ?? "";
 
     useEffect(() => {
         rpcClient.getVisualizerLocation().then((location) => {
@@ -60,6 +63,11 @@ export function AutomationPanel(props: AutomationPanelProps) {
             },
         });
     };
+
+    // While the user is searching, a section with no matches disappears entirely.
+    if (searchQuery.trim() && !matchesArtifactQuery(searchQuery, "Automation")) {
+        return null;
+    }
 
     return (
         <PanelViewMore disabled={isDisabled}>

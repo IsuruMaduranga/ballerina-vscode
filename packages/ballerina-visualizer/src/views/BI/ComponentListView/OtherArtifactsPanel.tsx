@@ -24,14 +24,17 @@ import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
 import { useVisualizerContext } from '../../../Context';
+import { matchesArtifactQuery } from './componentListUtils';
 
 interface OtherArtifactsPanelProps {
     isNPSupported: boolean;
     isLibrary?: boolean;
+    /** Page-level gallery search; when set, only matching cards show. */
+    searchQuery?: string;
 }
 
 export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
-    const { isNPSupported, isLibrary = false } = props;
+    const { isNPSupported, isLibrary = false, searchQuery = "" } = props;
     const { rpcClient } = useRpcContext();
     const { setPopupMessage } = useVisualizerContext();
     const [experimentalEnabled, setExperimentalEnabled] = useState(false);
@@ -97,6 +100,20 @@ export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
         }
     };
 
+    const cards = [
+        { id: "bi-function", testId: "function", icon: "bi-function", title: "Function", key: DIRECTORY_MAP.FUNCTION, isBeta: false, show: true },
+        { id: "bi-ai-function", icon: "bi-ai-function", title: "Natural Function", key: DIRECTORY_MAP.NP_FUNCTION, isBeta: true, show: showNaturalFunctions },
+        { id: "data-mapper", icon: "dataMapper", title: "Data Mapper", key: DIRECTORY_MAP.DATA_MAPPER, isBeta: false, show: true },
+        { id: "type", icon: "bi-type", title: "Type", key: DIRECTORY_MAP.TYPE, isBeta: false, show: true },
+        { id: "connection", icon: "bi-connection", title: "Connection", key: DIRECTORY_MAP.CONNECTION, isBeta: false, show: true },
+        { id: "configurable", icon: "bi-config", title: "Configuration", key: DIRECTORY_MAP.CONFIGURABLE, isBeta: false, show: true },
+    ].filter((card) => card.show && matchesArtifactQuery(searchQuery, card.title));
+
+    // While the user is searching, a section with no matches disappears entirely.
+    if (searchQuery.trim() && cards.length === 0) {
+        return null;
+    }
+
     return (
         <PanelViewMore>
             <TitleWrapper>
@@ -106,46 +123,17 @@ export function OtherArtifactsPanel(props: OtherArtifactsPanelProps) {
                 </BodyText>
             </TitleWrapper>
             <CardGrid>
-                <ButtonCard
-                    id="bi-function"
-                    data-testid="function"
-                    icon={<Icon name="bi-function" />}
-                    title="Function"
-                    onClick={() => handleClick(DIRECTORY_MAP.FUNCTION)}
-                />
-                {showNaturalFunctions &&
+                {cards.map((card) => (
                     <ButtonCard
-                        id="bi-ai-function"
-                        icon={<Icon name="bi-ai-function" />}
-                        title="Natural Function"
-                        onClick={() => handleClick(DIRECTORY_MAP.NP_FUNCTION)}
-                        isBeta
+                        key={card.id}
+                        id={card.id}
+                        data-testid={card.testId}
+                        icon={<Icon name={card.icon} />}
+                        title={card.title}
+                        onClick={() => handleClick(card.key)}
+                        isBeta={card.isBeta}
                     />
-                }
-                <ButtonCard
-                    id="data-mapper"
-                    icon={<Icon name="dataMapper" />}
-                    title="Data Mapper"
-                    onClick={() => handleClick(DIRECTORY_MAP.DATA_MAPPER)}
-                />
-                <ButtonCard
-                    id="type"
-                    icon={<Icon name="bi-type" />}
-                    title="Type"
-                    onClick={() => handleClick(DIRECTORY_MAP.TYPE)}
-                />
-                <ButtonCard
-                    id="connection"
-                    icon={<Icon name="bi-connection" />}
-                    title="Connection"
-                    onClick={() => handleClick(DIRECTORY_MAP.CONNECTION)}
-                />
-                <ButtonCard
-                    id="configurable"
-                    icon={<Icon name="bi-config" />}
-                    title="Configuration"
-                    onClick={() => handleClick(DIRECTORY_MAP.CONFIGURABLE)}
-                />
+                ))}
             </CardGrid>
         </PanelViewMore>
     );

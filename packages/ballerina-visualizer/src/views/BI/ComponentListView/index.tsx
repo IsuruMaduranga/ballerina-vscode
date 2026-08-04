@@ -17,13 +17,14 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { View, ViewContent } from "@wso2/ui-toolkit";
+import { SearchBox, View, ViewContent } from "@wso2/ui-toolkit";
 import { isSamePath, SCOPE, TriggerModelsResponse } from "@wso2/ballerina-core";
 
 import { TitleBar } from "../../../components/TitleBar";
 import { TopNavigationBar } from "../../../components/TopNavigationBar";
 import { AddPanel, Container } from "./styles";
 import { AutomationPanel } from "./AutomationPanel";
+import { CentralSearchPanel } from "./CentralSearchPanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 import { EventIntegrationPanel } from "./EventIntegrationPanel";
 import { FileIntegrationPanel } from "./FileIntegrationPanel";
@@ -45,6 +46,10 @@ export function ComponentListView(props: ComponentListViewProps) {
     const { cacheTriggers, setCacheTriggers } = useVisualizerContext();
     const [isNPSupported, setIsNPSupported] = useState<boolean>(false);
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
+    // Page-level gallery search: filters every section's cards in place and, while active, adds a
+    // "More on Ballerina Central" section — results there can belong to any category, which is why
+    // search lives here rather than inside one section.
+    const [searchQuery, setSearchQuery] = useState<string>("");
 
     useEffect(() => {
         getTriggers();
@@ -89,16 +94,32 @@ export function ComponentListView(props: ComponentListViewProps) {
                 <Container>
                     <AddPanel>
                         {!isLibrary && (
+                            <SearchBox
+                                placeholder="Search artifacts (e.g. Kafka, Salesforce, FTP)"
+                                value={searchQuery}
+                                onChange={setSearchQuery}
+                                iconPosition="start"
+                                aria-label="search-artifacts"
+                                data-testid="artifact-search-input"
+                                sx={{ width: '100%' }}
+                            />
+                        )}
+                        {!isLibrary && (
                             <>
-                                <AutomationPanel scope={scope} />
+                                <AutomationPanel scope={scope} searchQuery={searchQuery} />
                                 <WorkflowPanel />
-                                <AIAgentPanel scope={scope} triggers={triggers} />
-                                <IntegrationAPIPanel scope={scope} />
-                                <EventIntegrationPanel triggers={triggers} scope={scope} />
-                                <FileIntegrationPanel triggers={triggers} scope={scope} />
+                                <AIAgentPanel scope={scope} triggers={triggers} searchQuery={searchQuery} />
+                                <IntegrationAPIPanel scope={scope} searchQuery={searchQuery} />
+                                <EventIntegrationPanel triggers={triggers} scope={scope} searchQuery={searchQuery} />
+                                <FileIntegrationPanel triggers={triggers} scope={scope} searchQuery={searchQuery} />
+                                {searchQuery.trim() && <CentralSearchPanel query={searchQuery} triggers={triggers} />}
                             </>
                         )}
-                        <OtherArtifactsPanel isNPSupported={isNPSupported} isLibrary={isLibrary} />
+                        <OtherArtifactsPanel
+                            isNPSupported={isNPSupported}
+                            isLibrary={isLibrary}
+                            searchQuery={isLibrary ? "" : searchQuery}
+                        />
                     </AddPanel>
                 </Container>
             </ViewContent>
