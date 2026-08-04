@@ -153,6 +153,7 @@ import io.ballerina.flowmodelgenerator.core.model.node.DataMapperBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentDataResultBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentResultBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRunBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentStartBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentUpdateBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.EmbeddingProviderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.FailBuilder;
@@ -989,6 +990,15 @@ public class CodeAnalyzer extends NodeVisitor {
         nodeBuilder.metadata().addData("agentName", agentVarName);
         nodeBuilder.metadata().addData("agentBox", true);
         populateAgentDeclarationMetadata(expressionNode);
+
+        // From a caller's flow this node's form is the run call's own, so it needs the arguments
+        // the call was written with — otherwise the query and input open blank and a save drops
+        // them. The same omission left the send and result forms empty.
+        SeparatedNodeList<FunctionArgumentNode> runArguments = callNode.arguments();
+        addAgentCallProperty(DurableAgentStartBuilder.QUERY_KEY, "Query",
+                "The initial user query for the agent", positionalArgumentSource(runArguments, 0));
+        addAgentCallProperty(DurableAgentStartBuilder.INPUT_KEY, "Input",
+                "The structured input the run was given", positionalArgumentSource(runArguments, 1));
 
         SyntaxKind parentKind = callNode.parent().kind();
         boolean hasCheck = parentKind == SyntaxKind.CHECK_ACTION || parentKind == SyntaxKind.CHECK_EXPRESSION;
