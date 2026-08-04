@@ -338,6 +338,7 @@ const MainPanel = () => {
                                 <PackageOverview
                                     projectPath={value.projectPath}
                                     isInDevant={value.isInDevant}
+                                    isICPSupported={value.metadata?.isICPSupported}
                                 />
                             );
                             break;
@@ -345,7 +346,12 @@ const MainPanel = () => {
                         case MACHINE_VIEW.WorkspaceOverview: {
                             const { WorkspaceOverview } = await import("./views/BI/WorkspaceOverview");
                             if (isStaleNavigation()) return;
-                            setViewComponent(<WorkspaceOverview isInDevant={value.isInDevant} />);
+                            setViewComponent(
+                                <WorkspaceOverview
+                                    isInDevant={value.isInDevant}
+                                    isICPSupported={value.metadata?.isICPSupported}
+                                />
+                            );
                             break;
                         }
                         case MACHINE_VIEW.ServiceDesigner: {
