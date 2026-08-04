@@ -48,7 +48,7 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     const [results, setResults] = useState<ServiceModel[]>([]);
     const [localRepositoryResults, setLocalRepositoryResults] = useState<ServiceModel[]>([]);
     // Experimental, opt-in via a VS Code setting — read once per mount rather than per keystroke.
-    const [localCentralSearchEnabled, setLocalCentralSearchEnabled] = useState<boolean>(false);
+    const [additionalTriggerSearchEnabled, setAdditionalTriggerSearchEnabled] = useState<boolean>(false);
 
     const isMountedRef = useRef(true);
     // The most recently *dispatched* search query. Debounce only coalesces rapid keystrokes into
@@ -68,10 +68,10 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     useEffect(() => {
         rpcClient
             .getCommonRpcClient()
-            .localCentralSearchEnabled()
+            .additionalTriggerSearchEnabled()
             .then((enabled) => {
                 if (isMountedRef.current) {
-                    setLocalCentralSearchEnabled(enabled);
+                    setAdditionalTriggerSearchEnabled(enabled);
                 }
             });
     }, [rpcClient]);
@@ -84,7 +84,7 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                 setSearching(true);
                 rpcClient
                     .getServiceDesignerRpcClient()
-                    .searchTriggers({ query: searchQuery, includeLocalRepository: localCentralSearchEnabled })
+                    .searchTriggers({ query: searchQuery, includeLocalRepository: additionalTriggerSearchEnabled })
                     .then((res) => {
                         if (!isMountedRef.current || latestQueryRef.current !== searchQuery) {
                             return;
@@ -98,20 +98,20 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                         }
                     });
             }, SEARCH_DEBOUNCE_MS),
-        [rpcClient, localCentralSearchEnabled]
+        [rpcClient, additionalTriggerSearchEnabled]
     );
 
     useEffect(() => {
         // The whole panel — including "More on Ballerina Central" — is still experimental,
         // gated behind the same flag as the local-repository search.
-        if (!localCentralSearchEnabled) {
+        if (!additionalTriggerSearchEnabled) {
             return;
         }
         runSearch(props.query);
         return () => runSearch.cancel();
-    }, [props.query, runSearch, localCentralSearchEnabled]);
+    }, [props.query, runSearch, additionalTriggerSearchEnabled]);
 
-    if (!localCentralSearchEnabled) {
+    if (!additionalTriggerSearchEnabled) {
         return null;
     }
 

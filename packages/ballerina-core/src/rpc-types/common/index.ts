@@ -55,7 +55,7 @@ export interface CommonRPCAPI {
     selectFileOrDirPath: (params: FileOrDirRequest) => Promise<FileOrDirResponse>;
     selectFileOrFolderPath: () => Promise<FileOrDirResponse>;
     experimentalEnabled: () => Promise<boolean>;
-    localCentralSearchEnabled: () => Promise<boolean>;
+    additionalTriggerSearchEnabled: () => Promise<boolean>;
     isNPSupported: () => Promise<boolean>;
     getWorkspaceRoot: () => Promise<WorkspaceRootResponse>;
     showErrorMessage: (params: ShowErrorMessageRequest) => void;
