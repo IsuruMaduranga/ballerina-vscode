@@ -85,6 +85,37 @@ describe("Workflow Nodes", () => {
         expect(nodeTypeById.get("wait-data")).toBe(NodeTypes.WAIT_DATA_NODE);
     });
 
+    // A node's declared widths are its own bounds, so the body a widget paints has to land on the
+    // node's centre line. Getting this wrong bends the links sideways, and it has been got wrong
+    // in both directions — by declaring the body's half-width while the container reached further
+    // out, and by deriving the space before the body from a difference that had become zero.
+    it("keeps a side-arrow node's body on its centre line", () => {
+        const flow = createFlow([
+            createFlowNode("send-data", "SEND_DATA"),
+            createFlowNode("wait-data", "WAIT_DATA"),
+        ]);
+
+        const visitor = new SizingVisitor();
+        traverseFlow(flow, visitor);
+
+        const [sendDataNode, waitDataNode] = flow.nodes as TestFlowNode[];
+        const halfNodeWidth = NODE_WIDTH / 2;
+        const sideSpan = NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT;
+
+        // A send reserves its side for the target: body half-width on the near side, the arrow and
+        // the target box on the far side.
+        expect(sendDataNode.viewState.lw).toBe(halfNodeWidth);
+        expect(sendDataNode.viewState.rw).toBe(halfNodeWidth + sideSpan);
+
+        // A wait is its mirror, so the reserved side swaps and the spans stay equal.
+        expect(waitDataNode.viewState.rw).toBe(halfNodeWidth);
+        expect(waitDataNode.viewState.lw).toBe(halfNodeWidth + sideSpan);
+        expect(waitDataNode.viewState.lw - halfNodeWidth).toBe(sendDataNode.viewState.rw - halfNodeWidth);
+
+        // Both bodies are the same height, so neither reads as a different kind of thing.
+        expect(waitDataNode.viewState.ch).toBe(sendDataNode.viewState.ch);
+    });
+
     it("applies sizing for wait-data node kinds", () => {
         const flow = createFlow([createFlowNode("wait-data", "WAIT_DATA")]);
 

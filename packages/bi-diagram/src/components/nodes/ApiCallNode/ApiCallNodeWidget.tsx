@@ -277,7 +277,13 @@ export function ApiCallNodeWidget(props: ApiCallNodeWidgetProps) {
     const childWorkflowTarget = model.node.codedata?.node?.startsWith("CHILD_WORKFLOW")
         ? model.node.metadata?.description
         : undefined;
-    const endpointLabel = connectionValue ?? fallbackEndpointValue ?? workflowValue ?? childWorkflowTarget ?? "";
+    // A workflow run keeps the workflow it runs as its symbol — the property the form uses is
+    // dropped when the statement is read back, so the symbol is where the name actually is.
+    const runWorkflowTarget = model.node.codedata?.node === "WORKFLOW_RUN"
+        ? model.node.codedata?.symbol
+        : undefined;
+    const endpointLabel =
+        connectionValue ?? fallbackEndpointValue ?? workflowValue ?? childWorkflowTarget ?? runWorkflowTarget ?? "";
     const connectorType = (connectionProperty?.metadata?.data as NodeMetadata | undefined)?.connectorType;
 
     useEffect(() => {
