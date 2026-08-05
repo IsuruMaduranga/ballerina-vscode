@@ -3397,7 +3397,9 @@ public class CodeAnalyzer extends NodeVisitor {
                             .checkError(true, NewConnectionBuilder.CHECK_ERROR_DOC, false);
                 return;
             }
-            startNode(NodeKind.FUNCTION_CALL, functionCallExpressionNode.parent());
+            NodeKind nodeKind = AiUtils.isEvalTemplateFunction(functionSymbol)
+                    ? NodeKind.EVAL_TEMPLATE_CALL : NodeKind.FUNCTION_CALL;
+            startNode(nodeKind, functionCallExpressionNode.parent());
         }
 
         CommonUtils.getViewLineRange(functionSymbol, moduleInfo, project)

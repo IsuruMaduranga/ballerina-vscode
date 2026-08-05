@@ -43,7 +43,7 @@ import {
     WHILE_NODE_WIDTH,
 } from "../resources/constants";
 import { getEvalNodeContainerHeight } from "../components/nodes/EvalNode/evalNodePresentation";
-import { isEvalTemplateCall } from "../utils/eval";
+import { isEvalTemplateCall } from "@wso2/ballerina-core";
 import { reverseCustomNodeId } from "../utils/node";
 import { Branch, FlowNode } from "../utils/types";
 

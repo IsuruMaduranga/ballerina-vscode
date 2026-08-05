@@ -582,6 +582,7 @@ export type NodeKind =
     | "FUNCTION"
     | "FUNCTION_CALL"
     | "EVAL_TEMPLATE"
+    | "EVAL_TEMPLATE_CALL"
     | "FUNCTION_DEFINITION"
     | "FUNCTION_CREATION"
     | "IF"

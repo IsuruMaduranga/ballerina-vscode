@@ -29,7 +29,6 @@ export type { DataSourceMode, DataSourceParam } from "./templateFormUtils";
 export const TEMPLATE_FIELD_PREFIX = 'template_';
 export const QUERIES_FIELD_KEY = 'evalQueries';
 export const EVALSET_FIELD_KEY = 'evalSetFile';
-const EVAL_TEMPLATE_PACKAGE = 'ai.eval';
 
 export type TemplateFilterKind = 'all' | 'rule-based' | 'llm-as-judge' | 'uses-evalset' | 'no-evalset';
 
@@ -46,9 +45,6 @@ export const getTemplateKind = (template: AvailableNode): string => {
 
 export const templateNeedsEvalset = (template?: AvailableNode): boolean =>
     String(template?.codedata.data?.needsEvalset) === 'true';
-
-export const isEvalTemplateCall = (node: FlowNode | undefined): boolean =>
-    node?.codedata?.node === 'FUNCTION_CALL' && node.codedata.packageName === EVAL_TEMPLATE_PACKAGE;
 
 const TEMPLATE_ICON_RULES: Array<[RegExp, string]> = [
     [/safe|safety|moderat|prohibit|harm/, 'shield'],

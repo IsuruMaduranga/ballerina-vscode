@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
@@ -6,7 +6,7 @@
  * in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
@@ -16,9 +16,12 @@
  * under the License.
  */
 
-import { FlowNode } from "./types";
+import type { FlowNode } from "../../interfaces/bi";
 
-const EVAL_TEMPLATE_PACKAGE = "ai.eval";
+type FlowNodeLike = {
+    codedata?: Pick<FlowNode["codedata"], "node">;
+};
 
-export const isEvalTemplateCall = (node: FlowNode | undefined): boolean =>
-    node?.codedata?.node === "FUNCTION_CALL" && node.codedata.packageName === EVAL_TEMPLATE_PACKAGE;
+/** Returns whether a flow-model node is an existing call to an evaluation template. */
+export const isEvalTemplateCall = (node: FlowNodeLike | undefined): boolean =>
+    node?.codedata?.node === "EVAL_TEMPLATE_CALL";

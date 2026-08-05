@@ -40,7 +40,7 @@ import {
     WHILE_NODE_WIDTH,
 } from "../resources/constants";
 import { createNodesLink } from "../utils/diagram";
-import { isEvalTemplateCall } from "../utils/eval";
+import { isEvalTemplateCall } from "@wso2/ballerina-core";
 import { getBranchInLinkId, getBranchLabel, getCustomNodeId, reverseCustomNodeId } from "../utils/node";
 import { Branch, FlowNode, NodeModel } from "../utils/types";
 import { EndNodeModel } from "../components/nodes/EndNode";

@@ -21,7 +21,7 @@ import { Codicon, Icon, RadioButtonGroup, ThemeColors, Typography, View, ViewCon
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { FormField, FormImports, FormValues, Parameter } from "@wso2/ballerina-side-panel";
-import { LineRange, FunctionParameter, TestFunction, ValueProperty, Annotation, getPrimaryInputType, EvalsetItem, AvailableNode, FlowNode, Property as FlowProperty, AddOrUpdateTestFunctionRequest } from "@wso2/ballerina-core";
+import { LineRange, FunctionParameter, TestFunction, ValueProperty, Annotation, getPrimaryInputType, EvalsetItem, AvailableNode, FlowNode, Property as FlowProperty, AddOrUpdateTestFunctionRequest, isEvalTemplateCall } from "@wso2/ballerina-core";
 import { EVENT_TYPE } from "@wso2/ballerina-core";
 import { TitleBar } from "../../../components/TitleBar";
 import { TopNavigationBar } from "../../../components/TopNavigationBar";
@@ -43,7 +43,7 @@ import {
 import {
     DataSourceMode, DataSourceParam, EVALSET_FIELD_KEY, QUERIES_FIELD_KEY, TEMPLATE_FIELD_PREFIX,
     buildQueriesField, carryOverArguments, findAgentArgument, findDataSourceParam,
-    generateTemplateFields, isDataSourceSatisfied, isEvalTemplateCall, isTemplateField, templateNeedsEvalset
+    generateTemplateFields, isDataSourceSatisfied, isTemplateField, templateNeedsEvalset
 } from "./templateUtils";
 
 const FormContainer = styled.div`
