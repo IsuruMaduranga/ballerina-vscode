@@ -126,14 +126,12 @@ const MainContent = styled.div<{ fullWidth?: boolean }>`
     max-height: calc(100vh - 90px);
 `;
 
-// Pinned to the foot of the design panel (which carries no padding of its own),
-// so it stays reachable once the artifact list is long enough to scroll.
+// Centred in the empty state, above the Add Integration button. Bounded so the
+// prompt box does not stretch the full panel width on a wide editor.
 const HeroRow = styled.div`
-    flex: none;
-    position: sticky;
-    bottom: 0;
-    padding: 16px;
-    background: var(--vscode-editor-background);
+    width: 100%;
+    max-width: 560px;
+    margin-bottom: 24px;
 `;
 
 const DiagramPanel = styled.div<{ noPadding?: boolean, noBorder?: boolean }>`
@@ -1216,9 +1214,15 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 variant="body1"
                                                 sx={{ marginBottom: "24px", color: "var(--vscode-descriptionForeground)" }}
                                             >
-                                                Add an artifact to get started, or describe what you want to build in
-                                                the Copilot box below
+                                                {showHero
+                                                    ? "Describe what you want to build, or add an artifact to get started"
+                                                    : "Add an artifact to get started"}
                                             </Typography>
+                                            {showHero && (
+                                                <HeroRow>
+                                                    <CopilotHeroBox placeholder="What would you like to build?" />
+                                                </HeroRow>
+                                            )}
                                             <ButtonContainer>
                                                 {/* An empty integration means the creation wizard was
                                                     skipped — offer it again here rather than the raw
@@ -1240,13 +1244,6 @@ export function PackageOverview(props: PackageOverviewProps) {
                                         </React.Suspense>
                                     )}
                                 </DiagramContent>
-                            )}
-                            {showHero && (
-                                <HeroRow>
-                                    <CopilotHeroBox
-                                        placeholder={isEmptyIntegration() ? "What would you like to build?" : "What would you like to change?"}
-                                    />
-                                </HeroRow>
                             )}
                         </DiagramPanel>
                         {!isLibrary && (
