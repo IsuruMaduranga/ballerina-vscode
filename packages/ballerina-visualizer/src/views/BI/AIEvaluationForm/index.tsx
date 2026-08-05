@@ -521,10 +521,10 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
     }
 
     const loadEmptyForm = (options = evalsetOptions) => {
-        setSelectedEvalsetFile('');
         const emptyTestFunction = getEmptyTestFunctionModel();
         setTestFunction(emptyTestFunction);
         let formFields = generateFormFields(emptyTestFunction, options);
+        setSelectedEvalsetFile(String(formFields.find(f => f.key === EVALSET_FIELD_KEY)?.value || ''));
 
         const mode = 'template';
         setDataProviderMode(mode);
