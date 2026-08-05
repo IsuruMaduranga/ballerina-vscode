@@ -219,6 +219,11 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
         }
         String roles = sourceBuilder.getProperty(USER_ROLES_KEY)
                 .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        // Surface the omission rather than picking a role on the user's behalf — same stance as
+        // the non-agent HumanTaskBuilder, which never falls back to a privileged role.
+        if (roles.isBlank()) {
+            throw new UserFacingException("At least one user role is required for the human task");
+        }
         String title = sourceBuilder.getProperty(TITLE_KEY)
                 .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
         String taskDescription = sourceBuilder.getProperty(DESCRIPTION_KEY)
@@ -228,8 +233,7 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
         String timeout = sourceBuilder.getProperty(TIMEOUT_KEY)
                 .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
         StringBuilder entry = new StringBuilder("{name: ").append(WorkflowUtil.constantNameLiteral(name))
-                .append(", roles: ").append(roles.isBlank() ? "\"manager\""
-                        : WorkflowUtil.quoteIfPlain(roles));
+                .append(", roles: ").append(WorkflowUtil.quoteIfPlain(roles));
         if (!resultType.isBlank()) {
             entry.append(", resultType: ").append(resultType);
         }

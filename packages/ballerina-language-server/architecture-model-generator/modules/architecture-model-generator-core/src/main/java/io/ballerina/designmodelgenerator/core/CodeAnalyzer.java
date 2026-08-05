@@ -438,6 +438,12 @@ public class CodeAnalyzer extends NodeVisitor {
         if (agent == null || !Workflow.KIND_DURABLE_AGENT.equals(agent.getKind())) {
             return;
         }
+        // The lookup above is keyed by name alone, so a local variable shadowing a module-level
+        // agent hits the same entry. Confirm the call target itself is the agent object, otherwise
+        // an unrelated `<name>.run(...)` would draw a trigger edge into the agent.
+        if (!WorkflowUtil.isDurableAgentVariable(targetSymbol.get())) {
+            return;
+        }
         // agent.sendData(id, "channel", data): correlate with the declared event channel so the
         // overview draws the edge into the channel's in-port, like workflow:sendData does.
         String methodName = methodCallExpressionNode.methodName().toSourceCode().trim();

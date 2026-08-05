@@ -921,6 +921,12 @@ export function FunctionForm(props: FunctionFormProps) {
         } catch (error) {
             console.error("Error submitting form: ", error);
             showErrorNotification();
+        } finally {
+            // A create replaces the form with a full-screen loader, so leaving `saving` set
+            // strands the user on "Creating the ..." — both when onSubmit throws and when it
+            // returns without matching an artifact to navigate to. On success the view has
+            // already been swapped out, so resetting here is a no-op.
+            setSaving(false);
         }
     };
 
