@@ -66,13 +66,16 @@ public final class TriggerSearchUtil {
     /**
      * Searches Central for trigger packages matching {@code query}, restricted to
      * {@code ballerina}/{@code ballerinax}.
+     *
+     * <p>Takes no offset: the per-org fan-out below merges each org's own first page, so an offset
+     * would apply per-org rather than to the merged result and paging would not compose. Add one only
+     * once results are paged from a merged/global cursor rather than from each org's own Central query.
      */
     public static List<TriggerBasicInfo> searchCentral(CentralAPI central, String query, Integer limit,
-                                                       Integer offset, Set<String> existingKeys) {
+                                                       Set<String> existingKeys) {
         try {
             String effectiveQuery = (query == null || query.isBlank()) ? DEFAULT_QUERY : query.trim();
             int effectiveLimit = limit == null || limit <= 0 ? DEFAULT_LIMIT : limit;
-            int effectiveOffset = offset == null || offset < 0 ? 0 : offset;
 
             List<CompletableFuture<List<TriggerBasicInfo>>> futures = ALLOWED_ORGS.stream()
                     .map(org -> CompletableFuture.supplyAsync(() -> {
@@ -80,7 +83,6 @@ public final class TriggerSearchUtil {
                         queryMap.put("q", effectiveQuery);
                         queryMap.put("org", org);
                         queryMap.put("limit", String.valueOf(effectiveLimit));
-                        queryMap.put("offset", String.valueOf(effectiveOffset));
                         PackageResponse response = central.searchPackages(queryMap);
                         return toTriggerResults(response, existingKeys);
                     }, CENTRAL_SEARCH_EXECUTOR).exceptionally(e -> {

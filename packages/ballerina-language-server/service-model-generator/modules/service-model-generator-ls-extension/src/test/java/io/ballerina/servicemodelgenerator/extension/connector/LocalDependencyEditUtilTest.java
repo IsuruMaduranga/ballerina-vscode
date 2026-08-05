@@ -25,6 +25,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -86,6 +87,52 @@ public class LocalDependencyEditUtilTest {
         LocalDependencyEditUtil.addIfMissing(edits, project, "othertestorg", "otherconnector", "2.0.0");
 
         Assert.assertEquals(edits.size(), 1);
+    }
+
+    @Test
+    public void testCentralDeclaredDependencyAtDifferentVersionGetsLocalEntryAddedNotRewritten()
+            throws URISyntaxException {
+        Project project = load("local_dependency/central_declared");
+        Map<String, List<TextEdit>> edits = new HashMap<>();
+
+        LocalDependencyEditUtil.addIfMissing(edits, project, "testlocaldep", "myconnector", "0.2.0");
+
+        Assert.assertEquals(edits.size(), 1);
+        List<TextEdit> tomlEdits = edits.values().iterator().next();
+        Assert.assertEquals(tomlEdits.size(), 1, "a new [[dependency]] stanza must be added, "
+                + "not the Central-declared one rewritten in place");
+        TextEdit tomlEdit = tomlEdits.get(0);
+        Assert.assertTrue(tomlEdit.getNewText().contains("version = \"0.2.0\""));
+        Assert.assertTrue(tomlEdit.getNewText().contains("repository = \"local\""));
+    }
+
+    @Test
+    public void testCentralDeclaredDependencyAtSameVersionStillGetsLocalEntryAdded() throws URISyntaxException {
+        Project project = load("local_dependency/central_declared");
+        Map<String, List<TextEdit>> edits = new HashMap<>();
+
+        LocalDependencyEditUtil.addIfMissing(edits, project, "testlocaldep", "myconnector", "0.1.0");
+
+        Assert.assertEquals(edits.size(), 1, "the Central declaration must not be mistaken for "
+                + "an already-declared local one");
+        TextEdit tomlEdit = edits.values().iterator().next().get(0);
+        Assert.assertTrue(tomlEdit.getNewText().contains("repository = \"local\""));
+    }
+
+    @Test
+    public void testDependencyStartLineIsClampedToDocumentBounds() throws Exception {
+        Project project = load("local_dependency/no_dependency");
+        Map<String, List<TextEdit>> edits = new HashMap<>();
+
+        LocalDependencyEditUtil.addIfMissing(edits, project, "testlocaldep", "myconnector", "0.1.0");
+
+        TextEdit tomlEdit = edits.values().iterator().next().get(0);
+        Path tomlPath = Paths.get(getClass().getClassLoader()
+                .getResource("local_dependency/no_dependency/Ballerina.toml").toURI());
+        long lineCount = Files.readAllLines(tomlPath).size();
+        Assert.assertTrue(tomlEdit.getRange().getStart().getLine() <= lineCount,
+                "the insertion position must stay within the document's line range, not assume a "
+                        + "trailing blank line after [package]");
     }
 
     @Test

@@ -463,7 +463,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
                     .collect(Collectors.toSet());
             String query = request == null ? null : request.query();
             List<TriggerBasicInfo> centralTriggers = TriggerSearchUtil.searchCentral(
-                    RemoteCentral.getInstance(), query, null, null, localKeys);
+                    RemoteCentral.getInstance(), query, null, localKeys);
             List<TriggerBasicInfo> localRepositoryTriggers = (request != null && request.includeLocalRepository())
                     ? TriggerSearchUtil.searchLocalRepository(localKeys)
                     : List.of();

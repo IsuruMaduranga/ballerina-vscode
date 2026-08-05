@@ -45,6 +45,8 @@ import java.util.Optional;
  */
 public final class LocalDependencyEditUtil {
 
+    private static final String LOCAL_REPOSITORY = "local";
+
     private LocalDependencyEditUtil() {
     }
 
@@ -81,7 +83,8 @@ public final class LocalDependencyEditUtil {
             return Optional.empty();
         }
         for (PackageManifest.Dependency dependency : manifest.dependencies()) {
-            if (org.equals(dependency.org().value()) && name.equals(dependency.name().value())) {
+            if (org.equals(dependency.org().value()) && name.equals(dependency.name().value())
+                    && LOCAL_REPOSITORY.equals(dependency.repository())) {
                 return Optional.of(dependency.version().toString());
             }
         }
@@ -105,16 +108,19 @@ public final class LocalDependencyEditUtil {
             }
             String declaredOrg = null;
             String declaredName = null;
+            String declaredRepository = null;
             KeyValueNode versionField = null;
             for (KeyValueNode field : tableArrayNode.fields()) {
                 switch (field.identifier().toSourceCode().trim()) {
                     case "org" -> declaredOrg = unquote(field.value().toSourceCode());
                     case "name" -> declaredName = unquote(field.value().toSourceCode());
                     case "version" -> versionField = field;
+                    case "repository" -> declaredRepository = unquote(field.value().toSourceCode());
                     default -> { }
                 }
             }
-            if (org.equals(declaredOrg) && name.equals(declaredName) && versionField != null) {
+            if (org.equals(declaredOrg) && name.equals(declaredName) && versionField != null
+                    && LOCAL_REPOSITORY.equals(declaredRepository)) {
                 LineRange valueRange = versionField.value().lineRange();
                 Range range = new Range(
                         new Position(valueRange.startLine().line(), valueRange.startLine().offset()),
@@ -143,12 +149,14 @@ public final class LocalDependencyEditUtil {
 
     private static int getDependencyStartLine(BallerinaToml toml) {
         DocumentNode tomlSyntaxTree = toml.tomlDocument().syntaxTree().rootNode();
-        return tomlSyntaxTree.members().stream()
+        int lastDocumentLine = tomlSyntaxTree.lineRange().endLine().line();
+        int candidateLine = tomlSyntaxTree.members().stream()
                 .filter(member -> member.kind().equals(SyntaxKind.TABLE)
                         && TomlSyntaxTreeUtil.toQualifiedName(((TableNode) member).identifier().value())
                                 .equals("package"))
                 .findFirst()
                 .map(member -> member.lineRange().endLine().line() + 2)
-                .orElse(0);
+                .orElse(lastDocumentLine);
+        return Math.min(candidateLine, lastDocumentLine);
     }
 }

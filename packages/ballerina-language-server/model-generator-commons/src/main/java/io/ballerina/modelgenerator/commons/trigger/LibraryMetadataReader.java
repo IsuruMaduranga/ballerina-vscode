@@ -42,6 +42,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -62,10 +63,12 @@ public final class LibraryMetadataReader {
     private static final String PACKAGED_TRIGGER_METADATA_FILE = "trigger-metadata.json";
     private static final int MAX_CACHE_SIZE = 2;
 
+    private static final Duration PACKAGE_ROOT_CACHE_TTL = Duration.ofSeconds(60);
+
     private static final LibraryMetadataReader INSTANCE = new LibraryMetadataReader();
 
     private final Cache<String, Optional<Path>> packageRootCache =
-            Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).build();
+            Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).expireAfterWrite(PACKAGE_ROOT_CACHE_TTL).build();
     private final Cache<String, Optional<TriggerMetadataModel>> packagedMetadataCache =
             Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).build();
 

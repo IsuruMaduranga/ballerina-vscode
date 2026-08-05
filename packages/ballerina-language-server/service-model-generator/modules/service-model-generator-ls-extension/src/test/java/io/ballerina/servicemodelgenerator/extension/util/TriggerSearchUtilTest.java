@@ -131,7 +131,7 @@ public class TriggerSearchUtilTest {
                 List.of(pkg("ballerinax", "kafka", "4.5.0", List.of("Type/Trigger"), "Kafka", "kafka-icon")),
                 List.of(), null, 1, 0, 30));
 
-        List<TriggerBasicInfo> results = TriggerSearchUtil.searchCentral(central, "trigger", null, null, Set.of());
+        List<TriggerBasicInfo> results = TriggerSearchUtil.searchCentral(central, "trigger", null, Set.of());
 
         Assert.assertEquals(central.queriesSent.size(), 2, "one search call per allowed org");
         Assert.assertTrue(central.queriesSent.stream().anyMatch(q -> "ballerina".equals(q.get("org"))));
@@ -151,7 +151,7 @@ public class TriggerSearchUtilTest {
                 List.of(), null, 1, 0, 30));
         central.failingOrgs.add("ballerinax");
 
-        List<TriggerBasicInfo> results = TriggerSearchUtil.searchCentral(central, "trigger", null, null, Set.of());
+        List<TriggerBasicInfo> results = TriggerSearchUtil.searchCentral(central, "trigger", null, Set.of());
 
         Assert.assertEquals(results.size(), 1, "the failing org must not discard the succeeding org's results");
         Assert.assertEquals(results.getFirst().orgName(), "ballerina");
@@ -170,7 +170,7 @@ public class TriggerSearchUtilTest {
                 List.of(pkg("ballerinax", "kafka", "1.0.0", List.of("trigger"), "", "")),
                 List.of(), null, 1, 0, 30));
 
-        List<TriggerBasicInfo> results = TriggerSearchUtil.searchCentral(central, "trigger", 2, null, Set.of());
+        List<TriggerBasicInfo> results = TriggerSearchUtil.searchCentral(central, "trigger", 2, Set.of());
 
         Assert.assertEquals(results.size(), 2, "truncated to the requested limit");
         Assert.assertTrue(results.stream().anyMatch(r -> r.orgName().equals("ballerinax")),
