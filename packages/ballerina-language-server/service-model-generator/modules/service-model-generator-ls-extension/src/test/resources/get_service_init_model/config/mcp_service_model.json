@@ -157,7 +157,7 @@
             "type": "SERVICE_BASE_PATH"
           },
           "placeholder": "/mcp",
-          "value": "\"/mcp\"",
+          "value": "/mcp",
           "types": [
             {
               "fieldType": "SERVICE_PATH",

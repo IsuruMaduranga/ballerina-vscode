@@ -19,78 +19,146 @@
 package io.ballerina.servicemodelgenerator.extension.util;
 
 import io.ballerina.centralconnector.CentralAPI;
-import io.ballerina.centralconnector.response.Listeners;
 import io.ballerina.centralconnector.response.PackageResponse;
+import io.ballerina.modelgenerator.commons.ModuleInfo;
+import io.ballerina.modelgenerator.commons.trigger.LibraryMetadataReader;
 import io.ballerina.servicemodelgenerator.extension.model.TriggerBasicInfo;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Predicate;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * Discovers event-integration trigger packages on Ballerina Central for the "Search more" flow,
- * complementing the locally-bundled trigger index. A package is treated as a trigger when its keywords
- * signal a listener/trigger, or its module name uses the {@code trigger.*} convention.
- *
- * @since 1.8.0
+ * Discovers event-integration trigger packages on Ballerina Central for the "Search more" flow.
  */
 public final class TriggerSearchUtil {
+
+    private static final Logger LOGGER = Logger.getLogger(TriggerSearchUtil.class.getName());
 
     private static final int DEFAULT_LIMIT = 30;
     private static final String EVENT_TYPE = "event";
     private static final String DEFAULT_QUERY = "trigger";
     private static final Set<String> TRIGGER_KEYWORDS = Set.of("trigger", "listener", "event");
+    private static final String TRIGGER_TAG_KEYWORD = "type/trigger";
     private static final String TRIGGER_MODULE_PREFIX = "trigger.";
-    // Caps network-bound listener-export checks so a broad query can't fan out into hundreds of calls.
-    private static final int MAX_LISTENER_LOOKUPS = 30;
+    private static final List<String> ALLOWED_ORGS = List.of("ballerina", "ballerinax");
+
+    private static final ExecutorService CENTRAL_SEARCH_EXECUTOR = Executors.newFixedThreadPool(
+            ALLOWED_ORGS.size(), runnable -> {
+                Thread thread = new Thread(runnable, "trigger-central-search");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private TriggerSearchUtil() {
     }
 
     /**
-     * Searches Central for trigger packages matching {@code query}, excluding those already known
-     * locally ({@code existingKeys}, each {@code org/name}). Returns an empty list on any failure
-     * (e.g. offline) so the caller degrades gracefully to the local list.
+     * Searches Central for trigger packages matching {@code query}, restricted to
+     * {@code ballerina}/{@code ballerinax}.
+     *
+     * <p>Takes no offset: the per-org fan-out below merges each org's own first page, so an offset
+     * would apply per-org rather than to the merged result and paging would not compose. Add one only
+     * once results are paged from a merged/global cursor rather than from each org's own Central query.
      */
     public static List<TriggerBasicInfo> searchCentral(CentralAPI central, String query, Integer limit,
-                                                       Integer offset, Set<String> existingKeys) {
+                                                       Set<String> existingKeys) {
         try {
-            Map<String, String> queryMap = new HashMap<>();
-            queryMap.put("q", (query == null || query.isBlank()) ? DEFAULT_QUERY : query.trim());
-            queryMap.put("limit", String.valueOf(limit == null || limit <= 0 ? DEFAULT_LIMIT : limit));
-            queryMap.put("offset", String.valueOf(offset == null || offset < 0 ? 0 : offset));
-            PackageResponse response = central.searchPackages(queryMap);
-            // Listener-export check is an authoritative fallback for packages the keyword check misses.
-            int[] budget = {MAX_LISTENER_LOOKUPS};
-            Predicate<PackageResponse.Package> exportsListener = pkg -> {
-                if (budget[0] <= 0) {
-                    return false;
+            String effectiveQuery = (query == null || query.isBlank()) ? DEFAULT_QUERY : query.trim();
+            int effectiveLimit = limit == null || limit <= 0 ? DEFAULT_LIMIT : limit;
+
+            List<CompletableFuture<List<TriggerBasicInfo>>> futures = ALLOWED_ORGS.stream()
+                    .map(org -> CompletableFuture.supplyAsync(() -> {
+                        Map<String, String> queryMap = new HashMap<>();
+                        queryMap.put("q", effectiveQuery);
+                        queryMap.put("org", org);
+                        queryMap.put("limit", String.valueOf(effectiveLimit));
+                        PackageResponse response = central.searchPackages(queryMap);
+                        return toTriggerResults(response, existingKeys);
+                    }, CENTRAL_SEARCH_EXECUTOR).exceptionally(e -> {
+                        LOGGER.log(Level.FINE, "Central trigger search failed for org '" + org + "'", e);
+                        return List.of();
+                    }))
+                    .toList();
+
+            List<List<TriggerBasicInfo>> perOrgResults = futures.stream().map(CompletableFuture::join).toList();
+
+            List<TriggerBasicInfo> results = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            int maxPerOrg = perOrgResults.stream().mapToInt(List::size).max().orElse(0);
+            for (int i = 0; i < maxPerOrg && results.size() < effectiveLimit; i++) {
+                for (List<TriggerBasicInfo> orgResults : perOrgResults) {
+                    if (i >= orgResults.size() || results.size() >= effectiveLimit) {
+                        continue;
+                    }
+                    TriggerBasicInfo info = orgResults.get(i);
+                    if (seen.add(info.orgName() + "/" + info.packageName())) {
+                        results.add(info);
+                    }
                 }
-                budget[0]--;
-                return hasListeners(central, pkg.organization(), pkg.name(), pkg.version());
-            };
-            return toTriggerResults(response, existingKeys, exportsListener);
+            }
+            return results;
         } catch (Throwable e) {
             return List.of();
         }
     }
 
-    /** Keyword-only variant (no listener lookup). Pure; unit-testable without a network call. */
-    static List<TriggerBasicInfo> toTriggerResults(PackageResponse response, Set<String> existingKeys) {
-        return toTriggerResults(response, existingKeys, pkg -> false);
+    /**
+     * Searches the Ballerina local repository for packages shipping trigger metadata/schema files.
+     */
+    public static List<TriggerBasicInfo> searchLocalRepository(Set<String> existingKeys) {
+        try {
+            LibraryMetadataReader reader = LibraryMetadataReader.getInstance();
+            Set<String> known = existingKeys == null ? Set.of() : existingKeys;
+            List<TriggerBasicInfo> results = new ArrayList<>();
+            for (ModuleInfo moduleInfo : reader.listLocalRepositoryModules()) {
+                if (known.contains(key(moduleInfo.org(), moduleInfo.packageName()))) {
+                    continue;
+                }
+                boolean hasTriggerFiles = reader.getTriggerUISchemaModelFromLocalRepository(moduleInfo).isPresent()
+                        || reader.getTriggerMetadataModelFromLocalRepository(moduleInfo).isPresent();
+                if (!hasTriggerFiles) {
+                    continue;
+                }
+                results.add(toLocalRepositoryTriggerBasicInfo(moduleInfo));
+            }
+            return results;
+        } catch (Throwable e) {
+            LOGGER.log(Level.FINE, "Local-repository trigger search failed", e);
+            return List.of();
+        }
+    }
+
+    private static TriggerBasicInfo toLocalRepositoryTriggerBasicInfo(ModuleInfo moduleInfo) {
+        String protocol = ServiceModelUtils.getProtocol(moduleInfo.packageName());
+        return new TriggerBasicInfo(
+                0,
+                moduleInfo.packageName(),
+                moduleInfo.org(),
+                moduleInfo.packageName(),
+                moduleInfo.moduleName(),
+                moduleInfo.version(),
+                EVENT_TYPE,
+                displayName(moduleInfo.packageName()),
+                "",
+                protocol,
+                "");
     }
 
     /**
-     * Filters a Central package response to trigger packages and maps them to {@link TriggerBasicInfo},
-     * skipping any already present locally.
+     * Filters a Central package response to trigger packages and maps them to {@link TriggerBasicInfo}.
      */
-    static List<TriggerBasicInfo> toTriggerResults(PackageResponse response, Set<String> existingKeys,
-                                                   Predicate<PackageResponse.Package> exportsListener) {
+    static List<TriggerBasicInfo> toTriggerResults(PackageResponse response, Set<String> existingKeys) {
         List<TriggerBasicInfo> results = new ArrayList<>();
         if (response == null || response.packages() == null) {
             return results;
@@ -103,8 +171,7 @@ public final class TriggerSearchUtil {
             if (known.contains(key(pkg.organization(), pkg.name()))) {
                 continue;
             }
-            if (!isTriggerPackage(pkg.keywords(), pkg.name())
-                    && !(exportsListener != null && exportsListener.test(pkg))) {
+            if (!isTriggerPackage(pkg.keywords(), pkg.name())) {
                 continue;
             }
             results.add(toTriggerBasicInfo(pkg));
@@ -112,20 +179,9 @@ public final class TriggerSearchUtil {
         return results;
     }
 
-    /** Whether the package exports at least one Listener (authoritative trigger signal). */
-    private static boolean hasListeners(CentralAPI central, String org, String name, String version) {
-        if (version == null || version.isBlank()) {
-            return false;
-        }
-        try {
-            Listeners listeners = central.listeners(org, name, version);
-            return listeners != null && listeners.listeners() != null && !listeners.listeners().isEmpty();
-        } catch (Throwable e) {
-            return false;
-        }
-    }
-
-    /** Whether a Central package is an event-integration trigger, by keywords or module-name convention. */
+    /**
+     * Whether a Central package is an event-integration trigger.
+     */
     static boolean isTriggerPackage(List<String> keywords, String name) {
         if (name != null && name.toLowerCase(Locale.US).startsWith(TRIGGER_MODULE_PREFIX)) {
             return true;
@@ -136,7 +192,7 @@ public final class TriggerSearchUtil {
         return keywords.stream()
                 .filter(Objects::nonNull)
                 .map(k -> k.toLowerCase(Locale.US))
-                .anyMatch(TRIGGER_KEYWORDS::contains);
+                .anyMatch(k -> TRIGGER_KEYWORDS.contains(k) || TRIGGER_TAG_KEYWORD.equals(k));
     }
 
     static TriggerBasicInfo toTriggerBasicInfo(PackageResponse.Package pkg) {
@@ -159,11 +215,24 @@ public final class TriggerSearchUtil {
         return org + "/" + name;
     }
 
-    private static String displayName(String name) {
+    /**
+     * Humanizes a Central package name for display (e.g. {@code trigger.github} -> {@code Github}).
+     */
+    static String displayName(String name) {
         if (name == null || name.isEmpty()) {
             return name;
         }
-        String last = name.substring(name.lastIndexOf('.') + 1);
-        return Character.toUpperCase(last.charAt(0)) + last.substring(1);
+        String segment = name.substring(name.lastIndexOf('.') + 1);
+        StringBuilder result = new StringBuilder();
+        for (String word : segment.replace('_', ' ').replace('-', ' ').trim().split("\\s+")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (!result.isEmpty()) {
+                result.append(' ');
+            }
+            result.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        }
+        return result.isEmpty() ? segment : result.toString();
     }
 }

@@ -269,15 +269,25 @@ public final class TriggerFunctionAdapter {
             typeCodedata.setNameEditable(payloadCodedata.nameEditable());
         }
 
-        Value type = new Value.ValueBuilder()
+        Value.ValueBuilder typeBuilder = new Value.ValueBuilder()
                 .setMetadata(new MetaData(label, description))
                 .value(composedType)
                 .types(List.of(PropertyType.types(Value.FieldType.TYPE)))
                 .setPlaceholder(defaultType)
                 .editable(bindable && payload != null && payload.editable())
                 .enabled(true)
-                .setCodedata(typeCodedata)
-                .build();
+                .setCodedata(typeCodedata);
+        // The wrapper record's included type (e.g. `*jms:Message`) may live in a module whose default
+        // prefix differs from the module name itself (e.g. solace.jms's default prefix is "jms") — the
+        // import must ride along explicitly, keyed by that prefix, rather than being derived from it by
+        // assuming org "ballerinax" and module == prefix (see DatabindUtil#extractRequiredImports).
+        String includedTypePrefix = includedTypePrefix(payloadCodedata);
+        if (includedTypePrefix != null && payloadCodedata != null && notBlank(payloadCodedata.moduleName())
+                && notBlank(payloadCodedata.orgName())) {
+            typeBuilder.addImport(includedTypePrefix,
+                    payloadCodedata.orgName() + "/" + payloadCodedata.moduleName());
+        }
+        Value type = typeBuilder.build();
 
         Value name = identifierValue(paramNameText(model), label, description);
         return new Parameter.Builder()
@@ -289,6 +299,17 @@ public final class TriggerFunctionAdapter {
                 .enabled(true)
                 .editable(model.editable() == null || model.editable())
                 .build();
+    }
+
+    /** The module prefix a payload's {@code defaultType} is qualified with (e.g. {@code "jms"} from
+     *  {@code "jms:Message"}), or null when unqualified/absent. */
+    private static String includedTypePrefix(TriggerUISchemaModel.Codedata payloadCodedata) {
+        if (payloadCodedata == null || !notBlank(payloadCodedata.defaultType())) {
+            return null;
+        }
+        String defaultType = payloadCodedata.defaultType();
+        int colon = defaultType.indexOf(':');
+        return colon > 0 ? defaultType.substring(0, colon) : null;
     }
 
     /** Checks the payload {@code codedata}, then its {@code modifiers} map, under each given key. */

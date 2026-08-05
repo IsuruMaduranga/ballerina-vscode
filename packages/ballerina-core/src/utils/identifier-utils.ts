@@ -38,11 +38,18 @@ const EVENT_INTEGRATION_MODULES: ReadonlySet<string> = new Set([
     "trigger.shopify",
     "trigger.twilio",
     "trigger.hubspot",
-    "solace"
+    "solace",
+    "solace.jms",
+    "oracledb",
+    "sap.jco",
+    "aws.sqs",
+    "telegram",
+    "googleapis.chat",
+    "whatsapp.business"
 ]);
 
 /** Modules that map to the FILE_INTEGRATION scope. */
-const FILE_INTEGRATION_MODULES: ReadonlySet<string> = new Set(["ftp", "file"]);
+const FILE_INTEGRATION_MODULES: ReadonlySet<string> = new Set(["ftp", "file", "smb", "azure.storage.files"]);
 
 export function findScopeByModule(moduleName: string): SCOPE {
     if (moduleName === "ai") {

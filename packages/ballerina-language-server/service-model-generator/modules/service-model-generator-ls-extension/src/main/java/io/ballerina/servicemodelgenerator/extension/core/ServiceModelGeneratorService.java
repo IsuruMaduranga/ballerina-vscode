@@ -453,7 +453,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
      * locally and degrades to an empty list when Central is unavailable.
      *
      * @param request Trigger list request ({@code query} is the search term)
-     * @return {@link TriggerListResponse} of the matching Central triggers
+     * @return {@link TriggerListResponse} of the matching triggers
      */
     @JsonRequest
     public CompletableFuture<TriggerListResponse> searchTriggers(TriggerListRequest request) {
@@ -463,8 +463,11 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
                     .collect(Collectors.toSet());
             String query = request == null ? null : request.query();
             List<TriggerBasicInfo> centralTriggers = TriggerSearchUtil.searchCentral(
-                    RemoteCentral.getInstance(), query, null, null, localKeys);
-            return new TriggerListResponse(centralTriggers);
+                    RemoteCentral.getInstance(), query, null, localKeys);
+            List<TriggerBasicInfo> localRepositoryTriggers = (request != null && request.includeLocalRepository())
+                    ? TriggerSearchUtil.searchLocalRepository(localKeys)
+                    : List.of();
+            return new TriggerListResponse(centralTriggers, localRepositoryTriggers);
         });
     }
 
@@ -1044,7 +1047,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
                     throw new IllegalStateException("Failed to load the document or semantic model");
                 }
                 Utils.resolveModule(request.orgName(), request.pkgName(), request.moduleName(),
-                        request.version(), lsClientLogger);
+                        request.version(), request.isLocalRepository(), lsClientLogger);
                 return new ServiceInitModelResponse(ServiceBuilderRouter.getServiceInitModel(request,
                         project, semanticModel.get(), document.get()));
             } catch (Throwable e) {

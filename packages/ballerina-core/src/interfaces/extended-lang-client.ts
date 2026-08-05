@@ -1406,10 +1406,12 @@ export interface TriggerModelsRequest {
     packageName?: string;
     query?: string;
     keyWord?: string;
+    includeLocalRepository?: boolean;
 }
 
 export interface TriggerModelsResponse {
     local: ServiceModel[];
+    localRepositoryResults?: ServiceModel[];
 }
 
 // <-------- Trigger Related ------->
@@ -1460,6 +1462,7 @@ export interface ServiceModelRequest {
     pkgName?: string;
     version?: string;
     projectPath?: string;
+    isLocalRepository?: boolean;
 }
 export interface ServiceModelResponse {
     service: ServiceModel;
