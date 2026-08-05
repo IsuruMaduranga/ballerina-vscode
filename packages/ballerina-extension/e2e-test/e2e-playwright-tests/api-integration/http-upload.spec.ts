@@ -189,7 +189,14 @@ export default function createTests() {
             logStep('Run integration');
             await FileUtils.openProjectFileInEditor('main.bal');
 
-            await page.executePaletteCommand('BI.project.run');
+            // The command palette matches against the label ("Run Integration"), not the
+            // raw command ID — "BI.project.run" contains no letters the label has, so it
+            // never matches and Run never fires. Same pattern automation-run.spec.ts uses.
+            await page.page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+P' : 'Control+Shift+P');
+            await page.page.waitForTimeout(500);
+            await page.page.keyboard.type('Run Integration');
+            await page.page.waitForTimeout(500);
+            await page.page.keyboard.press('Enter');
 
             logStep('Verify upload endpoint response');
             const result = await waitForEndpoint('http://localhost:9090/upload?name=probe.txt', 120000);
