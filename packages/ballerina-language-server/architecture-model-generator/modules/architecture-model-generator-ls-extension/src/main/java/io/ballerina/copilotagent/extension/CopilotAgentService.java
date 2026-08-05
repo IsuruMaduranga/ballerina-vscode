@@ -72,6 +72,7 @@ public class CopilotAgentService implements ExtendedLanguageServerService {
                 Result result = diffComputer.computeSemanticDiffs();
                 response.setLoadDesignDiagrams(result.loadDesignDiagrams());
                 response.setSemanticDiffs(result.semanticDiffs());
+                response.setCompilationError(result.compilationError());
             } catch (Exception e) {
                 response.setError(e);
             }

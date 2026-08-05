@@ -591,6 +591,7 @@ export class ApprovalViewManager {
             modifiedFiles: review.modifiedFiles,
             tempProjectPath,
             isWorkspace: review.reviewView.isWorkspace,
+            semanticDiffError: review.reviewView.semanticDiffError,
         };
     }
 
