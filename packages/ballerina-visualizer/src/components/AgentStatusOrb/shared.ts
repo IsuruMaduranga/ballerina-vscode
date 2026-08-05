@@ -303,11 +303,7 @@ export function useAiPanelOpen(): boolean {
     return open;
 }
 
-/**
- * True while a Copilot turn is in flight — it says nothing about what the turn
- * will produce, since the prompt may not be asking for artifacts at all.
- * `awaiting-input` counts: the turn has not settled yet.
- */
+/** True while a turn is in flight — says nothing about what it will produce. */
 export function useAgentWorking(): boolean {
     const { rpcClient } = useRpcContext();
     const isWorking = (status: AgentRunStatus | null) =>

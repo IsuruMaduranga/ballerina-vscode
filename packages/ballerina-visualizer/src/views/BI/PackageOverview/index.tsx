@@ -89,7 +89,7 @@ const WorkingRow = styled.div`
     margin-bottom: 24px;
 `;
 
-const EmptyStateContainer = styled.div`
+const EmptyStateContainer = styled.div<{ withHero?: boolean }>`
     position: absolute;
     top: 0;
     left: 0;
@@ -99,6 +99,8 @@ const EmptyStateContainer = styled.div`
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    // Offsets the prompt bar's height so the block keeps its former position.
+    padding-bottom: ${(props: { withHero?: boolean }) => (props.withHero ? "96px" : "0")};
 `;
 
 const PageLayout = styled.div`
@@ -133,8 +135,7 @@ const MainContent = styled.div<{ fullWidth?: boolean }>`
     max-height: calc(100vh - 90px);
 `;
 
-// Centred in the empty state, above the Add Integration button. Bounded so the
-// prompt box does not stretch the full panel width on a wide editor.
+// Bounded so the prompt box does not stretch the full panel width.
 const HeroRow = styled.div`
     width: 100%;
     max-width: 560px;
@@ -1214,7 +1215,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                             {!isLibrary && (
                                 <DiagramContent>
                                     {isEmptyIntegration() ? (
-                                        <EmptyStateContainer>
+                                        <EmptyStateContainer withHero={showHero}>
                                             <Typography variant="h3" sx={{ marginBottom: "16px" }}>
                                                 Your integration is empty
                                             </Typography>
@@ -1243,9 +1244,6 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                     <CopilotHeroBox placeholder="What would you like to build?" />
                                                 </HeroRow>
                                             )}
-                                            {/* Hidden while Copilot is working: it may or may not be
-                                                creating artifacts, so inviting a competing add is wrong
-                                                either way until the turn settles. */}
                                             {!agentWorking && (
                                                 <ButtonContainer>
                                                     {/* An empty integration means the creation wizard was
