@@ -44,7 +44,7 @@ import { TitleBar } from "../../../components/TitleBar";
 import { PublishToCentralButton } from "./PublishToCentralButton";
 import { LibraryOverview } from "./LibraryOverview";
 import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
-import { useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
+import { useAgentWorking, useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
 
 /** Only reachable from an empty integration, and it pulls in the whole wizard +
  *  artifact form tree — so keep it out of the overview's own chunk. */
@@ -80,6 +80,13 @@ const ButtonContainer = styled.div`
     display: flex;
     align-items: flex-end;
     gap: 8px;
+`;
+
+const WorkingRow = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 24px;
 `;
 
 const EmptyStateContainer = styled.div`
@@ -841,6 +848,7 @@ export function PackageOverview(props: PackageOverviewProps) {
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
     const [isNPSupported, setIsNPSupported] = useState<boolean>(false);
     const aiPanelOpen = useAiPanelOpen();
+    const agentWorking = useAgentWorking();
     const showHero = !isLibrary && !aiPanelOpen;
     // Shows the Create Integration wizard in place of the overview, for an empty
     // integration whose owner skipped it at creation time.
@@ -1210,27 +1218,44 @@ export function PackageOverview(props: PackageOverviewProps) {
                                             <Typography variant="h3" sx={{ marginBottom: "16px" }}>
                                                 Your integration is empty
                                             </Typography>
-                                            <Typography
-                                                variant="body1"
-                                                sx={{ marginBottom: "24px", color: "var(--vscode-descriptionForeground)" }}
-                                            >
-                                                {showHero
-                                                    ? "Describe what you want to build, or add an artifact to get started"
-                                                    : "Add an artifact to get started"}
-                                            </Typography>
+                                            {agentWorking ? (
+                                                <WorkingRow>
+                                                    <ProgressRing color={ThemeColors.PRIMARY} sx={{ width: 16, height: 16 }} />
+                                                    <Typography
+                                                        variant="body1"
+                                                        sx={{ color: "var(--vscode-descriptionForeground)" }}
+                                                    >
+                                                        Copilot is working…
+                                                    </Typography>
+                                                </WorkingRow>
+                                            ) : (
+                                                <Typography
+                                                    variant="body1"
+                                                    sx={{ marginBottom: "24px", color: "var(--vscode-descriptionForeground)" }}
+                                                >
+                                                    {showHero
+                                                        ? "Describe what you want to build, or add an artifact to get started"
+                                                        : "Add an artifact to get started"}
+                                                </Typography>
+                                            )}
                                             {showHero && (
                                                 <HeroRow>
                                                     <CopilotHeroBox placeholder="What would you like to build?" />
                                                 </HeroRow>
                                             )}
-                                            <ButtonContainer>
-                                                {/* An empty integration means the creation wizard was
-                                                    skipped — offer it again here rather than the raw
-                                                    artifact list, so the guided flow can be resumed. */}
-                                                <Button appearance="primary" onClick={() => setShowAddIntegration(true)}>
-                                                    <Codicon name="add" sx={{ marginRight: 8 }} /> Add Integration
-                                                </Button>
-                                            </ButtonContainer>
+                                            {/* Hidden while Copilot is working: it may or may not be
+                                                creating artifacts, so inviting a competing add is wrong
+                                                either way until the turn settles. */}
+                                            {!agentWorking && (
+                                                <ButtonContainer>
+                                                    {/* An empty integration means the creation wizard was
+                                                        skipped — offer it again here rather than the raw
+                                                        artifact list, so the guided flow can be resumed. */}
+                                                    <Button appearance="primary" onClick={() => setShowAddIntegration(true)}>
+                                                        <Codicon name="add" sx={{ marginRight: 8 }} /> Add Integration
+                                                    </Button>
+                                                </ButtonContainer>
+                                            )}
                                         </EmptyStateContainer>
                                     ) : (
                                         <React.Suspense

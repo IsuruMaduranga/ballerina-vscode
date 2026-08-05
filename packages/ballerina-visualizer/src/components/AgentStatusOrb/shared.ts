@@ -303,6 +303,27 @@ export function useAiPanelOpen(): boolean {
     return open;
 }
 
+/**
+ * True while a Copilot turn is in flight — it says nothing about what the turn
+ * will produce, since the prompt may not be asking for artifacts at all.
+ * `awaiting-input` counts: the turn has not settled yet.
+ */
+export function useAgentWorking(): boolean {
+    const { rpcClient } = useRpcContext();
+    const isWorking = (status: AgentRunStatus | null) =>
+        status?.state === "running" || status?.state === "awaiting-input";
+    const [working, setWorking] = useState(() => isWorking(currentStatus));
+
+    useEffect(() => {
+        if (!rpcClient) {
+            return;
+        }
+        return subscribeAgentRunStatus(rpcClient, (status) => setWorking(isWorking(status)));
+    }, [rpcClient]);
+
+    return working;
+}
+
 // ---------------------------------------------------------------------------
 // Contextual mini-chat launch requests.
 //
