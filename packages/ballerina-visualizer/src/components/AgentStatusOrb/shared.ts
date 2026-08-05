@@ -303,19 +303,19 @@ export function useAiPanelOpen(): boolean {
     return open;
 }
 
-/** The live run status, for views that need the state and its label, not just a flag. */
-export function useAgentRunStatus(): AgentRunStatus | null {
+/** The live run state — says nothing about what the turn will produce. */
+export function useAgentRunState(): AgentRunState | undefined {
     const { rpcClient } = useRpcContext();
-    const [status, setStatus] = useState(() => currentStatus);
+    const [state, setState] = useState(() => currentStatus?.state);
 
     useEffect(() => {
         if (!rpcClient) {
             return;
         }
-        return subscribeAgentRunStatus(rpcClient, setStatus);
+        return subscribeAgentRunStatus(rpcClient, (status) => setState(status?.state));
     }, [rpcClient]);
 
-    return status;
+    return state;
 }
 
 // ---------------------------------------------------------------------------

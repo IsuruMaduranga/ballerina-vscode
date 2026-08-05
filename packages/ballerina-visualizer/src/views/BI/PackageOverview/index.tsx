@@ -44,7 +44,7 @@ import { TitleBar } from "../../../components/TitleBar";
 import { PublishToCentralButton } from "./PublishToCentralButton";
 import { LibraryOverview } from "./LibraryOverview";
 import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
-import { activeStateLabel, useAgentRunStatus, useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
+import { useAgentRunState, useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
 
 /** Only reachable from an empty integration, and it pulls in the whole wizard +
  *  artifact form tree — so keep it out of the overview's own chunk. */
@@ -849,8 +849,9 @@ export function PackageOverview(props: PackageOverviewProps) {
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
     const [isNPSupported, setIsNPSupported] = useState<boolean>(false);
     const aiPanelOpen = useAiPanelOpen();
-    const agentStatus = useAgentRunStatus();
-    const turnInFlight = agentStatus?.state === "running" || agentStatus?.state === "awaiting-input";
+    const agentState = useAgentRunState();
+    const awaitingInput = agentState === "awaiting-input";
+    const agentWorking = agentState === "running" || awaitingInput;
     const showHero = !isLibrary && !aiPanelOpen;
     // Shows the Create Integration wizard in place of the overview, for an empty
     // integration whose owner skipped it at creation time.
@@ -1220,18 +1221,20 @@ export function PackageOverview(props: PackageOverviewProps) {
                                             <Typography variant="h3" sx={{ marginBottom: "16px" }}>
                                                 Your integration is empty
                                             </Typography>
-                                            {/* Only when the hero is absent: its active form is the same
-                                                status, with the run's own label and a way back to the panel. */}
-                                            {turnInFlight && !showHero && agentStatus && (
+                                            {/* Only when the hero is absent — its active form already
+                                                carries the same status. */}
+                                            {agentWorking && !showHero && (
                                                 <WorkingRow>
-                                                    {agentStatus.state === "running" && (
+                                                    {awaitingInput ? (
+                                                        <Codicon name="comment-discussion" />
+                                                    ) : (
                                                         <ProgressRing color={ThemeColors.PRIMARY} sx={{ width: 16, height: 16 }} />
                                                     )}
                                                     <Typography
                                                         variant="body1"
                                                         sx={{ color: "var(--vscode-descriptionForeground)" }}
                                                     >
-                                                        {activeStateLabel(agentStatus)}
+                                                        {awaitingInput ? "Copilot needs your input" : "Copilot is working…"}
                                                     </Typography>
                                                 </WorkingRow>
                                             )}
@@ -1240,7 +1243,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                     <CopilotHeroBox placeholder="What would you like to build?" />
                                                 </HeroRow>
                                             )}
-                                            {!turnInFlight && (
+                                            {!agentWorking && (
                                                 <>
                                                     <Typography
                                                         variant="body1"
