@@ -452,15 +452,8 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
      * trigger models are then addable with no language-server release. Excludes triggers already known
      * locally and degrades to an empty list when Central is unavailable.
      *
-     * <p>When {@code request.includeLocalRepository()} is set (an experimental, client-opt-in flag),
-     * also searches the Ballerina local repository ({@code ~/.ballerina/repositories/local}) for
-     * packages shipping their trigger schema directly -- surfaced separately as
-     * {@link TriggerListResponse#localRepositoryResults}, never merged into the Central list, since the
-     * same org/name may resolve differently from each source.
-     *
      * @param request Trigger list request ({@code query} is the search term)
-     * @return {@link TriggerListResponse} of the matching Central (and, if opted in, local-repository)
-     *         triggers
+     * @return {@link TriggerListResponse} of the matching triggers
      */
     @JsonRequest
     public CompletableFuture<TriggerListResponse> searchTriggers(TriggerListRequest request) {

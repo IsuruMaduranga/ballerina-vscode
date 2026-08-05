@@ -24,14 +24,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link LibraryMetadataReader}'s public reads: {@link LibraryMetadataReader#getTriggerMetadataModel}
- * and {@link LibraryMetadataReader#getTriggerUISchemaModel} (a connector's own shipped
- * {@code trigger-metadata.json}/{@code trigger-ui-schema.json}, resolved from its {@code .bala} via
- * Central) and {@link LibraryMetadataReader#getPackagedTriggerMetadataModel} (the LS's own bundled
- * classpath resource) -- three independent reads, none silently falling back to another. Package/JSON
- * resolution is entirely internal to this class, so these tests only ever go through
- * {@link ModuleInfo}-keyed calls -- never a resolved {@code Path} -- mirroring how a caller (e.g.
- * {@code ConnectorModelReader}) is expected to use it.
+ * Tests {@link LibraryMetadataReader}'s public reads: none of the three tiers falls back to another.
  */
 public class LibraryMetadataReaderTest {
 
@@ -39,8 +32,6 @@ public class LibraryMetadataReaderTest {
 
     @Test
     public void testGetPackagedTriggerMetadataModelHit() {
-        // kafka is bundled under trigger-metadata-models/kafka/trigger-metadata.json -- resolved purely
-        // off the classpath, no package resolution needed.
         ModuleInfo moduleInfo = new ModuleInfo("ballerinax", "kafka", "kafka", "1.0.0");
         TriggerMetadataModel model = READER.getPackagedTriggerMetadataModel(moduleInfo).orElseThrow();
         Assert.assertFalse(model.listeners().isEmpty());
@@ -82,10 +73,6 @@ public class LibraryMetadataReaderTest {
 
     @Test
     public void testGetTriggerMetadataModelUnresolvableModuleGracefullyEmpty() {
-        // Not a real Central package -- must resolve to empty, not throw (the version-less
-        // PackageUtil.getModulePackage overload throws on an unknown org/module). Also confirms
-        // getTriggerMetadataModel does NOT fall back to the packaged tier: kafka's presence there
-        // (see testGetPackagedTriggerMetadataModelHit) must not leak into this connector-owned read.
         ModuleInfo moduleInfo = new ModuleInfo("no-such-org", "no-such-module", "no-such-module", null);
         Assert.assertTrue(READER.getTriggerMetadataModel(moduleInfo).isEmpty());
     }

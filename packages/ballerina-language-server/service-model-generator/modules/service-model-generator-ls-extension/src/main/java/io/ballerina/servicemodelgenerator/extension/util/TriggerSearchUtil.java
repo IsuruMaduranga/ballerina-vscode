@@ -39,16 +39,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Discovers event-integration <b>trigger</b> packages on Ballerina Central for the "Search more"
- * flow. This complements the locally-bundled trigger index ({@code getTriggerModels}) with a live
- * Central search, so a connector that ships its trigger models can be found and added without a
- * language-server release.
- *
- * <p>Central returns generic package results; a package is treated as a trigger when its keywords
- * signal a listener/trigger, or its module name uses the {@code trigger.*} convention. The pure
- * mapping/filtering helpers are package-visible for unit testing without a network call.
- *
- * @since 1.8.0
+ * Discovers event-integration trigger packages on Ballerina Central for the "Search more" flow.
  */
 public final class TriggerSearchUtil {
 
@@ -62,8 +53,6 @@ public final class TriggerSearchUtil {
     private static final String TRIGGER_MODULE_PREFIX = "trigger.";
     private static final List<String> ALLOWED_ORGS = List.of("ballerina", "ballerinax");
 
-    // A dedicated pool, not the shared ForkJoinPool.commonPool(): searchCentral's blocking Central HTTP
-    // calls must not compete with (or nest inside) every other parallel stream in the LS.
     private static final ExecutorService CENTRAL_SEARCH_EXECUTOR = Executors.newFixedThreadPool(
             ALLOWED_ORGS.size(), runnable -> {
                 Thread thread = new Thread(runnable, "trigger-central-search");
@@ -76,9 +65,7 @@ public final class TriggerSearchUtil {
 
     /**
      * Searches Central for trigger packages matching {@code query}, restricted to
-     * {@code ballerina}/{@code ballerinax}, excluding those already known locally
-     * ({@code existingKeys}, each {@code org/name}). Returns an empty list on any failure (e.g.
-     * offline) so the caller degrades gracefully to the local list.
+     * {@code ballerina}/{@code ballerinax}.
      */
     public static List<TriggerBasicInfo> searchCentral(CentralAPI central, String query, Integer limit,
                                                        Integer offset, Set<String> existingKeys) {
@@ -87,17 +74,9 @@ public final class TriggerSearchUtil {
             int effectiveLimit = limit == null || limit <= 0 ? DEFAULT_LIMIT : limit;
             int effectiveOffset = offset == null || offset < 0 ? 0 : offset;
 
-            // One org can't be expressed per call (see ALLOWED_ORGS), so the per-org Central calls are
-            // independent -- run them concurrently on a dedicated executor rather than paying their
-            // latency serially. Each future degrades to an empty list on its own failure (rather than
-            // letting future.join() below throw) so that, e.g., a ballerinax timeout does not discard
-            // ballerina's already-successful results too.
             List<CompletableFuture<List<TriggerBasicInfo>>> futures = ALLOWED_ORGS.stream()
                     .map(org -> CompletableFuture.supplyAsync(() -> {
                         Map<String, String> queryMap = new HashMap<>();
-                        // "org" is a dedicated searchPackages parameter (see SearchListGenerator/
-                        // PackageListGenerator's established usage) -- unlike searchSymbols, an
-                        // "org:<name>" token embedded in "q" is not a documented searchPackages filter.
                         queryMap.put("q", effectiveQuery);
                         queryMap.put("org", org);
                         queryMap.put("limit", String.valueOf(effectiveLimit));
@@ -112,9 +91,6 @@ public final class TriggerSearchUtil {
 
             List<List<TriggerBasicInfo>> perOrgResults = futures.stream().map(CompletableFuture::join).toList();
 
-            // Merge round-robin across orgs rather than org-by-org, so a later org in ALLOWED_ORGS (e.g.
-            // ballerinax, where nearly all trigger connectors live) is never entirely truncated away just
-            // because an earlier org's results alone already filled effectiveLimit.
             List<TriggerBasicInfo> results = new ArrayList<>();
             Set<String> seen = new HashSet<>();
             int maxPerOrg = perOrgResults.stream().mapToInt(List::size).max().orElse(0);
@@ -136,14 +112,7 @@ public final class TriggerSearchUtil {
     }
 
     /**
-     * Searches the Ballerina local repository ({@code ~/.ballerina/repositories/local}) for packages
-     * shipping a {@code trigger-metadata.json} or {@code trigger-ui-schema.json} directly, excluding
-     * those already known locally ({@code existingKeys}, each {@code org/name}). Only ever called when
-     * the request opted in via {@code includeLocalRepository} -- callers must not invoke this
-     * unconditionally, since it touches the filesystem. Presence of either resource file is itself the
-     * authoritative trigger signal here: local packages carry no Central keywords to check against, and
-     * this is a cheap file-stat per candidate, not a network call, so full enumeration is acceptable for
-     * a typically-small local repository. Returns an empty list on any failure -- never throws.
+     * Searches the Ballerina local repository for packages shipping trigger metadata/schema files.
      */
     public static List<TriggerBasicInfo> searchLocalRepository(Set<String> existingKeys) {
         try {
@@ -185,8 +154,7 @@ public final class TriggerSearchUtil {
     }
 
     /**
-     * Filters a Central package response to trigger packages and maps them to {@link TriggerBasicInfo},
-     * skipping any already present locally. Pure; unit-testable without a network call.
+     * Filters a Central package response to trigger packages and maps them to {@link TriggerBasicInfo}.
      */
     static List<TriggerBasicInfo> toTriggerResults(PackageResponse response, Set<String> existingKeys) {
         List<TriggerBasicInfo> results = new ArrayList<>();
@@ -210,11 +178,7 @@ public final class TriggerSearchUtil {
     }
 
     /**
-     * Whether a Central package is an event-integration trigger, based on its {@code Type/Trigger}
-     * classification tag, a bare trigger/listener/event keyword, or the {@code trigger.*} module-name
-     * convention. {@code Type/Trigger} is Central's own curated classification (e.g. {@code aws.sqs},
-     * {@code kafka}, {@code rabbitmq}). A package that exports a Listener but carries none of these
-     * signals (e.g. {@code smb}, {@code mqtt}) is not detected -- there is no network-bound fallback.
+     * Whether a Central package is an event-integration trigger.
      */
     static boolean isTriggerPackage(List<String> keywords, String name) {
         if (name != null && name.toLowerCase(Locale.US).startsWith(TRIGGER_MODULE_PREFIX)) {
@@ -250,12 +214,7 @@ public final class TriggerSearchUtil {
     }
 
     /**
-     * Humanizes a Central package name for display: drops the leading org/family segment up to the
-     * last {@code .} (e.g. {@code trigger.github} -> {@code github}, {@code confluent.cavroserdes} ->
-     * {@code cavroserdes}), then Title-Cases every {@code -}/{@code _}-separated word (e.g.
-     * {@code cdc-mysql} -> {@code Cdc Mysql}). Central package names are conventionally all-lowercase, so
-     * every word needs capitalizing here, unlike {@code TriggerModelSynthesizer.humanize} which only
-     * capitalizes the first letter of an already-camelCased identifier.
+     * Humanizes a Central package name for display (e.g. {@code trigger.github} -> {@code Github}).
      */
     static String displayName(String name) {
         if (name == null || name.isEmpty()) {

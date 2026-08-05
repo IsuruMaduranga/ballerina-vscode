@@ -49,13 +49,6 @@ public class ServiceInitModel {
     private final String type;
     private final String icon;
     private final Map<String, Value> properties = new LinkedHashMap<>();
-    // Not constructor-set, like `properties` above: whether this connector was resolved via the
-    // Ballerina local repository rather than Central. Set explicitly by the schema-driven resolution
-    // path (ConnectorModelReader) after the model is built -- Gson (which deserializes this class
-    // directly on the addServiceAndListener round-trip) leaves this null for every other builder, which
-    // the isLocalRepository() getter below treats as false, so no constructor/Builder plumbing is needed
-    // for those. Boxed rather than primitive so that Gson omits the key entirely from the wire payload
-    // when unset, instead of writing "isLocalRepository": false into every connector's JSON.
     private Boolean isLocalRepository;
 
     public ServiceInitModel(String id, String displayName, String description, String orgName,

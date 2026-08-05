@@ -93,14 +93,7 @@ public class ServiceBuilderRouter {
         return useSchemaDrivenPath(orgName, moduleName, null, false);
     }
 
-    /**
-     * {@code isLocalRepository} variant: when {@code true}, checks the Ballerina local repository
-     * ({@code ~/.ballerina/repositories/local}) instead of Central/bundled sources -- for a connector
-     * picked from a local-repository search result, which by definition is never bundled and may not
-     * exist on Central at all. Requires {@code version}: local-repository resolution has no "latest"
-     * convention to fall back to (unlike Central), so this check would otherwise always report "not
-     * found" for a local connector.
-     */
+    /** {@code isLocalRepository} variant, checking the Ballerina local repository instead. */
     private static boolean useSchemaDrivenPath(String orgName, String moduleName, String version,
                                                boolean isLocalRepository) {
         return TriggerModelReader.getInstance()

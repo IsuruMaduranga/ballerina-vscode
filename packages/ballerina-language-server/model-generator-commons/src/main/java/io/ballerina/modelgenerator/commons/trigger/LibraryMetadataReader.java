@@ -50,10 +50,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Connector-agnostic entry point for reading the trigger model family (metadata JSON, UI schema JSON,
- * and the LS's own bundled trigger metadata), shared by every LS extension that needs one.
- *
- * @since 1.10.0
+ * Connector-agnostic entry point for reading the trigger model family, shared by every LS extension.
  */
 public final class LibraryMetadataReader {
 
@@ -91,11 +88,7 @@ public final class LibraryMetadataReader {
         return packageRoot(moduleInfo).flatMap(this::readTriggerUISchemaModel);
     }
 
-    /**
-     * Whether the connector's {@code .bala} is present in the local repository. Lets a caller tell "not
-     * pulled yet" apart from "present but ships no trigger metadata", which is the difference between
-     * retrying later and a durable answer.
-     */
+    /** Whether the connector's {@code .bala} is present in the local repository. */
     public boolean isLocallyResolvable(ModuleInfo moduleInfo) {
         return packageRoot(moduleInfo).isPresent();
     }
@@ -113,33 +106,18 @@ public final class LibraryMetadataReader {
 
     /**
      * The connector's own {@code resources/trigger-metadata.json}, resolved from the Ballerina
-     * <b>local</b> repository ({@code ~/.ballerina/repositories/local}) rather than Central -- for a
-     * connector under active local development (packed/pushed via {@code bal pack}/
-     * {@code bal push --repository=local}) that may not exist on Central at all. {@code moduleInfo} must
-     * be {@link ModuleInfo#isComplete()} -- unlike the Central reads above, local-repository resolution
-     * has no "latest version" fallback to resolve an incomplete request against.
+     * <b>local</b> repository rather than Central.
      */
     public Optional<TriggerMetadataModel> getTriggerMetadataModelFromLocalRepository(ModuleInfo moduleInfo) {
         return localPackageRoot(moduleInfo).flatMap(this::readTriggerMetadataModel);
     }
 
-    /**
-     * The connector's own {@code resources/trigger-ui-schema.json}, resolved from the Ballerina
-     * <b>local</b> repository. See {@link #getTriggerMetadataModelFromLocalRepository} for why this is a
-     * separate read from the Central-resolving {@link #getTriggerUISchemaModel}.
-     */
+    /** The connector's own {@code resources/trigger-ui-schema.json}, resolved from the local repository. */
     public Optional<TriggerUISchemaModel> getTriggerUISchemaModelFromLocalRepository(ModuleInfo moduleInfo) {
         return localPackageRoot(moduleInfo).flatMap(this::readTriggerUISchemaModel);
     }
 
-    /**
-     * Every {@code org/name/version} present in the Ballerina local repository
-     * ({@code ~/.ballerina/repositories/local}), as {@link ModuleInfo} (module name defaults to the
-     * package name, matching the common single-module-package convention -- this is enough to drive
-     * {@link #getTriggerMetadataModelFromLocalRepository}/{@link #getTriggerUISchemaModelFromLocalRepository},
-     * which only need the package root, not a specific submodule). Returns an empty list if the local
-     * repository is empty or unreadable -- never throws.
-     */
+    /** Every {@code org/name/version} present in the Ballerina local repository, as {@link ModuleInfo}. */
     public List<ModuleInfo> listLocalRepositoryModules() {
         List<ModuleInfo> modules = new ArrayList<>();
         try {
@@ -162,16 +140,8 @@ public final class LibraryMetadataReader {
     }
 
     /**
-     * The connector's compiled {@link Package}, resolved via the local repository -- for callers that
-     * need to compile/introspect it (e.g. synthesizing a {@code TriggerUISchemaModel} from
-     * {@code trigger-metadata.json} plus semantic-API introspection, the same way the Central path
-     * falls back to synthesis when a connector doesn't ship a full {@code trigger-ui-schema.json}).
-     * Deliberately <b>not cached</b> (unlike {@link #packageRoot}, which amortizes an expensive Central
-     * network round-trip): this is a cheap filesystem read, and the target user for local-repository
-     * resolution is actively iterating (edit connector -> {@code bal pack} ->
-     * {@code bal push --repository=local} -> try again in the IDE) -- caching a miss here would silently
-     * persist a stale "not found" across that whole loop until an LS/extension restart, which is worse
-     * than the cost of re-resolving each call.
+     * The connector's compiled {@link Package}, resolved via the local repository. Deliberately not
+     * cached, unlike {@link #packageRoot}.
      */
     public Optional<Package> getCompiledPackageFromLocalRepository(ModuleInfo moduleInfo) {
         if (moduleInfo == null || !moduleInfo.isComplete()) {
@@ -195,15 +165,7 @@ public final class LibraryMetadataReader {
         return getCompiledPackageFromLocalRepository(moduleInfo).map(pkg -> pkg.project().sourceRoot());
     }
 
-    /**
-     * The Ballerina local repository ({@code ~/.ballerina/repositories/local}) handle, obtained once via
-     * a throwaway sample project's {@link io.ballerina.projects.environment.Environment} (mirroring
-     * {@link PackageUtil#getSampleProject()}'s existing use of the same trick for Central resolution) and
-     * cached from then on: {@link PackageUtil#getSampleProject()} builds a fresh temp-dir project on
-     * every call, and callers such as {@code TriggerSearchUtil#searchLocalRepository} invoke this
-     * repeatedly per search. The handle itself is a live lookup surface over the filesystem, not a cache
-     * of resolution results, so reusing it does not risk persisting a stale "not found".
-     */
+    /** The Ballerina local repository handle, resolved once and cached. */
     private PackageRepository localRepository() {
         return LocalRepositoryHolder.INSTANCE;
     }
@@ -247,12 +209,7 @@ public final class LibraryMetadataReader {
         });
     }
 
-    /**
-     * The local {@code .bala} root of {@code moduleInfo}. Only a hit is memoized: a miss means the
-     * package is not in the local repository <i>yet</i>, and caching that would hide it for the rest of
-     * the session once the user pulls it (the pull itself is left to the LS's explicit, user-notified
-     * flow -- see {@link PackageUtil#getModulePackageOffline}).
-     */
+    /** The local {@code .bala} root of {@code moduleInfo}. Only a hit is memoized. */
     private Optional<Path> packageRoot(ModuleInfo moduleInfo) {
         if (moduleInfo == null || moduleInfo.org() == null || moduleInfo.moduleName() == null) {
             return Optional.empty();
@@ -269,8 +226,6 @@ public final class LibraryMetadataReader {
         return resolved;
     }
 
-    // catch(Throwable) defensively covers any unexpected compiler-API failure (e.g. a corrupted local
-    // bala), which must not propagate.
     private Optional<Path> resolvePackageRoot(ModuleInfo moduleInfo) {
         try {
             Optional<Package> pkg = PackageUtil.getModulePackageOffline(PackageUtil.getSampleProject(),

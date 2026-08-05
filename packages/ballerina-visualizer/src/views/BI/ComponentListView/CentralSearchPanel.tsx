@@ -46,10 +46,7 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     const { rpcClient } = useRpcContext();
     const [searching, setSearching] = useState<boolean>(true);
     const [results, setResults] = useState<ServiceModel[]>([]);
-    // Never deduped against Central/bundled results: the same org/name resolved from the local
-    // repository is a distinct artifact (a different, in-development version) worth showing separately.
     const [localRepositoryResults, setLocalRepositoryResults] = useState<ServiceModel[]>([]);
-    // Experimental, opt-in via a VS Code setting — read once per mount rather than per keystroke.
     const [additionalTriggerSearchEnabled, setAdditionalTriggerSearchEnabled] = useState<boolean>(false);
 
     const isMountedRef = useRef(true);
@@ -104,8 +101,6 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     );
 
     useEffect(() => {
-        // The whole panel — including "More on Ballerina Central" — is still experimental,
-        // gated behind the same flag as the local-repository search.
         if (!additionalTriggerSearchEnabled) {
             return;
         }

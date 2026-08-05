@@ -32,14 +32,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Tests {@link LocalDependencyEditUtil}: the {@code Ballerina.toml} {@code [[dependency]] ...
- * repository = "local"} edit bundled alongside generated source when a connector was picked from a
- * Ballerina local-repository search result.
- *
- * <p>Reads real fixture projects (no network/local-repository access), mirroring
- * {@code ConnectorVersionResolverTest}'s pattern.
- *
- * @since 1.10.0
+ * Tests {@link LocalDependencyEditUtil}: the {@code Ballerina.toml} {@code [[dependency]]} edit bundled
+ * alongside generated source for a connector picked from a Ballerina local-repository search result.
  */
 public class LocalDependencyEditUtilTest {
 
@@ -60,8 +54,6 @@ public class LocalDependencyEditUtilTest {
 
     @Test
     public void testNoDuplicateWhenAlreadyDeclared() throws URISyntaxException {
-        // already_declared's Ballerina.toml already has [[dependency]] org="testlocaldep"
-        // name="myconnector" -- re-adding the same local connector must not produce a duplicate stanza.
         Project project = load("local_dependency/already_declared");
         Map<String, List<TextEdit>> edits = new HashMap<>();
 
@@ -72,9 +64,6 @@ public class LocalDependencyEditUtilTest {
 
     @Test
     public void testVersionBumpReplacesExistingDeclarationInPlace() throws URISyntaxException {
-        // already_declared's Ballerina.toml pins testlocaldep/myconnector at 0.1.0 -- a developer who
-        // bumps and re-pushes their connector to 0.2.0 must get the existing stanza's version replaced,
-        // not a silent no-op (which would leave the stale 0.1.0 pinned) and not a duplicate stanza.
         Project project = load("local_dependency/already_declared");
         Map<String, List<TextEdit>> edits = new HashMap<>();
 
@@ -91,7 +80,6 @@ public class LocalDependencyEditUtilTest {
 
     @Test
     public void testDifferentConnectorStillAddedWhenAnotherIsAlreadyDeclared() throws URISyntaxException {
-        // A different org/name than the one already declared must still get its own edit.
         Project project = load("local_dependency/already_declared");
         Map<String, List<TextEdit>> edits = new HashMap<>();
 

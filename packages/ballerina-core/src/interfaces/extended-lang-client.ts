@@ -1411,9 +1411,6 @@ export interface TriggerModelsRequest {
 
 export interface TriggerModelsResponse {
     local: ServiceModel[];
-    // Matches found in the Ballerina local repository when includeLocalRepository was set - kept
-    // separate from `local`, never merged, since the same org/name may resolve differently from
-    // Central vs. the local repository.
     localRepositoryResults?: ServiceModel[];
 }
 

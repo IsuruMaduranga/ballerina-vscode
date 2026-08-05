@@ -48,11 +48,6 @@ dependencies {
     implementation "org.testng:testng:${testngVersion}"
 }
 
-// Wires this module's `test` task to unpackJballerinaTools + buildAndCopyLangserverStdlib (see
-// configureBallerinaDistribution in ballerina-language-server/build.gradle) so LibraryMetadataReaderTest
-// can resolve real .bala packages against the local repository. This turns what was previously a fast
-// unit-test module into one that unpacks a full jballerina distribution and builds langserver-stdlib -- a
-// meaningful new CI cost, previously paid only by langserver-core and bal-shell-service.
 rootProject.configureBallerinaDistribution(project)
 
 ext.moduleName = 'io.ballerina.modelgenerator.commons'

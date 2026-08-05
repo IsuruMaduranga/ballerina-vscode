@@ -58,13 +58,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Reads the unified {@code trigger-ui-schema.json} for a connector: from a bundled classpath resource
- * shipped in this jar, or (on a miss) a connector's own shipped {@code resources/trigger-ui-schema.json},
- * or (on a further miss) synthesized from its {@code resources/trigger-metadata.json} plus semantic-API
- * introspection of its compiled {@code .bala}. A module matching none of these resolves to
- * {@link Optional#empty()}, so routers fall back to the existing hardcoded builder path.
- *
- * @since 1.8.0
+ * Reads the unified {@code trigger-ui-schema.json} for a connector, bundled, shipped, or synthesized.
  */
 public class TriggerModelReader {
 
@@ -80,16 +74,7 @@ public class TriggerModelReader {
     private static final String KEY_MIN_VERSION = "minVersion";
     private static final String KEY_RESOURCE = "resource";
 
-    /**
-     * Modules for which a {@code trigger-ui-schema.json} is bundled as a classpath resource, keyed by
-     * moduleName. Loaded from {@code bundled_trigger_models.json}; an entry is either a bare resource
-     * path or an array of version-gated variants ordered newest first, e.g.
-     * <pre>{@code
-     * "mcp": [
-     *   { "minVersion": "1.2.0", "resource": "trigger-models/mcp.json" },
-     *   { "resource": "trigger-models/mcp_1.0.3.json" }
-     * ]}</pre>
-     */
+    /** Modules for which a {@code trigger-ui-schema.json} is bundled as a classpath resource. */
     private static final Map<String, List<ModelVariant>> BUNDLED_TRIGGER_MODEL_RESOURCES =
             loadBundledTriggerModelRegistry();
 
@@ -110,9 +95,6 @@ public class TriggerModelReader {
             try {
                 return SemanticVersion.from(version).greaterThanOrEqualTo(SemanticVersion.from(minVersion));
             } catch (RuntimeException e) {
-                // Unparsable version: treat as a match, resolving to the newest document. Deliberate --
-                // matches what a fresh project resolves to; only the rare unparsable-version case
-                // regresses toward a possibly-incompatible newer shape.
                 return true;
             }
         }
@@ -222,10 +204,7 @@ public class TriggerModelReader {
         return getBundledTriggerModel(moduleName, null);
     }
 
-    /**
-     * Reads and caches the bundled {@code trigger-ui-schema.json} variant that describes
-     * {@code moduleName} at {@code version}. A {@code null}/blank version selects the newest variant.
-     */
+    /** Reads and caches the bundled {@code trigger-ui-schema.json} variant for {@code moduleName}/{@code version}. */
     public Optional<TriggerUISchemaModel> getBundledTriggerModel(String moduleName, String version) {
         return resolveResource(moduleName, version).flatMap(resource ->
                 bundledTriggerCache.get(resource, r ->
@@ -237,11 +216,7 @@ public class TriggerModelReader {
         return getBundledServiceInitModel(moduleName, null);
     }
 
-    /**
-     * Reads the init form of the bundled model variant that describes {@code moduleName} at
-     * {@code version}, binding a fresh instance from the cached JSON on every call. A {@code null}/blank
-     * version selects the newest variant.
-     */
+    /** Reads the init form of the bundled model variant for {@code moduleName}/{@code version}. */
     public Optional<ServiceInitModel> getBundledServiceInitModel(String moduleName, String version) {
         return resolveResource(moduleName, version)
                 .flatMap(resource -> bundledInitJsonCache.get(resource,
@@ -249,10 +224,7 @@ public class TriggerModelReader {
                 .map(json -> gson.fromJson(json, ServiceInitModel.class));
     }
 
-    /**
-     * The resource path of the variant describing {@code moduleName} at {@code version}. No version
-     * selects the newest variant; a version below every declared floor falls back to the oldest.
-     */
+    /** The resource path of the variant describing {@code moduleName} at {@code version}. */
     private static Optional<String> resolveResource(String moduleName, String version) {
         if (moduleName == null) {
             return Optional.empty();
@@ -283,54 +255,29 @@ public class TriggerModelReader {
         }
     }
 
-    /**
-     * Cheap presence check across all tiers: the bundled classpath registry, then (on a miss, and only
-     * when {@code orgName} is known) a connector-shipped {@code trigger-ui-schema.json} or a resolved,
-     * synthesized model.
-     */
+    /** Cheap presence check across all tiers: bundled, connector-shipped, or synthesized. */
     public boolean hasSchemaDrivenModel(String orgName, String moduleName) {
         return getSchemaDrivenTriggerModel(orgName, moduleName, null, false).isPresent();
     }
 
-    /**
-     * {@code isLocalRepository} variant: when {@code true}, checks the Ballerina local repository
-     * instead of the bundled registry/Central -- see {@link #getSchemaDrivenTriggerModel(String, String,
-     * String, boolean)}. Requires {@code version} (unlike the Central-only overload above): local
-     * repository resolution has no "latest" convention to fall back to, so a routing check without a
-     * version would always report "not found" -- exactly the bug this overload exists to avoid.
-     */
+    /** {@code isLocalRepository} variant of {@link #hasSchemaDrivenModel(String, String)}. */
     public boolean hasSchemaDrivenModel(String orgName, String moduleName, String version,
                                         boolean isLocalRepository) {
         return getSchemaDrivenTriggerModel(orgName, moduleName, version, isLocalRepository).isPresent();
     }
 
-    /**
-     * The connector's {@link TriggerUISchemaModel}: bundled-by-name first, then the connector's own
-     * shipped {@code trigger-ui-schema.json}, then one synthesized via {@link TriggerModelSynthesizer}.
-     * {@code orgName == null} short-circuits to the bundled-only result.
-     */
+    /** The connector's {@link TriggerUISchemaModel}: bundled, shipped, or synthesized. */
     public Optional<TriggerUISchemaModel> getSchemaDrivenTriggerModel(String orgName, String moduleName) {
         return getSchemaDrivenTriggerModel(orgName, moduleName, null);
     }
 
-    /**
-     * Version-aware counterpart of {@link #getSchemaDrivenTriggerModel(String, String)}. {@code version}
-     * only ever gates the bundled tier -- the synthesized tier below has no version support yet and
-     * always resolves whichever copy of the connector is locally available.
-     */
+    /** Version-aware counterpart of {@link #getSchemaDrivenTriggerModel(String, String)}. */
     public Optional<TriggerUISchemaModel> getSchemaDrivenTriggerModel(String orgName, String moduleName,
                                                                        String version) {
         return getSchemaDrivenTriggerModel(orgName, moduleName, version, false);
     }
 
-    /**
-     * {@code isLocalRepository} variant: when {@code true}, resolves the connector via the Ballerina
-     * local repository ({@code ~/.ballerina/repositories/local}) instead of the bundled registry/Central
-     * -- for a connector picked from a local-repository search result, which by definition is never
-     * bundled and may not exist on Central at all. Requires a non-null {@code version} (unlike the
-     * Central path, local-repository resolution has no "latest" convention to fall back to). Deliberately
-     * <b>not cached</b> -- see {@link #resolveSchemaDrivenTriggerModelFromLocalRepository}.
-     */
+    /** {@code isLocalRepository} variant, resolving via the Ballerina local repository. Not cached. */
     public Optional<TriggerUISchemaModel> getSchemaDrivenTriggerModel(String orgName, String moduleName,
                                                                        String version, boolean isLocalRepository) {
         if (isLocalRepository) {
@@ -370,8 +317,7 @@ public class TriggerModelReader {
         }
     }
 
-    /** The connector's add-trigger init form; the {@link #getSchemaDrivenTriggerModel} counterpart of
-     * {@link #getBundledServiceInitModel}. */
+    /** The connector's add-trigger init form. */
     public Optional<ServiceInitModel> getSchemaDrivenServiceInitModel(String orgName, String moduleName) {
         return getSchemaDrivenServiceInitModel(orgName, moduleName, null);
     }
@@ -382,12 +328,7 @@ public class TriggerModelReader {
         return getSchemaDrivenServiceInitModel(orgName, moduleName, version, false);
     }
 
-    /**
-     * {@code isLocalRepository} variant -- see {@link #getSchemaDrivenTriggerModel(String, String,
-     * String, boolean)}. The returned model has {@link ServiceInitModel#setLocalRepository} already set,
-     * so {@code addServiceAndListener}'s round-trip (client echoes the model back in
-     * {@code ServiceInitSourceRequest}) preserves the source without the client needing to know about it.
-     */
+    /** {@code isLocalRepository} variant; the returned model has {@link ServiceInitModel#setLocalRepository} set. */
     public Optional<ServiceInitModel> getSchemaDrivenServiceInitModel(String orgName, String moduleName,
                                                                        String version, boolean isLocalRepository) {
         if (isLocalRepository) {
@@ -406,20 +347,7 @@ public class TriggerModelReader {
                 .flatMap(model -> buildServiceInitModelFromJson(gson.toJsonTree(model)));
     }
 
-    /**
-     * Resolves a {@link TriggerUISchemaModel} for a connector via the Ballerina local repository, mirroring
-     * {@link #doResolveSchemaDrivenTriggerModel}'s two Central tiers exactly: the connector-shipped
-     * {@code trigger-ui-schema.json} first (via
-     * {@link LibraryMetadataReader#getTriggerUISchemaModelFromLocalRepository}), then -- on a miss --
-     * synthesis from its {@code trigger-metadata.json} plus semantic introspection of its local-repository
-     * -resolved {@code .bala} (via {@link LibraryMetadataReader#getCompiledPackageFromLocalRepository}).
-     * A local connector shipping only a search-time signal (neither file) has already been filtered out by
-     * {@code TriggerSearchUtil.searchLocalRepository}'s own presence check, so reaching here with neither
-     * is not expected, but still degrades to empty rather than throwing. Deliberately <b>not cached</b>,
-     * unlike the Central tier below: the target user is actively iterating (edit connector -> pack -> push
-     * --repository=local -> try again), so caching a miss here would mask a subsequent push for the rest
-     * of the session.
-     */
+    /** Resolves a {@link TriggerUISchemaModel} for a connector via the Ballerina local repository. */
     private Optional<TriggerUISchemaModel> resolveSchemaDrivenTriggerModelFromLocalRepository(
             String orgName, String moduleName, String version) {
         try {
@@ -449,13 +377,7 @@ public class TriggerModelReader {
         }
     }
 
-    /**
-     * Resolves a {@link TriggerUISchemaModel} for a non-bundled module via {@link LibraryMetadataReader},
-     * falling back to synthesis from {@code trigger-metadata.json}. Wrapped in {@code catch (Throwable)}
-     * because this runs on the hot dispatch path for every unrecognized module and must degrade to
-     * "not schema-driven" rather than break routing. An unexpected failure is reported as not cacheable,
-     * since it says nothing durable about the connector.
-     */
+    /** Resolves a {@link TriggerUISchemaModel} for a non-bundled module via {@link LibraryMetadataReader}. */
     private Resolution resolveSchemaDrivenTriggerModel(String orgName, String moduleName) {
         try {
             return doResolveSchemaDrivenTriggerModel(orgName, moduleName);
@@ -468,7 +390,6 @@ public class TriggerModelReader {
         ModuleInfo moduleInfo = new ModuleInfo(orgName, moduleName, moduleName, null);
         LibraryMetadataReader metadataReader = LibraryMetadataReader.getInstance();
 
-        // Tier: the connector ships a full trigger-ui-schema.json directly -- no synthesis needed.
         Optional<TriggerUISchemaModel> shipped = metadataReader.getTriggerUISchemaModel(moduleInfo);
         if (shipped.isPresent()) {
             return Resolution.of(shipped);
@@ -476,15 +397,8 @@ public class TriggerModelReader {
 
         Optional<TriggerMetadataModel> metadata = metadataReader.getTriggerMetadataModel(moduleInfo);
         if (metadata.isEmpty()) {
-            // A connector present locally that declares no trigger metadata is a durable "not
-            // schema-driven"; one that isn't pulled yet is not, so re-ask next time. Reuses the package
-            // root LibraryMetadataReader already resolved rather than resolving again.
             return metadataReader.isLocallyResolvable(moduleInfo) ? Resolution.ABSENT : Resolution.UNRESOLVED;
         }
-        // Offline only: if the connector isn't already resolvable locally, this degrades to "not
-        // schema-driven" rather than silently pulling it from Central -- the LS's existing pull flow
-        // (Utils.resolveModule / the compiler's own unresolved-import diagnostic) owns that
-        // responsibility. That outcome is deliberately *not* cached, so the pull is picked up.
         Optional<Package> pkg = PackageUtil.getModulePackageOffline(PackageUtil.getSampleProject(), orgName,
                 moduleName);
         if (pkg.isEmpty()) {
@@ -493,13 +407,7 @@ public class TriggerModelReader {
         return Resolution.of(synthesizeTriggerModel(metadata.get(), pkg.get(), moduleName));
     }
 
-    /**
-     * Synthesizes a {@link TriggerUISchemaModel} from a connector's {@code trigger-metadata.json} plus
-     * semantic-API introspection of its compiled {@code .bala} -- shared by the Central tier
-     * ({@link #doResolveSchemaDrivenTriggerModel}) and the local-repository tier
-     * ({@link #resolveSchemaDrivenTriggerModelFromLocalRepository}), which differ only in how {@code pkg}
-     * was resolved.
-     */
+    /** Synthesizes a {@link TriggerUISchemaModel} from a connector's metadata plus semantic introspection. */
     private Optional<TriggerUISchemaModel> synthesizeTriggerModel(TriggerMetadataModel metadata, Package pkg,
                                                                   String moduleName) {
         SemanticModel semanticModel = PackageUtil.getCompilation(pkg)
@@ -509,8 +417,6 @@ public class TriggerModelReader {
         String resolvedOrg = descriptor.org().value();
         String resolvedPackageName = descriptor.name().value();
         String resolvedVersion = descriptor.version().value().toString();
-        // null "home" module: types are emitted into the user's own file, which only imports the
-        // connector, so references must keep their module prefix rather than render bare.
         TriggerLibraryFacts facts = TriggerLibraryIntrospector.introspect(semanticModel, null);
 
         Listener listenerModel = resolveListenerModel(metadata, semanticModel, resolvedOrg,
@@ -523,11 +429,7 @@ public class TriggerModelReader {
                 icon, "event", resolvedOrg, resolvedPackageName, moduleName, resolvedVersion);
     }
 
-    /**
-     * Resolves the listener init-form template via
-     * {@link ListenerUtil#getListenerModelFromConnectorPackage}. Returns {@code null} on any resolution
-     * failure rather than throwing.
-     */
+    /** Resolves the listener init-form template via {@link ListenerUtil#getListenerModelFromConnectorPackage}. */
     private static Listener resolveListenerModel(TriggerMetadataModel metadata, SemanticModel semanticModel,
                                                  String orgName, String packageName, String moduleName,
                                                  String version) {

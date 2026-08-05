@@ -63,9 +63,6 @@ public class TriggerSearchUtilTest {
 
     @Test
     public void testTypeTriggerTagIsAuthoritative() {
-        // Real Central classification tags (verified against aws.sqs/kafka/rabbitmq), distinct from the
-        // bare 'trigger'/'listener'/'event' keywords: 'Type/Trigger' alone must mark a trigger package,
-        // case-insensitively, without needing any other keyword or the trigger.* naming convention.
         Assert.assertTrue(TriggerSearchUtil.isTriggerPackage(
                         List.of("IT Operations/Message Brokers", "Vendor/Amazon", "Type/Connector", "Type/Trigger"),
                         "aws.sqs"),
@@ -113,9 +110,6 @@ public class TriggerSearchUtilTest {
 
     @Test
     public void testPackageWithoutTriggerSignalExcluded() {
-        // No network-bound Listener-export fallback exists: a package lacking a trigger keyword, the
-        // Type/Trigger tag, and the trigger.* naming convention is excluded even if (like the real
-        // smb/mqtt packages) it happens to export a Listener -- there is nothing here that can tell.
         PackageResponse response = new PackageResponse(
                 List.of(
                         pkg("ballerinax", "activemq", "1.0.0", List.of("messaging", "jms"), "ActiveMQ", "amq-icon"),
@@ -129,11 +123,6 @@ public class TriggerSearchUtilTest {
 
     @Test
     public void testSearchCentralScopesToBallerinaAndBallerinaxOnly() {
-        // search-packages scopes by a dedicated 'org' parameter (not an 'org:<name>' token inside 'q'),
-        // so searchCentral issues one call per allowed org, concurrently, and merges -- verify both
-        // org-scoped queries actually happen (order is not guaranteed since they race), and that a
-        // package returned under a non-ballerina/ballerinax org can never appear (the fake never even
-        // offers one, mirroring what a real 'org' filter would enforce).
         FakeCentralAPI central = new FakeCentralAPI();
         central.responsesByOrg.put("ballerina", new PackageResponse(
                 List.of(pkg("ballerina", "mqtt", "1.0.0", List.of("mqtt", "listener"), "MQTT", "mqtt-icon")),
@@ -156,9 +145,6 @@ public class TriggerSearchUtilTest {
 
     @Test
     public void testSearchCentralOneOrgFailureDoesNotDiscardTheOther() {
-        // Each per-org future must degrade to an empty list on its own failure, rather than the
-        // CompletionException from a failing future.join() propagating out and wiping every org's
-        // results via the outer catch(Throwable).
         FakeCentralAPI central = new FakeCentralAPI();
         central.responsesByOrg.put("ballerina", new PackageResponse(
                 List.of(pkg("ballerina", "mqtt", "1.0.0", List.of("mqtt", "listener"), "MQTT", "mqtt-icon")),
@@ -173,8 +159,6 @@ public class TriggerSearchUtilTest {
 
     @Test
     public void testSearchCentralInterleavesAcrossOrgsUnderTruncation() {
-        // ballerina alone has enough matches to fill a small limit; interleaving (rather than merging
-        // org-by-org in ALLOWED_ORGS order) must still let ballerinax survive truncation.
         FakeCentralAPI central = new FakeCentralAPI();
         central.responsesByOrg.put("ballerina", new PackageResponse(
                 List.of(
@@ -219,13 +203,7 @@ public class TriggerSearchUtilTest {
                 "public", List.of(), "", "true");
     }
 
-    /**
-     * A minimal {@link CentralAPI} test double: records every {@code searchPackages} query and returns a
-     * canned {@link PackageResponse} keyed by the query's {@code org} parameter, so
-     * {@code searchCentral}'s per-org querying can be verified without a network call.
-     * {@code searchCentral} now issues its per-org queries concurrently, so {@code searchPackages} may be
-     * invoked from multiple threads at once -- {@code queriesSent} must therefore be a thread-safe list.
-     */
+    /** A minimal {@link CentralAPI} test double keyed by the query's {@code org} parameter. */
     private static final class FakeCentralAPI implements CentralAPI {
 
         final Map<String, PackageResponse> responsesByOrg = new HashMap<>();
