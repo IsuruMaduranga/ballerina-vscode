@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@wso2/ui-toolkit';
 import { useRpcContext } from '@wso2/ballerina-rpc-client';
 import { EVENT_TYPE, MACHINE_VIEW, SCOPE, ServiceModel, TriggerModelsResponse } from '@wso2/ballerina-core';
@@ -23,18 +23,29 @@ import { EVENT_TYPE, MACHINE_VIEW, SCOPE, ServiceModel, TriggerModelsResponse } 
 import { CardGrid, PanelViewMore, Title, TitleWrapper } from './styles';
 import { BodyText } from '../../styles';
 import ButtonCard from '../../../components/ButtonCard';
-import { OutOfScopeComponentTooltip } from './componentListUtils';
+import { ARTIFACT_CATEGORY_META } from '../components/artifactCards';
+import { cardMatchesSearch, OutOfScopeComponentTooltip } from './componentListUtils';
 import { RelativeLoader } from '../../../components/RelativeLoader';
 
 interface FileIntegrationPanelProps {
     scope: SCOPE;
     triggers: TriggerModelsResponse;
+    /** True only while the trigger models are still being fetched. */
+    isLoadingTriggers?: boolean;
+    searchQuery?: string;
 };
+
+const CATEGORY = ARTIFACT_CATEGORY_META["file-integration"];
 
 export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
     const { rpcClient } = useRpcContext();
 
     const isDisabled = props.scope && (props.scope !== SCOPE.FILE_INTEGRATION && props.scope !== SCOPE.ANY);
+    const q = props.searchQuery;
+    const matched = useMemo(
+        () => props.triggers.local.filter((t) => t.type === "file" && cardMatchesSearch(t.name, q)),
+        [props.triggers, q]
+    );
 
     const handleOnSelect = async (model: ServiceModel) => {
         await rpcClient.getVisualizerRpcClient().openView({
@@ -51,16 +62,20 @@ export function FileIntegrationPanel(props: FileIntegrationPanelProps) {
         });
     };
 
+    // While searching, hide the whole panel when no file trigger matches.
+    if (q?.trim() && matched.length === 0) {
+        return null;
+    }
+
     return (
         <PanelViewMore disabled={isDisabled}>
             <TitleWrapper>
-                <Title variant="h2">File Integration</Title>
-                <BodyText>Create an integration that can be triggered by the availability of files in a location.</BodyText>
+                <Title variant="h2">{CATEGORY.title}</Title>
+                <BodyText>{CATEGORY.description}</BodyText>
             </TitleWrapper>
             <CardGrid>
-                {props.triggers.local.length === 0 && <RelativeLoader />}
-                {props.triggers.local
-                    .filter((t) => t.type === "file")
+                {!q?.trim() && props.isLoadingTriggers && matched.length === 0 && <RelativeLoader />}
+                {matched
                     .map((item, index) => {
                         return (
                             <ButtonCard
