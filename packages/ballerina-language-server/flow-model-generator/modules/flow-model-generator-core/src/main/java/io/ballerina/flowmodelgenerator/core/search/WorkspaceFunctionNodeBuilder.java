@@ -161,7 +161,7 @@ class WorkspaceFunctionNodeBuilder {
                 currentProject, targetProject, currentModule, context -> {
                     ModuleNodes moduleNodes = buildModuleNodes(getFunctions(context.semanticModel()),
                             context.module(), context.current(), context.relation(), position, query,
-                            context.current() ? functionsDoc : null);
+                            functionsDocument(context.module(), functionsDoc));
                     return new WorkspaceModuleSearchUtils.ModuleItems(
                             moduleNodes.functions(), moduleNodes.agentTools());
                 });
@@ -297,8 +297,24 @@ class WorkspaceFunctionNodeBuilder {
     }
 
     static boolean isNaturalExprBodiedFunction(FunctionSymbol functionSymbol, Document functionsDoc) {
-        return functionsDoc != null
+        if (functionsDoc == null || functionSymbol.getLocation().isEmpty()) {
+            return false;
+        }
+        String functionFileName = functionSymbol.getLocation().get().lineRange().fileName().replace('\\', '/');
+        String documentName = functionsDoc.name().replace('\\', '/');
+        return (functionFileName.equals(documentName) || functionFileName.endsWith("/" + documentName))
                 && CommonUtils.isNaturalExpressionBodiedFunction(functionsDoc.syntaxTree(), functionSymbol);
+    }
+
+    private static Document functionsDocument(Module module, Document currentFunctionsDoc) {
+        if (currentFunctionsDoc != null && currentFunctionsDoc.module().moduleId().equals(module.moduleId())) {
+            return currentFunctionsDoc;
+        }
+        return module.documentIds().stream()
+                .map(module::document)
+                .filter(document -> document.name().equals("functions.bal"))
+                .findFirst()
+                .orElse(null);
     }
 
     static boolean isValidFunctionForSearchQuery(FunctionSymbol functionSymbol, String query) {

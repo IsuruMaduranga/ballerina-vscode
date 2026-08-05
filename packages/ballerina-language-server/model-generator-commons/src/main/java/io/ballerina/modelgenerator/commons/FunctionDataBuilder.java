@@ -305,7 +305,7 @@ public class FunctionDataBuilder {
         if (project != null) {
             Optional<PackageUtil.WorkspacePackageResolution> workspaceResolution =
                     PackageUtil.getSemanticModelFromWorkspace(project,
-                            moduleInfo.org(), moduleInfo.packageName(), moduleInfo.moduleName());
+                            moduleInfo.org(), moduleInfo.packageName(), moduleInfo.moduleName(), moduleInfo.version());
             if (workspaceResolution.isPresent()) {
                 applyWorkspaceResolution(workspaceResolution.get());
                 return;
@@ -367,7 +367,7 @@ public class FunctionDataBuilder {
         // replace their project while resolving local data.
         if (semanticModel == null && project != null) {
             PackageUtil.getSemanticModelFromWorkspace(project, moduleInfo.org(), moduleInfo.packageName(),
-                    moduleInfo.moduleName()).ifPresent(this::applyWorkspaceResolution);
+                    moduleInfo.moduleName(), moduleInfo.version()).ifPresent(this::applyWorkspaceResolution);
         }
 
         // Check the index before attempting external package resolution.

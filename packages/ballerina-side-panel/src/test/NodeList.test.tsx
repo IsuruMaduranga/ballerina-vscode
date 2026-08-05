@@ -152,6 +152,19 @@ describe("NodeList (rpc-driven)", () => {
         expect(container.textContent).toContain("Functions");
     });
 
+    it("does not crash when a malformed category has no title", () => {
+        const malformedCategory = {
+            title: undefined,
+            items: [node("fn", "Function")],
+        } as unknown as Category;
+        const { container } = renderWithRpc(
+            <NodeList {...props([malformedCategory])} />,
+            { getCommonRpcClient: () => ({ isNPSupported: () => new Promise<boolean>(() => undefined) }) }
+        );
+
+        expect(container).toBeTruthy();
+    });
+
     it.each(createFunctionCases)("offers function creation for $name: $showsCreateFunction", async (testCase) => {
         const onAddFunction = jest.fn();
         const { getByText, queryAllByText } = renderWithRpc(

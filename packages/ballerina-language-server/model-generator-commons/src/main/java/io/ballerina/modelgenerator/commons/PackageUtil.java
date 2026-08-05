@@ -360,6 +360,23 @@ public class PackageUtil {
     public static Optional<WorkspacePackageResolution> getSemanticModelFromWorkspace(Project project, String org,
                                                                                       String packageName,
                                                                                       String moduleName) {
+        return getSemanticModelFromWorkspace(project, org, packageName, moduleName, null);
+    }
+
+    /**
+     * Retrieves the semantic model for a version-matching package from sibling projects within the same workspace.
+     *
+     * @param project     the current project used to find the workspace
+     * @param org         the organization name of the target package
+     * @param packageName the package name of the target package
+     * @param moduleName  the module name of the target package
+     * @param version     the requested package version, or null when any workspace version is acceptable
+     * @return an Optional containing the semantic model and package if a matching sibling project is found
+     */
+    public static Optional<WorkspacePackageResolution> getSemanticModelFromWorkspace(Project project, String org,
+                                                                                      String packageName,
+                                                                                      String moduleName,
+                                                                                      String version) {
         BallerinaCompilerApi compilerApi = BallerinaCompilerApi.getInstance();
         Optional<Project> workspaceProject = compilerApi.getWorkspaceProject(project);
         if (workspaceProject.isEmpty()) {
@@ -371,7 +388,9 @@ public class PackageUtil {
             String currentPackageName = currentPackage.packageName().value();
             boolean orgMatches = currentPackage.packageOrg().value().equals(org);
             boolean nameMatches = currentPackageName.equals(packageName) || currentPackageName.equals(moduleName);
-            if (!orgMatches || !nameMatches) {
+            boolean versionMatches = version == null
+                    || currentPackage.descriptor().version().toString().equals(version);
+            if (!orgMatches || !nameMatches || !versionMatches) {
                 continue;
             }
 

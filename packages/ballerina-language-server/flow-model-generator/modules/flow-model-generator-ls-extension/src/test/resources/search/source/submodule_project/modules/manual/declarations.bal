@@ -1,7 +1,7 @@
 public function manualPublic() {
 }
 
-function manualPrivate() {
+isolated function manualPrivate() {
 }
 
 public type ManualPublic record {
