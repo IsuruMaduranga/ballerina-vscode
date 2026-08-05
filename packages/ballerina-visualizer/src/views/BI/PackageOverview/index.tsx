@@ -1221,6 +1221,11 @@ export function PackageOverview(props: PackageOverviewProps) {
                                             <Typography variant="h3" sx={{ marginBottom: "16px" }}>
                                                 Your integration is empty
                                             </Typography>
+                                            {showHero && (
+                                                <HeroRow>
+                                                    <CopilotHeroBox placeholder="What would you like to build?" />
+                                                </HeroRow>
+                                            )}
                                             {/* Skipped only while the hero carries the status itself, so
                                                 the two never state it at once. */}
                                             {!(agentWorking && showHero) && (
@@ -1241,11 +1246,6 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                                 : "Add an artifact to get started"}
                                                     </Typography>
                                                 </StatusRow>
-                                            )}
-                                            {showHero && (
-                                                <HeroRow>
-                                                    <CopilotHeroBox placeholder="What would you like to build?" />
-                                                </HeroRow>
                                             )}
                                             <ButtonContainer>
                                                 {/* An empty integration means the creation wizard was
