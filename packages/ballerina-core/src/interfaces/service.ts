@@ -338,5 +338,6 @@ export interface ServiceInitModel {
     type: string;
     icon: string;
     properties: { [key: string]: PropertyModel };
+    isLocalRepository?: boolean;
 }
 

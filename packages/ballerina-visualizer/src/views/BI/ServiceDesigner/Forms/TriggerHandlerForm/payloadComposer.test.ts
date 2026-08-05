@@ -151,7 +151,7 @@ function ftpPayloadParam(boundType?: string): ParameterModel {
 function ftpStreamModifierProp(active: boolean): PropertyModel {
     return prop({
         metadata: { label: "Stream (Large Files)", description: "Process the file content in chunks" },
-        value: active,
+        value: active as unknown as string,
         codedata: {
             type: "PAYLOAD_MODIFIER",
             template: "stream<{{type}}, error?>",
@@ -508,9 +508,9 @@ describe("applyTypeTemplate / isModifierActive", () => {
     });
 
     it("isModifierActive accepts both a real boolean and the string form", () => {
-        expect(isModifierActive(prop({ value: true }))).toBe(true);
+        expect(isModifierActive(prop({ value: true as unknown as string }))).toBe(true);
         expect(isModifierActive(prop({ value: "true" }))).toBe(true);
-        expect(isModifierActive(prop({ value: false }))).toBe(false);
+        expect(isModifierActive(prop({ value: false as unknown as string }))).toBe(false);
         expect(isModifierActive(prop({ value: "false" }))).toBe(false);
     });
 });
@@ -591,7 +591,7 @@ describe("composePayloadType / activeTemplateOf / decomposePayloadType — per-c
         const handler = fn({
             parameters: [p],
             properties: {
-                noTemplateFlag: prop({ value: true, codedata: { type: "PAYLOAD_MODIFIER" } as any }),
+                noTemplateFlag: prop({ value: true as unknown as string, codedata: { type: "PAYLOAD_MODIFIER" } as any }),
                 stream: ftpStreamModifierProp(false),
             },
         });

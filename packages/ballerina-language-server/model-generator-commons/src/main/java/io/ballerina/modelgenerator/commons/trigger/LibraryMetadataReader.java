@@ -28,21 +28,34 @@ import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
 import io.ballerina.modelgenerator.commons.trigger.utils.TriggerMetadataGson;
 import io.ballerina.projects.Package;
+import io.ballerina.projects.PackageDescriptor;
+import io.ballerina.projects.PackageName;
+import io.ballerina.projects.PackageOrg;
+import io.ballerina.projects.PackageVersion;
+import io.ballerina.projects.environment.PackageRepository;
+import io.ballerina.projects.environment.ResolutionOptions;
+import io.ballerina.projects.environment.ResolutionRequest;
+import io.ballerina.projects.internal.environment.BallerinaUserHome;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * Connector-agnostic entry point for reading the trigger model family (metadata JSON, UI schema JSON,
- * and the LS's own bundled trigger metadata), shared by every LS extension that needs one.
- *
- * @since 1.10.0
+ * Connector-agnostic entry point for reading the trigger model family, shared by every LS extension.
  */
 public final class LibraryMetadataReader {
+
+    private static final Logger LOGGER = Logger.getLogger(LibraryMetadataReader.class.getName());
 
     private static final String TRIGGER_METADATA_RESOURCE_PATH = "resources/trigger-metadata.json";
     private static final String TRIGGER_UI_SCHEMA_RESOURCE_PATH = "resources/trigger-ui-schema.json";
@@ -50,10 +63,12 @@ public final class LibraryMetadataReader {
     private static final String PACKAGED_TRIGGER_METADATA_FILE = "trigger-metadata.json";
     private static final int MAX_CACHE_SIZE = 2;
 
+    private static final Duration PACKAGE_ROOT_CACHE_TTL = Duration.ofSeconds(60);
+
     private static final LibraryMetadataReader INSTANCE = new LibraryMetadataReader();
 
     private final Cache<String, Optional<Path>> packageRootCache =
-            Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).build();
+            Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).expireAfterWrite(PACKAGE_ROOT_CACHE_TTL).build();
     private final Cache<String, Optional<TriggerMetadataModel>> packagedMetadataCache =
             Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).build();
 
@@ -76,11 +91,7 @@ public final class LibraryMetadataReader {
         return packageRoot(moduleInfo).flatMap(this::readTriggerUISchemaModel);
     }
 
-    /**
-     * Whether the connector's {@code .bala} is present in the local repository. Lets a caller tell "not
-     * pulled yet" apart from "present but ships no trigger metadata", which is the difference between
-     * retrying later and a durable answer.
-     */
+    /** Whether the connector's {@code .bala} is present in the local repository. */
     public boolean isLocallyResolvable(ModuleInfo moduleInfo) {
         return packageRoot(moduleInfo).isPresent();
     }
@@ -94,6 +105,77 @@ public final class LibraryMetadataReader {
             return Optional.empty();
         }
         return packagedMetadataCache.get(moduleInfo.moduleName(), this::readPackagedMetadata);
+    }
+
+    /**
+     * The connector's own {@code resources/trigger-metadata.json}, resolved from the Ballerina
+     * <b>local</b> repository rather than Central.
+     */
+    public Optional<TriggerMetadataModel> getTriggerMetadataModelFromLocalRepository(ModuleInfo moduleInfo) {
+        return localPackageRoot(moduleInfo).flatMap(this::readTriggerMetadataModel);
+    }
+
+    /** The connector's own {@code resources/trigger-ui-schema.json}, resolved from the local repository. */
+    public Optional<TriggerUISchemaModel> getTriggerUISchemaModelFromLocalRepository(ModuleInfo moduleInfo) {
+        return localPackageRoot(moduleInfo).flatMap(this::readTriggerUISchemaModel);
+    }
+
+    /** Every {@code org/name/version} present in the Ballerina local repository, as {@link ModuleInfo}. */
+    public List<ModuleInfo> listLocalRepositoryModules() {
+        List<ModuleInfo> modules = new ArrayList<>();
+        try {
+            Map<String, List<String>> packagesByOrg = localRepository().getPackages();
+            for (Map.Entry<String, List<String>> entry : packagesByOrg.entrySet()) {
+                String org = entry.getKey();
+                for (String nameAndVersion : entry.getValue()) {
+                    String[] parts = nameAndVersion.split(":");
+                    if (parts.length != 2) {
+                        continue;
+                    }
+                    modules.add(new ModuleInfo(org, parts[0], parts[0], parts[1]));
+                }
+            }
+        } catch (Throwable e) {
+            LOGGER.log(Level.FINE, "Listing local-repository modules failed", e);
+            return List.of();
+        }
+        return modules;
+    }
+
+    /**
+     * The connector's compiled {@link Package}, resolved via the local repository. Deliberately not
+     * cached, unlike {@link #packageRoot}.
+     */
+    public Optional<Package> getCompiledPackageFromLocalRepository(ModuleInfo moduleInfo) {
+        if (moduleInfo == null || !moduleInfo.isComplete()) {
+            return Optional.empty();
+        }
+        try {
+            PackageDescriptor descriptor = PackageDescriptor.from(
+                    PackageOrg.from(moduleInfo.org()), PackageName.from(moduleInfo.packageName()),
+                    PackageVersion.from(moduleInfo.version()));
+            ResolutionRequest request = ResolutionRequest.from(descriptor);
+            return localRepository().getPackage(request, ResolutionOptions.builder().setOffline(true).build());
+        } catch (Throwable e) {
+            LOGGER.log(Level.FINE, "Compiling local-repository package failed for "
+                    + moduleInfo.org() + "/" + moduleInfo.packageName(), e);
+            return Optional.empty();
+        }
+    }
+
+    /** {@code Path}-rooted counterpart of {@link #getCompiledPackageFromLocalRepository}. */
+    private Optional<Path> localPackageRoot(ModuleInfo moduleInfo) {
+        return getCompiledPackageFromLocalRepository(moduleInfo).map(pkg -> pkg.project().sourceRoot());
+    }
+
+    /** The Ballerina local repository handle, resolved once and cached. */
+    private PackageRepository localRepository() {
+        return LocalRepositoryHolder.INSTANCE;
+    }
+
+    private static final class LocalRepositoryHolder {
+        private static final PackageRepository INSTANCE = BallerinaUserHome.from(
+                PackageUtil.getSampleProject().projectEnvironmentContext().environment()).localPackageRepository();
     }
 
     private Optional<TriggerMetadataModel> readPackagedMetadata(String moduleName) {
@@ -130,12 +212,7 @@ public final class LibraryMetadataReader {
         });
     }
 
-    /**
-     * The local {@code .bala} root of {@code moduleInfo}. Only a hit is memoized: a miss means the
-     * package is not in the local repository <i>yet</i>, and caching that would hide it for the rest of
-     * the session once the user pulls it (the pull itself is left to the LS's explicit, user-notified
-     * flow -- see {@link PackageUtil#getModulePackageOffline}).
-     */
+    /** The local {@code .bala} root of {@code moduleInfo}. Only a hit is memoized. */
     private Optional<Path> packageRoot(ModuleInfo moduleInfo) {
         if (moduleInfo == null || moduleInfo.org() == null || moduleInfo.moduleName() == null) {
             return Optional.empty();
@@ -152,8 +229,6 @@ public final class LibraryMetadataReader {
         return resolved;
     }
 
-    // catch(Throwable) defensively covers any unexpected compiler-API failure (e.g. a corrupted local
-    // bala), which must not propagate.
     private Optional<Path> resolvePackageRoot(ModuleInfo moduleInfo) {
         try {
             Optional<Package> pkg = PackageUtil.getModulePackageOffline(PackageUtil.getSampleProject(),

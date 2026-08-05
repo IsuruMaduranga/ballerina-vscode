@@ -1585,6 +1585,14 @@
       }
     }
   ],
+  "readOnlyMetadata": [
+    {
+      "key": "tableName",
+      "displayName": "Table Name",
+      "kind": "SERVICE_ANNOTATION",
+      "path": "ServiceConfig.tables"
+    }
+  ],
   "importStatements": [
     "ballerinax/cdc",
     "ballerinax/mysql.cdc.driver as _"

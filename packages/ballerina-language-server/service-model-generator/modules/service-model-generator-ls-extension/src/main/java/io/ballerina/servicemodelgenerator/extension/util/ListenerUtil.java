@@ -345,14 +345,26 @@ public class ListenerUtil {
         return split[split.length - 1];
     }
 
-    public static Optional<Listener> getListenerModelByName(Codedata codedata, SemanticModel semanticModel,
-                                                            ModuleInfo moduleInfo) {
-        return getListenerModelByName(codedata, semanticModel, moduleInfo, true);
+    /**
+     * Like {@link #getListenerModelByName(Codedata, SemanticModel, ModuleInfo, boolean)}, but
+     * {@code semanticModel} here is the connector's own package semantic model, not the current file's.
+     */
+    public static Optional<Listener> getListenerModelFromConnectorPackage(Codedata codedata,
+                                                                          SemanticModel semanticModel,
+                                                                          ModuleInfo moduleInfo) {
+        return getListenerModelByName(codedata, semanticModel, moduleInfo, true, semanticModel);
     }
 
     public static Optional<Listener> getListenerModelByName(Codedata codedata, SemanticModel semanticModel,
                                                             ModuleInfo moduleInfo,
                                                             boolean removeDeprecated) {
+        return getListenerModelByName(codedata, semanticModel, moduleInfo, removeDeprecated, null);
+    }
+
+    private static Optional<Listener> getListenerModelByName(Codedata codedata, SemanticModel semanticModel,
+                                                            ModuleInfo moduleInfo,
+                                                            boolean removeDeprecated,
+                                                            SemanticModel parentSymbolSemanticModel) {
         String listenerType = codedata.getType() == null ? "Listener" : codedata.getType();
         FunctionDataBuilder functionDataBuilder = new FunctionDataBuilder()
                 .parentSymbolType(listenerType)
@@ -360,8 +372,11 @@ public class ListenerUtil {
                 .moduleInfo(new ModuleInfo(codedata.getOrgName(), codedata.getPackageName(), codedata.getModuleName(),
                         codedata.getVersion()))
                 .lsClientLogger(null) // Set the LS Client Logger
-                .functionResultKind(FunctionData.Kind.LISTENER_INIT)
-                .userModuleInfo(moduleInfo);
+                .functionResultKind(FunctionData.Kind.LISTENER_INIT);
+        if (parentSymbolSemanticModel != null) {
+            functionDataBuilder.semanticModel(parentSymbolSemanticModel);
+        }
+        functionDataBuilder.userModuleInfo(moduleInfo);
 
         FunctionData functionData = functionDataBuilder.build();
         Listener listener = createBaseListenerModel(functionData);

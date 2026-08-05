@@ -158,6 +158,7 @@ export interface ArtifactInfo {
     packageName?: string;
     moduleName?: string;
     version?: string;
+    isLocalRepository?: boolean;
 }
 
 export interface ManagedCredentialMapping {

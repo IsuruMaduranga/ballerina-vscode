@@ -24,10 +24,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link LibraryMetadataReader}'s three independent reads: {@link
- * LibraryMetadataReader#getTriggerMetadataModel}, {@link LibraryMetadataReader#getTriggerUISchemaModel},
- * and {@link LibraryMetadataReader#getPackagedTriggerMetadataModel} -- none silently falls back to
- * another.
+ * Tests {@link LibraryMetadataReader}'s public reads: none of the three tiers falls back to another.
  */
 public class LibraryMetadataReaderTest {
 
@@ -35,8 +32,6 @@ public class LibraryMetadataReaderTest {
 
     @Test
     public void testGetPackagedTriggerMetadataModelHit() {
-        // kafka is bundled under trigger-metadata-models/kafka/trigger-metadata.json -- resolved off
-        // the classpath, no package resolution needed.
         ModuleInfo moduleInfo = new ModuleInfo("ballerinax", "kafka", "kafka", "1.0.0");
         TriggerMetadataModel model = READER.getPackagedTriggerMetadataModel(moduleInfo).orElseThrow();
         Assert.assertFalse(model.listeners().isEmpty());
@@ -78,8 +73,6 @@ public class LibraryMetadataReaderTest {
 
     @Test
     public void testGetTriggerMetadataModelUnresolvableModuleGracefullyEmpty() {
-        // Must resolve to empty, not throw (the version-less PackageUtil.getModulePackage overload
-        // throws on an unknown org/module). Also confirms no fallback to the packaged tier.
         ModuleInfo moduleInfo = new ModuleInfo("no-such-org", "no-such-module", "no-such-module", null);
         Assert.assertTrue(READER.getTriggerMetadataModel(moduleInfo).isEmpty());
     }
@@ -115,4 +108,5 @@ public class LibraryMetadataReaderTest {
         Assert.assertTrue(READER.getTriggerMetadataModel(moduleInfo).isEmpty());
         Assert.assertFalse(READER.isLocallyResolvable(moduleInfo));
     }
+
 }

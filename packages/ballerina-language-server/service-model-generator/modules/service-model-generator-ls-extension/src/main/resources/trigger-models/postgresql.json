@@ -1634,6 +1634,14 @@
       }
     }
   ],
+  "readOnlyMetadata": [
+    {
+      "key": "tableName",
+      "displayName": "Table Name",
+      "kind": "SERVICE_ANNOTATION",
+      "path": "ServiceConfig.tables"
+    }
+  ],
   "importStatements": [
     "ballerinax/cdc",
     "ballerinax/postgresql.cdc.driver as _"

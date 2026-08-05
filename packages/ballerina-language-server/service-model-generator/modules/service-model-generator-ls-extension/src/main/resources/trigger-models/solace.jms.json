@@ -1140,9 +1140,10 @@
                       "typeConstraint": "anydata",
                       "bindingKind": "USER_SELECTED",
                       "defaultType": "jms:Message",
+                      "orgName": "ballerinax",
+                      "moduleName": "solace.jms",
                       "template": "{{type}}",
                       "modifiers": {
-                        "type": "ballerinax/solace.jms:0.1.0:Message",
                         "field": "payload",
                         "template": "{{type}}"
                       }
@@ -1340,6 +1341,20 @@
           }
         }
       ]
+    }
+  ],
+  "readOnlyMetadata": [
+    {
+      "key": "topicName",
+      "displayName": "Topic Name",
+      "kind": "SERVICE_ANNOTATION",
+      "path": "ServiceConfig.topicName"
+    },
+    {
+      "key": "queueName",
+      "displayName": "Queue Name",
+      "kind": "SERVICE_ANNOTATION",
+      "path": "ServiceConfig.queueName"
     }
   ],
   "importStatements": []

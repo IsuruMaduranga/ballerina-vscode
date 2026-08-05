@@ -46,6 +46,8 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     const { rpcClient } = useRpcContext();
     const [searching, setSearching] = useState<boolean>(true);
     const [results, setResults] = useState<ServiceModel[]>([]);
+    const [localRepositoryResults, setLocalRepositoryResults] = useState<ServiceModel[]>([]);
+    const [additionalTriggerSearchEnabled, setAdditionalTriggerSearchEnabled] = useState<boolean>(false);
 
     const isMountedRef = useRef(true);
     // The most recently *dispatched* search query. Debounce only coalesces rapid keystrokes into
@@ -62,6 +64,17 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
         };
     }, []);
 
+    useEffect(() => {
+        rpcClient
+            .getCommonRpcClient()
+            .additionalTriggerSearchEnabled()
+            .then((enabled) => {
+                if (isMountedRef.current) {
+                    setAdditionalTriggerSearchEnabled(enabled);
+                }
+            });
+    }, [rpcClient]);
+
     // Debounced so we don't hit Central on every keystroke.
     const runSearch = useMemo(
         () =>
@@ -70,12 +83,13 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                 setSearching(true);
                 rpcClient
                     .getServiceDesignerRpcClient()
-                    .searchTriggers({ query: searchQuery })
+                    .searchTriggers({ query: searchQuery, includeLocalRepository: additionalTriggerSearchEnabled })
                     .then((res) => {
                         if (!isMountedRef.current || latestQueryRef.current !== searchQuery) {
                             return;
                         }
                         setResults(res?.local ?? []);
+                        setLocalRepositoryResults(res?.localRepositoryResults ?? []);
                     })
                     .finally(() => {
                         if (isMountedRef.current && latestQueryRef.current === searchQuery) {
@@ -83,15 +97,22 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                         }
                     });
             }, SEARCH_DEBOUNCE_MS),
-        [rpcClient]
+        [rpcClient, additionalTriggerSearchEnabled]
     );
 
     useEffect(() => {
+        if (!additionalTriggerSearchEnabled) {
+            return;
+        }
         runSearch(props.query);
         return () => runSearch.cancel();
-    }, [props.query, runSearch]);
+    }, [props.query, runSearch, additionalTriggerSearchEnabled]);
 
-    const handleSelect = async (model: ServiceModel) => {
+    if (!additionalTriggerSearchEnabled) {
+        return null;
+    }
+
+    const handleSelect = async (model: ServiceModel, isLocalRepository: boolean) => {
         await rpcClient.getVisualizerRpcClient().openView({
             type: EVENT_TYPE.OPEN_VIEW,
             location: {
@@ -100,7 +121,8 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
                     org: model.orgName,
                     packageName: model.packageName,
                     moduleName: model.moduleName,
-                    version: model.version
+                    version: model.version,
+                    isLocalRepository
                 }
             },
         });
@@ -111,31 +133,56 @@ export function CentralSearchPanel(props: CentralSearchPanelProps) {
     const visibleResults = results.filter((item) => !localTriggerIds.has(`${item.orgName}/${item.packageName}`));
 
     return (
-        <PanelViewMore>
-            <TitleWrapper>
-                <Title variant="h2">More on Ballerina Central</Title>
-                <BodyText>
-                    Integrations published on Ballerina Central that match your search.
-                </BodyText>
-            </TitleWrapper>
-            <CardGrid>
-                {searching && <RelativeLoader />}
-                {!searching && visibleResults.length === 0 && (
-                    <BodyText>No matching integrations found on Ballerina Central.</BodyText>
-                )}
-                {!searching &&
-                    visibleResults.map((item) => (
-                        <ButtonCard
-                            id={`central-trigger-${item.moduleName.replace(/\./g, '-')}`}
-                            key={`${item.orgName}/${item.packageName}`}
-                            title={item.name}
-                            icon={getEntryNodeIcon(item)}
-                            onClick={() => handleSelect(item)}
-                            isBeta={isBetaModule(item.moduleName)}
-                        />
-                    ))}
-            </CardGrid>
-        </PanelViewMore>
+        <>
+            <PanelViewMore>
+                <TitleWrapper>
+                    <Title variant="h2">More on Ballerina Central</Title>
+                    <BodyText>
+                        Integrations published on Ballerina Central that match your search.
+                    </BodyText>
+                </TitleWrapper>
+                <CardGrid>
+                    {searching && <RelativeLoader />}
+                    {!searching && visibleResults.length === 0 && (
+                        <BodyText>No matching integrations found on Ballerina Central.</BodyText>
+                    )}
+                    {!searching &&
+                        visibleResults.map((item) => (
+                            <ButtonCard
+                                id={`central-trigger-${item.moduleName.replace(/\./g, '-')}`}
+                                key={`${item.orgName}/${item.packageName}`}
+                                title={item.name}
+                                icon={getEntryNodeIcon(item)}
+                                onClick={() => handleSelect(item, false)}
+                                isBeta={isBetaModule(item.moduleName)}
+                            />
+                        ))}
+                </CardGrid>
+            </PanelViewMore>
+            {!searching && localRepositoryResults.length > 0 && (
+                <PanelViewMore>
+                    <TitleWrapper>
+                        <Title variant="h2">Local Central Search Results</Title>
+                        <BodyText>
+                            Packages found in your local Ballerina repository (~/.ballerina/repositories/local)
+                            that match your search.
+                        </BodyText>
+                    </TitleWrapper>
+                    <CardGrid>
+                        {localRepositoryResults.map((item) => (
+                            <ButtonCard
+                                id={`local-repo-trigger-${item.moduleName.replace(/\./g, '-')}`}
+                                key={`local/${item.orgName}/${item.packageName}`}
+                                title={item.name}
+                                icon={getEntryNodeIcon(item)}
+                                onClick={() => handleSelect(item, true)}
+                                isBeta={isBetaModule(item.moduleName)}
+                            />
+                        ))}
+                    </CardGrid>
+                </PanelViewMore>
+            )}
+        </>
     );
 }
 

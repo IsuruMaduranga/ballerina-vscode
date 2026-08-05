@@ -1556,6 +1556,15 @@ public final class Utils {
      */
     public static void resolveModule(String orgName, String packageName, String moduleName, String version,
                                      LSClientLogger lsClientLogger) {
+        resolveModule(orgName, packageName, moduleName, version, false, lsClientLogger);
+    }
+
+    /** {@code isLocalRepository} variant: a no-op, since a local-repository connector needs no Central pull. */
+    public static void resolveModule(String orgName, String packageName, String moduleName, String version,
+                                     boolean isLocalRepository, LSClientLogger lsClientLogger) {
+        if (isLocalRepository) {
+            return;
+        }
         if (BALLERINA.equals(orgName) && DISTRIBUTION_MODULES.contains(packageName)) {
             return;
         }
