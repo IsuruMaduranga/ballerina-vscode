@@ -129,7 +129,9 @@ reviews:
            17-line form from the top of packages/ballerina-core/src/index.ts.
            For .java, match the 15-line form used by sibling files in the same
            package -- the Java headers use different wording from the
-           TypeScript one, so do not carry it across. New files use year 2026.
+           TypeScript one, so do not carry it across. A new file should use the
+           current year; do not copy the year from the file you took the
+           header from.
 
         3. BREAKING A PUBLISHED SURFACE. Flag changes to the exported extension
            API, to RPC message contracts, or to public Java interfaces when the
@@ -176,6 +178,11 @@ reviews:
         A fixable CVE goes to common/config/rush/pnpm-config.json under
         globalOverrides, not to .trivyignore. .trivyignore must stay one plain
         ID per line.
+
+        A new .trivyignore entry needs a linked tracking issue in the comment
+        above it, next to the reason no usable fix exists. Ask for one when it
+        is missing -- without it nothing prompts a recheck once upstream
+        publishes a fix.
 
     # RPC boundary
     - path: 'packages/{ballerina-core,ballerina-rpc-client,ballerina-extension}/**/*.ts'
