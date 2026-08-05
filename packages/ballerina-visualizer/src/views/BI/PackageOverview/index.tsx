@@ -82,7 +82,7 @@ const ButtonContainer = styled.div`
     gap: 8px;
 `;
 
-const WorkingRow = styled.div`
+const StatusRow = styled.div`
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1221,48 +1221,47 @@ export function PackageOverview(props: PackageOverviewProps) {
                                             <Typography variant="h3" sx={{ marginBottom: "16px" }}>
                                                 Your integration is empty
                                             </Typography>
-                                            {/* Only when the hero is absent — its active form already
-                                                carries the same status. */}
-                                            {agentWorking && !showHero && (
-                                                <WorkingRow>
-                                                    {awaitingInput ? (
-                                                        <Codicon name="comment-discussion" />
-                                                    ) : (
-                                                        <ProgressRing color={ThemeColors.PRIMARY} sx={{ width: 16, height: 16 }} />
-                                                    )}
-                                                    <Typography
-                                                        variant="body1"
-                                                        sx={{ color: "var(--vscode-descriptionForeground)" }}
-                                                    >
-                                                        {awaitingInput ? "Copilot needs your input" : "Copilot is working…"}
-                                                    </Typography>
-                                                </WorkingRow>
-                                            )}
+                                            {/* One line in every state, so starting a turn does not
+                                                reflow the block. The icon is dropped when the hero is
+                                                present, since its active form already animates. */}
+                                            <StatusRow>
+                                                {agentWorking && !showHero && (
+                                                    awaitingInput
+                                                        ? <Codicon name="comment-discussion" />
+                                                        : <ProgressRing color={ThemeColors.PRIMARY} sx={{ width: 16, height: 16 }} />
+                                                )}
+                                                <Typography
+                                                    variant="body1"
+                                                    sx={{ color: "var(--vscode-descriptionForeground)" }}
+                                                >
+                                                    {agentWorking
+                                                        ? (awaitingInput ? "Copilot needs your input" : "Copilot is working…")
+                                                        : showHero
+                                                            ? "Describe what you want to build, or add an artifact to get started"
+                                                            : "Add an artifact to get started"}
+                                                </Typography>
+                                            </StatusRow>
                                             {showHero && (
                                                 <HeroRow>
                                                     <CopilotHeroBox placeholder="What would you like to build?" />
                                                 </HeroRow>
                                             )}
-                                            {!agentWorking && (
-                                                <>
-                                                    <Typography
-                                                        variant="body1"
-                                                        sx={{ marginBottom: "24px", color: "var(--vscode-descriptionForeground)" }}
-                                                    >
-                                                        {showHero
-                                                            ? "Describe what you want to build, or add an artifact to get started"
-                                                            : "Add an artifact to get started"}
-                                                    </Typography>
-                                                    <ButtonContainer>
-                                                        {/* An empty integration means the creation wizard was
-                                                            skipped — offer it again here rather than the raw
-                                                            artifact list, so the guided flow can be resumed. */}
-                                                        <Button appearance="primary" onClick={() => setShowAddIntegration(true)}>
-                                                            <Codicon name="add" sx={{ marginRight: 8 }} /> Add Integration
-                                                        </Button>
-                                                    </ButtonContainer>
-                                                </>
-                                            )}
+                                            <ButtonContainer>
+                                                {/* An empty integration means the creation wizard was
+                                                    skipped — offer it again here rather than the raw
+                                                    artifact list, so the guided flow can be resumed. */}
+                                                {/* Disabled rather than hidden mid-turn: reverting the
+                                                    generation restores a pre-turn checkpoint and drops
+                                                    whatever is not in it, including an artifact added now. */}
+                                                <Button
+                                                    appearance="primary"
+                                                    onClick={() => setShowAddIntegration(true)}
+                                                    disabled={agentWorking}
+                                                    tooltip={agentWorking ? "Available once Copilot finishes" : undefined}
+                                                >
+                                                    <Codicon name="add" sx={{ marginRight: 8 }} /> Add Integration
+                                                </Button>
+                                            </ButtonContainer>
                                         </EmptyStateContainer>
                                     ) : (
                                         <React.Suspense
