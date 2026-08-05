@@ -44,7 +44,7 @@ import { TitleBar } from "../../../components/TitleBar";
 import { PublishToCentralButton } from "./PublishToCentralButton";
 import { LibraryOverview } from "./LibraryOverview";
 import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
-import { useAgentRunState, useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
+import { AWAITING_INPUT_LABEL, useAgentRunState, useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
 
 /** Only reachable from an empty integration, and it pulls in the whole wizard +
  *  artifact form tree — so keep it out of the overview's own chunk. */
@@ -1240,7 +1240,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                         sx={{ color: "var(--vscode-descriptionForeground)" }}
                                                     >
                                                         {agentWorking
-                                                            ? (awaitingInput ? "Copilot needs your input" : "Copilot is working…")
+                                                            ? (awaitingInput ? AWAITING_INPUT_LABEL : "Copilot is working…")
                                                             : showHero
                                                                 ? "Describe what you want to build, or add an artifact to get started"
                                                                 : "Add an artifact to get started"}

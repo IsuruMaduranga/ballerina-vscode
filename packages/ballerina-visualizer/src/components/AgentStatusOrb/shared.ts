@@ -132,6 +132,8 @@ export const AmbientFrame = styled.div<AmbientFrameProps>`
 `;
 
 /** User-facing label for a non-idle run state, shared by the orb and the hero box. */
+export const AWAITING_INPUT_LABEL = "Copilot needs your input";
+
 export function activeStateLabel(status: AgentRunStatus): string {
     switch (status.state) {
         case "completed":
@@ -139,7 +141,7 @@ export function activeStateLabel(status: AgentRunStatus): string {
         case "running":
             return status.label ?? "Working on it…";
         case "awaiting-input":
-            return status.label ?? "Copilot needs your input";
+            return status.label ?? AWAITING_INPUT_LABEL;
         case "error":
             return status.label ?? "Copilot hit an error";
         default:
