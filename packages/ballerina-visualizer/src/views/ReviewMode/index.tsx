@@ -117,6 +117,35 @@ const CloseButton = styled.button`
     }
 `;
 
+const CompileErrorMessage = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 560px;
+    padding: 16px 20px;
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-inputValidation-warningBorder, ${ThemeColors.PRIMARY});
+    background: var(--vscode-inputValidation-warningBackground, transparent);
+    border-radius: 4px;
+    font-size: 13px;
+`;
+
+const ErrorDetail = styled.div`
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    color: var(--vscode-errorForeground);
+    word-break: break-word;
+`;
+
+const CompileWarningBanner = styled.div`
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+    background: var(--vscode-inputValidation-warningBackground, transparent);
+    border-bottom: 1px solid var(--vscode-inputValidation-warningBorder, ${ThemeColors.PRIMARY});
+    word-break: break-word;
+`;
+
 enum DiagramType {
     COMPONENT = "component",
     FLOW = "flow",
@@ -244,6 +273,7 @@ export function ReviewMode(): JSX.Element {
     const [isLoading, setIsLoading] = useState(true);
     const [currentItemMetadata, setCurrentItemMetadata] = useState<ItemMetadata | null>(null);
     const [isWorkspace, setIsWorkspace] = useState(false);
+    const [semanticDiffError, setSemanticDiffError] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<ReviewViewMode>("diff");
     // View indices where the unified diff could not be built (old version missing/mismatched)
     const [diffUnavailableViews, setDiffUnavailableViews] = useState<Set<number>>(new Set());
@@ -274,6 +304,7 @@ export function ReviewMode(): JSX.Element {
 
             setProjectPath(tempDirPath);
             setIsWorkspace(isWorkspaceProject);
+            setSemanticDiffError(data.semanticDiffError ?? null);
             setSemanticDiffData({ semanticDiffs, loadDesignDiagrams });
 
             const packagesToReview = isWorkspaceProject ? affectedPackages : [tempDirPath];
@@ -499,7 +530,7 @@ export function ReviewMode(): JSX.Element {
         return (
             <ReviewContainer>
                 <TitleBar
-                    title="No Changes"
+                    title={semanticDiffError ? "Review Unavailable" : "No Changes"}
                     actions={
                         <>
                             <ReviewModeBadge>Reviewing Changes</ReviewModeBadge>
@@ -512,7 +543,19 @@ export function ReviewMode(): JSX.Element {
                     hideUndoRedo={true}
                 />
                 <DiagramContainer style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
-                    <div style={{ color: "var(--vscode-foreground)" }}>No changes to review</div>
+                    {semanticDiffError ? (
+                        <CompileErrorMessage>
+                            <strong>The changes could not be analyzed because the project fails to compile.</strong>
+                            <ErrorDetail>{semanticDiffError}</ErrorDetail>
+                            <div>
+                                The changes are already applied to your files. If the error mentions a
+                                dependency, running <code>bal build</code> in the project usually resolves it
+                                by refreshing <code>Dependencies.toml</code>.
+                            </div>
+                        </CompileErrorMessage>
+                    ) : (
+                        <div style={{ color: "var(--vscode-foreground)" }}>No changes to review</div>
+                    )}
                 </DiagramContainer>
             </ReviewContainer>
         );
@@ -584,6 +627,11 @@ export function ReviewMode(): JSX.Element {
                 hideBack={true}
                 hideUndoRedo={true}
             />
+            {semanticDiffError && (
+                <CompileWarningBanner title={semanticDiffError}>
+                    ⚠ The project fails to compile, so diagrams may be unavailable: {semanticDiffError}
+                </CompileWarningBanner>
+            )}
             <DiagramContainer>{renderDiagram()}</DiagramContainer>
             <ReviewNavigation
                 key={`nav-${currentIndex}-${views.length}`}

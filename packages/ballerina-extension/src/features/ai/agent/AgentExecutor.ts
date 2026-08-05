@@ -1040,22 +1040,34 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                 ? cachedAffectedPackages
                 : await determineAffectedPackages(accumulatedModifiedFiles, context.projects, context.ctx, workingProjectPath);
             const isWorkspace = StateMachine.context().projectInfo?.projectKind === PROJECT_KIND.WORKSPACE_PROJECT;
+            let semanticDiffError: string | undefined;
             for (const pkg of affectedPackages) {
                 // Skip workspace root — it only contains Ballerina.toml, not a real package
                 if (isWorkspace && pkg === workingProjectPath) { continue; }
                 const pkgName = path.basename(pkg);
                 try {
                     const res = await langClient.getSemanticDiff({ projectPath: pkg });
+                    // errorMsg means the LS could not compute diffs at all (e.g. the package
+                    // fails to compile) — semanticDiffs is absent, so treat it as a failure
+                    // instead of reading past it.
+                    if (res?.errorMsg) {
+                        throw new Error(res.errorMsg);
+                    }
                     if (res) {
                         diffPackageMap.push(...Array(res.semanticDiffs.length).fill(pkgName));
                         semanticDiffs.push(...res.semanticDiffs);
                         loadDesignDiagrams = loadDesignDiagrams || res.loadDesignDiagrams;
+                        // Partial success: diffs are valid but the package failed to compile,
+                        // so flow diagrams will likely be unavailable. Keep the diffs and
+                        // surface the reason as a warning.
+                        semanticDiffError = semanticDiffError ?? res.compilationError ?? undefined;
                     }
                 } catch (err) {
                     console.error(`[AgentExecutor] getSemanticDiff failed for package ${pkg}, falling back to plain modifiedFiles`, err);
                     semanticDiffs.length = 0;
                     diffPackageMap.length = 0;
                     loadDesignDiagrams = false;
+                    semanticDiffError = err instanceof Error ? err.message : String(err);
                     break;
                 }
             }
@@ -1070,6 +1082,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                 modifiedFiles: accumulatedModifiedFiles,
                 tempProjectPath: workingProjectPath,
                 isWorkspace,
+                semanticDiffError,
             };
 
             approvalViewManager.openReviewMode(context.messageId, reviewData, false);
@@ -1082,7 +1095,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                 tempProjectPath: workingProjectPath,
                 modifiedFiles: accumulatedModifiedFiles,
                 affectedPackagePaths: affectedPackages,
-                reviewView: { semanticDiffs, loadDesignDiagrams, isWorkspace },
+                reviewView: { semanticDiffs, loadDesignDiagrams, isWorkspace, semanticDiffError },
             });
 
             context.eventHandler({

@@ -65,6 +65,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
 
 /**
@@ -130,11 +131,32 @@ public class SemanticDiffComputer {
         computeTypeDefDiffs(originalNodeRefMap.getTypeDefNodeMap(), modifiedNodeRefMap.getTypeDefNodeMap());
         computeModuleVarDiffs(originalNodeRefMap.getModuleVarNodeMap(), modifiedNodeRefMap.getModuleVarNodeMap());
 
+        String compilationError = null;
         if (!loadDesignDiagrams) {
-            compareUsingDesignDiagrams();
+            try {
+                compareUsingDesignDiagrams();
+            } catch (Throwable t) {
+                // The design-model comparison is the only step that needs a full package
+                // compilation, which can fail for reasons unrelated to the edit (e.g. an
+                // unresolvable dependency). The syntax-level diffs above are still valid,
+                // so report the failure instead of discarding them.
+                compilationError = rootCauseMessage(t);
+            }
         }
 
-        return new Result(loadDesignDiagrams, this.semanticDiffs);
+        return new Result(loadDesignDiagrams, this.semanticDiffs, compilationError);
+    }
+
+    // Unwraps only async plumbing (CompletionException from join()); the first real
+    // exception's message already carries the full context (e.g. which module failed).
+    private static String rootCauseMessage(Throwable throwable) {
+        Throwable cause = throwable;
+        while (cause instanceof CompletionException
+                && cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        String message = cause.getMessage();
+        return message == null || message.isBlank() ? cause.getClass().getName() : message;
     }
 
     /**

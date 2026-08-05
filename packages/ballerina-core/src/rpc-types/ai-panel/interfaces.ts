@@ -425,6 +425,14 @@ export interface SemanticDiff {
 export interface SemanticDiffResponse {
     loadDesignDiagrams: boolean;
     semanticDiffs: SemanticDiff[];
+    /** Set when diff computation failed entirely; semanticDiffs is absent in that case. */
+    errorMsg?: string;
+    /**
+     * Set when the syntax-level diffs succeeded but the package failed to compile
+     * (design-model comparison). The diffs are still usable, but flow diagrams
+     * will likely be unavailable for the same reason.
+     */
+    compilationError?: string;
 }
 
 export interface RevertGenerationRequest {
