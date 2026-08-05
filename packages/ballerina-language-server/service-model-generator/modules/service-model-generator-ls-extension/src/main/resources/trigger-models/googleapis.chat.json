@@ -145,21 +145,21 @@
                         {
                           "type": "ServiceAccountFileConfig",
                           "packageInfo": "ballerinax:googleapis.chat:0.1.0",
-                          "packageName": "chat",
+                          "packageName": "googleapis.chat",
                           "kind": "RECORD_TYPE",
                           "selected": true
                         },
                         {
                           "type": "ServiceAccountCredentials",
                           "packageInfo": "ballerinax:googleapis.chat:0.1.0",
-                          "packageName": "chat",
+                          "packageName": "googleapis.chat",
                           "kind": "RECORD_TYPE",
                           "selected": false
                         },
                         {
                           "type": "OAuth2Config",
                           "packageInfo": "ballerinax:googleapis.chat:0.1.0",
-                          "packageName": "chat",
+                          "packageName": "googleapis.chat",
                           "kind": "RECORD_TYPE",
                           "selected": false
                         },

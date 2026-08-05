@@ -149,7 +149,7 @@
         "description": "The base path of the MCP service"
       },
       "placeholder": "/mcp",
-      "value": "\"/mcp\"",
+      "value": "/mcp",
       "enabled": true,
       "editable": true,
       "optional": false,
