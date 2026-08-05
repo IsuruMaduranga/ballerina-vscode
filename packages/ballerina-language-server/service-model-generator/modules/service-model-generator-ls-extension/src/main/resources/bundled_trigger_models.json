@@ -25,5 +25,6 @@
   "sap.jco": "trigger-models/sap.jco.json",
   "whatsapp.business": "trigger-models/whatsapp.business.json",
   "telegram": "trigger-models/telegram.json",
-  "googleapis.chat": "trigger-models/googleapis.chat.json"
+  "googleapis.chat": "trigger-models/googleapis.chat.json",
+  "aws.sqs": "trigger-models/sqs.json"
 }
