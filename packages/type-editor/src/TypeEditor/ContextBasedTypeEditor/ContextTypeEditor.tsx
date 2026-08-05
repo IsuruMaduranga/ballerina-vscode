@@ -160,31 +160,40 @@ export function ContextTypeEditor(props: ContextTypeEditorProps) {
     const onTypeSave = async (type: Type) => {
         const name = type.name;
         setIsSaving(true);
-        // IF type nodeKind is CLASS then we call graphqlEndpoint
-        // TODO: for TypeDiagram we need to give a generic class creation
-        if (type.codedata.node === "CLASS") {
-            const response: UpdateTypeResponse = await props.rpcClient
-                .getBIDiagramRpcClient()
-                .createGraphqlClassType({ filePath: type.codedata?.lineRange?.fileName || 'types.bal', type, description: "" });
-            if (!isPopupTypeForm) {
-                await props.rpcClient
-                    .getVisualizerRpcClient()
-                    .openView({ type: EVENT_TYPE.UPDATE_PROJECT_LOCATION, location: { identifier: response.name, addType: false } });
-            }
+        try {
+            // IF type nodeKind is CLASS then we call graphqlEndpoint
+            // TODO: for TypeDiagram we need to give a generic class creation
+            if (type.codedata.node === "CLASS") {
+                const response: UpdateTypeResponse = await props.rpcClient
+                    .getBIDiagramRpcClient()
+                    .createGraphqlClassType({ filePath: type.codedata?.lineRange?.fileName || 'types.bal', type, description: "" });
+                if (!isPopupTypeForm) {
+                    await props.rpcClient
+                        .getVisualizerRpcClient()
+                        .openView({ type: EVENT_TYPE.UPDATE_PROJECT_LOCATION, location: { identifier: response.name, addType: false } });
+                }
 
-        } else {
-            const response: UpdateTypeResponse = await props.rpcClient
-                .getBIDiagramRpcClient()
-                .updateType({ filePath: type.codedata?.lineRange?.fileName || 'types.bal', type, description: "" });
-            if (!isPopupTypeForm) {
-                await props.rpcClient
-                    .getVisualizerRpcClient()
-                    .openView({ type: EVENT_TYPE.UPDATE_PROJECT_LOCATION, location: { identifier: response.name, addType: false } });
+            } else {
+                const response: UpdateTypeResponse = await props.rpcClient
+                    .getBIDiagramRpcClient()
+                    .updateType({ filePath: type.codedata?.lineRange?.fileName || 'types.bal', type, description: "" });
+                if (!isPopupTypeForm) {
+                    await props.rpcClient
+                        .getVisualizerRpcClient()
+                        .openView({ type: EVENT_TYPE.UPDATE_PROJECT_LOCATION, location: { identifier: response.name, addType: false } });
+                }
             }
+            props.onTypeChange(type);
+            props.onSaveType(type)
+        } catch (error) {
+            // A rejected save must surface as an error.
+            console.error(">>> error saving the type", error);
+            props.rpcClient.getCommonRpcClient().showErrorMessage({
+                message: (error as Error)?.message || `Failed to save the type '${name}'. Please try again.`
+            });
+        } finally {
+            setIsSaving(false);
         }
-        props.onTypeChange(type);
-        props.onSaveType(type)
-        setIsSaving(false);
     }
 
     const handleTabChange = (tabId: string) => {
