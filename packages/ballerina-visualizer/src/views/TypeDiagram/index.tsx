@@ -182,9 +182,16 @@ export function TypeDiagram(props: TypeDiagramProps) {
 
     useEffect(() => {
         if (rpcClient) {
-            rpcClient.getVisualizerLocation().then((value) => {
-                setVisualizerLocation(value);
-            });
+            rpcClient.getVisualizerLocation()
+                .then((value) => {
+                    setVisualizerLocation(value);
+                })
+                .catch((error) => {
+                    // The location never resolves, so `getComponentModel` would keep bailing out
+                    // and the view would sit on the progress ring forever. Stop waiting instead.
+                    console.error(">>> error resolving the visualizer location", error);
+                    setIsModelLoaded(true);
+                });
         }
     }, [rpcClient, projectPath]);
 
