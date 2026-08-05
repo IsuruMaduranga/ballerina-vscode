@@ -7,9 +7,9 @@
   "orgName": "ballerinax",
   "packageName": "azure.storage.files",
   "moduleName": "azure.storage.files",
-  "version": "1.0.0",
+  "version": "0.9.0",
   "type": "files",
-  "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_azure.storage.files_1.0.0.png",
+  "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_azure.storage.files_0.9.0.png",
   "kind": "file",
   "listenerKind": "SINGLE_SELECT_LISTENER",
   "initProperties": {
@@ -1245,7 +1245,7 @@
               "typeMembers": [
                 {
                   "type": "ServiceConfiguration",
-                  "packageInfo": "ballerinax:azure.storage.files:1.0.0",
+                  "packageInfo": "ballerinax:azure.storage.files:0.9.0",
                   "packageName": "azure.storage.files",
                   "kind": "RECORD_TYPE",
                   "selected": true

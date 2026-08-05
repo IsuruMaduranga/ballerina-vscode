@@ -341,8 +341,8 @@
       "event"
     ],
     "triggerName": "Azure Files",
-    "version": "1.0.0",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_azure.storage.files_1.0.0.png",
+    "version": "0.9.0",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_azure.storage.files_0.9.0.png",
     "kind": "file"
   }
 }
