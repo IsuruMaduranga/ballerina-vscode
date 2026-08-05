@@ -22,7 +22,9 @@ import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.FunctionSymbol;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
+import io.ballerina.compiler.api.symbols.TypeDescKind;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
+import io.ballerina.compiler.api.symbols.UnionTypeSymbol;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
 import io.ballerina.flowmodelgenerator.core.model.NodeBuilder;
@@ -38,6 +40,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CALL_CHILD_WORKFLOW_DESCRIPTION;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CALL_CHILD_WORKFLOW_LABEL;
@@ -202,7 +205,7 @@ public class ChildWorkflowCallBuilder extends NodeBuilder {
             if (returnType.isEmpty()) {
                 return DEFAULT_RESULT_TYPE;
             }
-            String signature = CommonUtils.getTypeSignature(semanticModel, returnType.get(), true);
+            String signature = successTypeSignature(semanticModel, returnType.get());
             if (signature.isBlank() || "()".equals(signature) || "error".equals(signature)) {
                 return DEFAULT_RESULT_TYPE;
             }
@@ -210,5 +213,39 @@ public class ChildWorkflowCallBuilder extends NodeBuilder {
         } catch (RuntimeException e) {
             return DEFAULT_RESULT_TYPE;
         }
+    }
+
+    /**
+     * The signature of the return type with its error members removed — the generated statement
+     * checks the error away, so the result variable must be typed with the success part alone.
+     *
+     * <p>{@code CommonUtils.getTypeSignature} already drops the error members of a union written
+     * out at the return position, but not of a union hidden behind a type reference
+     * ({@code type Outcome LoanDecision|error;}), which is why that one is resolved here. A union
+     * that carries no error member keeps its declared name.
+     *
+     * @param semanticModel the semantic model owning the type
+     * @param returnType    the workflow function's declared return type
+     * @return the success type signature, or an empty string when the type is error-only
+     */
+    private static String successTypeSignature(SemanticModel semanticModel, TypeSymbol returnType) {
+        TypeSymbol resolved = returnType.typeKind() == TypeDescKind.UNION
+                ? returnType : CommonUtils.getRawType(returnType);
+        if (resolved.typeKind() != TypeDescKind.UNION) {
+            return CommonUtils.getTypeSignature(semanticModel, returnType, true);
+        }
+        List<TypeSymbol> members = ((UnionTypeSymbol) resolved).memberTypeDescriptors();
+        List<TypeSymbol> successMembers = members.stream()
+                .filter(member -> !member.subtypeOf(semanticModel.types().ERROR))
+                .toList();
+        if (successMembers.isEmpty()) {
+            return "";
+        }
+        if (successMembers.size() == members.size()) {
+            return CommonUtils.getTypeSignature(semanticModel, returnType, true);
+        }
+        return successMembers.stream()
+                .map(member -> CommonUtils.getTypeSignature(semanticModel, member, true))
+                .collect(Collectors.joining("|"));
     }
 }

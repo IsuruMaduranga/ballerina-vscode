@@ -164,7 +164,9 @@ public class ChildWorkflowSendDataBuilder extends NodeBuilder {
                 .name(childWorkflowId)
                 .keyword(SyntaxKind.COMMA_TOKEN)
                 .whiteSpace()
-                .name(dataName)
+                // The data name correlates with an event declared by the child workflow function,
+                // so it must always be a string literal even when the form submits the bare name.
+                .name(SendDataBuilder.toStringLiteral(dataName))
                 .keyword(SyntaxKind.COMMA_TOKEN)
                 .whiteSpace()
                 .name(data)

@@ -529,7 +529,11 @@ public class CodeAnalyzer extends NodeVisitor {
         // The generic "<module> : <label>" title reads "workflow : Run Child Workflo…" once it is
         // clipped, and never says which workflow is being run. A child workflow statement keeps its
         // own title with the target workflow underneath, the way the send node names its channel.
-        applyChildWorkflowMetadata(remoteMethodCallActionNode, functionName);
+        // Only the workflow context's own operations qualify — a connector client exposing a remote
+        // method of the same name (`callWorkflow` especially) keeps its generic title.
+        if (isWorkflowContextClass(classSymbol)) {
+            applyChildWorkflowMetadata(remoteMethodCallActionNode, functionName);
+        }
 
         if (isWorkflowCtxOperation(remoteMethodCallActionNode, classSymbol, CALL_ACTIVITY_METHOD_NAME)) {
             String builtinSymbol = resolveBuiltinActivitySymbol(remoteMethodCallActionNode.arguments());
@@ -887,9 +891,14 @@ public class CodeAnalyzer extends NodeVisitor {
     private boolean isWorkflowCtxOperation(RemoteMethodCallActionNode remoteMethodCallActionNode,
                                            ClassSymbol classSymbol, String operationName) {
         String methodName = remoteMethodCallActionNode.methodName().name().text();
-        String className = classSymbol.getName().orElse("");
-        return methodName.equals(operationName) &&
-                className.equals(CONTEXT_CLASS_NAME) && isWorkflowModule(classSymbol.getModule());
+        return methodName.equals(operationName) && isWorkflowContextClass(classSymbol);
+    }
+
+    // The workflow module's own `workflow:Context`, as opposed to any connector client that happens
+    // to expose a remote method with a name this analyzer looks for.
+    private boolean isWorkflowContextClass(ClassSymbol classSymbol) {
+        return CONTEXT_CLASS_NAME.equals(classSymbol.getName().orElse(""))
+                && isWorkflowModule(classSymbol.getModule());
     }
 
     /**

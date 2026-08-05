@@ -57,6 +57,7 @@ import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.projects.Document;
+import io.ballerina.projects.Module;
 import io.ballerina.projects.Package;
 import io.ballerina.tools.text.LinePosition;
 import io.ballerina.tools.text.TextRange;
@@ -98,6 +99,7 @@ public class AvailableNodesGenerator {
     private final Package pkg;
     private final Gson gson;
     private final Path filePath;
+    private WorkflowArtifacts workflowArtifacts;
     private static final String BALLERINAX = "ballerinax";
     private static final String TEST_MODULE_PREFIX = "test";
     private static final String TEST_CONFIG_ANNOTATION = "Config";
@@ -325,11 +327,10 @@ public class AvailableNodesGenerator {
             // shown only when the integration defines the matching artifacts — workflow
             // functions enable Run Workflow / Send Data Event, durable agents enable the
             // agent interaction nodes.
-            boolean hasWorkflows = projectHasWorkflows();
-            boolean hasDurableAgents = projectHasDurableAgents();
-            if (hasWorkflows || hasDurableAgents) {
+            WorkflowArtifacts artifacts = workflowArtifacts();
+            if (artifacts.hasWorkflows() || artifacts.hasDurableAgents()) {
                 this.rootBuilder.stepIn(Category.Name.WORKFLOW)
-                        .items(getWorkflowNodes(false, hasWorkflows, hasDurableAgents))
+                        .items(getWorkflowNodes(false, artifacts.hasWorkflows(), artifacts.hasDurableAgents()))
                         .stepOut();
             }
         }
@@ -391,19 +392,39 @@ public class AvailableNodesGenerator {
     }
 
     /**
-     * Returns {@code true} when the current package declares at least one {@code @workflow:Workflow}
-     * function.
+     * Which workflow artifacts the package declares.
+     *
+     * @param hasWorkflows     whether it declares a {@code @workflow:Workflow} function
+     * @param hasDurableAgents whether it declares a module-level {@code workflow:DurableAgent}
      */
-    private boolean projectHasWorkflows() {
-        return this.semanticModel.moduleSymbols().stream().anyMatch(WorkflowUtil::isWorkflowFunction);
-    }
+    private record WorkflowArtifacts(boolean hasWorkflows, boolean hasDurableAgents) { }
 
     /**
-     * Returns {@code true} when the current package declares at least one module-level
-     * {@code workflow:DurableAgent}.
+     * Whether the package declares workflow functions and durable agents, scanned across every
+     * module rather than the default one alone — a multi-module package whose workflows live
+     * outside the default module would otherwise lose the whole Workflow category. Both answers
+     * come from one pass, memoized for the lifetime of this generator (one palette open).
+     *
+     * @return the artifacts the package declares
      */
-    private boolean projectHasDurableAgents() {
-        return this.semanticModel.moduleSymbols().stream().anyMatch(WorkflowUtil::isDurableAgentVariable);
+    private WorkflowArtifacts workflowArtifacts() {
+        if (this.workflowArtifacts != null) {
+            return this.workflowArtifacts;
+        }
+        boolean hasWorkflows = false;
+        boolean hasDurableAgents = false;
+        for (Module module : this.pkg.modules()) {
+            for (Symbol symbol : module.getCompilation().getSemanticModel().moduleSymbols()) {
+                hasWorkflows = hasWorkflows || WorkflowUtil.isWorkflowFunction(symbol);
+                hasDurableAgents = hasDurableAgents || WorkflowUtil.isDurableAgentVariable(symbol);
+                if (hasWorkflows && hasDurableAgents) {
+                    this.workflowArtifacts = new WorkflowArtifacts(true, true);
+                    return this.workflowArtifacts;
+                }
+            }
+        }
+        this.workflowArtifacts = new WorkflowArtifacts(hasWorkflows, hasDurableAgents);
+        return this.workflowArtifacts;
     }
 
     private List<Item> getAiNodes(boolean disableBallerinaAiNodes) {
