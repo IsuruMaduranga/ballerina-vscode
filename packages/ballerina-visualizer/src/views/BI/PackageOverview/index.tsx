@@ -116,18 +116,24 @@ const HeaderControls = styled.div`
     align-items: center;
 `;
 
-const MainContent = styled.div<{ fullWidth?: boolean; withHero?: boolean }>`
+const MainContent = styled.div<{ fullWidth?: boolean }>`
     padding: 16px;
     display: grid;
     grid-template-columns: ${(props: { fullWidth?: boolean }) => props.fullWidth ? '1fr' : '3fr 1fr'};
     min-height: 0; // Prevents grid blowout
     overflow: auto;
-    // Adjust based on header and any margins; the hero prompt row adds ~87px.
-    max-height: ${(props: { withHero?: boolean }) => props.withHero ? 'calc(100vh - 177px)' : 'calc(100vh - 90px)'};
+    // Adjust based on header and any margins.
+    max-height: calc(100vh - 90px);
 `;
 
+// Pinned to the foot of the design panel (which carries no padding of its own),
+// so it stays reachable once the artifact list is long enough to scroll.
 const HeroRow = styled.div`
-    margin: 16px 16px 0 16px;
+    flex: none;
+    position: sticky;
+    bottom: 0;
+    padding: 16px;
+    background: var(--vscode-editor-background);
 `;
 
 const DiagramPanel = styled.div<{ noPadding?: boolean, noBorder?: boolean }>`
@@ -1165,12 +1171,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                         </HeaderControls>
                     </HeaderRow>
                 )}
-                {showHero && (
-                    <HeroRow>
-                        <CopilotHeroBox />
-                    </HeroRow>
-                )}
-                <MainContent fullWidth={isLibrary} withHero={showHero}>
+                <MainContent fullWidth={isLibrary}>
                     <LeftContent>
                         <DiagramPanel noPadding={true} noBorder={isLibrary}>
                             {showAlert && (
@@ -1216,7 +1217,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 sx={{ marginBottom: "24px", color: "var(--vscode-descriptionForeground)" }}
                                             >
                                                 Add an artifact to get started, or describe what you want to build in
-                                                the Copilot box above
+                                                the Copilot box below
                                             </Typography>
                                             <ButtonContainer>
                                                 {/* An empty integration means the creation wizard was
@@ -1239,6 +1240,13 @@ export function PackageOverview(props: PackageOverviewProps) {
                                         </React.Suspense>
                                     )}
                                 </DiagramContent>
+                            )}
+                            {showHero && (
+                                <HeroRow>
+                                    <CopilotHeroBox
+                                        placeholder={isEmptyIntegration() ? "What would you like to build?" : "What would you like to change?"}
+                                    />
+                                </HeroRow>
                             )}
                         </DiagramPanel>
                         {!isLibrary && (
