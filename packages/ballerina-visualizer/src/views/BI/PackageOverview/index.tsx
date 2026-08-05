@@ -1219,7 +1219,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                                             <Typography variant="h3" sx={{ marginBottom: "16px" }}>
                                                 Your integration is empty
                                             </Typography>
-                                            {agentWorking ? (
+                                            {agentWorking && (
                                                 <WorkingRow>
                                                     <ProgressRing color={ThemeColors.PRIMARY} sx={{ width: 16, height: 16 }} />
                                                     <Typography
@@ -1229,15 +1229,6 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                         Copilot is working…
                                                     </Typography>
                                                 </WorkingRow>
-                                            ) : (
-                                                <Typography
-                                                    variant="body1"
-                                                    sx={{ marginBottom: "24px", color: "var(--vscode-descriptionForeground)" }}
-                                                >
-                                                    {showHero
-                                                        ? "Describe what you want to build, or add an artifact to get started"
-                                                        : "Add an artifact to get started"}
-                                                </Typography>
                                             )}
                                             {showHero && (
                                                 <HeroRow>
@@ -1245,14 +1236,24 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 </HeroRow>
                                             )}
                                             {!agentWorking && (
-                                                <ButtonContainer>
-                                                    {/* An empty integration means the creation wizard was
-                                                        skipped — offer it again here rather than the raw
-                                                        artifact list, so the guided flow can be resumed. */}
-                                                    <Button appearance="primary" onClick={() => setShowAddIntegration(true)}>
-                                                        <Codicon name="add" sx={{ marginRight: 8 }} /> Add Integration
-                                                    </Button>
-                                                </ButtonContainer>
+                                                <>
+                                                    <Typography
+                                                        variant="body1"
+                                                        sx={{ marginBottom: "24px", color: "var(--vscode-descriptionForeground)" }}
+                                                    >
+                                                        {showHero
+                                                            ? "Describe what you want to build, or add an artifact to get started"
+                                                            : "Add an artifact to get started"}
+                                                    </Typography>
+                                                    <ButtonContainer>
+                                                        {/* An empty integration means the creation wizard was
+                                                            skipped — offer it again here rather than the raw
+                                                            artifact list, so the guided flow can be resumed. */}
+                                                        <Button appearance="primary" onClick={() => setShowAddIntegration(true)}>
+                                                            <Codicon name="add" sx={{ marginRight: 8 }} /> Add Integration
+                                                        </Button>
+                                                    </ButtonContainer>
+                                                </>
                                             )}
                                         </EmptyStateContainer>
                                     ) : (
