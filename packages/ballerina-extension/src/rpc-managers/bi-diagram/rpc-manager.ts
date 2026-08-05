@@ -208,6 +208,7 @@ import {
     createEmptyBIWorkspace,
     deleteProjectFromWorkspace,
     openInVSCode,
+    refreshProjectInfoAndWait,
     validateProjectPath,
     getSuggestedProjectDefaults
 } from "../../utils/bi";
@@ -716,7 +717,7 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
     async getNodeTemplate(params: BINodeTemplateRequest): Promise<BINodeTemplateResponse> {
         console.log(">>> requesting bi node template from ls", params);
         params.forceAssign = true; // TODO: remove this
-        const projectPath = StateMachine.context().projectPath;
+        const projectPath = params.projectPath ?? StateMachine.context().projectPath;
         params.isLibrary = projectPath ? await isLibraryProject(projectPath) : false;
 
         // Check if the file exists
@@ -758,12 +759,20 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
     }
 
     async validateProjectPath(params: ValidateProjectFormRequest): Promise<ValidateProjectFormResponse> {
-        // When converting an integtatino/library to a project, the new directory is created as a sibling of the
-        // current integration/library (i.e. under path.dirname(projectPath)), not inside the project itself.
-        const basePath = params.createAsWorkspace
-            ? path.dirname(StateMachine.context().projectPath)
-            : params.projectPath;
-        return validateProjectPath(basePath, params.projectName, params.createDirectory, params.createAsWorkspace);
+        // The caller supplies the parent location in `projectPath`. When converting an
+        // integration/library to a project without an explicit path, fall back to the
+        // current integration's parent directory (the legacy sibling-directory default).
+        const basePath = params.projectPath?.trim()
+            ? params.projectPath
+            : (params.createAsWorkspace ? path.dirname(StateMachine.context().projectPath) : params.projectPath);
+        return validateProjectPath(
+            basePath,
+            params.projectName,
+            params.createDirectory,
+            params.createAsWorkspace,
+            params.directoryName,
+            params.allowExistingDirectory
+        );
     }
 
     async deleteProject(params: DeleteProjectRequest): Promise<void> {
@@ -809,9 +818,13 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
             }
         } else {
             try {
-                await addProjectToExistingWorkspace(params);
-                // Refresh project info to update UI with newly added project
-                StateMachine.refreshProjectInfo();
+                const packageRoot = await addProjectToExistingWorkspace(params);
+                // The project was already open, so the new package is the news: land on
+                // its own overview. Refresh BEFORE navigating — that view fetches project
+                // structure on mount, so navigating first would show it a bare spinner.
+                if (await refreshProjectInfoAndWait()) {
+                    openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.PackageOverview, projectPath: packageRoot });
+                }
             } catch (error) {
                 window.showErrorMessage("Error adding integration to existing project");
                 console.error("Error adding integration to existing project:", error);
@@ -1049,21 +1062,18 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
     }
 
     async getConfigVariablesV2(params: ConfigVariableRequest): Promise<ConfigVariableResponse> {
-        return new Promise(async (resolve) => {
-            const projectPath = StateMachine.context().projectPath;
-            const showLibraryConfigVariables = extension.ballerinaExtInstance.showLibraryConfigVariables();
+        const projectPath = StateMachine.context().projectPath;
+        const showLibraryConfigVariables = extension.ballerinaExtInstance.showLibraryConfigVariables();
 
-            // if params includeLibraries is not set, then use settings
-            const includeLibraries = params?.includeLibraries !== undefined
-                ? params.includeLibraries
-                : showLibraryConfigVariables !== false;
+        // if params includeLibraries is not set, then use settings
+        const includeLibraries = params?.includeLibraries !== undefined
+            ? params.includeLibraries
+            : showLibraryConfigVariables !== false;
 
-            const variables = await StateMachine.langClient().getConfigVariablesV2({
-                projectPath: projectPath,
-                includeLibraries
-            }) as ConfigVariableResponse;
-            resolve(variables);
-        });
+        return await StateMachine.langClient().getConfigVariablesV2({
+            projectPath: projectPath,
+            includeLibraries
+        }) as ConfigVariableResponse;
     }
 
     async updateConfigVariablesV2(params: UpdateConfigVariableRequestV2): Promise<UpdateConfigVariableResponseV2> {

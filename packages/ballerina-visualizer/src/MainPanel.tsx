@@ -38,11 +38,13 @@ import { debounce } from "lodash";
 import styled from "@emotion/styled";
 import { LoadingRing } from "./components/Loader";
 import { WebviewErrorState } from "./components/WebviewErrorState";
+import { useSuppressAgentStatusOrb, viewHidesAgentStatusOrb } from "./components/AgentStatusOrb/shared";
 import { handleRedo, handleUndo } from "./utils/utils";
 import { STKindChecker } from "@wso2/syntax-tree";
 import { URI, Utils } from "vscode-uri";
 import { CONNECTIONS_FILE } from "./constants";
-import { ErrorBoundary, ThemeColors, Typography } from "@wso2/ui-toolkit";
+import { ErrorBoundary, ProgressIndicator, ThemeColors, Typography } from "@wso2/ui-toolkit";
+import { prefetchAfterView } from "./utils/viewPrefetch";
 import { PanelType, useModalStack, useVisualizerContext } from "./Context";
 import { VSCodeProgressRing } from "@vscode/webview-ui-toolkit/react";
 import Popup from "./components/Popup";
@@ -194,7 +196,12 @@ const MainPanel = () => {
     const errorBoundaryRef = createRef<any>();
     const [viewComponent, setViewComponent] = useState<React.ReactNode>();
     const [viewError, setViewError] = useState<string>();
+    const [activeView, setActiveView] = useState<MACHINE_VIEW>();
     const [navActive, setNavActive] = useState<boolean>(true);
+    // A navigation is in flight: the previous view stays on screen while the next one's
+    // chunk loads, which on a first visit is seconds.
+    const [navPending, setNavPending] = useState<boolean>(false);
+    const [showNavProgress, setShowNavProgress] = useState<boolean>(false);
     const [showHome, setShowHome] = useState<boolean>(true);
     const [popupState, setPopupState] = useState<PopupMachineStateValue>("initialize");
     const [breakpointState, setBreakpointState] = useState<number>(0);
@@ -203,13 +210,15 @@ const MainPanel = () => {
     const remountKeyRef = useRef<number>(0);
     const previousNavTargetRef = useRef<string | undefined>(undefined);
 
+    useSuppressAgentStatusOrb(viewHidesAgentStatusOrb(activeView) || !!viewError);
 
     const gitIssueUrl = "https://github.com/wso2/product-integrator/issues";
 
+    // Leading edge so an ordinary navigation fetches immediately; trailing kept for bursts.
     const debounceFetchContext = useCallback(
         debounce(() => {
             fetchContext();
-        }, 200), []
+        }, 200, { leading: true, trailing: true }), []
     );
 
     useEffect(() => {
@@ -282,6 +291,7 @@ const MainPanel = () => {
         navKeyRef.current += 1;
         const navKey = navKeyRef.current;
         setNavActive(true);
+        setNavPending(true);
         setViewError(undefined);
 
         const handleViewLoadError = (error: unknown, message: string) => {
@@ -338,6 +348,7 @@ const MainPanel = () => {
                                 <PackageOverview
                                     projectPath={value.projectPath}
                                     isInDevant={value.isInDevant}
+                                    isICPSupported={value.metadata?.isICPSupported}
                                 />
                             );
                             break;
@@ -345,7 +356,12 @@ const MainPanel = () => {
                         case MACHINE_VIEW.WorkspaceOverview: {
                             const { WorkspaceOverview } = await import("./views/BI/WorkspaceOverview");
                             if (isStaleNavigation()) return;
-                            setViewComponent(<WorkspaceOverview isInDevant={value.isInDevant} />);
+                            setViewComponent(
+                                <WorkspaceOverview
+                                    isInDevant={value.isInDevant}
+                                    isICPSupported={value.metadata?.isICPSupported}
+                                />
+                            );
                             break;
                         }
                         case MACHINE_VIEW.ServiceDesigner: {
@@ -376,7 +392,8 @@ const MainPanel = () => {
                         case MACHINE_VIEW.BIDiagram:
                             const { default: DiagramWrapper } = await import("./views/BI/DiagramWrapper");
                             if (isStaleNavigation()) return;
-                            rpcClient.getLangClientRpcClient().getSTByRange({
+                            // Awaited so the code after the switch sees the view as settled.
+                            await rpcClient.getLangClientRpcClient().getSTByRange({
                                 documentIdentifier: {
                                     uri: URI.file(value.documentUri).toString(),
                                 },
@@ -552,10 +569,21 @@ const MainPanel = () => {
                             break;
                         }
                         case MACHINE_VIEW.BIProjectForm: {
-                            const { ProjectForm } = await import("./views/BI/ProjectForm");
+                            const { CreateIntegrationWizard } = await import("./views/BI/CreateIntegrationWizard");
                             if (isStaleNavigation()) return;
                             setShowHome(false);
-                            setViewComponent(<ProjectForm />);
+                            setViewComponent(
+                                <BiWsClientProvider
+                                    onBack={() =>
+                                        rpcClient.getVisualizerRpcClient().openView({
+                                            type: EVENT_TYPE.OPEN_VIEW,
+                                            location: { view: MACHINE_VIEW.BIWelcome },
+                                        })
+                                    }
+                                >
+                                    <CreateIntegrationWizard />
+                                </BiWsClientProvider>
+                            );
                             break;
                         }
                         case MACHINE_VIEW.BIImportIntegration: {
@@ -597,7 +625,7 @@ const MainPanel = () => {
                         case MACHINE_VIEW.AIChatAgentWizard: {
                             const { AIChatAgentWizard } = await import("./views/BI/AIChatAgent/AIChatAgentWizard");
                             if (isStaleNavigation()) return;
-                            setViewComponent(<AIChatAgentWizard />);
+                            setViewComponent(<AIChatAgentWizard initialName={value?.identifier} />);
                             break;
                         }
                         case MACHINE_VIEW.BIServiceWizard: {
@@ -855,6 +883,12 @@ const MainPanel = () => {
                             setViewComponent(<LoadingRing />);
                     }
                 }
+                // Only once the new view is on screen — lifting it earlier flashes
+                // the orb over the view being navigated away from.
+                setActiveView(value?.view ?? undefined);
+                // The chunk is in memory and the browser is about to go idle — cheapest
+                // moment to warm the next view.
+                prefetchAfterView(value?.view);
             } catch (error) {
                 if (isStaleNavigation()) return;
                 handleViewLoadError(error, "Failed to load the selected visualizer view.");
@@ -862,8 +896,25 @@ const MainPanel = () => {
         }).catch((error) => {
             if (navKey !== navKeyRef.current) return;
             handleViewLoadError(error, "Failed to load visualizer context.");
+        }).finally(() => {
+            // Only the newest navigation may clear the flag; a late older one would hide the
+            // indicator while its successor is still loading.
+            if (navKey === navKeyRef.current) {
+                setNavPending(false);
+            }
         });
     };
+
+    // Delayed so a warm navigation — the common case once a view's chunk is loaded —
+    // does not flash a progress bar, while a cold one shows it almost immediately.
+    useEffect(() => {
+        if (!navPending) {
+            setShowNavProgress(false);
+            return;
+        }
+        const timer = setTimeout(() => setShowNavProgress(true), 150);
+        return () => clearTimeout(timer);
+    }, [navPending]);
 
     useEffect(() => {
         debounceFetchContext();
@@ -913,6 +964,7 @@ const MainPanel = () => {
             <VisualizerContainer id="visualizer-container">
                 <ErrorBoundary goHome={handleNavigateToOverview} errorMsg="An error occurred in the visualizer" issueUrl={gitIssueUrl} ref={errorBoundaryRef} resetKeys={[viewComponent]}>
                     {/* {navActive && <NavigationBar showHome={showHome} />} */}
+                    {showNavProgress && <ProgressIndicator id="visualizer-nav-progress" />}
                     {(showOverlay || modalStack.length > 0) && <Overlay />}
                     {viewError && (
                         <ComponentViewWrapper>

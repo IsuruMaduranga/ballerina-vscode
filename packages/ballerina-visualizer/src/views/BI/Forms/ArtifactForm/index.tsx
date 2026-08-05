@@ -129,6 +129,7 @@ interface ArtifactFormProps {
     customDiagnosticFilter?: (diagnostics: Diagnostic[]) => Diagnostic[];
     onValidityChange?: (isValid: boolean) => void;
     recordsOnly?: boolean;
+    footerActionButton?: boolean;
 }
 
 export function ArtifactForm(props: ArtifactFormProps) {
@@ -166,7 +167,8 @@ export function ArtifactForm(props: ArtifactFormProps) {
         onValidityChange,
         recordsOnly,
         secondarySubmitText,
-        onSecondarySubmit
+        onSecondarySubmit,
+        footerActionButton
     } = props;
 
     const { rpcClient } = useRpcContext();
@@ -1118,6 +1120,7 @@ export function ArtifactForm(props: ArtifactFormProps) {
                               }
                             : undefined
                     }
+                    footerActionButton={footerActionButton}
                 />
             )}
             {

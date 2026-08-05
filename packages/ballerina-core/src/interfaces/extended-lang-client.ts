@@ -941,6 +941,7 @@ export interface BINodeTemplateRequest {
     id: CodeData;
     forceAssign?: boolean;
     isLibrary?: boolean;
+    projectPath?: string;
 }
 
 export type BINodeTemplateResponse = {
@@ -1456,6 +1457,7 @@ export interface ServiceModelRequest {
     listenerName?: string;
     orgName?: string;
     pkgName?: string;
+    projectPath?: string;
 }
 export interface ServiceModelResponse {
     service: ServiceModel;
@@ -1553,6 +1555,7 @@ export interface ServiceModelInitResponse {
 export interface ServiceInitSourceRequest {
     filePath: string;
     serviceInitModel: ServiceInitModel;
+    projectPath?: string;
 }
 
 // <-------- Type Related ------->

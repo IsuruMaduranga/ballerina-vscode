@@ -775,6 +775,30 @@
                 "when": "ballerina.bi.workspaceSupported"
             },
             {
+                "command": "BI.project-explorer.convert",
+                "title": "Convert to Project",
+                "icon": "$(project)",
+                "group": "navigation",
+                "category": "WSO2 Integrator",
+                "when": "ballerina.bi.workspaceSupported"
+            },
+            {
+                "command": "BI.project-explorer.open-project",
+                "title": "Open Project",
+                "icon": "$(folder-opened)",
+                "group": "navigation",
+                "category": "WSO2 Integrator",
+                "when": "ballerina.bi.workspaceSupported"
+            },
+            {
+                "command": "BI.project-explorer.add-to-project",
+                "title": "Add to Project",
+                "icon": "$(add)",
+                "group": "navigation",
+                "category": "WSO2 Integrator",
+                "when": "ballerina.bi.workspaceSupported"
+            },
+            {
                 "command": "BI.project-explorer.overview",
                 "title": "Show Overview",
                 "icon": "$(ballerina-design-view)",
@@ -813,13 +837,13 @@
                 "command": "ballerina.icp.start",
                 "title": "Start ICP",
                 "category": "Ballerina",
-                "enablement": "isSupportedProject && !ballerina.icpRunning && !devant.editor"
+                "enablement": "isSupportedProject && ballerina.icpSupported && !ballerina.icpRunning && !devant.editor"
             },
             {
                 "command": "ballerina.icp.stop",
                 "title": "Stop ICP",
                 "category": "Ballerina",
-                "enablement": "isSupportedProject && ballerina.icpRunning && !devant.editor"
+                "enablement": "isSupportedProject && ballerina.icpSupported && ballerina.icpRunning && !devant.editor"
             },
             {
                 "command": "ballerina.showTraceWindow",
@@ -1180,6 +1204,14 @@
                 },
                 {
                     "command": "BI.test.delete.function",
+                    "when": "false"
+                },
+                {
+                    "command": "BI.project-explorer.open-project",
+                    "when": "false"
+                },
+                {
+                    "command": "BI.project-explorer.add-to-project",
                     "when": "false"
                 },
                 {
