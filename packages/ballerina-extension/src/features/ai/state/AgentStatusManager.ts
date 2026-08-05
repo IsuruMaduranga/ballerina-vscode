@@ -211,10 +211,6 @@ class AgentStatusManager {
                 this.statusBarItem.text = `$(error) Copilot error`;
                 this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
                 break;
-            default:
-                this.statusBarItem.text = `$(bi-ai-chat) WSO2 Integrator Copilot`;
-                this.statusBarItem.backgroundColor = undefined;
-                break;
         }
         const tooltip = new vscode.MarkdownString();
         tooltip.appendMarkdown(`**WSO2 Integrator Copilot**${this.status.label ? ` — ${this.status.label}` : ''}\n\n`);
