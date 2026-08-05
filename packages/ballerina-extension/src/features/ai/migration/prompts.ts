@@ -132,7 +132,7 @@ export function getPerProjectEnhancementStages(
         },
         {
             name: `[${packageName}] Stage 2 — Source-First Fidelity Implementation`,
-            prompt: shared + "\n\n" + getStage2Prompt(context),
+            prompt: shared + "\n\n" + getStage2Prompt(context) + "\n\n" + CROSS_PACKAGE_ISOLATION_NOTE,
             agentLimits: { maxSteps: 200, maxOutputTokens: 16384 },
         },
         {
@@ -142,7 +142,7 @@ export function getPerProjectEnhancementStages(
         },
         {
             name: `[${packageName}] Stage 4 — Test Migration & Gap Coverage`,
-            prompt: shared + "\n\n" + getStage4Prompt(context),
+            prompt: shared + "\n\n" + getStage4Prompt(context) + "\n\n" + CROSS_PACKAGE_ISOLATION_NOTE,
             agentLimits: { maxSteps: 150, maxOutputTokens: 16384 },
         },
         {
@@ -306,6 +306,11 @@ function getSharedEnhancementContext(context: MigrationContext): string {
     const { keepStructure } = context;
     const platformName = getPlatformName(context.sourcePlatform);
     const platformExpertise = getPlatformExpertise(context.sourcePlatform);
+    const filenameEncodingHint = context.sourcePlatform === 'mule'
+        ? "MuleSoft: `foo/bar.xml` becomes `foo_bar.bal`"
+        : context.sourcePlatform === 'tibco'
+            ? "TIBCO: `foo/Bar.bwp` becomes a similarly named `.bal` file"
+            : "MuleSoft: `foo/bar.xml` becomes `foo_bar.bal`; TIBCO: `foo/Bar.bwp` becomes a similarly named `.bal` file";
 
     return `You are an integration expert in **${platformExpertise}** and **Ballerina**. You are enhancing a
 Ballerina project that was automatically migrated from **${platformName}** by a static code migration tool.
@@ -375,7 +380,7 @@ ${keepStructure ? `### Original Source File Structure Preserved
 
 This project was migrated with **\`--keep-structure\`** enabled. Each \`.bal\` file corresponds
 to one original source file. The source filename and its directory path are encoded into the \`.bal\`
-filename. For ${platformName === 'MuleSoft Mule 3/4' ? "MuleSoft: `foo/bar.xml` becomes `foo_bar.bal`" : "TIBCO: `foo/Bar.bwp` becomes a similarly named `.bal` file"}.
+filename. For ${filenameEncodingHint}.
 **Do not assume the \`.bal\` filename exactly matches the source filename** — use \`migration_source_list\`
 and \`file_list\` together to establish the mapping.
 
@@ -677,7 +682,7 @@ Then stop. Stage 4 will handle test files.`;
 }
 
 // ---------------------------------------------------------------------------
-// Stage 4 — Test Refinement
+// Stage 4 — Test Migration & Gap Coverage
 // ---------------------------------------------------------------------------
 
 function getStage4Prompt(context: MigrationContext): string {
