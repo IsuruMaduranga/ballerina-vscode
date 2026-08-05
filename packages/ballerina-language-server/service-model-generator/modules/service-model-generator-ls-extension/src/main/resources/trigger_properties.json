@@ -310,7 +310,7 @@
       "service",
       "event"
     ],
-    "triggerName": "Directory",
+    "triggerName": "Local Files",
     "version": "1.13.0",
     "kind": "file"
   },

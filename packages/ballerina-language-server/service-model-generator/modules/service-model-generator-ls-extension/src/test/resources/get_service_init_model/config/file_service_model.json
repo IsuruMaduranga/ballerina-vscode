@@ -7,7 +7,7 @@
   "response": {
     "serviceInitModel": {
       "id": "file",
-      "displayName": "Directory Listener",
+      "displayName": "Local Files",
       "description": "Create a service to handle file create, modify, and delete events in a local directory",
       "orgName": "ballerina",
       "packageName": "file",
