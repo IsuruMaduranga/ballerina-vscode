@@ -903,6 +903,15 @@ public final class DatabindUtil {
             String org = "ballerinax";
             String importModule = moduleName.toLowerCase(java.util.Locale.ENGLISH);
 
+            // The guess above (org "ballerinax", module == prefix) breaks for dotted module names
+            // (e.g. "solace.jms", whose default prefix is "jms", not a real "ballerinax/jms" package) —
+            // an explicit override keyed by that same prefix takes precedence when supplied.
+            if (importsForTypeDef != null && importsForTypeDef.containsKey(moduleName)) {
+                String[] overrideParts = importsForTypeDef.get(moduleName).split("/");
+                org = overrideParts[0];
+                importModule = overrideParts[1].split(":")[0];
+            }
+
             if (!importExists(modulePartNode, org, importModule)) {
                 imports.add(getImportStmt(org, importModule));
             }

@@ -158,6 +158,9 @@
             },
             "kind": "DATA_BINDING",
             "type": {
+              "imports": {
+                "jms": "ballerinax/solace.jms"
+              },
               "metadata": {
                 "label": "Message Configuration",
                 "description": "Define the shape of the Solace message payload."
