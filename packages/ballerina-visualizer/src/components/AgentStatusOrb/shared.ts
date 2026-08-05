@@ -303,21 +303,19 @@ export function useAiPanelOpen(): boolean {
     return open;
 }
 
-/** True while a turn is in flight — says nothing about what it will produce. */
-export function useAgentWorking(): boolean {
+/** The live run status, for views that need the state and its label, not just a flag. */
+export function useAgentRunStatus(): AgentRunStatus | null {
     const { rpcClient } = useRpcContext();
-    const isWorking = (status: AgentRunStatus | null) =>
-        status?.state === "running" || status?.state === "awaiting-input";
-    const [working, setWorking] = useState(() => isWorking(currentStatus));
+    const [status, setStatus] = useState(() => currentStatus);
 
     useEffect(() => {
         if (!rpcClient) {
             return;
         }
-        return subscribeAgentRunStatus(rpcClient, (status) => setWorking(isWorking(status)));
+        return subscribeAgentRunStatus(rpcClient, setStatus);
     }, [rpcClient]);
 
-    return working;
+    return status;
 }
 
 // ---------------------------------------------------------------------------
