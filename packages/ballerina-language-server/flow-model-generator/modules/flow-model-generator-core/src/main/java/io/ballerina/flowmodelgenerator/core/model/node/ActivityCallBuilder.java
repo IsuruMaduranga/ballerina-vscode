@@ -375,10 +375,18 @@ public class ActivityCallBuilder extends CallBuilder {
                                                     String maxRetries, String retryDelay,
                                                     String retryBackoff, String maxRetryDelay,
                                                     String retryUserRoles) {
-        List<Option> options = List.of(
+        String selectedValue = retryPolicyValue == null || retryPolicyValue.isBlank()
+                ? NO_RETRY_VALUE : retryPolicyValue;
+        List<Option> options = new ArrayList<>(List.of(
                 new Option("No Automatic Retry", NO_RETRY_VALUE),
                 new Option("Auto Retry", AUTO_RETRY_VALUE),
-                new Option("Human Review", MANUAL_RETRY_VALUE));
+                new Option("Human Review", MANUAL_RETRY_VALUE)));
+        // A policy the form cannot represent (a const or variable reference, say) is carried as its
+        // own option, so it renders as the selection and is written back verbatim on save.
+        boolean opaquePolicy = options.stream().noneMatch(option -> selectedValue.equals(option.value()));
+        if (opaquePolicy) {
+            options.add(new Option(selectedValue, selectedValue));
+        }
 
         // Sub-property definitions for the AutoRetry option. Empty values are intentional:
         // the UI reads real values from the root hidden properties with matching keys.
@@ -407,6 +415,9 @@ public class ActivityCallBuilder extends CallBuilder {
                 "Role(s) permitted to decide the human review, e.g. \"manager\" or "
                         + "[\"finance\", \"manager\"]. Leave empty to allow any role.", "string|string[]"));
         dynamicFields.put(MANUAL_RETRY_VALUE, manualRetryFields);
+        if (opaquePolicy) {
+            dynamicFields.put(selectedValue, Map.of());
+        }
 
         nodeBuilder.properties().custom()
                 .metadata()
@@ -419,7 +430,7 @@ public class ActivityCallBuilder extends CallBuilder {
                     .options(options)
                     .selected(true)
                     .stepOut()
-                .value(retryPolicyValue != null ? retryPolicyValue : NO_RETRY_VALUE)
+                .value(selectedValue)
                 .editable(true)
                 .itemOptions(ItemOption.from(options))
                 .dynamicFormFields(dynamicFields)
@@ -793,8 +804,9 @@ public class ActivityCallBuilder extends CallBuilder {
                 String rolesValue = roles == null || roles.value() == null
                         ? "" : roles.value().toString().trim();
                 // ManualRetry is the reviewer role(s); an empty list means any role may decide.
-                yield rolesValue.isBlank() ? "[]" : WorkflowUtil.quoteIfPlain(rolesValue);
+                yield rolesValue.isBlank() ? "[]" : WorkflowUtil.quoteIfBareRole(rolesValue);
             }
+            // A policy expression the form could not represent: written back as it was read.
             default -> value;
         };
     }

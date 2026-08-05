@@ -19,6 +19,7 @@
 package io.ballerina.flowmodelgenerator.core.model.node;
 
 import io.ballerina.flowmodelgenerator.core.AiUtils;
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
@@ -109,7 +110,7 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
         } else {
             // Object-model agents have no function form; identity/config edits go through
             // the declaration's own forms, never this builder.
-            throw new IllegalStateException("A durable agent can only be created, not regenerated: "
+            throw new UserFacingException("A durable agent can only be created, not regenerated: "
                     + "edit the declaration through its capability forms");
         }
 

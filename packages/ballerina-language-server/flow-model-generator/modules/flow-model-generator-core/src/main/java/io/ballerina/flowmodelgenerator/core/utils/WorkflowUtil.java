@@ -53,6 +53,7 @@ import io.ballerina.compiler.syntax.tree.SpecificFieldNode;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.compiler.syntax.tree.SyntaxTree;
 import io.ballerina.flowmodelgenerator.core.Constants;
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
 import io.ballerina.modelgenerator.commons.CommonUtils;
@@ -65,8 +66,6 @@ import io.ballerina.projects.Project;
 import io.ballerina.tools.text.LinePosition;
 import io.ballerina.tools.text.LineRange;
 import io.ballerina.tools.text.TextRange;
-import org.ballerinalang.langserver.commons.eventsync.exceptions.EventSyncException;
-import org.ballerinalang.langserver.commons.workspace.WorkspaceDocumentException;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -335,25 +334,6 @@ public class WorkflowUtil {
     }
 
     /**
-     * Resolves the given type to any class symbol — client or plain. Used by the
-     * create-activity-from-connection wizard, which can also wrap methods of non-client classes
-     * such as {@code ai:Agent} (whose {@code run()} is a normal method, not a remote action).
-     *
-     * @param typeSymbol the variable type to inspect
-     * @return the {@link ClassSymbol} if {@code typeSymbol} resolves to a class
-     */
-    public static Optional<ClassSymbol> resolveWrappableClass(TypeSymbol typeSymbol) {
-        if (typeSymbol == null) {
-            return Optional.empty();
-        }
-        TypeSymbol resolved = TypeUtils.resolveTypeReference(typeSymbol);
-        if (resolved instanceof ClassSymbol classSymbol) {
-            return Optional.of(classSymbol);
-        }
-        return Optional.empty();
-    }
-
-    /**
      * Inserts a capability entry into a module-level {@code workflow:DurableAgent} declaration's
      * config literal: appended to the named list field when present, otherwise the field is
      * added with a single-element list.
@@ -368,7 +348,7 @@ public class WorkflowUtil {
             SourceBuilder sourceBuilder, String agentVarName, String fieldName, String entryText) {
         AgentDeclaration declaration = findAgentDeclaration(sourceBuilder, agentVarName);
         if (declaration == null) {
-            throw new IllegalStateException("Cannot locate the durable agent declaration: " + agentVarName);
+            throw new UserFacingException("Cannot locate the durable agent declaration: " + agentVarName);
         }
         MappingConstructorExpressionNode config = declaration.config();
 
@@ -412,7 +392,7 @@ public class WorkflowUtil {
         AgentDeclaration declaration = findAgentDeclaration(sourceBuilder, agentVarName);
         LineRange entryRange = sourceBuilder.flowNode.codedata().lineRange();
         if (declaration == null || entryRange == null) {
-            throw new IllegalStateException("Cannot locate the durable agent capability entry to update");
+            throw new UserFacingException("Cannot locate the durable agent capability entry to update");
         }
         Map<Path, List<org.eclipse.lsp4j.TextEdit>> edits = new HashMap<>();
         edits.put(declaration.filePath(), List.of(new org.eclipse.lsp4j.TextEdit(
@@ -451,29 +431,49 @@ public class WorkflowUtil {
                         || !agentVarName.equals(capture.variableName().text())) {
                     continue;
                 }
-                if (varDecl.initializer().isEmpty()) {
-                    continue;
-                }
-                ExpressionNode initializer = varDecl.initializer().get();
-                if (initializer instanceof CheckExpressionNode checkExpr) {
-                    initializer = checkExpr.expression();
-                }
-                if (!(initializer instanceof ImplicitNewExpressionNode newExpr)
-                        || newExpr.parenthesizedArgList().isEmpty()
-                        || newExpr.parenthesizedArgList().get().arguments().isEmpty()) {
-                    continue;
-                }
-                FunctionArgumentNode firstArg =
-                        newExpr.parenthesizedArgList().get().arguments().get(0);
-                if (firstArg instanceof PositionalArgumentNode positional
-                        && positional.expression()
-                                instanceof MappingConstructorExpressionNode config) {
+                Optional<MappingConstructorExpressionNode> config = agentConfigLiteral(varDecl);
+                if (config.isPresent()) {
                     return new AgentDeclaration(project.documentPath(documentId).orElse(sourceBuilder.filePath),
-                            config);
+                            config.get());
                 }
             }
         }
         return null;
+    }
+
+    /**
+     * The config mapping literal of a durable agent declaration's initializer. Both the implicit
+     * {@code check new ({...})} and the explicit {@code check new workflow:DurableAgent({...})}
+     * shapes are accepted, so every path that reads or edits a declaration agrees on which
+     * declarations it can handle.
+     *
+     * @param varDecl the module-level variable declaration
+     * @return the config literal, or empty when the initializer is not a {@code new} with a
+     *         positional mapping argument
+     */
+    private static Optional<MappingConstructorExpressionNode> agentConfigLiteral(
+            ModuleVariableDeclarationNode varDecl) {
+        if (varDecl.initializer().isEmpty()) {
+            return Optional.empty();
+        }
+        ExpressionNode initializer = varDecl.initializer().get();
+        if (initializer instanceof CheckExpressionNode checkExpr) {
+            initializer = checkExpr.expression();
+        }
+        SeparatedNodeList<FunctionArgumentNode> args;
+        if (initializer instanceof ImplicitNewExpressionNode newExpr
+                && newExpr.parenthesizedArgList().isPresent()) {
+            args = newExpr.parenthesizedArgList().get().arguments();
+        } else if (initializer instanceof ExplicitNewExpressionNode explicitNew) {
+            args = explicitNew.parenthesizedArgList().arguments();
+        } else {
+            return Optional.empty();
+        }
+        if (args.isEmpty() || !(args.get(0) instanceof PositionalArgumentNode positional)
+                || !(positional.expression() instanceof MappingConstructorExpressionNode config)) {
+            return Optional.empty();
+        }
+        return Optional.of(config);
     }
 
     /**
@@ -504,19 +504,8 @@ public class WorkflowUtil {
      * Lists the data-event channel names declared across the default module's durable agent
      * declarations ({@code events: [{name: "...", ...}]}). Data-event channels are declared on
      * the agent — the call-site forms offer them as a fixed dropdown rather than free text.
-     *
-     * @param workspaceManager the workspace manager to resolve the project from
-     * @param filePath         the file the form is opened in
-     * @return dropdown options, one per declared event channel (deduplicated, source order)
-     */
-    public static List<Option> declaredAgentEventOptions(
-            org.ballerinalang.langserver.commons.workspace.WorkspaceManager workspaceManager, Path filePath) {
-        return declaredAgentEventOptions(workspaceManager, filePath, null);
-    }
-
-    /**
-     * Lists the declared data-event channel names, restricted to one agent when
-     * {@code targetAgent} names a module-level durable agent variable.
+     * The listing is restricted to one agent when {@code targetAgent} names a module-level
+     * durable agent variable.
      *
      * @param workspaceManager the workspace manager to resolve the project from
      * @param filePath         the file the form is opened in
@@ -552,27 +541,7 @@ public class WorkflowUtil {
                             || !targetAgent.equals(capture.variableName().text()))) {
                     continue;
                 }
-                ExpressionNode initializer = varDecl.initializer().get();
-                if (initializer instanceof CheckExpressionNode checkExpr) {
-                    initializer = checkExpr.expression();
-                }
-                SeparatedNodeList<FunctionArgumentNode> args;
-                if (initializer instanceof ImplicitNewExpressionNode newExpr
-                        && newExpr.parenthesizedArgList().isPresent()) {
-                    args = newExpr.parenthesizedArgList().get().arguments();
-                } else if (initializer
-                        instanceof ExplicitNewExpressionNode explicitNew) {
-                    args = explicitNew.parenthesizedArgList().arguments();
-                } else {
-                    continue;
-                }
-                if (args.isEmpty()
-                        || !(args.get(0) instanceof PositionalArgumentNode pos)
-                        || !(pos.expression()
-                                instanceof MappingConstructorExpressionNode conf)) {
-                    continue;
-                }
-                collectDeclaredEventNames(conf, names);
+                agentConfigLiteral(varDecl).ifPresent(config -> collectDeclaredEventNames(config, names));
             }
         }
         return names.stream()
@@ -615,57 +584,15 @@ public class WorkflowUtil {
     }
 
     /**
-     * Asserts the node targets an object-model durable agent declaration.
+     * Asserts the node targets an object-model durable agent declaration, as every durable agent
+     * builder must before it edits the declaration literal.
      *
      * @param sourceBuilder the source builder
      */
     public static void requireDurableAgentObjectTarget(SourceBuilder sourceBuilder) {
         if (!isDurableAgentObjectTarget(sourceBuilder)) {
-            throw new IllegalStateException("Cannot generate the capability source: "
+            throw new UserFacingException("Cannot generate the source: "
                     + "the durable agent declaration target is missing");
-        }
-    }
-
-    /**
-     * Prepends an import declaration to the (single) file already carrying capability edits,
-     * when that file does not import the module yet.
-     *
-     * @param edits         the capability text edits keyed by file path
-     * @param sourceBuilder the source builder (locates the project)
-     * @param org           the import organization
-     * @param module        the import module name
-     */
-    public static void addImportIfMissing(Map<Path, List<org.eclipse.lsp4j.TextEdit>> edits,
-                                          SourceBuilder sourceBuilder, String org, String module) {
-        if (edits.size() != 1) {
-            return;
-        }
-        Map.Entry<Path, List<org.eclipse.lsp4j.TextEdit>> entry = edits.entrySet().iterator().next();
-        Path filePath = entry.getKey();
-        Project project;
-        try {
-            project = sourceBuilder.workspaceManager.loadProject(sourceBuilder.filePath);
-        } catch (WorkspaceDocumentException | EventSyncException e) {
-            return;
-        }
-        Module defaultModule = project.currentPackage().getDefaultModule();
-        for (DocumentId documentId : defaultModule.documentIds()) {
-            Document document = defaultModule.document(documentId);
-            Path docPath = project.documentPath(documentId).orElse(null);
-            if (docPath == null || !docPath.equals(filePath)) {
-                continue;
-            }
-            ModulePartNode root = document.syntaxTree().rootNode();
-            boolean hasImport = root.imports().stream().anyMatch(imp ->
-                    imp.toSourceCode().contains(org + "/" + module));
-            if (!hasImport) {
-                org.eclipse.lsp4j.Position top = new org.eclipse.lsp4j.Position(0, 0);
-                List<org.eclipse.lsp4j.TextEdit> fileEdits = new ArrayList<>(edits.get(filePath));
-                fileEdits.add(0, new org.eclipse.lsp4j.TextEdit(
-                        new org.eclipse.lsp4j.Range(top, top), "import " + org + "/" + module + ";\n"));
-                edits.put(filePath, fileEdits);
-            }
-            return;
         }
     }
 
@@ -739,62 +666,25 @@ public class WorkflowUtil {
         return "\"" + trimmed.replace("\"", "\\\"") + "\"";
     }
 
-    /**
-     * Sets a top-level field of the targeted agent declaration's config literal: replaces the
-     * existing field's value, or appends the field when missing.
-     *
-     * @param sourceBuilder the source builder carrying the workspace
-     * @param agentVarName  the agent's module-level variable name
-     * @param fieldName     the config field name (e.g. {@code systemPrompt}, {@code model})
-     * @param valueText     the new value source
-     * @return the text edits keyed by file path
-     */
-    public static Map<Path, List<org.eclipse.lsp4j.TextEdit>> setAgentConfigField(
-            SourceBuilder sourceBuilder, String agentVarName, String fieldName, String valueText) {
-        AgentDeclaration declaration = findAgentDeclaration(sourceBuilder, agentVarName);
-        if (declaration == null) {
-            throw new IllegalStateException("Cannot locate the durable agent declaration: " + agentVarName);
-        }
-        MappingConstructorExpressionNode config = declaration.config();
-        org.eclipse.lsp4j.Range range = null;
-        String newText = null;
-        for (MappingFieldNode field : config.fields()) {
-            if (field instanceof SpecificFieldNode specificField
-                    && fieldName.equals(specificField.fieldName().toSourceCode().trim())
-                    && specificField.valueExpr().isPresent()) {
-                LineRange valueRange = specificField.valueExpr().get().lineRange();
-                range = new org.eclipse.lsp4j.Range(
-                        new org.eclipse.lsp4j.Position(valueRange.startLine().line(),
-                                valueRange.startLine().offset()),
-                        new org.eclipse.lsp4j.Position(valueRange.endLine().line(),
-                                valueRange.endLine().offset()));
-                newText = valueText;
-                break;
-            }
-        }
-        if (range == null) {
-            LinePosition closeBrace = config.closeBrace().lineRange().startLine();
-            org.eclipse.lsp4j.Position position =
-                    new org.eclipse.lsp4j.Position(closeBrace.line(), closeBrace.offset());
-            range = new org.eclipse.lsp4j.Range(position, position);
-            newText = (config.fields().isEmpty() ? "" : ", ") + fieldName + ": " + valueText;
-        }
-        Map<Path, List<org.eclipse.lsp4j.TextEdit>> edits = new HashMap<>();
-        edits.put(declaration.filePath(), new ArrayList<>(
-                List.of(new org.eclipse.lsp4j.TextEdit(range, newText))));
-        return edits;
-    }
+    // Characters that cannot occur in a bare role name but do occur in references and calls.
+    private static final java.util.regex.Pattern EXPRESSION_LIKE =
+            java.util.regex.Pattern.compile("[(){}:.]");
 
     /**
-     * Merges text-edit maps produced by successive declaration edits into one response.
+     * Quotes a user-role value like {@link #quoteIfPlain}, but leaves anything that reads as an
+     * expression — a module-qualified reference, a call, a member access, an interpolation —
+     * untouched. Only a bare word is a role name; quoting an expression would rewrite a valid
+     * reference into a string literal.
      *
-     * @param target    the map collecting all edits
-     * @param additions the edits to fold in
+     * @param value the raw form value
+     * @return a Ballerina string, string[] or reference expression
      */
-    public static void mergeTextEdits(Map<Path, List<org.eclipse.lsp4j.TextEdit>> target,
-                                      Map<Path, List<org.eclipse.lsp4j.TextEdit>> additions) {
-        additions.forEach((path, edits) ->
-                target.computeIfAbsent(path, key -> new ArrayList<>()).addAll(edits));
+    public static String quoteIfBareRole(String value) {
+        String trimmed = value.trim();
+        if (EXPRESSION_LIKE.matcher(trimmed).find()) {
+            return trimmed;
+        }
+        return quoteIfPlain(trimmed);
     }
 
     /** Property key the front end sets to request removal of a capability entry. */
@@ -826,7 +716,7 @@ public class WorkflowUtil {
         LineRange entryRange = sourceBuilder.flowNode.codedata().lineRange();
         AgentDeclaration declaration = findAgentDeclaration(sourceBuilder, agentVarName);
         if (declaration == null || entryRange == null) {
-            throw new IllegalStateException("Cannot locate the durable agent capability entry to remove");
+            throw new UserFacingException("Cannot locate the durable agent capability entry to remove");
         }
         for (MappingFieldNode field : declaration.config().fields()) {
             if (!(field instanceof SpecificFieldNode specificField)
@@ -864,7 +754,7 @@ public class WorkflowUtil {
                 return edits;
             }
         }
-        throw new IllegalStateException("The capability entry was not found in the agent declaration");
+        throw new UserFacingException("The capability entry was not found in the agent declaration");
     }
 
     /**
@@ -882,7 +772,7 @@ public class WorkflowUtil {
             java.util.LinkedHashMap<String, String> fields) {
         AgentDeclaration declaration = findAgentDeclaration(sourceBuilder, agentVarName);
         if (declaration == null) {
-            throw new IllegalStateException("Cannot locate the durable agent declaration: " + agentVarName);
+            throw new UserFacingException("Cannot locate the durable agent declaration: " + agentVarName);
         }
         MappingConstructorExpressionNode config = declaration.config();
         List<org.eclipse.lsp4j.TextEdit> edits = new ArrayList<>();

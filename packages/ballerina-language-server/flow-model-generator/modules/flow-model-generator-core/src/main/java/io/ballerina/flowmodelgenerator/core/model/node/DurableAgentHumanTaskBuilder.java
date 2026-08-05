@@ -18,6 +18,7 @@
 
 package io.ballerina.flowmodelgenerator.core.model.node;
 
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Property;
 import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
@@ -207,46 +208,42 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         // Object model: the human task lives on the declaration's `humanTasks` list.
-        if (WorkflowUtil.isDurableAgentObjectTarget(sourceBuilder)) {
-            if (WorkflowUtil.isCapabilityDeleteRequest(sourceBuilder)) {
-                return WorkflowUtil.removeAgentCapabilityEntry(sourceBuilder);
-            }
-            String name = sourceBuilder.getProperty(TASK_NAME_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            if (name.isBlank()) {
-                throw new IllegalStateException("A human task name is required");
-            }
-            String roles = sourceBuilder.getProperty(USER_ROLES_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            String title = sourceBuilder.getProperty(TITLE_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            String taskDescription = sourceBuilder.getProperty(DESCRIPTION_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            String resultType = sourceBuilder.getProperty(RESULT_TYPE_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            String timeout = sourceBuilder.getProperty(TIMEOUT_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            StringBuilder entry = new StringBuilder("{name: ").append(WorkflowUtil.constantNameLiteral(name))
-                    .append(", roles: ").append(roles.isBlank() ? "\"manager\""
-                            : WorkflowUtil.quoteIfPlain(roles));
-            if (!resultType.isBlank()) {
-                entry.append(", resultType: ").append(resultType);
-            }
-            if (!title.isBlank()) {
-                entry.append(", title: ").append(WorkflowUtil.quoteIfPlain(title));
-            }
-            if (!taskDescription.isBlank()) {
-                entry.append(", description: ").append(WorkflowUtil.quoteIfPlain(taskDescription));
-            }
-            if (!timeout.isBlank()) {
-                entry.append(", timeout: ").append(timeout);
-            }
-            entry.append("}");
-            return WorkflowUtil.upsertAgentCapabilityEntry(sourceBuilder, "humanTasks", entry.toString());
+        WorkflowUtil.requireDurableAgentObjectTarget(sourceBuilder);
+        if (WorkflowUtil.isCapabilityDeleteRequest(sourceBuilder)) {
+            return WorkflowUtil.removeAgentCapabilityEntry(sourceBuilder);
         }
-
-        throw new IllegalStateException("Cannot generate the capability source: "
-                + "the durable agent declaration target is missing");
+        String name = sourceBuilder.getProperty(TASK_NAME_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        if (name.isBlank()) {
+            throw new UserFacingException("A human task name is required");
+        }
+        String roles = sourceBuilder.getProperty(USER_ROLES_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        String title = sourceBuilder.getProperty(TITLE_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        String taskDescription = sourceBuilder.getProperty(DESCRIPTION_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        String resultType = sourceBuilder.getProperty(RESULT_TYPE_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        String timeout = sourceBuilder.getProperty(TIMEOUT_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        StringBuilder entry = new StringBuilder("{name: ").append(WorkflowUtil.constantNameLiteral(name))
+                .append(", roles: ").append(roles.isBlank() ? "\"manager\""
+                        : WorkflowUtil.quoteIfPlain(roles));
+        if (!resultType.isBlank()) {
+            entry.append(", resultType: ").append(resultType);
+        }
+        if (!title.isBlank()) {
+            entry.append(", title: ").append(WorkflowUtil.quoteIfPlain(title));
+        }
+        if (!taskDescription.isBlank()) {
+            entry.append(", description: ").append(WorkflowUtil.quoteIfPlain(taskDescription));
+        }
+        if (!timeout.isBlank()) {
+            entry.append(", timeout: ").append(timeout);
+        }
+        entry.append("}");
+        return WorkflowUtil.upsertAgentCapabilityEntry(sourceBuilder, "humanTasks", entry.toString());
     }
 
 }

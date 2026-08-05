@@ -189,11 +189,13 @@ const PopupPanel = (props: PopupPanelProps) => {
                 case MACHINE_VIEW.BIDurableAgentForm:
                     setIsFullScreen(true);
                     rpcClient.getVisualizerLocation().then(async (location) => {
-                        const defaultFunctionsFile = (await rpcClient.getVisualizerRpcClient().joinProjectPath({ segments: ['functions.bal'] })).filePath;
+                        // Durable agent declarations live in workflow.bal alongside the workflow
+                        // artifacts, not in functions.bal — same target as the main panel form.
+                        const workflowFile = (await rpcClient.getVisualizerRpcClient().joinProjectPath({ segments: ['workflow.bal'] })).filePath;
                         setViewComponent(
                             <FunctionForm
                                 projectPath={location.projectPath}
-                                filePath={defaultFunctionsFile}
+                                filePath={workflowFile}
                                 functionName={undefined}
                                 isDurableAgent={true}
                                 isPopup={true}

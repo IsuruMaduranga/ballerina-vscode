@@ -373,23 +373,24 @@ public class DurableAgentRunBuilder extends CallBuilder {
         // Object model: the box's form edits the agent DECLARATION — the systemPrompt
         // (role/instructions) and model fields of the config literal. The run statement
         // itself is not rewritten here.
-        if (WorkflowUtil.isDurableAgentObjectTarget(sourceBuilder)) {
-            String agentVarName = sourceBuilder.flowNode.codedata().parentSymbol();
-            String role = promptFieldSource(sourceBuilder.getProperty(ROLE_KEY).orElse(null));
-            String instructions = promptFieldSource(sourceBuilder.getProperty(INSTRUCTIONS_KEY).orElse(null));
-            String modelValue = sourceBuilder.getProperty(MODEL_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            String promptText = "{role: " + role + ", instructions: " + instructions + "}";
-            java.util.LinkedHashMap<String, String> fields = new java.util.LinkedHashMap<>();
-            fields.put(SYSTEM_PROMPT_KEY, promptText);
-            if (!modelValue.isBlank()) {
-                fields.put(MODEL_KEY, modelValue);
-            }
-            return WorkflowUtil.setAgentConfigFields(sourceBuilder, agentVarName, fields);
+        WorkflowUtil.requireDurableAgentObjectTarget(sourceBuilder);
+        String agentVarName = sourceBuilder.flowNode.codedata().parentSymbol();
+        Property role = sourceBuilder.getProperty(ROLE_KEY).orElse(null);
+        Property instructions = sourceBuilder.getProperty(INSTRUCTIONS_KEY).orElse(null);
+        String modelValue = sourceBuilder.getProperty(MODEL_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        LinkedHashMap<String, String> fields = new LinkedHashMap<>();
+        // The prompt fields only exist on the form when the declaration's systemPrompt was read
+        // as a role/instructions mapping. Absent means the form never showed them (the prompt is
+        // a reference, say), so leave the declared systemPrompt alone rather than blanking it.
+        if (role != null || instructions != null) {
+            fields.put(SYSTEM_PROMPT_KEY, "{role: " + promptFieldSource(role)
+                    + ", instructions: " + promptFieldSource(instructions) + "}");
         }
-
-        throw new IllegalStateException("Cannot generate the agent source: "
-                + "the durable agent declaration target is missing");
+        if (!modelValue.isBlank()) {
+            fields.put(MODEL_KEY, modelValue);
+        }
+        return WorkflowUtil.setAgentConfigFields(sourceBuilder, agentVarName, fields);
     }
 
     /**
@@ -404,7 +405,7 @@ public class DurableAgentRunBuilder extends CallBuilder {
      * populated. When the field holds an expression rather than a prompt (a config variable, say),
      * it is written through as-is.
      *
-     * @param property the Role or Instructions property, or null when absent
+     * @param property the Role or Instructions property, or null when only its sibling is present
      * @return the expression source for the field
      */
     private static String promptFieldSource(Property property) {

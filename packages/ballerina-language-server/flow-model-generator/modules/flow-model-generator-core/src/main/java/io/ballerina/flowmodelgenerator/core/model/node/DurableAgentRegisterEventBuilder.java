@@ -18,6 +18,7 @@
 
 package io.ballerina.flowmodelgenerator.core.model.node;
 
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
@@ -182,37 +183,33 @@ public class DurableAgentRegisterEventBuilder extends CallBuilder {
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         // Object model: the event lives on the declaration's `events` list.
-        if (WorkflowUtil.isDurableAgentObjectTarget(sourceBuilder)) {
-            if (WorkflowUtil.isCapabilityDeleteRequest(sourceBuilder)) {
-                return WorkflowUtil.removeAgentCapabilityEntry(sourceBuilder);
-            }
-            String eventName = sourceBuilder.getProperty(NAME_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            if (eventName.isBlank()) {
-                throw new IllegalStateException("An event name is required");
-            }
-            String requestType = sourceBuilder.getProperty(REQUEST_TYPE_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            String responseType = sourceBuilder.getProperty(RESPONSE_TYPE_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            String cardinality = sourceBuilder.getProperty(CARDINALITY_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            StringBuilder entry = new StringBuilder("{name: ")
-                    .append(WorkflowUtil.constantNameLiteral(eventName))
-                    .append(", request: ").append(requestType.isBlank() ? "json" : requestType);
-            if (!responseType.isBlank()) {
-                entry.append(", response: ").append(responseType);
-            }
-            // MULTI_EVENT is the module default; only a SINGLE_EVENT opt-in is written out.
-            if (SINGLE_EVENT.equals(cardinality)) {
-                entry.append(", cardinality: ").append(WORKFLOW_MODULE).append(":").append(SINGLE_EVENT);
-            }
-            entry.append("}");
-            return WorkflowUtil.upsertAgentCapabilityEntry(sourceBuilder, "events", entry.toString());
+        WorkflowUtil.requireDurableAgentObjectTarget(sourceBuilder);
+        if (WorkflowUtil.isCapabilityDeleteRequest(sourceBuilder)) {
+            return WorkflowUtil.removeAgentCapabilityEntry(sourceBuilder);
         }
-
-        throw new IllegalStateException("Cannot generate the capability source: "
-                + "the durable agent declaration target is missing");
+        String eventName = sourceBuilder.getProperty(NAME_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        if (eventName.isBlank()) {
+            throw new UserFacingException("An event name is required");
+        }
+        String requestType = sourceBuilder.getProperty(REQUEST_TYPE_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        String responseType = sourceBuilder.getProperty(RESPONSE_TYPE_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        String cardinality = sourceBuilder.getProperty(CARDINALITY_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        StringBuilder entry = new StringBuilder("{name: ")
+                .append(WorkflowUtil.constantNameLiteral(eventName))
+                .append(", request: ").append(requestType.isBlank() ? "json" : requestType);
+        if (!responseType.isBlank()) {
+            entry.append(", response: ").append(responseType);
+        }
+        // MULTI_EVENT is the module default; only a SINGLE_EVENT opt-in is written out.
+        if (SINGLE_EVENT.equals(cardinality)) {
+            entry.append(", cardinality: ").append(WORKFLOW_MODULE).append(":").append(SINGLE_EVENT);
+        }
+        entry.append("}");
+        return WorkflowUtil.upsertAgentCapabilityEntry(sourceBuilder, "events", entry.toString());
     }
 
 }
