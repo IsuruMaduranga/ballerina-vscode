@@ -56,21 +56,9 @@ export const BRAND_ICON_REGISTRY: Record<string, BrandIcon> = {
     postgresql: { glyph: "bi-postgresql", color: "#336791" },
     mysql: { glyph: "bi-mysql", color: "#00758F" },
     shopify: { glyph: "bi-shopify", color: "#95BF47" },
-    oracledb: { glyph: "bi-oracledb", color: "#b61d1c" },
-    "sap.jco": { glyph: "bi-sap" },
-    jco: { glyph: "bi-sap" },
     "trigger.shopify": { glyph: "bi-shopify", color: "#95BF47" },
     hubspot: { glyph: "bi-hubspot", color: "#FF7A59" },
     "trigger.hubspot": { glyph: "bi-hubspot", color: "#FF7A59" },
-    "azure.storage.files": { glyph: "bi-file" },
-    files: { glyph: "bi-file" },
-    "googleapis.chat": { glyph: "bi-chat" },
-    chat: { glyph: "bi-chat" },
-    telegram: { glyph: "bi-telegram" },
-    "whatsapp.business": { glyph: "bi-whatsapp" },
-    business: { glyph: "bi-whatsapp" },
-    "aws.sqs": { glyph: "bi-sqs" },
-    sqs: { glyph: "bi-sqs" },
 };
 
 /** Looks up the brand glyph override for a module/type identifier; `undefined` when there is none. */
