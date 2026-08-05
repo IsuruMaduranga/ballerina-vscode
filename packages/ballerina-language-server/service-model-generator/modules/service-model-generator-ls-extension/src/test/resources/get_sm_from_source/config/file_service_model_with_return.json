@@ -11,9 +11,9 @@
   },
   "response": {
     "id": "0",
-    "name": "Directory Listener",
+    "name": "Local Files",
     "type": "file",
-    "displayName": "Directory Listener",
+    "displayName": "Local Files",
     "moduleName": "file",
     "orgName": "ballerina",
     "version": "1.13.0",
