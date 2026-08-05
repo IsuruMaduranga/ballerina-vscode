@@ -235,10 +235,8 @@ export function AIEvaluationForm(props: TestFunctionDefProps) {
         template: isTemplateMode ? selectedTemplate : undefined,
         hasAgent: Boolean(agentArgument),
         agentValue,
-        evalSetFile: selectedEvalsetFile,
         takenNames
-    }), [isEditing, isTemplateMode, selectedTemplate, agentArgument, agentValue, selectedEvalsetFile,
-        takenNames]);
+    }), [isEditing, isTemplateMode, selectedTemplate, agentArgument, agentValue, takenNames]);
 
     const evalsetField = useMemo(
         () => formFields.find(field => field.key === EVALSET_FIELD_KEY),

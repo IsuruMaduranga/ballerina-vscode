@@ -38,14 +38,11 @@ const templateToken = (template?: AvailableNode): string => {
         || toPascalCase(symbol);
 };
 
-const evalsetToken = (evalSetFile: string): string =>
-    toPascalCase(evalSetFile.split(/[\\/]/).pop()?.replace(/\..*$/, '') || '');
-
-const subjectToken = (hasAgent: boolean, agentValue: string, evalSetFile: string): string => {
-    if (!hasAgent) {
-        return evalsetToken(evalSetFile);
+const agentToken = (hasAgent: boolean, agentValue: string): string => {
+    if (hasAgent) {
+        return IDENTIFIER.test(agentValue.trim()) ? toPascalCase(agentValue.trim()) : '';
     }
-    return IDENTIFIER.test(agentValue.trim()) ? toPascalCase(agentValue.trim()) : '';
+    return '';
 };
 
 const uniqueName = (base: string, takenNames: Iterable<string>): string => {
@@ -64,13 +61,12 @@ export const suggestEvaluationName = (args: {
     template?: AvailableNode;
     hasAgent?: boolean;
     agentValue?: string;
-    evalSetFile?: string;
     takenNames: Iterable<string>;
 }): string => {
     const template = templateToken(args.template);
     if (!template) {
         return uniqueName(CUSTOM_NAME, args.takenNames);
     }
-    const subject = subjectToken(Boolean(args.hasAgent), args.agentValue || '', args.evalSetFile || '');
+    const subject = agentToken(Boolean(args.hasAgent), args.agentValue || '');
     return uniqueName(`${NAME_PREFIX}${subject}${template}`, args.takenNames);
 };
