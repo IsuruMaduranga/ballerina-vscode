@@ -900,6 +900,9 @@ export type BISourceCodeResponse = {
     };
     errorMsg?: string;
     stacktrace?: string;
+    // Set when errorMsg is written for the user (a required field left empty, a construct the
+    // editor cannot rewrite) rather than being an internal failure.
+    userFacing?: boolean;
 };
 
 export type BIDeleteByComponentInfoRequest = {

@@ -913,12 +913,13 @@ export class NodeFactoryVisitor implements BaseVisitor {
         // Exception — the agent-only view: there the flow model is just
         // [Start, agent box], so a start node has already been visited. Link it to the
         // box with a non-editable edge (no add-button).
-        const isAgentBox = (node.metadata?.data as { agentBox?: boolean })?.agentBox === true;
+        const nodeData = node.metadata?.data as { agentBox?: boolean; agentDeclarationCanvas?: boolean };
+        const isAgentBox = nodeData?.agentBox === true;
         // Only the synthetic declaration-canvas copy (agent-only view) gets the non-editable
         // Start edge — an in-chain `agent.run(...)` statement also carries the agentBox marker
-        // but is a real statement, so its edges keep the add-button.
-        const isDeclarationCanvasBox =
-            node.id === "durable-agent-box" || node.id === "durable-agent-placeholder";
+        // but is a real statement, so its edges keep the add-button. The LS marks the synthetic
+        // copy explicitly; node ids are generated, so they cannot be matched on.
+        const isDeclarationCanvasBox = nodeData?.agentDeclarationCanvas === true;
         if (!isAgentBox) {
             this.updateNodeLinks(node, nodeModel);
         } else if (isDeclarationCanvasBox && this.lastNodeModel instanceof StartNodeModel) {

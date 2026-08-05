@@ -18,6 +18,7 @@
 
 package io.ballerina.flowmodelgenerator.core.model.node;
 
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
@@ -158,35 +159,31 @@ public class DurableAgentRegisterToolBuilder extends CallBuilder {
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         // Object model: the capability lives on the declaration's `tools` list.
-        if (WorkflowUtil.isDurableAgentObjectTarget(sourceBuilder)) {
-            if (WorkflowUtil.isCapabilityDeleteRequest(sourceBuilder)) {
-                return WorkflowUtil.removeAgentCapabilityEntry(sourceBuilder);
-            }
-            String toolRef = sourceBuilder.getProperty(TOOL_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            if (toolRef.isBlank()) {
-                throw new IllegalStateException("An agent tool function must be selected");
-            }
-            boolean gated = isGated(sourceBuilder);
-            String userRoles = userRolesSource(sourceBuilder);
-            String entry;
-            if (!gated && userRoles.isBlank()) {
-                entry = toolRef;
-            } else {
-                StringBuilder mapping = new StringBuilder("{tool: ").append(toolRef);
-                if (gated) {
-                    mapping.append(", requiresApproval: true");
-                }
-                if (!userRoles.isBlank()) {
-                    mapping.append(", userRoles: ").append(WorkflowUtil.quoteIfPlain(userRoles));
-                }
-                entry = mapping.append("}").toString();
-            }
-            return WorkflowUtil.upsertAgentCapabilityEntry(sourceBuilder, "tools", entry);
+        WorkflowUtil.requireDurableAgentObjectTarget(sourceBuilder);
+        if (WorkflowUtil.isCapabilityDeleteRequest(sourceBuilder)) {
+            return WorkflowUtil.removeAgentCapabilityEntry(sourceBuilder);
         }
-
-        throw new IllegalStateException("Cannot generate the capability source: "
-                + "the durable agent declaration target is missing");
+        String toolRef = sourceBuilder.getProperty(TOOL_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        if (toolRef.isBlank()) {
+            throw new UserFacingException("An agent tool function must be selected");
+        }
+        boolean gated = isGated(sourceBuilder);
+        String userRoles = userRolesSource(sourceBuilder);
+        String entry;
+        if (!gated && userRoles.isBlank()) {
+            entry = toolRef;
+        } else {
+            StringBuilder mapping = new StringBuilder("{tool: ").append(toolRef);
+            if (gated) {
+                mapping.append(", requiresApproval: true");
+            }
+            if (!userRoles.isBlank()) {
+                mapping.append(", userRoles: ").append(WorkflowUtil.quoteIfPlain(userRoles));
+            }
+            entry = mapping.append("}").toString();
+        }
+        return WorkflowUtil.upsertAgentCapabilityEntry(sourceBuilder, "tools", entry);
     }
 
     private List<Option> getAgentToolFunctions(TemplateContext context) {

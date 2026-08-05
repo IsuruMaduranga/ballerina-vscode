@@ -448,12 +448,23 @@ export function getContainerTitle(view: SidePanelView, activeNode: FlowNode, cli
             ) {
                 return `${clientName || activeNode.properties.connection.value} → ${activeNode.metadata.label}`;
             } else if (activeNode.codedata?.node === "DATA_MAPPER_CALL") {
-                return `${activeNode.codedata.symbol}`;
+                return `${modulePrefix(activeNode)}${activeNode.codedata.symbol}`;
             }
-            return `${activeNode.metadata.label}`;
+            return `${modulePrefix(activeNode)}${activeNode.metadata.label}`;
         default:
             return "";
     }
+}
+
+// The module a form title is qualified with ("regex : matches"), which disambiguates same-named
+// functions across modules. Workflow and durable agent nodes are the module's own concepts, so
+// their titles read better unqualified ("Run Workflow", not "workflow : Run Workflow").
+function modulePrefix(activeNode: FlowNode): string {
+    const module = activeNode.codedata?.module;
+    if (!module || module === "workflow" || activeNode.codedata?.node?.startsWith("DURABLE_AGENT")) {
+        return "";
+    }
+    return `${module} : `;
 }
 
 export function addDraftNodeToDiagram(flowModel: Flow, parent: FlowNode | Branch, target: LineRange) {

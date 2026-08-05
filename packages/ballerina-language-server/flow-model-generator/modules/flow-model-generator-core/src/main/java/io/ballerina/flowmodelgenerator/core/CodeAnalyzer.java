@@ -2134,20 +2134,34 @@ public class CodeAnalyzer extends NodeVisitor {
                 retryDelay = fields.getOrDefault(ActivityCallBuilder.RETRY_DELAY_KEY, "");
                 retryBackoff = fields.getOrDefault(ActivityCallBuilder.RETRY_BACKOFF_KEY, "");
                 maxRetryDelay = fields.getOrDefault(ActivityCallBuilder.MAX_RETRY_DELAY_KEY, "");
-            } else if (!trimmed.equals("()") && !trimmed.contains("NoRetry")
-                    && !trimmed.contains("NoAutomaticRetry")) {
-                // HumanReview is the reviewer role(s): a string, a role list, or the legacy
-                // workflow:ManualRetry sentinel (any role).
+            } else if (trimmed.equals("()") || trimmed.contains("NoRetry")
+                    || trimmed.contains("NoAutomaticRetry")) {
+                dropdownValue = ActivityCallBuilder.NO_RETRY_VALUE;
+            } else if (trimmed.contains("ManualRetry") || trimmed.contains("HumanReview")
+                    || trimmed.equals("[]")) {
+                // The sentinel forms of Human Review with no roles attached: any role may decide.
                 dropdownValue = ActivityCallBuilder.MANUAL_RETRY_VALUE;
-                if (!trimmed.contains("ManualRetry") && !trimmed.contains("HumanReview")
-                        && !trimmed.equals("[]")) {
-                    retryUserRoles = trimmed;
-                }
+            } else if (isRoleLiteral(trimmed)) {
+                // Human Review scoped to reviewer role(s): a string or a list of strings.
+                dropdownValue = ActivityCallBuilder.MANUAL_RETRY_VALUE;
+                retryUserRoles = trimmed;
+            } else {
+                // Any other expression — a const, variable or call producing the policy — is not a
+                // shape the form can edit. Carry it as the dropdown value so it round-trips
+                // verbatim instead of being read as reviewer roles and re-emitted as a string.
+                dropdownValue = trimmed;
             }
         }
 
         ActivityCallBuilder.addRetryPolicyFormProperties(nodeBuilder, dropdownValue,
                 maxRetries, retryDelay, retryBackoff, maxRetryDelay, retryUserRoles);
+    }
+
+    // Whether the retryPolicy source is a literal reviewer role (a string) or role list, the two
+    // shapes the Human Review form field edits.
+    private static boolean isRoleLiteral(String expression) {
+        return (expression.startsWith("\"") && expression.endsWith("\""))
+                || (expression.startsWith("[") && expression.endsWith("]"));
     }
 
     /** Parses a simple Ballerina record literal {@code {key: value, ...}} into a string map. */
@@ -3832,6 +3846,9 @@ public class CodeAnalyzer extends NodeVisitor {
                 .sourceCode(varDecl.toSourceCode().strip());
         nodeBuilder.metadata().addData("agentName", agentVarName);
         nodeBuilder.metadata().addData("agentBox", true);
+        // Marks the synthetic agent-only view: an in-chain `agent.run(...)` statement carries the
+        // agentBox marker too, but is a real statement whose diagram edges stay editable.
+        nodeBuilder.metadata().addData("agentDeclarationCanvas", true);
         populateAgentDeclarationMetadata(varDecl);
         endNode();
         return true;

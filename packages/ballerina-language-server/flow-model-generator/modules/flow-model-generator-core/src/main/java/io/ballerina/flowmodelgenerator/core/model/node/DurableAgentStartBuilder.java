@@ -20,6 +20,7 @@ package io.ballerina.flowmodelgenerator.core.model.node;
 
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Property;
 import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
@@ -171,6 +172,6 @@ public class DurableAgentStartBuilder extends FunctionCall {
         return sourceBuilder.getProperty(key)
                 .filter(p -> p.value() != null && !p.value().toString().isEmpty())
                 .map(Property::toSourceCode)
-                .orElseThrow(() -> new IllegalStateException(message));
+                .orElseThrow(() -> new UserFacingException(message));
     }
 }

@@ -24,6 +24,7 @@ import io.ballerina.compiler.api.symbols.ParameterSymbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.VariableSymbol;
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
@@ -294,64 +295,60 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         // Object model: the capability lives on the declaration's `activities` list.
-        if (WorkflowUtil.isDurableAgentObjectTarget(sourceBuilder)) {
-            if (WorkflowUtil.isCapabilityDeleteRequest(sourceBuilder)) {
-                return WorkflowUtil.removeAgentCapabilityEntry(sourceBuilder);
-            }
-            String activityRef = sourceBuilder.getProperty(ACTIVITY_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            if (activityRef.isBlank()) {
-                throw new IllegalStateException("An activity function must be selected");
-            }
-            String toolName = sourceBuilder.getProperty(TOOL_NAME_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            String toolDescription = sourceBuilder.getProperty(TOOL_DESCRIPTION_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            String userRoles = sourceBuilder.getProperty(USER_ROLES_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
-            boolean requiresApproval = isRequiresApproval(sourceBuilder);
-            String retryPolicyValue = ActivityCallBuilder.retryPolicyEntryValue(
-                    sourceBuilder.flowNode.properties());
-            List<String> bindings = new ArrayList<>();
-            sourceBuilder.flowNode.properties().forEach((key, property) -> {
-                if (!key.startsWith(BINDING_KEY_PREFIX) || property.value() == null
-                        || property.value().toString().isBlank()) {
-                    return;
-                }
-                bindings.add(key.substring(BINDING_KEY_PREFIX.length()) + ": "
-                        + property.value().toString().trim());
-            });
-            String entry;
-            if (toolName.isBlank() && toolDescription.isBlank() && !requiresApproval && userRoles.isBlank()
-                    && retryPolicyValue == null && bindings.isEmpty()) {
-                entry = activityRef;
-            } else {
-                StringBuilder mapping = new StringBuilder("{activity: ").append(activityRef);
-                if (!toolName.isBlank()) {
-                    mapping.append(", name: ").append(WorkflowUtil.quoteIfPlain(toolName));
-                }
-                if (!toolDescription.isBlank()) {
-                    mapping.append(", description: ").append(WorkflowUtil.quoteIfPlain(toolDescription));
-                }
-                if (requiresApproval) {
-                    mapping.append(", requiresApproval: true");
-                }
-                if (!userRoles.isBlank()) {
-                    mapping.append(", userRoles: ").append(WorkflowUtil.quoteIfPlain(userRoles));
-                }
-                if (retryPolicyValue != null) {
-                    mapping.append(", retryPolicy: ").append(retryPolicyValue);
-                }
-                if (!bindings.isEmpty()) {
-                    mapping.append(", bindings: {").append(String.join(", ", bindings)).append("}");
-                }
-                entry = mapping.append("}").toString();
-            }
-            return WorkflowUtil.upsertAgentCapabilityEntry(sourceBuilder, "activities", entry);
+        WorkflowUtil.requireDurableAgentObjectTarget(sourceBuilder);
+        if (WorkflowUtil.isCapabilityDeleteRequest(sourceBuilder)) {
+            return WorkflowUtil.removeAgentCapabilityEntry(sourceBuilder);
         }
-
-        throw new IllegalStateException("Cannot generate the capability source: "
-                + "the durable agent declaration target is missing");
+        String activityRef = sourceBuilder.getProperty(ACTIVITY_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        if (activityRef.isBlank()) {
+            throw new UserFacingException("An activity function must be selected");
+        }
+        String toolName = sourceBuilder.getProperty(TOOL_NAME_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        String toolDescription = sourceBuilder.getProperty(TOOL_DESCRIPTION_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        String userRoles = sourceBuilder.getProperty(USER_ROLES_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
+        boolean requiresApproval = isRequiresApproval(sourceBuilder);
+        String retryPolicyValue = ActivityCallBuilder.retryPolicyEntryValue(
+                sourceBuilder.flowNode.properties());
+        List<String> bindings = new ArrayList<>();
+        sourceBuilder.flowNode.properties().forEach((key, property) -> {
+            if (!key.startsWith(BINDING_KEY_PREFIX) || property.value() == null
+                    || property.value().toString().isBlank()) {
+                return;
+            }
+            bindings.add(key.substring(BINDING_KEY_PREFIX.length()) + ": "
+                    + property.value().toString().trim());
+        });
+        String entry;
+        if (toolName.isBlank() && toolDescription.isBlank() && !requiresApproval && userRoles.isBlank()
+                && retryPolicyValue == null && bindings.isEmpty()) {
+            entry = activityRef;
+        } else {
+            StringBuilder mapping = new StringBuilder("{activity: ").append(activityRef);
+            if (!toolName.isBlank()) {
+                mapping.append(", name: ").append(WorkflowUtil.quoteIfPlain(toolName));
+            }
+            if (!toolDescription.isBlank()) {
+                mapping.append(", description: ").append(WorkflowUtil.quoteIfPlain(toolDescription));
+            }
+            if (requiresApproval) {
+                mapping.append(", requiresApproval: true");
+            }
+            if (!userRoles.isBlank()) {
+                mapping.append(", userRoles: ").append(WorkflowUtil.quoteIfPlain(userRoles));
+            }
+            if (retryPolicyValue != null) {
+                mapping.append(", retryPolicy: ").append(retryPolicyValue);
+            }
+            if (!bindings.isEmpty()) {
+                mapping.append(", bindings: {").append(String.join(", ", bindings)).append("}");
+            }
+            entry = mapping.append("}").toString();
+        }
+        return WorkflowUtil.upsertAgentCapabilityEntry(sourceBuilder, "activities", entry);
     }
 
     private static boolean isRequiresApproval(SourceBuilder sourceBuilder) {

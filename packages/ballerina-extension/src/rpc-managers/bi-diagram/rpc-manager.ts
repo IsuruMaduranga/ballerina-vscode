@@ -361,10 +361,12 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
 
             if (model?.errorMsg) {
                 const errorMessage = model.errorMsg;
-                // The raw cause (often an internal exception) goes to the output channel;
-                // the toast stays actionable.
+                // A message the LS wrote for the user (a missing field, an unsupported construct) is
+                // shown as-is; an internal exception goes to the output channel only.
                 console.error(">>> error generating source code from ls", { errorMessage, stacktrace: model.stacktrace });
-                window.showErrorMessage("Failed to save changes: the operation could not be applied. Please try again.");
+                window.showErrorMessage(model.userFacing
+                    ? `Failed to save changes: ${errorMessage}`
+                    : "Failed to save changes: the operation could not be applied. Please try again.");
                 return { artifacts: [], error: errorMessage };
             }
 

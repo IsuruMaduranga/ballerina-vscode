@@ -271,6 +271,11 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     // the loader (content not editable) and closes only when the refreshed flow model
     // lands — matching how the other flow diagrams hold the panel through an operation.
     const pendingCapabilityCloseRef = useRef<boolean>(false);
+    // Refresh ladders and the capability failsafe armed by the operations below. Both are
+    // cancelled when the next operation starts, when the panel closes and on unmount, so a
+    // timer armed for one operation cannot fire against the next one (or after navigation).
+    const refreshTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+    const capabilityFailsafeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Set while the MCP toolkit creation form (opened from the agent's Add Tool/Activity
     // list) is up: once the toolkit variable is created, it is registered on this agent.
@@ -320,6 +325,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         isMountedRef.current = true;
         return () => {
             isMountedRef.current = false;
+            // Pending refreshes would setState on an unmounted diagram.
+            clearRefreshTimers();
+            clearCapabilityFailsafe();
         };
     }, []);
 
@@ -816,8 +824,10 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                         console.log(">>> BIFlowDiagram getFlowModel", model);
                         if (model?.flowModel) {
                             if (pendingCapabilityCloseRef.current) {
-                                // The capability write has landed: release the held panel.
+                                // The capability write has landed: release the held panel and
+                                // disarm the failsafe, which would otherwise close a later panel.
                                 pendingCapabilityCloseRef.current = false;
+                                clearCapabilityFailsafe();
                                 setShowProgressSpinner(false);
                                 setProgressMessage(LOADING_MESSAGE);
                                 setShowSidePanel(false);
@@ -1105,16 +1115,33 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         clearNavigationStack();
     };
 
+    const clearRefreshTimers = () => {
+        refreshTimersRef.current.forEach(clearTimeout);
+        refreshTimersRef.current = [];
+    };
+
+    const clearCapabilityFailsafe = () => {
+        if (capabilityFailsafeTimerRef.current) {
+            clearTimeout(capabilityFailsafeTimerRef.current);
+            capabilityFailsafeTimerRef.current = null;
+        }
+    };
+
+    const scheduleFlowModelRefreshes = (...delaysMs: number[]) => {
+        delaysMs.forEach((delay) =>
+            refreshTimersRef.current.push(setTimeout(() => debouncedGetFlowModel(), delay))
+        );
+    };
+
     const closeSidePanelAndFetchUpdatedFlowModel = () => {
         resetNodeSelectionStates();
+        clearRefreshTimers();
         // Fetch the updated flow model
         debouncedGetFlowModel();
         // Capability writes on the agent declaration are raw text edits with no artifact
         // event: the fetch above can race the recompile (which runs to seconds on projects
         // importing ai/mcp), so refresh a few more times on a backoff ladder.
-        setTimeout(() => debouncedGetFlowModel(), 1500);
-        setTimeout(() => debouncedGetFlowModel(), 4000);
-        setTimeout(() => debouncedGetFlowModel(), 8000);
+        scheduleFlowModelRefreshes(1500, 4000, 8000);
         if (hasDraft) {
             // completeDraft();
             setSuggestedModel(undefined);
@@ -1125,14 +1152,17 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     // Holds the panel open with the loader while a capability write applies; the panel
     // closes from getFlowModel() once the refreshed model has rendered.
     const finishCapabilityOpAfterRefresh = () => {
+        // Timers from the previous operation would act on this one's state; drop them first.
+        clearRefreshTimers();
+        clearCapabilityFailsafe();
         pendingCapabilityCloseRef.current = true;
         setShowProgressSpinner(true);
         setProgressMessage("Applying changes...");
         debouncedGetFlowModel();
-        setTimeout(() => debouncedGetFlowModel(), 1500);
-        setTimeout(() => debouncedGetFlowModel(), 4000);
+        scheduleFlowModelRefreshes(1500, 4000);
         // Failsafe: never leave the loader stuck if the refresh cannot land.
-        setTimeout(() => {
+        capabilityFailsafeTimerRef.current = setTimeout(() => {
+            capabilityFailsafeTimerRef.current = null;
             if (pendingCapabilityCloseRef.current) {
                 pendingCapabilityCloseRef.current = false;
                 setShowProgressSpinner(false);
@@ -1144,6 +1174,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
 
     const handleOnCloseSidePanel = () => {
         panelNavEpochRef.current += 1;
+        // The failsafe acts on the panel this close is dismissing; the refresh ladder is just a
+        // model fetch, so it is left to finish.
+        clearCapabilityFailsafe();
         pendingCapabilityCloseRef.current = false;
         pendingDurableMcpAgentRef.current = null;
         resetNodeSelectionStates();
