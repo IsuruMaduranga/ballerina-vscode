@@ -126,10 +126,14 @@ const MainContent = styled.div<{ fullWidth?: boolean }>`
     max-height: calc(100vh - 90px);
 `;
 
-// Sits at the foot of the design panel, which carries no padding of its own.
+// Pinned to the foot of the design panel (which carries no padding of its own),
+// so it stays reachable once the artifact list is long enough to scroll.
 const HeroRow = styled.div`
     flex: none;
+    position: sticky;
+    bottom: 0;
     padding: 16px;
+    background: var(--vscode-editor-background);
 `;
 
 const DiagramPanel = styled.div<{ noPadding?: boolean, noBorder?: boolean }>`
