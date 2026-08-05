@@ -35,6 +35,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static io.ballerina.flowmodelgenerator.core.Constants.Ai.AI_PACKAGE;
+import static io.ballerina.flowmodelgenerator.core.Constants.Ai.BALLERINA_ORG;
+import static io.ballerina.flowmodelgenerator.core.Constants.Ai.GET_DEFAULT_MODEL_PROVIDER_METHOD;
+import static io.ballerina.flowmodelgenerator.core.Constants.Ai.WSO2_MODEL_PROVIDER_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_MODULE;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_ORG;
 
@@ -53,6 +57,11 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
     private static final String DEFAULT_INPUT_TYPE = "json";
     private static final String DEFAULT_INPUT_NAME = "input";
     private static final String RETURN_TYPE = "error?";
+
+    // Name given to the WSO2 default model provider declared alongside an agent created in a
+    // package that has none. Matches the name the webview's own bootstrap paths use, so an agent
+    // created here and one created from the AI chat agent wizard converge on the same variable.
+    private static final String DEFAULT_MODEL_PROVIDER_VAR = "wso2ModelProvider";
 
     @Override
     public void setConcreteConstData() {
@@ -89,15 +98,23 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
             // generated. It is started from other artifacts via `<name>.run(...)` or through the
             // management API, and its events/capabilities all live on the declaration's config.
             String modelVar = resolveExistingModelProvider(sourceBuilder);
+            String modelProviderDeclaration = "";
             if (modelVar == null) {
-                // The creation wizard creates the shared WSO2 default provider when none exists.
-                modelVar = "wso2ModelProvider";
+                // The package has no model provider to point at, so declare the shared WSO2 default
+                // one immediately above the agent. Referencing a name without declaring it is what
+                // used to leave the generated package failing to compile on `wso2ModelProvider`.
+                modelVar = DEFAULT_MODEL_PROVIDER_VAR;
+                modelProviderDeclaration = defaultModelProviderDeclaration();
+                sourceBuilder.acceptImport(BALLERINA_ORG, AI_PACKAGE);
             }
             // A backtick in the description is escaped as an interpolation rather than rewritten,
             // so the prompt the user typed survives the round trip through the box's edit form.
             String role = AiUtils.replaceBackticksForStringTemplate(funcName);
             String instructions = AiUtils.replaceBackticksForStringTemplate(description);
-            String declaration = "final workflow:DurableAgent " + funcName + " = check new ({"
+            // Both declarations go out as one edit: `skipFormatting` passes the text through
+            // verbatim, whereas a DECLARATION edit is parsed as a single module member.
+            String declaration = modelProviderDeclaration
+                    + "final workflow:DurableAgent " + funcName + " = check new ({"
                     + "systemPrompt: {role: " + role + ", instructions: " + instructions
                     + "}, model: " + modelVar + "});";
             sourceBuilder
@@ -117,9 +134,19 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
         return sourceBuilder.build();
     }
 
+    // `final ai:Wso2ModelProvider wso2ModelProvider = check ai:getDefaultModelProvider();` — the
+    // same provider declaration ModelProviderBuilder emits for the WSO2 default, and the one
+    // NPFunctionDefinitionBuilder bootstraps for a new natural function.
+    private static String defaultModelProviderDeclaration() {
+        return "final " + AI_PACKAGE + ":" + WSO2_MODEL_PROVIDER_NAME + " " + DEFAULT_MODEL_PROVIDER_VAR
+                + " = check " + AI_PACKAGE + ":" + GET_DEFAULT_MODEL_PROVIDER_METHOD + "();"
+                + System.lineSeparator();
+    }
+
     // Picks an existing module-level ai:ModelProvider variable to reference in the pre-populated
     // run call, so creating an agent in a project that already has a provider does not force a
-    // new WSO2 provider. Falls back to the default name when the project has no provider.
+    // new WSO2 provider. Returns null when the package has none, which makes the caller declare
+    // the WSO2 default provider alongside the agent.
     private static String resolveExistingModelProvider(SourceBuilder sourceBuilder) {
         try {
             Package currentPackage = PackageUtil
