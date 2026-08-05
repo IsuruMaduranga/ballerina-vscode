@@ -139,6 +139,20 @@ describe("TypeDiagram model fetching", () => {
         }
     };
 
+    // Poll the observable condition rather than sleeping for a fixed interval: the refresh
+    // is debounced, so any fixed wait is either flaky or slower than it needs to be.
+    const waitFor = async (condition: () => boolean, description: string) => {
+        for (let i = 0; i < 50; i++) {
+            if (condition()) {
+                return;
+            }
+            await act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 0));
+            });
+        }
+        throw new Error(`Timed out waiting for ${description}`);
+    };
+
     const renderedModel = () => container.querySelector('[data-testid="type-model"]');
 
     it("ignores a stale response that resolves after a newer request completed", async () => {
@@ -174,10 +188,7 @@ describe("TypeDiagram model fetching", () => {
         // on the first render still sees `visualizerLocation` as undefined and silently
         // bails out, so a second fetch never happens.
         await act(async () => listeners.forEach((cb) => cb(true)));
-        await act(async () => {
-            await new Promise((resolve) => setTimeout(resolve, 5));
-        });
-        await settle();
+        await waitFor(() => getTypes.mock.calls.length === 2, "the debounced refresh to re-fetch");
 
         expect(getTypes).toHaveBeenCalledTimes(2);
     });
