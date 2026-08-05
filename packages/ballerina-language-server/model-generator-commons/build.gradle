@@ -48,8 +48,6 @@ dependencies {
     implementation "org.testng:testng:${testngVersion}"
 }
 
-rootProject.configureBallerinaDistribution(project)
-
 ext.moduleName = 'io.ballerina.modelgenerator.commons'
 jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
