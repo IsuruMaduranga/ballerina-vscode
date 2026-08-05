@@ -84,7 +84,10 @@ async function configureUploadResourceIO(locatorOwner: ReturnType<typeof switchT
 
 async function addReturnNodeFromDiagram(locatorOwner: ReturnType<typeof switchToIFrame> extends Promise<infer T> ? NonNullable<T> : never) {
     logStep('Add Return node from diagram');
-    for (let attempt = 0; attempt < 10; attempt++) {
+    // 20 attempts (~60s worst case): late in a long suite run the diagram can take
+    // noticeably longer to become interactive under accumulated system load, even
+    // though the click/dispatch strategy itself is not the flaky part.
+    for (let attempt = 0; attempt < 20; attempt++) {
         const addButton = locatorOwner.locator('[data-testid="empty-node-add-button-1"]').first();
         if (await addButton.waitFor({ state: 'visible', timeout: 1000 }).then(() => true, () => false)) {
             await addButton.hover({ force: true }).catch(() => {});
@@ -118,7 +121,7 @@ async function addReturnNodeFromDiagram(locatorOwner: ReturnType<typeof switchTo
             && await locatorOwner.getByText('Return', { exact: true }).isVisible().catch(() => false)) {
             break;
         }
-        if (attempt === 9) {
+        if (attempt === 19) {
             throw new Error(`Node panel did not open after clicking diagram add button "${clickedId}"`);
         }
     }
