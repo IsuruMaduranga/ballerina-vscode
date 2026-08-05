@@ -1342,5 +1342,19 @@
       ]
     }
   ],
+  "readOnlyMetadata": [
+    {
+      "key": "topicName",
+      "displayName": "Topic Name",
+      "kind": "SERVICE_ANNOTATION",
+      "path": "ServiceConfig.topicName"
+    },
+    {
+      "key": "queueName",
+      "displayName": "Queue Name",
+      "kind": "SERVICE_ANNOTATION",
+      "path": "ServiceConfig.queueName"
+    }
+  ],
   "importStatements": []
 }

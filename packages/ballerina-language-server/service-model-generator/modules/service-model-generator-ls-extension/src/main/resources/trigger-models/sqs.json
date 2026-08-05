@@ -845,6 +845,6 @@
     }
   ],
   "importStatements": [
-    "import ballerinax/aws.auth;"
+    "ballerinax/aws.auth"
   ]
 }
