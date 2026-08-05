@@ -17,7 +17,7 @@
  */
 import * as vscode from "vscode";
 import { URI, Utils } from "vscode-uri";
-import { ARTIFACT_TYPE, Artifacts, ArtifactsNotification, BaseArtifact, DIRECTORY_MAP, EVENT_TYPE, isPathInside, isSamePath, MACHINE_VIEW, PROJECT_KIND, ProjectInfo, ProjectStructure, ProjectStructureArtifactResponse, ProjectStructureResponse, SHARED_COMMANDS } from "@wso2/ballerina-core";
+import { ARTIFACT_TYPE, Artifacts, ArtifactsNotification, BaseArtifact, DIRECTORY_MAP, EVENT_TYPE, IconDescriptor, isPathInside, isSamePath, MACHINE_VIEW, PROJECT_KIND, ProjectInfo, ProjectStructure, ProjectStructureArtifactResponse, ProjectStructureResponse, resolveBrandIcon, resolveKindDefaultIcon, SHARED_COMMANDS, toIconDescriptor } from "@wso2/ballerina-core";
 import { openView, StateMachine } from "../stateMachine";
 import { ExtendedLangClient } from "../core/extended-language-client";
 import { ArtifactsUpdated, ArtifactNotificationHandler } from "./project-artifacts-handler";
@@ -401,7 +401,12 @@ async function getEntryValue(artifact: BaseArtifact, projectPath: string, icon: 
         case DIRECTORY_MAP.SERVICE:
             // Do things related to service
             entryValue.name = getServiceDisplayName(artifact); // GraphQL Service - /foo
-            entryValue.icon = getCustomEntryNodeIcon(artifact.module);
+            const serviceIcon = toIconDescriptor(artifact.icon);
+            entryValue.icon = resolveEntryGlyph(serviceIcon, artifact.module);
+            entryValue.iconColor = resolveEntryColor(serviceIcon, artifact.module);
+            entryValue.iconLight = serviceIcon?.light;
+            entryValue.iconDark = serviceIcon?.dark;
+            entryValue.kind = serviceIcon?.kind;
             if (artifact.module === "ai") {
                 entryValue.resources = [];
                 const aiResourceLocation = Object.values(artifact.children).find(child => child.type === DIRECTORY_MAP.RESOURCE)?.location;
@@ -429,7 +434,12 @@ async function getEntryValue(artifact: BaseArtifact, projectPath: string, icon: 
             break;
         case DIRECTORY_MAP.LISTENER:
             // Do things related to listener
-            entryValue.icon = getCustomEntryNodeIcon(getTypePrefix(artifact.module));
+            const listenerIcon = toIconDescriptor(artifact.icon);
+            entryValue.icon = resolveEntryGlyph(listenerIcon, artifact.module);
+            entryValue.iconColor = resolveEntryColor(listenerIcon, artifact.module);
+            entryValue.iconLight = listenerIcon?.light;
+            entryValue.iconDark = listenerIcon?.dark;
+            entryValue.kind = listenerIcon?.kind;
             break;
         case DIRECTORY_MAP.CONNECTION:
             entryValue.icon = icon;
@@ -715,62 +725,19 @@ async function populateLocalConnectors(projectDir: string, response: ProjectStru
     response.directoryMap[DIRECTORY_MAP.LOCAL_CONNECTORS].push(...mappedEntries);
 }
 
-function getCustomEntryNodeIcon(type: string) {
-    switch (type) {
-        case "tcp":
-            return "bi-tcp";
-        case "ai":
-            return "bi-ai-agent";
-        case "kafka":
-            return "bi-kafka";
-        case "rabbitmq":
-            return "bi-rabbitmq";
-        case "nats":
-            return "bi-nats";
-        case "mqtt":
-            return "bi-mqtt";
-        case "grpc":
-            return "bi-grpc";
-        case "graphql":
-            return "bi-graphql";
-        case "java.jms":
-            return "bi-java";
-        case "github":
-            return "bi-github";
-        case "salesforce":
-            return "bi-salesforce";
-        case "asb":
-            return "bi-asb";
-        case "ftp":
-            return "bi-ftp";
-        case "file":
-            return "bi-file";
-        case "mcp":
-            return "bi-mcp";
-        case "solace":
-            return "bi-solace";
-        case "mssql":
-            return "bi-mssql";
-        case "mysql":
-            return "bi-mysql";
-        case "postgresql":
-            return "bi-postgresql";
-        case "trigger.shopify":
-        case "shopify":
-            return "bi-shopify";
-        case "trigger.hubspot":
-        case "hubspot":
-            return "bi-hubspot";
-        case "trigger.twilio":
-        case "twilio":
-            return "bi-twilio";
-        default:
-            return "bi-globe";
-    }
+/**
+ * Resolves the tree glyph for an entry point, honoring the Phase-6 representation order for a native
+ * tree (glyph -> kind default) against the shared brand-icon registry in @wso2/ballerina-core (the
+ * single source shared with the Add-Artifact gallery and the component diagram): the LS-declared
+ * `icon.glyph`, then the registry brand glyph keyed by module, then the `kind` default.
+ */
+function resolveEntryGlyph(icon: IconDescriptor | undefined, module: string | undefined): string {
+    return icon?.glyph
+        ?? resolveBrandIcon(module)?.glyph
+        ?? resolveKindDefaultIcon(icon?.kind).glyph;
 }
 
-const getTypePrefix = (type: string): string => {
-    if (!type) { return ""; }
-    const parts = type.split(":");
-    return parts.length > 1 ? parts[0] : type;
-};
+/** Resolves the glyph tint: the LS-declared `icon.color`, else the shared registry's brand color. */
+function resolveEntryColor(icon: IconDescriptor | undefined, module: string | undefined): string | undefined {
+    return icon?.color ?? resolveBrandIcon(module)?.color;
+}

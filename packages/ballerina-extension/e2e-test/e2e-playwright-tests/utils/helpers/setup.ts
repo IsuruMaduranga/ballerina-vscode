@@ -237,10 +237,27 @@ export function executeBallPullCommand(modules: string[] = ['ballerina/task:2.7.
     }
 }
 
+/**
+ * The cached macOS test VS Code build's Contents/MacOS/Electron entry can end up missing —
+ * `@wso2/playwright-vscode-tester`'s zip-unpack step doesn't always preserve that symlink,
+ * which the library's CLI invocations (--install-extension, version check, etc.) require on
+ * darwin. Re-link it from the adjacent `Code` binary rather than re-downloading ~250MB.
+ */
+function ensureMacElectronSymlink(): void {
+    if (process.platform !== 'darwin') return;
+    const macOSDir = path.join(resourcesFolder, 'Visual Studio Code.app', 'Contents', 'MacOS');
+    const codeBinary = path.join(macOSDir, 'Code');
+    const electronBinary = path.join(macOSDir, 'Electron');
+    if (fs.existsSync(codeBinary) && !fs.existsSync(electronBinary)) {
+        fs.symlinkSync('Code', electronBinary);
+    }
+}
+
 async function initVSCode(workspacePath: string = newProjectPath) {
     if (vscode && page) {
         await page.executePaletteCommand('Reload Window');
     } else {
+        ensureMacElectronSymlink();
         const profileName = getVsCodeProfileName();
         const launchExtensionsFolder = await prepareExtensionsForLaunch(profileName);
         vscode = await startVSCode(
@@ -281,6 +298,7 @@ async function resumeVSCode() {
         await page.executePaletteCommand('Reload Window');
     } else {
         console.log('Starting VSCode');
+        ensureMacElectronSymlink();
         const profileName = getVsCodeProfileName();
         const launchExtensionsFolder = await prepareExtensionsForLaunch(profileName);
         vscode = await startVSCode(
