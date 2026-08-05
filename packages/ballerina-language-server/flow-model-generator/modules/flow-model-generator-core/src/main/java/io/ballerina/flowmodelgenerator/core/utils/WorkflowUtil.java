@@ -451,12 +451,23 @@ public class WorkflowUtil {
      * @return the config literal, or empty when the initializer is not a {@code new} with a
      *         positional mapping argument
      */
-    private static Optional<MappingConstructorExpressionNode> agentConfigLiteral(
+    public static Optional<MappingConstructorExpressionNode> agentConfigLiteral(
             ModuleVariableDeclarationNode varDecl) {
-        if (varDecl.initializer().isEmpty()) {
-            return Optional.empty();
-        }
-        ExpressionNode initializer = varDecl.initializer().get();
+        return varDecl.initializer().flatMap(WorkflowUtil::agentConfigLiteral);
+    }
+
+    /**
+     * The config mapping literal of a durable agent declaration's initializer expression. Same
+     * contract as {@link #agentConfigLiteral(ModuleVariableDeclarationNode)}, for callers that
+     * have already resolved the initializer — the flow and design model analyzers, which must
+     * accept the same declaration shapes the edit paths do.
+     *
+     * @param initializerExpr the declaration's initializer expression
+     * @return the config literal, or empty when the initializer is not a {@code new} with a
+     *         positional mapping argument
+     */
+    public static Optional<MappingConstructorExpressionNode> agentConfigLiteral(ExpressionNode initializerExpr) {
+        ExpressionNode initializer = initializerExpr;
         if (initializer instanceof CheckExpressionNode checkExpr) {
             initializer = checkExpr.expression();
         }

@@ -29,10 +29,8 @@ import io.ballerina.compiler.api.symbols.RecordTypeSymbol;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.VariableSymbol;
-import io.ballerina.compiler.syntax.tree.CheckExpressionNode;
 import io.ballerina.compiler.syntax.tree.ExpressionNode;
 import io.ballerina.compiler.syntax.tree.FunctionDefinitionNode;
-import io.ballerina.compiler.syntax.tree.ImplicitNewExpressionNode;
 import io.ballerina.compiler.syntax.tree.ListConstructorExpressionNode;
 import io.ballerina.compiler.syntax.tree.MappingConstructorExpressionNode;
 import io.ballerina.compiler.syntax.tree.MappingFieldNode;
@@ -41,7 +39,6 @@ import io.ballerina.compiler.syntax.tree.ModulePartNode;
 import io.ballerina.compiler.syntax.tree.ModuleVariableDeclarationNode;
 import io.ballerina.compiler.syntax.tree.Node;
 import io.ballerina.compiler.syntax.tree.NonTerminalNode;
-import io.ballerina.compiler.syntax.tree.PositionalArgumentNode;
 import io.ballerina.compiler.syntax.tree.SpecificFieldNode;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.designmodelgenerator.core.model.Activity;
@@ -67,6 +64,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static io.ballerina.modelgenerator.commons.CommonUtils.CONNECTOR_TYPE;
@@ -387,20 +385,13 @@ public class DesignModelGenerator {
                     || varDecl.initializer().isEmpty()) {
                 continue;
             }
-            ExpressionNode initializer = varDecl.initializer().get();
-            if (initializer instanceof CheckExpressionNode checkExpr) {
-                initializer = checkExpr.expression();
-            }
-            if (!(initializer instanceof ImplicitNewExpressionNode newExpr)
-                    || newExpr.parenthesizedArgList().isEmpty()
-                    || newExpr.parenthesizedArgList().get().arguments().isEmpty()
-                    || !(newExpr.parenthesizedArgList().get().arguments().get(0)
-                            instanceof PositionalArgumentNode configArg)
-                    || !(configArg.expression()
-                            instanceof MappingConstructorExpressionNode config)) {
+            // Shared with the edit paths so an explicit `new workflow:DurableAgent({...})` agent
+            // renders its capability circles too, not just the implicit-new shape.
+            Optional<MappingConstructorExpressionNode> configLiteral = WorkflowUtil.agentConfigLiteral(varDecl);
+            if (configLiteral.isEmpty()) {
                 continue;
             }
-            for (MappingFieldNode field : config.fields()) {
+            for (MappingFieldNode field : configLiteral.get().fields()) {
                 if (!(field instanceof SpecificFieldNode specificField)
                         || specificField.valueExpr().isEmpty()) {
                     continue;

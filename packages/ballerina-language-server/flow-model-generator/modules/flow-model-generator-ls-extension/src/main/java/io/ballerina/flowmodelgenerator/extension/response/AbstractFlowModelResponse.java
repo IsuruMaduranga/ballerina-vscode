@@ -18,8 +18,6 @@
 
 package io.ballerina.flowmodelgenerator.extension.response;
 
-import io.ballerina.flowmodelgenerator.core.UserFacingException;
-
 import java.util.Arrays;
 
 /**
@@ -31,14 +29,22 @@ public abstract class AbstractFlowModelResponse {
 
     private String errorMsg;
     private String stacktrace;
-    private boolean userFacing;
 
     public void setError(Throwable e) {
         this.errorMsg = e.getLocalizedMessage();
         this.stacktrace = Arrays.toString(e.getStackTrace());
-        // Marks a message written for the user (a missing form field, an unsupported construct)
-        // so the front end can show it instead of its generic failure notice.
-        this.userFacing = e instanceof UserFacingException;
+    }
+
+    /**
+     * Reports a failure whose own message is not written for the user. The given message becomes the
+     * reported error, while the exception's message and stack trace are kept for the output channel.
+     *
+     * @param errorMsg the message to report
+     * @param e        the failure being replaced
+     */
+    protected void setError(String errorMsg, Throwable e) {
+        this.errorMsg = errorMsg;
+        this.stacktrace = e + " " + Arrays.toString(e.getStackTrace());
     }
 
     public String errorMsg() {
@@ -47,9 +53,5 @@ public abstract class AbstractFlowModelResponse {
 
     public String stackTrace() {
         return stacktrace;
-    }
-
-    public boolean userFacing() {
-        return userFacing;
     }
 }

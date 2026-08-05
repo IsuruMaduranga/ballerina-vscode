@@ -2371,7 +2371,12 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     pendingDurableMcpAgentRef.current = null;
                     const toolKitVarName = (nodeToSubmit.properties as any)?.variable?.value;
                     const mcpAgentVar = pendingMcpAgent.agentVar ?? resolveDurableAgentVar();
-                    if (toolKitVarName && mcpAgentVar) {
+                    if (response?.error) {
+                        // `getSourceCode` reports LS failures as `{ artifacts: [], error }` rather
+                        // than rejecting, so without this the agent would get a `tools:` entry
+                        // naming a toolkit variable the failed write never declared.
+                        console.error(">>> MCP toolkit was not created; skipping tool registration", response.error);
+                    } else if (toolKitVarName && mcpAgentVar) {
                         try {
                             const template = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
                                 position: pendingMcpAgent.insertBefore.startLine,

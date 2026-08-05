@@ -1388,13 +1388,10 @@ public class CodeAnalyzer extends NodeVisitor {
         if (initializer == null) {
             return;
         }
-        Optional<ImplicitNewExpressionNode> newExprOpt = getNewExpr(initializer);
-        if (newExprOpt.isEmpty() || newExprOpt.get().parenthesizedArgList().isEmpty()) {
-            return;
-        }
-        SeparatedNodeList<FunctionArgumentNode> newArgs = newExprOpt.get().parenthesizedArgList().get().arguments();
-        if (newArgs.isEmpty() || !(newArgs.get(0) instanceof PositionalArgumentNode configArg)
-                || configArg.expression().kind() != SyntaxKind.MAPPING_CONSTRUCTOR) {
+        // Shared with the edit paths so an explicit `new workflow:DurableAgent({...})` agent
+        // reports the same metadata the implicit-new shape does.
+        Optional<MappingConstructorExpressionNode> configLiteral = WorkflowUtil.agentConfigLiteral(initializer);
+        if (configLiteral.isEmpty()) {
             return;
         }
         List<AgentCapabilityData> activities = new ArrayList<>();
@@ -1402,7 +1399,7 @@ public class CodeAnalyzer extends NodeVisitor {
         List<AgentCapabilityData> agentTools = new ArrayList<>();
         List<AgentCapabilityData> peers = new ArrayList<>();
         List<AgentCapabilityData> updateEvents = new ArrayList<>();
-        for (MappingFieldNode field : ((MappingConstructorExpressionNode) configArg.expression()).fields()) {
+        for (MappingFieldNode field : configLiteral.get().fields()) {
             if (!(field instanceof SpecificFieldNode specificField) || specificField.valueExpr().isEmpty()) {
                 continue;
             }
