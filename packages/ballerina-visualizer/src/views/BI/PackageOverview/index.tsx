@@ -1221,26 +1221,27 @@ export function PackageOverview(props: PackageOverviewProps) {
                                             <Typography variant="h3" sx={{ marginBottom: "16px" }}>
                                                 Your integration is empty
                                             </Typography>
-                                            {/* One line in every state, so starting a turn does not
-                                                reflow the block. The icon is dropped when the hero is
-                                                present, since its active form already animates. */}
-                                            <StatusRow>
-                                                {agentWorking && !showHero && (
-                                                    awaitingInput
-                                                        ? <Codicon name="comment-discussion" />
-                                                        : <ProgressRing color={ThemeColors.PRIMARY} sx={{ width: 16, height: 16 }} />
-                                                )}
-                                                <Typography
-                                                    variant="body1"
-                                                    sx={{ color: "var(--vscode-descriptionForeground)" }}
-                                                >
-                                                    {agentWorking
-                                                        ? (awaitingInput ? "Copilot needs your input" : "Copilot is working…")
-                                                        : showHero
-                                                            ? "Describe what you want to build, or add an artifact to get started"
-                                                            : "Add an artifact to get started"}
-                                                </Typography>
-                                            </StatusRow>
+                                            {/* Skipped only while the hero carries the status itself, so
+                                                the two never state it at once. */}
+                                            {!(agentWorking && showHero) && (
+                                                <StatusRow>
+                                                    {agentWorking && (
+                                                        awaitingInput
+                                                            ? <Codicon name="comment-discussion" />
+                                                            : <ProgressRing color={ThemeColors.PRIMARY} sx={{ width: 16, height: 16 }} />
+                                                    )}
+                                                    <Typography
+                                                        variant="body1"
+                                                        sx={{ color: "var(--vscode-descriptionForeground)" }}
+                                                    >
+                                                        {agentWorking
+                                                            ? (awaitingInput ? "Copilot needs your input" : "Copilot is working…")
+                                                            : showHero
+                                                                ? "Describe what you want to build, or add an artifact to get started"
+                                                                : "Add an artifact to get started"}
+                                                    </Typography>
+                                                </StatusRow>
+                                            )}
                                             {showHero && (
                                                 <HeroRow>
                                                     <CopilotHeroBox placeholder="What would you like to build?" />
