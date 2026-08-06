@@ -114,7 +114,9 @@ interface ArtifactFormProps {
     concertMessage?: string;
     concertRequired?: boolean;
     description?: string;
+    hideInfoBanner?: boolean;
     preserveFieldOrder?: boolean;
+    bottomFields?: string[];
     injectedComponents?: {
         component: ReactNode;
         index: number;
@@ -160,7 +162,9 @@ export function ArtifactForm(props: ArtifactFormProps) {
         concertMessage,
         concertRequired,
         description,
+        hideInfoBanner,
         preserveFieldOrder,
+        bottomFields,
         injectedComponents,
         changeOptionalFieldTitle,
         onChange,
@@ -1105,8 +1109,10 @@ export function ArtifactForm(props: ArtifactFormProps) {
                     concertMessage={concertMessage}
                     concertRequired={concertRequired}
                     infoLabel={description}
+                    hideInfoBanner={hideInfoBanner}
                     formImports={formImports}
                     preserveOrder={preserveFieldOrder}
+                    bottomFields={bottomFields}
                     injectedComponents={injectedComponents}
                     changeOptionalFieldTitle={changeOptionalFieldTitle}
                     serverValidationErrors={serverValidationErrors}

@@ -207,20 +207,29 @@ public class PackageUtil {
      */
     public static Optional<Package> getModulePackage(BuildProject buildProject, String org, String name,
                                                      String version) {
-        Optional<Package> resolved = resolveModulePackage(buildProject,
-                PackageDescriptor.from(PackageOrg.from(org), PackageName.from(name), PackageVersion.from(version)));
+        Optional<Package> resolved = getModulePackage(buildProject, org, name, version, null);
         if (resolved.isPresent()) {
             return resolved;
         }
         // Unreleased versions (e.g. an in-development ballerina/workflow build) are not on
         // central; fall back to the local repository, where such builds are published.
-        return resolveModulePackage(buildProject,
-                PackageDescriptor.from(PackageOrg.from(org), PackageName.from(name), PackageVersion.from(version),
-                        ProjectConstants.LOCAL_REPOSITORY_NAME));
+        return getModulePackage(buildProject, org, name, version, ProjectConstants.LOCAL_REPOSITORY_NAME);
     }
 
-    private static Optional<Package> resolveModulePackage(BuildProject buildProject,
-                                                          PackageDescriptor packageDescriptor) {
+    /**
+     * Retrieves a package from a specific Ballerina repository.
+     *
+     * @param repository the Ballerina repository name, for example {@code local}; {@code null} uses the default
+     *                   repository resolution
+     */
+    public static Optional<Package> getModulePackage(BuildProject buildProject, String org, String name,
+                                                     String version, String repository) {
+        PackageOrg packageOrg = PackageOrg.from(org);
+        PackageName packageName = PackageName.from(name);
+        PackageVersion packageVersion = PackageVersion.from(version);
+        PackageDescriptor packageDescriptor = repository == null
+                ? PackageDescriptor.from(packageOrg, packageName, packageVersion)
+                : PackageDescriptor.from(packageOrg, packageName, packageVersion, repository);
         PackageResolver packageResolver = buildProject.projectEnvironmentContext().getService(PackageResolver.class);
 
         Optional<ResolutionResponse> resolutionResponse =

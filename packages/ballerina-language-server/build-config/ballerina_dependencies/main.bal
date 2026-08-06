@@ -14,6 +14,7 @@ import ballerinax/mysql.cdc.driver as _;
 import ballerinax/wso2.controlplane as _;
 import ballerinax/ai.mistral as _;
 import ballerina/ai as _;
+import ballerina/ai.eval as _;
 import ballerinax/ai.pinecone as _;
 import ballerinax/ai.devant as _;
 import ballerinax/ai.openai as _;

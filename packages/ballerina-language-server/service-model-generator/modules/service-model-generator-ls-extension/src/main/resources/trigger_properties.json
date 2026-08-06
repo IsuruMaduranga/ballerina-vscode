@@ -157,7 +157,7 @@
       "cdc",
       "event"
     ],
-    "triggerName": "CDC for Oracle",
+    "triggerName": "CDC for Oracle DB",
     "version": "1.17.0",
     "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_oracledb_1.17.0.png",
     "kind": "event"
@@ -250,8 +250,8 @@
       "event"
     ],
     "triggerName": "WhatsApp Business",
-    "version": "2.0.1",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_whatsapp.business_2.0.1.png",
+    "version": "2.0.2",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_whatsapp.business_2.0.2.png",
     "kind": "event"
   },
   "20": {
@@ -265,8 +265,8 @@
       "event"
     ],
     "triggerName": "Telegram",
-    "version": "0.9.1",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_telegram_0.9.1.png",
+    "version": "0.9.2",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_telegram_0.9.2.png",
     "kind": "event"
   },
   "21": {
