@@ -56,7 +56,6 @@ import java.util.Optional;
 
 import static io.ballerina.flowmodelgenerator.core.search.SearchCommand.CURRENT_INTEGRATION_INDICATOR;
 import static io.ballerina.flowmodelgenerator.core.search.SearchCommand.DATA_MAPPER_FILE_NAME;
-import static io.ballerina.modelgenerator.commons.CommonUtils.isAiModule;
 
 /**
  * Utility class that builds workspace function nodes for search results. This encapsulates the logic for discovering
@@ -65,8 +64,6 @@ import static io.ballerina.modelgenerator.commons.CommonUtils.isAiModule;
  * @since 1.7.0
  */
 class WorkspaceFunctionNodeBuilder {
-
-    public static final String TOOL_ANNOTATION = AgentToolSearchCommand.TOOL_ANNOTATION;
 
     private WorkspaceFunctionNodeBuilder() {
     }
@@ -275,25 +272,7 @@ class WorkspaceFunctionNodeBuilder {
     }
 
     static boolean isAgentTool(FunctionSymbol functionSymbol) {
-        for (AnnotationAttachmentSymbol annotAttachment : functionSymbol.annotAttachments()) {
-            AnnotationSymbol annotationSymbol = annotAttachment.typeDescriptor();
-            Optional<ModuleSymbol> optModule = annotationSymbol.getModule();
-            if (optModule.isEmpty()) {
-                continue;
-            }
-            ModuleID id = optModule.get().id();
-            if (!isAiModule(id.orgName(), id.packageName())) {
-                continue;
-            }
-            Optional<String> optName = annotationSymbol.getName();
-            if (optName.isEmpty()) {
-                continue;
-            }
-            if (optName.get().equals(TOOL_ANNOTATION)) {
-                return true;
-            }
-        }
-        return false;
+        return CommonUtils.isAgentToolFunction(functionSymbol);
     }
 
     static boolean isNaturalExprBodiedFunction(FunctionSymbol functionSymbol, Document functionsDoc) {
