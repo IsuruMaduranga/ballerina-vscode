@@ -47,6 +47,8 @@ import { EndNodeModel } from "../components/nodes/EndNode";
 import { ErrorNodeModel } from "../components/nodes/ErrorNode";
 import { AgentCallNodeModel } from "../components/nodes/AgentCallNode/AgentCallNodeModel";
 import { EvalNodeModel } from "../components/nodes/EvalNode/EvalNodeModel";
+import { AgentTypeNodeModel } from "../components/nodes/AgentTypeNode/AgentTypeNodeModel";
+import { AgentNodeModel } from "../components/nodes/AgentNode/AgentNodeModel";
 import { PromptNodeModel } from "../components/nodes/PromptNode/PromptNodeModel";
 
 export class NodeFactoryVisitor implements BaseVisitor {
@@ -394,7 +396,7 @@ export class NodeFactoryVisitor implements BaseVisitor {
         //     }
         //     return;
         // }
-        
+
         this.lastNodeModel = endIfEmptyNode;
     }
 
@@ -617,7 +619,7 @@ export class NodeFactoryVisitor implements BaseVisitor {
         if (!this.validateNode(node)) return;
         this.endVisitWhile(node, parent);
     }
-    
+
     beginVisitErrorHandler(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
 
@@ -823,12 +825,39 @@ export class NodeFactoryVisitor implements BaseVisitor {
         this.beginVisitRemoteActionCall(node, parent);
     }
 
+    beginVisitAgent(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        if (!node.id) {
+            return;
+        }
+        const nodeModel = new AgentNodeModel(node);
+        this.nodes.push(nodeModel);
+        this.updateNodeLinks(node, nodeModel);
+        this.addSuggestionsButton(node);
+    }
+
     beginVisitAgentCall(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
         if (!node.id) {
             return;
         }
         const nodeModel = new AgentCallNodeModel(node);
+        this.nodes.push(nodeModel);
+        this.updateNodeLinks(node, nodeModel);
+        this.addSuggestionsButton(node);
+    }
+
+    // AGENT_RUN (custom agent .run()) reuses the built-in AgentCall node/widget — they render identically.
+    beginVisitAgentRun(node: FlowNode, parent?: FlowNode): void {
+        this.beginVisitAgentCall(node, parent);
+    }
+
+    beginVisitAgentType(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        if (!node.id) {
+            return;
+        }
+        const nodeModel = new AgentTypeNodeModel(node);
         this.nodes.push(nodeModel);
         this.updateNodeLinks(node, nodeModel);
         this.addSuggestionsButton(node);
