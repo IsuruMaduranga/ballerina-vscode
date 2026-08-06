@@ -741,9 +741,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     response.categories as Category[],
                     FUNCTION_TYPE.REGULAR
                 );
-                const currentIntegrationCategory = findCurrentIntegrationCategory(panelCategories);
-                if (currentIntegrationCategory && !currentIntegrationCategory.items.length) {
-                    currentIntegrationCategory.description = "No activities defined. Click below to create a new activity.";
+                const currentPackageCategory = findCurrentIntegrationCategory(panelCategories);
+                if (currentPackageCategory && !currentPackageCategory.items.length) {
+                    currentPackageCategory.description = "No activities defined. Click below to create a new activity.";
                 }
                 setCategories(panelCategories);
                 setSidePanelView(SidePanelView.ACTIVITY_LIST);
@@ -781,9 +781,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     response.categories as Category[],
                     FUNCTION_TYPE.REGULAR
                 );
-                const currentIntegrationCategory = findCurrentIntegrationCategory(panelCategories);
-                if (currentIntegrationCategory && !currentIntegrationCategory.items.length) {
-                    currentIntegrationCategory.description = "No workflows defined. Click below to create a new workflow.";
+                const currentPackageCategory = findCurrentIntegrationCategory(panelCategories);
+                if (currentPackageCategory && !currentPackageCategory.items.length) {
+                    currentPackageCategory.description = "No workflows defined. Click below to create a new workflow.";
                 }
                 if (superseded()) {
                     return;
@@ -1405,12 +1405,12 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                         [...response.categories] as Category[],
                         functionType
                     );
-                    const currentIntegrationCategory = findCurrentIntegrationCategory(currentCategories);
-                    if (currentIntegrationCategory && !currentIntegrationCategory.items.length) {
+                    const currentPackageCategory = findCurrentIntegrationCategory(currentCategories);
+                    if (currentPackageCategory && !currentPackageCategory.items.length) {
                         if (isWorkflowSearch) {
-                            currentIntegrationCategory.description = "No workflows defined. Click below to create a new workflow.";
+                            currentPackageCategory.description = "No workflows defined. Click below to create a new workflow.";
                         } else if (searchKind === "ACTIVITY_CALL") {
-                            currentIntegrationCategory.description = "No activities defined. Click below to create a new activity.";
+                            currentPackageCategory.description = "No activities defined. Click below to create a new activity.";
                         }
                     }
                     if (panelNavEpochRef.current !== searchEpoch
@@ -1827,9 +1827,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                                 response.categories as Category[],
                                 FUNCTION_TYPE.REGULAR
                             );
-                            const currentIntegrationCategory = findCurrentIntegrationCategory(panelCategories);
-                            if (currentIntegrationCategory && !currentIntegrationCategory.items.length) {
-                                currentIntegrationCategory.description = "No workflows defined. Click below to create a new workflow.";
+                            const currentPackageCategory = findCurrentIntegrationCategory(panelCategories);
+                            if (currentPackageCategory && !currentPackageCategory.items.length) {
+                                currentPackageCategory.description = "No workflows defined. Click below to create a new workflow.";
                             }
                             setCategories(panelCategories);
                             setSidePanelView(SidePanelView.WORKFLOW_LIST);
@@ -1881,9 +1881,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                                 response.categories as Category[],
                                 FUNCTION_TYPE.REGULAR
                             );
-                            const currentIntegrationCategory = findCurrentIntegrationCategory(panelCategories);
-                            if (currentIntegrationCategory && !currentIntegrationCategory.items.length) {
-                                currentIntegrationCategory.description = "No activities defined. Click below to create a new activity.";
+                            const currentPackageCategory = findCurrentIntegrationCategory(panelCategories);
+                            if (currentPackageCategory && !currentPackageCategory.items.length) {
+                                currentPackageCategory.description = "No activities defined. Click below to create a new activity.";
                             }
                             setCategories(panelCategories);
                             setSidePanelView(SidePanelView.ACTIVITY_LIST);
@@ -2999,9 +2999,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 response.categories as Category[],
                 FUNCTION_TYPE.REGULAR
             );
-            const currentIntegrationCategory = findCurrentIntegrationCategory(panelCategories);
-            if (currentIntegrationCategory && !currentIntegrationCategory.items.length) {
-                currentIntegrationCategory.description = "No activities defined. Click below to create a new activity.";
+            const currentPackageCategory = findCurrentIntegrationCategory(panelCategories);
+            if (currentPackageCategory && !currentPackageCategory.items.length) {
+                currentPackageCategory.description = "No activities defined. Click below to create a new activity.";
             }
             if (superseded()) {
                 return;
