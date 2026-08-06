@@ -2,19 +2,20 @@
   "schemaVersion": "1.0",
   "id": "telegram",
   "displayName": "Telegram",
-  "description": "Create a service to handle Telegram Bot API webhook updates (messages, callback queries, inline queries, and more)",
+  "description": "Create a service to handle Telegram Bot API webhook updates",
   "orgName": "ballerinax",
   "packageName": "telegram",
   "moduleName": "telegram",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "type": "telegram",
-  "icon": "icon.png",
+  "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_telegram_0.9.2.png",
   "kind": "event",
+  "listenerKind": "MULTIPLE_SELECT_LISTENER",
   "initProperties": {
     "listener": {
       "metadata": {
-        "label": "Configure Telegram Listener",
-        "description": "Select an existing Telegram listener or create a new one"
+        "label": "Listener",
+        "description": "Attach the service to a new or existing Telegram webhook listener."
       },
       "types": [
         {
@@ -33,8 +34,8 @@
       "choices": [
         {
           "metadata": {
-            "label": "Create new",
-            "description": "Create a new Telegram listener"
+            "label": "Create New Listener",
+            "description": "Define a new Telegram webhook listener in the project."
           },
           "types": [
             {
@@ -50,7 +51,7 @@
             "listenerConfig": {
               "metadata": {
                 "label": "Listener Configurations",
-                "description": "Configure the Telegram webhook listener"
+                "description": "Configure the Telegram webhook listener."
               },
               "types": [
                 {
@@ -96,9 +97,10 @@
                 "listenTo": {
                   "metadata": {
                     "label": "Port",
-                    "description": "A port number to bind a new HTTP listener to, or an existing `http:Listener` to reuse"
+                    "description": "A port number to bind a new `http:Listener` to, or an existing `http:Listener`"
                   },
-                  "value": "",
+                  "placeholder": "8090",
+                  "value": "8090",
                   "enabled": true,
                   "editable": true,
                   "optional": false,
@@ -111,7 +113,7 @@
                   "types": [
                     {
                       "fieldType": "NUMBER",
-                      "ballerinaType": "int|http:Listener",
+                      "ballerinaType": "int",
                       "selected": true
                     },
                     {
@@ -120,123 +122,191 @@
                       "selected": false
                     }
                   ],
-                  "placeholder": "8090"
+                  "validations": [
+                    {
+                      "rule": "common.validate.required"
+                    }
+                  ]
                 },
-                "secretToken": {
+                "authentication": {
                   "metadata": {
-                    "label": "Secret Token",
-                    "description": "Use this secret token directly. Every inbound update is authenticated by comparing it\nagainst the `X-Telegram-Bot-Api-Secret-Token` header."
+                    "label": "Authentication",
+                    "description": "Provide exactly one of `secretToken` or `token`."
                   },
+                  "types": [
+                    {
+                      "fieldType": "CHOICE",
+                      "selected": true
+                    }
+                  ],
                   "value": "",
                   "enabled": true,
                   "editable": true,
-                  "optional": true,
+                  "optional": false,
                   "advanced": false,
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                    "originalName": "secretToken",
-                    "path": "secretToken"
-                  },
-                  "types": [
+                  "choices": [
                     {
-                      "fieldType": "TEXT",
-                      "ballerinaType": "string",
-                      "selected": true
+                      "metadata": {
+                        "label": "Bot Token",
+                        "description": "The bot token to derive the secret token from."
+                      },
+                      "types": [
+                        {
+                          "fieldType": "FORM",
+                          "selected": true
+                        }
+                      ],
+                      "value": "true",
+                      "enabled": true,
+                      "editable": true,
+                      "optional": false,
+                      "advanced": false,
+                      "properties": {
+                        "token": {
+                          "metadata": {
+                            "label": "Bot Token",
+                            "description": "The bot token to derive the secret token from."
+                          },
+                          "value": "",
+                          "enabled": true,
+                          "editable": true,
+                          "optional": false,
+                          "advanced": false,
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "token",
+                            "path": "token"
+                          },
+                          "types": [
+                            {
+                              "fieldType": "TEXT",
+                              "ballerinaType": "string",
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "string",
+                              "selected": false
+                            }
+                          ],
+                          "validations": [
+                            {
+                              "rule": "common.validate.required"
+                            }
+                          ]
+                        },
+                        "publicUrl": {
+                          "metadata": {
+                            "label": "Public URL",
+                            "description": "This listener's public HTTPS URL, used to auto-register the webhook."
+                          },
+                          "value": "",
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": false,
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "publicUrl",
+                            "path": "publicUrl"
+                          },
+                          "types": [
+                            {
+                              "fieldType": "TEXT",
+                              "ballerinaType": "string",
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "string",
+                              "selected": false
+                            }
+                          ]
+                        },
+                        "serviceUrl": {
+                          "metadata": {
+                            "label": "Service URL",
+                            "description": "The Telegram Bot API base URL."
+                          },
+                          "value": "\"https://api.telegram.org\"",
+                          "enabled": true,
+                          "editable": true,
+                          "optional": true,
+                          "advanced": true,
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "serviceUrl",
+                            "path": "serviceUrl"
+                          },
+                          "types": [
+                            {
+                              "fieldType": "TEXT",
+                              "ballerinaType": "string",
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "string",
+                              "selected": false
+                            }
+                          ],
+                          "placeholder": "https://api.telegram.org"
+                        }
+                      }
                     },
                     {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "string",
-                      "selected": false
+                      "metadata": {
+                        "label": "Secret Token",
+                        "description": "The secret token to authenticate inbound updates against."
+                      },
+                      "types": [
+                        {
+                          "fieldType": "FORM",
+                          "selected": true
+                        }
+                      ],
+                      "value": "true",
+                      "enabled": false,
+                      "editable": true,
+                      "optional": false,
+                      "advanced": false,
+                      "properties": {
+                        "secretToken": {
+                          "metadata": {
+                            "label": "Secret Token",
+                            "description": "The secret token to authenticate inbound updates against."
+                          },
+                          "value": "",
+                          "enabled": true,
+                          "editable": true,
+                          "optional": false,
+                          "advanced": false,
+                          "codedata": {
+                            "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
+                            "originalName": "secretToken",
+                            "path": "secretToken"
+                          },
+                          "types": [
+                            {
+                              "fieldType": "TEXT",
+                              "ballerinaType": "string",
+                              "selected": true
+                            },
+                            {
+                              "fieldType": "EXPRESSION",
+                              "ballerinaType": "string",
+                              "selected": false
+                            }
+                          ],
+                          "validations": [
+                            {
+                              "rule": "common.validate.required"
+                            }
+                          ]
+                        }
+                      }
                     }
-                  ],
-                  "placeholder": "<SECRET_TOKEN>"
-                },
-                "token": {
-                  "metadata": {
-                    "label": "Bot Token",
-                    "description": "Derive the secret token from this bot token via `deriveSecretToken` \u2014 the same derivation\n`Client->setWebhook` falls back to when its own `secret_token` option is omitted, so neither\nside needs a separately invented/threaded secret. Also required (alongside `publicUrl`) for\nthe listener to register its own webhook automatically when it starts."
-                  },
-                  "value": "",
-                  "enabled": true,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": false,
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                    "originalName": "token",
-                    "path": "token"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "TEXT",
-                      "ballerinaType": "string",
-                      "selected": true
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "string",
-                      "selected": false
-                    }
-                  ],
-                  "placeholder": "<BOT_TOKEN>"
-                },
-                "publicUrl": {
-                  "metadata": {
-                    "label": "Public URL",
-                    "description": "This listener's public HTTPS URL. When set together with `token`, starting the listener\nautomatically registers it as the webhook via `Client->setWebhook`, so no separate\n`setWebhook` call is needed."
-                  },
-                  "value": "",
-                  "enabled": true,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": false,
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                    "originalName": "publicUrl",
-                    "path": "publicUrl"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "TEXT",
-                      "ballerinaType": "string",
-                      "selected": true
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "string",
-                      "selected": false
-                    }
-                  ],
-                  "placeholder": "https://<PUBLIC_HOST>/"
-                },
-                "serviceUrl": {
-                  "metadata": {
-                    "label": "Service URL",
-                    "description": "The Telegram Bot API base URL used for the automatic `setWebhook` call when `publicUrl` is\nset. Only useful to override in tests or when routing through a proxy."
-                  },
-                  "value": "\"https://api.telegram.org\"",
-                  "enabled": true,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": true,
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                    "originalName": "serviceUrl",
-                    "path": "serviceUrl"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "TEXT",
-                      "ballerinaType": "string",
-                      "selected": true
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "string",
-                      "selected": false
-                    }
-                  ],
-                  "placeholder": "https://api.telegram.org"
+                  ]
                 }
               }
             }
@@ -244,8 +314,8 @@
         },
         {
           "metadata": {
-            "label": "Use existing",
-            "description": "Select an existing Telegram listener"
+            "label": "Use Existing Listener",
+            "description": "Attach to a Telegram listener already declared in the project."
           },
           "types": [
             {
@@ -254,18 +324,18 @@
             }
           ],
           "enabled": false,
-          "editable": false,
+          "editable": true,
           "optional": false,
           "advanced": false,
           "properties": {
             "existingListener": {
               "metadata": {
                 "label": "Listener(s)",
-                "description": "Select one or more existing Telegram listeners to attach to"
+                "description": "Select one or more existing Telegram listeners to attach to."
               },
               "types": [
                 {
-                  "fieldType": "MULTI_SELECT_LISTENER",
+                  "fieldType": "MULTIPLE_SELECT_LISTENER",
                   "selected": true,
                   "ballerinaType": "telegram:Listener"
                 }
@@ -289,10 +359,10 @@
     {
       "metadata": {
         "label": "Telegram Service",
-        "description": "Handles Telegram Bot API webhook updates. Handler methods are recognised by convention, not declared on the type; declare only the ones you need."
+        "description": "The service object a consumer implements to handle Telegram webhook updates."
       },
       "name": "TelegramService",
-      "description": "The service object a consumer implements to handle Telegram webhook updates. Attach an\nimplementation to a `Listener` to receive updates.\n\n`TelegramService` declares no remote methods of its own \u2014 implement only the handlers you need;\nan unimplemented handler is simply not invoked. Declaring a remote function under any other\nname, with the wrong parameter type, or without the `remote` qualifier is a compile error (see\nthis connector's compiler plugin). There are nine supported handlers, one per supported update\ntype:\n\n- `remote function onMessage(Message message) returns error?;` \u2014 a new incoming message.\n- `remote function onEditedMessage(Message editedMessage) returns error?;` \u2014 a message the\nbot knows about was edited.\n- `remote function onChannelPost(Message channelPost) returns error?;` \u2014 a new channel post.\n- `remote function onEditedChannelPost(Message editedChannelPost) returns error?;` \u2014 a\nchannel post the bot knows about was edited.\n- `remote function onCallbackQuery(CallbackQuery callbackQuery) returns error?;` \u2014 an inline\nkeyboard button press.\n- `remote function onInlineQuery(InlineQuery inlineQuery) returns error?;` \u2014 a new inline query.\n- `remote function onPoll(Poll poll) returns error?;` \u2014 a poll's state changed.\n- `remote function onPreCheckoutQuery(PreCheckoutQuery preCheckoutQuery) returns error?;` \u2014 a new\npre-checkout query.\n- `remote function onShippingQuery(ShippingQuery shippingQuery) returns error?;` \u2014 a new shipping\nquery.\n\nAn update outside this set (e.g. `poll_answer`, `my_chat_member`, `chat_member`,\n`chat_join_request`, business-account events) is logged and dropped rather than delivered to a\nhandler.",
+      "description": "The service object a consumer implements to handle Telegram webhook updates.",
       "enabled": true,
       "editable": false,
       "codedata": {
@@ -306,7 +376,7 @@
         {
           "metadata": {
             "label": "On Message",
-            "description": "Invoked when a new incoming message is received."
+            "description": "A new incoming message."
           },
           "name": "onMessage",
           "nameEditable": false,
@@ -320,6 +390,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A new incoming message.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onMessage",
@@ -329,7 +400,7 @@
             {
               "metadata": {
                 "label": "Message",
-                "description": "Invoked when a new incoming message is received."
+                "description": "A new incoming message."
               },
               "kind": "REQUIRED",
               "type": {
@@ -353,7 +424,7 @@
               "name": {
                 "metadata": {
                   "label": "message",
-                  "description": "Invoked when a new incoming message is received."
+                  "description": "A new incoming message."
                 },
                 "placeholder": "message",
                 "value": "message",
@@ -385,11 +456,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -398,7 +469,7 @@
         {
           "metadata": {
             "label": "On Edited Message",
-            "description": "Invoked when a message the bot knows about was edited."
+            "description": "An edited message."
           },
           "name": "onEditedMessage",
           "nameEditable": false,
@@ -412,6 +483,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "An edited message.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onEditedMessage",
@@ -421,7 +493,7 @@
             {
               "metadata": {
                 "label": "Edited Message",
-                "description": "Invoked when a message the bot knows about was edited."
+                "description": "An edited message."
               },
               "kind": "REQUIRED",
               "type": {
@@ -445,7 +517,7 @@
               "name": {
                 "metadata": {
                   "label": "editedMessage",
-                  "description": "Invoked when a message the bot knows about was edited."
+                  "description": "An edited message."
                 },
                 "placeholder": "editedMessage",
                 "value": "editedMessage",
@@ -477,11 +549,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -490,7 +562,7 @@
         {
           "metadata": {
             "label": "On Channel Post",
-            "description": "Invoked when a new channel post is received."
+            "description": "A new channel post."
           },
           "name": "onChannelPost",
           "nameEditable": false,
@@ -504,6 +576,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A new channel post.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onChannelPost",
@@ -513,7 +586,7 @@
             {
               "metadata": {
                 "label": "Channel Post",
-                "description": "Invoked when a new channel post is received."
+                "description": "A new channel post."
               },
               "kind": "REQUIRED",
               "type": {
@@ -537,7 +610,7 @@
               "name": {
                 "metadata": {
                   "label": "channelPost",
-                  "description": "Invoked when a new channel post is received."
+                  "description": "A new channel post."
                 },
                 "placeholder": "channelPost",
                 "value": "channelPost",
@@ -569,11 +642,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -582,7 +655,7 @@
         {
           "metadata": {
             "label": "On Edited Channel Post",
-            "description": "Invoked when a channel post the bot knows about was edited."
+            "description": "An edited channel post."
           },
           "name": "onEditedChannelPost",
           "nameEditable": false,
@@ -596,6 +669,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "An edited channel post.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onEditedChannelPost",
@@ -605,7 +679,7 @@
             {
               "metadata": {
                 "label": "Edited Channel Post",
-                "description": "Invoked when a channel post the bot knows about was edited."
+                "description": "An edited channel post."
               },
               "kind": "REQUIRED",
               "type": {
@@ -629,7 +703,7 @@
               "name": {
                 "metadata": {
                   "label": "editedChannelPost",
-                  "description": "Invoked when a channel post the bot knows about was edited."
+                  "description": "An edited channel post."
                 },
                 "placeholder": "editedChannelPost",
                 "value": "editedChannelPost",
@@ -661,11 +735,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -674,7 +748,7 @@
         {
           "metadata": {
             "label": "On Callback Query",
-            "description": "Invoked when an inline keyboard button is pressed."
+            "description": "An inline keyboard button press."
           },
           "name": "onCallbackQuery",
           "nameEditable": false,
@@ -688,6 +762,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "An inline keyboard button press.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onCallbackQuery",
@@ -697,7 +772,7 @@
             {
               "metadata": {
                 "label": "Callback Query",
-                "description": "Invoked when an inline keyboard button is pressed."
+                "description": "An incoming callback query from an inline keyboard button press."
               },
               "kind": "REQUIRED",
               "type": {
@@ -721,7 +796,7 @@
               "name": {
                 "metadata": {
                   "label": "callbackQuery",
-                  "description": "Invoked when an inline keyboard button is pressed."
+                  "description": "An incoming callback query from an inline keyboard button press."
                 },
                 "placeholder": "callbackQuery",
                 "value": "callbackQuery",
@@ -753,11 +828,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -766,7 +841,7 @@
         {
           "metadata": {
             "label": "On Inline Query",
-            "description": "Invoked when a new inline query is received."
+            "description": "A new inline query."
           },
           "name": "onInlineQuery",
           "nameEditable": false,
@@ -780,6 +855,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A new inline query.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onInlineQuery",
@@ -789,7 +865,7 @@
             {
               "metadata": {
                 "label": "Inline Query",
-                "description": "Invoked when a new inline query is received."
+                "description": "An incoming inline query."
               },
               "kind": "REQUIRED",
               "type": {
@@ -813,7 +889,7 @@
               "name": {
                 "metadata": {
                   "label": "inlineQuery",
-                  "description": "Invoked when a new inline query is received."
+                  "description": "An incoming inline query."
                 },
                 "placeholder": "inlineQuery",
                 "value": "inlineQuery",
@@ -845,11 +921,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -858,7 +934,7 @@
         {
           "metadata": {
             "label": "On Poll",
-            "description": "Invoked when a poll's state changes."
+            "description": "A poll's state changed."
           },
           "name": "onPoll",
           "nameEditable": false,
@@ -872,6 +948,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A poll's state changed.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onPoll",
@@ -881,7 +958,7 @@
             {
               "metadata": {
                 "label": "Poll",
-                "description": "Invoked when a poll's state changes."
+                "description": "A native poll."
               },
               "kind": "REQUIRED",
               "type": {
@@ -905,7 +982,7 @@
               "name": {
                 "metadata": {
                   "label": "poll",
-                  "description": "Invoked when a poll's state changes."
+                  "description": "A native poll."
                 },
                 "placeholder": "poll",
                 "value": "poll",
@@ -937,11 +1014,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -949,8 +1026,8 @@
         },
         {
           "metadata": {
-            "label": "On Pre Checkout Query",
-            "description": "Invoked when a new pre-checkout query is received."
+            "label": "On Pre-Checkout Query",
+            "description": "A pre-checkout query."
           },
           "name": "onPreCheckoutQuery",
           "nameEditable": false,
@@ -964,6 +1041,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A pre-checkout query.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onPreCheckoutQuery",
@@ -973,7 +1051,7 @@
             {
               "metadata": {
                 "label": "Pre-Checkout Query",
-                "description": "Invoked when a new pre-checkout query is received."
+                "description": "An incoming pre-checkout query."
               },
               "kind": "REQUIRED",
               "type": {
@@ -997,7 +1075,7 @@
               "name": {
                 "metadata": {
                   "label": "preCheckoutQuery",
-                  "description": "Invoked when a new pre-checkout query is received."
+                  "description": "An incoming pre-checkout query."
                 },
                 "placeholder": "preCheckoutQuery",
                 "value": "preCheckoutQuery",
@@ -1029,11 +1107,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -1042,7 +1120,7 @@
         {
           "metadata": {
             "label": "On Shipping Query",
-            "description": "Invoked when a new shipping query is received."
+            "description": "A shipping query."
           },
           "name": "onShippingQuery",
           "nameEditable": false,
@@ -1056,6 +1134,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A shipping query.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onShippingQuery",
@@ -1065,7 +1144,7 @@
             {
               "metadata": {
                 "label": "Shipping Query",
-                "description": "Invoked when a new shipping query is received."
+                "description": "An incoming shipping query."
               },
               "kind": "REQUIRED",
               "type": {
@@ -1089,7 +1168,7 @@
               "name": {
                 "metadata": {
                   "label": "shippingQuery",
-                  "description": "Invoked when a new shipping query is received."
+                  "description": "An incoming shipping query."
                 },
                 "placeholder": "shippingQuery",
                 "value": "shippingQuery",
@@ -1121,11 +1200,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -1133,9 +1212,5 @@
         }
       ]
     }
-  ],
-  "importStatements": [
-    "ballerina/http"
-  ],
-  "listenerKind": "MULTIPLE_SELECT_LISTENER"
+  ]
 }
