@@ -64,6 +64,7 @@ import io.ballerina.projects.ModuleName;
 import io.ballerina.projects.Package;
 import io.ballerina.projects.PackageDescriptor;
 import io.ballerina.projects.Project;
+import io.ballerina.projects.ProjectException;
 import io.ballerina.runtime.api.utils.IdentifierUtils;
 import io.ballerina.tools.text.LinePosition;
 import org.ballerinalang.langserver.LSClientLogger;
@@ -286,21 +287,23 @@ public class FunctionDataBuilder {
             if (isLocal) {
                 // For local functions: use current workspace package + document + semantic model
                 Optional<Project> optProject = workspaceManager.project(filePath);
-                if (optProject.isEmpty()) {
-                    return;
+                if (optProject.isPresent()) {
+                    Package currentPackage = optProject.get().currentPackage();
+                    try {
+                        Document document = currentPackage.getDefaultModule()
+                                .document(currentPackage.project().documentId(filePath));
+                        Optional<SemanticModel> localModel = workspaceManager.semanticModel(filePath);
+                        if (localModel.isPresent()) {
+                            this.resolvedPackage(currentPackage)
+                                    .document(document)
+                                    .project(currentPackage.project())
+                                    .semanticModel(localModel.get());
+                            return;
+                        }
+                    } catch (ProjectException ignored) {
+                        // Fall through to the workspace/central resolution path.
+                    }
                 }
-                Package currentPackage = optProject.get().currentPackage();
-                Module defaultModule = currentPackage.getDefaultModule();
-                Document document = defaultModule.document(currentPackage.project().documentId(filePath));
-
-                this.resolvedPackage(currentPackage)
-                        .document(document)
-                        .project(currentPackage.project());
-
-                // Set semantic model automatically for local functions
-                SemanticModel semanticModel = workspaceManager.semanticModel(filePath).orElseThrow();
-                this.semanticModel(semanticModel);
-                return;
             }
         }
 
@@ -324,13 +327,17 @@ public class FunctionDataBuilder {
     }
 
     private void updateModuleInfo() {
-        // Update version from resolved package if available
+        // Use the resolved package identity when the request omits package information, as workspace modules
+        // can be identified by their module name alone.
         if (resolvedPackage != null && moduleInfo != null) {
+            String packageName = moduleInfo.packageName();
+            if (packageName == null || packageName.isBlank()) {
+                packageName = resolvedPackage.descriptor().name().value();
+            }
             String resolvedVersion = resolvedPackage.descriptor().version().toString();
-            // Always update moduleInfo with the resolved version to ensure consistency
             this.moduleInfo = new ModuleInfo(
                 moduleInfo.org(),
-                moduleInfo.packageName(),
+                packageName,
                 moduleInfo.moduleName(),
                 resolvedVersion
             );
@@ -618,8 +625,9 @@ public class FunctionDataBuilder {
                     }
                     if (functionKind == FunctionData.Kind.CLASS_INIT || isConnector(functionKind)
                             || isAiClassKind(functionKind)) {
-                        return CommonUtils.getClassType(moduleInfo.moduleName(),
-                                parentSymbol.getName().orElse("Client"));
+                        String className = parentSymbol.getName().orElse("Client");
+                        return isSameAsUserModule() ? className
+                                : CommonUtils.getClassType(moduleInfo.moduleName(), className);
                     }
                     return getTypeSignature(typeSymbol, true);
                 }).orElse("");
@@ -1175,10 +1183,14 @@ public class FunctionDataBuilder {
     }
 
     private String getImportStatement(ModuleInfo moduleInfo) {
-        if (isCurrentModule && moduleInfo.equals(userModuleInfo)) {
+        if (isSameAsUserModule()) {
             return null;
         }
         return CommonUtils.getImportStatement(moduleInfo.org(), moduleInfo.packageName(), moduleInfo.moduleName());
+    }
+
+    private boolean isSameAsUserModule() {
+        return isCurrentModule && moduleInfo.equals(userModuleInfo);
     }
 
     private String getImportStatements(TypeSymbol typeSymbol) {

@@ -16,10 +16,9 @@
  * under the License.
  */
 
-import { BaseVisitor, NodeMetadata } from "@wso2/ballerina-core";
+import { BaseVisitor } from "@wso2/ballerina-core";
 
 import {
-    AGENT_NODE_ADD_TOOL_BUTTON_WIDTH,
     AGENT_NODE_TOOL_GAP,
     AGENT_NODE_TOOL_SECTION_GAP,
     EMPTY_NODE_CONTAINER_WIDTH,
@@ -42,9 +41,11 @@ import {
     WAIT_DATA_DETAILS_GAP,
     WAIT_DATA_DETAILS_WIDTH,
     WHILE_NODE_WIDTH,
+    NodeTypes,
 } from "../resources/constants";
 import { getEvalNodeContainerHeight } from "../components/nodes/EvalNode/evalNodePresentation";
-import { isEvalTemplateCall } from "@wso2/ballerina-core";
+import { isEvalTemplateCall, NodeMetadata } from "@wso2/ballerina-core";
+import { getAgentNodeContainerHeight } from "../components/nodes/AgentWidget/agentNodeLayout";
 import { isWaitingAgentCall, reverseCustomNodeId } from "../utils/node";
 import { Branch, FlowNode } from "../utils/types";
 
@@ -319,6 +320,15 @@ export class SizingVisitor implements BaseVisitor {
         this.createSendDataNode(node);
     }
 
+    endVisitAgent(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        const halfNodeWidth = NODE_WIDTH / 2;
+        const containerLeftWidth = halfNodeWidth;
+        const containerRightWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH;
+        const containerHeight = getAgentNodeContainerHeight(node, NodeTypes.AGENT_NODE);
+        this.setNodeSize(node, containerLeftWidth, containerRightWidth, containerHeight);
+    }
+
     endVisitAgentCall(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
         const nodeWidth = NODE_WIDTH;
@@ -326,14 +336,20 @@ export class SizingVisitor implements BaseVisitor {
         const containerLeftWidth = halfNodeWidth;
         const containerRightWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH;
 
-        // Calculate node height based on node type
-        const nodeMetadata = node.metadata.data as NodeMetadata;
-        const tools = nodeMetadata?.tools || [];
-        const numberOfCircles = tools.length || 0;
-        let containerHeight = NODE_HEIGHT + AGENT_NODE_TOOL_SECTION_GAP + AGENT_NODE_ADD_TOOL_BUTTON_WIDTH + AGENT_NODE_TOOL_GAP * 2;
-        if (numberOfCircles > 0) {
-            containerHeight += numberOfCircles * (NODE_HEIGHT + AGENT_NODE_TOOL_GAP);
-        }
+        const containerHeight = getAgentNodeContainerHeight(node, NodeTypes.AGENT_CALL_NODE);
+        this.setNodeSize(node, containerLeftWidth, containerRightWidth, containerHeight);
+    }
+
+    endVisitAgentRun(node: FlowNode, parent?: FlowNode): void {
+        this.endVisitAgentCall(node, parent);
+    }
+
+    endVisitTypedAgent(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        const halfNodeWidth = NODE_WIDTH / 2;
+        const containerLeftWidth = halfNodeWidth;
+        const containerRightWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH;
+        const containerHeight = getAgentNodeContainerHeight(node, NodeTypes.TYPED_AGENT_NODE);
         this.setNodeSize(node, containerLeftWidth, containerRightWidth, containerHeight);
     }
 
@@ -352,6 +368,7 @@ export class SizingVisitor implements BaseVisitor {
         const sideColumnWidth = NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH;
 
         const nodeMetadata = node.metadata.data as NodeMetadata & {
+            tools?: unknown[];
             activities?: unknown[];
             humanTasks?: unknown[];
             events?: unknown[];

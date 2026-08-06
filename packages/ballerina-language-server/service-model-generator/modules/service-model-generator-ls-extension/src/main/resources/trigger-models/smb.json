@@ -6,9 +6,9 @@
   "orgName": "ballerina",
   "packageName": "smb",
   "moduleName": "smb",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "type": "smb",
-  "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_smb_2.0.0.png",
+  "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_smb_2.0.1.png",
   "kind": "file",
   "listenerKind": "MULTIPLE_SELECT_LISTENER",
   "initProperties": {

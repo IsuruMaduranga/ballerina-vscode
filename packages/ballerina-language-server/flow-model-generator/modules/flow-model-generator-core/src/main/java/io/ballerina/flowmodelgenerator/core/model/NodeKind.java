@@ -84,8 +84,10 @@ public enum NodeKind {
     ANNOTATION_ATTACHMENT,
 
     AGENT,
+    TYPED_AGENT,
     AGENT_CALL,
     AGENT_RUN,
+    AGENT_TOOL,
     CLASS_INIT,
     AGENTS,
 

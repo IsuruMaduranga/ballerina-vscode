@@ -297,24 +297,10 @@
       "event"
     ],
     "triggerName": "FTP / SFTP",
-    "version": "2.19.0",
+    "version": "2.20.0",
     "kind": "file"
   },
   "23": {
-    "name": "file",
-    "orgName": "ballerina",
-    "packageName": "file",
-    "keywords": [
-      "file",
-      "directory",
-      "service",
-      "event"
-    ],
-    "triggerName": "Local Files",
-    "version": "1.13.0",
-    "kind": "file"
-  },
-  "24": {
     "name": "smb",
     "orgName": "ballerina",
     "packageName": "smb",
@@ -326,7 +312,21 @@
       "event"
     ],
     "triggerName": "SMB",
-    "version": "2.0.0",
+    "version": "2.0.1",
+    "kind": "file"
+  },
+  "24": {
+    "name": "file",
+    "orgName": "ballerina",
+    "packageName": "file",
+    "keywords": [
+      "file",
+      "directory",
+      "service",
+      "event"
+    ],
+    "triggerName": "Local Files",
+    "version": "1.13.0",
     "kind": "file"
   },
   "25": {
