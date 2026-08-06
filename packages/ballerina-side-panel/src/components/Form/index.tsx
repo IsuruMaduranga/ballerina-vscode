@@ -364,7 +364,6 @@ export interface FormProps {
     // its `propertyPath` resolves to; anything unresolvable falls back to the form-level banner.
     serverValidationErrors?: ValidationResult[];
     preserveOrder?: boolean;
-    bottomFields?: string[];
     handleSelectedTypeChange?: (type: string | CompletionItem) => void;
     scopeFieldAddon?: React.ReactNode;
     onChange?: (fieldKey: string, value: any, allValues: FormValues) => void;
@@ -438,7 +437,6 @@ export const Form = forwardRef((props: FormProps, _ref) => {
         changeOptionalFieldTitle = undefined,
         openFormTypeEditor,
         derivedFields = [],
-        bottomFields = [],
         updateImports,
         onRequestCreateConnection,
         onCreateNode,
