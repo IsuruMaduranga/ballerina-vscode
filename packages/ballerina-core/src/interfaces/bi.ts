@@ -581,6 +581,8 @@ export type NodeKind =
     | "FORK"
     | "FUNCTION"
     | "FUNCTION_CALL"
+    | "EVAL_TEMPLATE"
+    | "EVAL_TEMPLATE_CALL"
     | "FUNCTION_DEFINITION"
     | "FUNCTION_CREATION"
     | "IF"

@@ -26,8 +26,10 @@ import io.ballerina.centralconnector.response.DependentPackage;
 import io.ballerina.compiler.api.ModuleID;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.AnnotationAttachmentSymbol;
+import io.ballerina.compiler.api.symbols.AnnotationSymbol;
 import io.ballerina.compiler.api.symbols.ClassSymbol;
 import io.ballerina.compiler.api.symbols.Documentation;
+import io.ballerina.compiler.api.symbols.FunctionSymbol;
 import io.ballerina.compiler.api.symbols.FunctionTypeSymbol;
 import io.ballerina.compiler.api.symbols.ModuleSymbol;
 import io.ballerina.compiler.api.symbols.ParameterSymbol;
@@ -154,6 +156,8 @@ public class AiUtils {
     private static final String NAME = "name";
     private static final String VERSION = "version";
     private static final String INIT_METHOD = "init";
+    private static final String EVAL_PACKAGE = "ai.eval";
+    private static final String EVAL_TEMPLATE_ANNOTATION = "EvalTemplate";
     private static final AiComponentDiskCache diskCache = new AiComponentDiskCache();
 
     public static final String MEMORY_DEFAULT_VALUE = "10";
@@ -165,6 +169,24 @@ public class AiUtils {
         versionToFeatures.put("1.3.0", Set.of(CHUNKERS, DATA_LOADERS));
         versionToFeatures.put("1.6.0", Set.of(SHORT_TERM_MEMORY_STORE));
         initFallbackDependentModules();
+    }
+
+    public static boolean isEvalTemplateFunction(FunctionSymbol function) {
+        if (function == null || function.getModule().filter(AiUtils::isEvalModule).isEmpty()) {
+            return false;
+        }
+        for (AnnotationAttachmentSymbol attachment : function.annotAttachments()) {
+            AnnotationSymbol annotation = attachment.typeDescriptor();
+            if (EVAL_TEMPLATE_ANNOTATION.equals(annotation.getName().orElse(null))
+                    && annotation.getModule().filter(AiUtils::isEvalModule).isPresent()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isEvalModule(ModuleSymbol module) {
+        return Ai.BALLERINA_ORG.equals(module.id().orgName()) && EVAL_PACKAGE.equals(module.id().moduleName());
     }
 
     private static void initFallbackDependentModules() {

@@ -620,7 +620,8 @@ export interface TestsDiscoveryRequest {
 }
 
 export interface TestsDiscoveryResponse {
-    result?: Map<string, FunctionTreeNode[]>;
+    // The language client returns a Map in-process, while JSON RPC can deserialize it as a plain object.
+    result?: Map<string, FunctionTreeNode[]> | Record<string, FunctionTreeNode[]>;
     errorMsg?: string;
     stacktrace?: string;
 }
@@ -666,6 +667,16 @@ export interface GetTestFunctionRequest {
 export interface AddOrUpdateTestFunctionRequest {
     filePath: string;
     function: TestFunction;
+    evalTemplate?: {
+        symbol: string;
+        parameters: Record<string, string>;
+        dataSource?: {
+            paramName: string;
+            mode: "evalset" | "queries";
+            evalSetFile?: string;
+            queries?: string[];
+        };
+    };
 }
 
 export interface TestSourceEditResponse {
@@ -971,6 +982,7 @@ export type SearchKind =
     | "TYPE"
     | "WORKFLOW_RUN"
     | "ACTIVITY_CALL"
+    | "EVAL_TEMPLATE"
     | "NP_FUNCTION"
     | "MODEL_PROVIDER"
     | "VECTOR_STORE"

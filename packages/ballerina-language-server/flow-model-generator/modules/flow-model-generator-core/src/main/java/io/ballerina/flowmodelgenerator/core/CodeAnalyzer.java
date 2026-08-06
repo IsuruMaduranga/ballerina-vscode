@@ -3397,7 +3397,9 @@ public class CodeAnalyzer extends NodeVisitor {
                             .checkError(true, NewConnectionBuilder.CHECK_ERROR_DOC, false);
                 return;
             }
-            startNode(NodeKind.FUNCTION_CALL, functionCallExpressionNode.parent());
+            NodeKind nodeKind = AiUtils.isEvalTemplateFunction(functionSymbol)
+                    ? NodeKind.EVAL_TEMPLATE_CALL : NodeKind.FUNCTION_CALL;
+            startNode(nodeKind, functionCallExpressionNode.parent());
         }
 
         CommonUtils.getViewLineRange(functionSymbol, moduleInfo, project)
@@ -3422,7 +3424,35 @@ public class CodeAnalyzer extends NodeVisitor {
                 .stepOut()
                 .codedata().symbol(functionName);
 
+        addModelProviderMetadata(functionCallExpressionNode.arguments(), functionData);
+
         handleWorkflowFunctionSymbol(functionCallExpressionNode, functionSymbol);
+    }
+
+    private void addModelProviderMetadata(SeparatedNodeList<FunctionArgumentNode> argumentNodes,
+                                          FunctionData functionData) {
+        if (functionData.parameters() == null) {
+            return;
+        }
+        Map<String, Node> namedArgs = new HashMap<>();
+        Queue<Node> positionalArgs = new LinkedList<>();
+        calculateFunctionArgs(namedArgs, positionalArgs, argumentNodes);
+        List<Node> positional = List.copyOf(positionalArgs);
+
+        int index = 0;
+        for (ParameterData parameter : functionData.parameters().values()) {
+            String name = ParamUtils.removeLeadingSingleQuote(parameter.name());
+            Node argument = namedArgs.containsKey(name) ? namedArgs.get(name)
+                    : index < positional.size() ? positional.get(index++) : null;
+            if (parameter.type() != null && parameter.type().endsWith(Constants.Ai.MODEL_PROVIDER_TYPE_NAME)
+                    && argument instanceof ExpressionNode expression) {
+                ModelData model = getModelIconUrl(expression);
+                if (model != null) {
+                    nodeBuilder.metadata().addData(Constants.NaturalFunctions.MODEL, model);
+                }
+                return;
+            }
+        }
     }
 
     private void handleWorkflowFunctionSymbol(FunctionCallExpressionNode functionCallExpressionNode,

@@ -30,7 +30,7 @@ export const CONNECTION_TYPE_CONFIGS: Record<ConnectionKind, ConnectionKindConfi
     MODEL_PROVIDER: {
         displayName: "Model Provider",
         types: [{ fieldType: "ACTION_EXPRESSION", ballerinaType: "ai:ModelProvider", selected: true }, { fieldType: "EXPRESSION", selected: false }],
-        nodePropertyKey: ["model", "modelProvider"],
+        nodePropertyKey: ["model", "modelProvider", "judgeModel"],
         categoryConverter: convertModelProviderCategoriesToSidePanelCategories,
         searchConfig: (aiModuleOrg?: string): ConnectionSearchConfig => ({
             query: "",
