@@ -323,6 +323,15 @@ public class FunctionDataBuilder {
         this.resolvedPackage(resolvedPackage);
     }
 
+    // The workspace child package matching moduleInfo, if any. Best-effort; empty on failure.
+    private Optional<Package> resolveWorkspacePackage() {
+        if (moduleInfo == null) {
+            return Optional.empty();
+        }
+        return PackageUtil.findWorkspacePackage(project, moduleInfo.org(), moduleInfo.packageName(),
+                moduleInfo.moduleName());
+    }
+
     private void updateModuleInfo() {
         // Update version from resolved package if available
         if (resolvedPackage != null && moduleInfo != null) {
