@@ -326,14 +326,6 @@ public class FunctionDataBuilder {
         this.resolvedPackage(resolvedPackage);
     }
 
-    private Optional<Package> resolveWorkspacePackage() {
-        if (moduleInfo == null) {
-            return Optional.empty();
-        }
-        return PackageUtil.findWorkspacePackage(project, moduleInfo.org(), moduleInfo.packageName(),
-                moduleInfo.moduleName());
-    }
-
     private void updateModuleInfo() {
         // Use the resolved package identity when the request omits package information, as workspace modules
         // can be identified by their module name alone.
