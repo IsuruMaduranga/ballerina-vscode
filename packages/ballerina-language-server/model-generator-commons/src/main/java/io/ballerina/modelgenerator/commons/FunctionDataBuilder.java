@@ -323,7 +323,6 @@ public class FunctionDataBuilder {
         this.resolvedPackage(resolvedPackage);
     }
 
-    // The workspace child package matching moduleInfo, if any. Best-effort; empty on failure.
     private Optional<Package> resolveWorkspacePackage() {
         if (moduleInfo == null) {
             return Optional.empty();
