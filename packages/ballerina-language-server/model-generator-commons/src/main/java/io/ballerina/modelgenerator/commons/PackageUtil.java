@@ -208,14 +208,10 @@ public class PackageUtil {
                                                      String version) {
         ResolutionRequest resolutionRequest = ResolutionRequest.from(
                 PackageDescriptor.from(PackageOrg.from(org), PackageName.from(name), PackageVersion.from(version)));
+        PackageResolver packageResolver = buildProject.projectEnvironmentContext().getService(PackageResolver.class);
 
-        Collection<ResolutionResponse> resolutionResponses =
-                buildProject.projectEnvironmentContext().getService(PackageResolver.class)
-                        .resolvePackages(Collections.singletonList(resolutionRequest),
-                                ResolutionOptions.builder().setOffline(FORCE_OFFLINE).setSticky(false).build());
-        Optional<ResolutionResponse> resolutionResponse = resolutionResponses.stream().findFirst();
-        if (resolutionResponse.isEmpty() || resolutionResponse.get().resolvedPackage() == null) {
-            // Offline and the package could not be resolved from the local repositories.
+        Optional<ResolutionResponse> resolutionResponse = resolveResponse(packageResolver, resolutionRequest, false);
+        if (resolutionResponse.isEmpty()) {
             return Optional.empty();
         }
 
@@ -224,6 +220,24 @@ public class PackageUtil {
         defaultBuilder.addCompilationCacheFactory(TempDirCompilationCache::from);
         BalaProject balaProject = BalaProject.loadProject(defaultBuilder, balaPath, balaBuildOptions());
         return Optional.ofNullable(balaProject.currentPackage());
+    }
+
+    /**
+     * A response is only usable when it actually {@code RESOLVED} — {@code resolvePackages} can return
+     * a non-empty collection containing an {@code UNRESOLVED} entry (with a {@code null} {@code
+     * resolvedPackage()}) rather than an empty collection, which previously slipped past an {@code
+     * isEmpty()} check and threw a {@code NullPointerException} on {@code resolvedPackage().project()}
+     * — silently swallowed by callers' broad {@code catch (Throwable)}, masquerading as "package not
+     * found".
+     */
+    private static Optional<ResolutionResponse> resolveResponse(PackageResolver packageResolver,
+                                                                 ResolutionRequest resolutionRequest,
+                                                                 boolean offline) {
+        return packageResolver.resolvePackages(Collections.singletonList(resolutionRequest),
+                        ResolutionOptions.builder().setOffline(offline).setSticky(false).build())
+                .stream()
+                .filter(response -> response.resolutionStatus() == ResolutionResponse.ResolutionStatus.RESOLVED)
+                .findFirst();
     }
 
     public static Optional<Package> getModulePackage(BuildProject buildProject, String org, String name) {
@@ -263,6 +277,41 @@ public class PackageUtil {
         ProjectEnvironmentBuilder defaultBuilder = ProjectEnvironmentBuilder.getDefaultBuilder();
         defaultBuilder.addCompilationCacheFactory(TempDirCompilationCache::from);
         BalaProject balaProject = BalaProject.loadProject(defaultBuilder, balaPath, balaBuildOptions());
+        return Optional.ofNullable(balaProject.currentPackage());
+    }
+
+    /**
+     * Offline counterpart of {@link #getModulePackage(BuildProject, String, String)}: resolves a module
+     * package strictly from what's already available locally, never reaching out to Central. Returns
+     * {@code Optional.empty()} when the package isn't already resolvable offline, leaving the decision
+     * to actually pull it to the LS's existing explicit, user-notified pull flow (see
+     * {@link #pullModuleAndNotify}) rather than pulling it silently as a side effect of a read.
+     */
+    public static Optional<Package> getModulePackageOffline(BuildProject buildProject, String org, String name) {
+        ResolutionRequest resolutionRequest = ResolutionRequest.from(
+                PackageDescriptor.from(PackageOrg.from(org), PackageName.from(name)));
+        PackageResolver packageResolver = buildProject.projectEnvironmentContext().getService(PackageResolver.class);
+        Collection<PackageMetadataResponse> packageMetadataResponses = packageResolver.resolvePackageMetadata(
+                Collections.singletonList(resolutionRequest),
+                ResolutionOptions.builder().setOffline(true).build());
+        Optional<PackageMetadataResponse> pkgMetadata = packageMetadataResponses.stream().findFirst();
+        if (pkgMetadata.isEmpty() ||
+                pkgMetadata.get().resolutionStatus() == ResolutionResponse.ResolutionStatus.UNRESOLVED) {
+            return Optional.empty();
+        }
+
+        Collection<ResolutionResponse> resolutionResponses = packageResolver.resolvePackages(
+                Collections.singletonList(ResolutionRequest.from(pkgMetadata.get().resolvedDescriptor())),
+                ResolutionOptions.builder().setOffline(true).build());
+        Optional<ResolutionResponse> resolutionResponse = resolutionResponses.stream().findFirst();
+        if (resolutionResponse.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Path balaPath = resolutionResponse.get().resolvedPackage().project().sourceRoot();
+        ProjectEnvironmentBuilder defaultBuilder = ProjectEnvironmentBuilder.getDefaultBuilder();
+        defaultBuilder.addCompilationCacheFactory(TempDirCompilationCache::from);
+        BalaProject balaProject = BalaProject.loadProject(defaultBuilder, balaPath);
         return Optional.ofNullable(balaProject.currentPackage());
     }
 
