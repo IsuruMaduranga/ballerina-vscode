@@ -139,7 +139,7 @@
             "selected": true
           }
         ],
-        "value": "result",
+        "value": "eventToken",
         "optional": false,
         "editable": true,
         "advanced": false,

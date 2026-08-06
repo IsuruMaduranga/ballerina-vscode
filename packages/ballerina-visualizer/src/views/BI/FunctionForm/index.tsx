@@ -663,7 +663,15 @@ export function FunctionForm(props: FunctionFormProps) {
             }
             const modelNodeTemplate = await getNodeTemplate(rpcClient, WSO2_MODEL_PROVIDER_CODEDATA, projectPath);
             modelNodeTemplate.properties.variable.value = WSO2_MODEL_PROVIDER_VAR;
-            await rpcClient.getBIDiagramRpcClient().getSourceCode({ filePath: projectPath, flowNode: modelNodeTemplate });
+            const response = await rpcClient
+                .getBIDiagramRpcClient()
+                .getSourceCode({ filePath: projectPath, flowNode: modelNodeTemplate });
+            if (response?.error) {
+                // `getSourceCode` reports LS failures as `{ artifacts: [], error }` rather than
+                // rejecting; the provider was never written, so don't configure it.
+                console.error("Failed to create the default model provider:", response.error);
+                return;
+            }
             await rpcClient.getAIAgentRpcClient().configureDefaultModelProvider("model");
         } catch (error) {
             console.error("Failed to ensure a default model provider:", error);

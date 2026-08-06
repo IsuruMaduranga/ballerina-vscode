@@ -200,7 +200,7 @@ public class DurableAgentRegisterEventBuilder extends CallBuilder {
                 .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
         StringBuilder entry = new StringBuilder("{name: ")
                 .append(WorkflowUtil.constantNameLiteral(eventName))
-                .append(", request: ").append(requestType.isBlank() ? "json" : requestType);
+                .append(", request: ").append(requestType.isBlank() ? DEFAULT_REQUEST_TYPE : requestType);
         if (!responseType.isBlank()) {
             entry.append(", response: ").append(responseType);
         }

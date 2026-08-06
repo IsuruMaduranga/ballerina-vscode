@@ -73,6 +73,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.ACTIVITY;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW;
@@ -85,6 +87,9 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_O
  * @since 1.8.0
  */
 public class WorkflowUtil {
+
+    private static final Logger LOGGER = Logger.getLogger(WorkflowUtil.class.getName());
+
     public static boolean isWorkflowModule(Optional<ModuleSymbol> moduleSymbol) {
         if (moduleSymbol.isEmpty()) {
             return false;
@@ -531,6 +536,8 @@ public class WorkflowUtil {
         try {
             project = workspaceManager.loadProject(filePath);
         } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Skipping declared agent event options: failed to load the project of "
+                    + filePath, e);
             return List.of();
         }
         Module module = project.currentPackage().getDefaultModule();
@@ -674,7 +681,7 @@ public class WorkflowUtil {
                 || trimmed.startsWith("string `") || trimmed.startsWith("[")) {
             return trimmed;
         }
-        return "\"" + trimmed.replace("\"", "\\\"") + "\"";
+        return "\"" + trimmed.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     // Characters that cannot occur in a bare role name but do occur in references and calls.

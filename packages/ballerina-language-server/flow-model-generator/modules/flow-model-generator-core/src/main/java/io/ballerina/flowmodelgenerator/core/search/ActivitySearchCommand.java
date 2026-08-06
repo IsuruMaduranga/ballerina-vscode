@@ -38,6 +38,8 @@ import io.ballerina.tools.text.LineRange;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.ACTIVITY_MODULE;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.BUILTIN_EMAIL_DESCRIPTION;
@@ -63,6 +65,8 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_O
  * @since 1.8.0
  */
 class ActivitySearchCommand extends SearchCommand {
+
+    private static final Logger LOGGER = Logger.getLogger(ActivitySearchCommand.class.getName());
 
     // Durable agents reuse this search as their single "Add Tool/Activity" list: selected
     // activities become `activities` entries of the agent declaration, and the list additionally
@@ -198,6 +202,8 @@ class ActivitySearchCommand extends SearchCommand {
                 PackageUtil.getCompilation(currentPackage);
                 return module.getCompilation().getSemanticModel();
             } catch (RuntimeException secondAttempt) {
+                LOGGER.log(Level.WARNING, "Skipping module '" + module.moduleName().toString()
+                        + "' from the activity search: compilation failed on retry", secondAttempt);
                 return null;
             }
         }

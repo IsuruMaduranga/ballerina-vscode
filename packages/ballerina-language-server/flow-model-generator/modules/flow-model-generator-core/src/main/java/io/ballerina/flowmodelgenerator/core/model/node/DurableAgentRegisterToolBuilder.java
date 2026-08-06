@@ -179,7 +179,7 @@ public class DurableAgentRegisterToolBuilder extends CallBuilder {
                 mapping.append(", requiresApproval: true");
             }
             if (!userRoles.isBlank()) {
-                mapping.append(", userRoles: ").append(WorkflowUtil.quoteIfPlain(userRoles));
+                mapping.append(", userRoles: ").append(WorkflowUtil.quoteIfBareRole(userRoles));
             }
             entry = mapping.append("}").toString();
         }
