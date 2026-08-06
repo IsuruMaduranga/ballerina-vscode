@@ -1027,35 +1027,6 @@
                       }
                     }
                   ]
-                },
-                "pollingInterval": {
-                  "metadata": {
-                    "label": "Polling Interval (seconds)",
-                    "description": "How often the watched path is polled, in seconds"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "NUMBER",
-                      "ballerinaType": "decimal",
-                      "selected": true
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "decimal",
-                      "selected": false
-                    }
-                  ],
-                  "value": "60",
-                  "enabled": true,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": false,
-                  "placeholder": "60",
-                  "codedata": {
-                    "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
-                    "originalName": "pollingInterval",
-                    "path": "pollingInterval"
-                  }
                 }
               }
             }
@@ -1106,7 +1077,7 @@
     "path": {
       "metadata": {
         "label": "Monitoring Path",
-        "description": "The folder on the share to monitor for file actions (e.g., /uploads or /incoming)"
+        "description": "The folder on the share to monitor for file actions (e.g., /uploads or /incoming); / watches the share root"
       },
       "types": [
         {
@@ -1127,10 +1098,7 @@
       "advanced": false,
       "placeholder": "/",
       "codedata": {
-        "type": "SERVICE_ANNOTATION",
-        "path": "path",
-        "moduleName": "files",
-        "originalName": "ServiceConfig"
+        "type": "SERVICE_BASE_PATH"
       }
     },
     "recursive": {
@@ -1262,8 +1230,7 @@
           "codedata": {
             "type": "SERVICE_ANNOTATION",
             "originalName": "ServiceConfig",
-            "moduleName": "files",
-            "path": "path"
+            "moduleName": "files"
           }
         }
       },
@@ -1272,7 +1239,7 @@
         {
           "metadata": {
             "label": "On Create",
-            "description": "Handles a file whose extension routes to the CSV format (.csv), binding its content as string[][].",
+            "description": "Handles a file whose extension routes to the CSV format (.csv), binding its content as string[][] or as rows of a record type (T[]).",
             "addLabel": "Add On Create Handler (CSV)",
             "badge": "onCreate"
           },
@@ -1290,7 +1257,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "ONE_EACH_PER_GROUP",
-          "documentation": "Handles a file whose extension routes to the CSV format (.csv), binding its content as string[][].",
+          "documentation": "Handles a file whose extension routes to the CSV format (.csv), binding its content as string[][] or as rows of a record type (T[]).",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onFileCsv",
@@ -1301,13 +1268,13 @@
             {
               "metadata": {
                 "label": "Content",
-                "description": "Handles a file whose extension routes to the CSV format (.csv), binding its content as string[][]."
+                "description": "Handles a file whose extension routes to the CSV format (.csv), binding its content as string[][] or as rows of a record type (T[])."
               },
               "kind": "DATA_BINDING",
               "type": {
                 "metadata": {
                   "label": "Content",
-                  "description": "Handles a file whose extension routes to the CSV format (.csv), binding its content as string[][]."
+                  "description": "Handles a file whose extension routes to the CSV format (.csv), binding its content as string[][] or as rows of a record type (T[])."
                 },
                 "types": [
                   {
@@ -1323,8 +1290,8 @@
                 "properties": {
                   "payload": {
                     "metadata": {
-                      "label": "Content",
-                      "description": "The CSV file content as rows of string fields."
+                      "label": "Row Schema",
+                      "description": "Define or select the bound row type (T); content is delivered as T[]. Defaults to string[] rows."
                     },
                     "value": "string[][]",
                     "enabled": false,
@@ -1333,7 +1300,7 @@
                     "advanced": false,
                     "types": [
                       {
-                        "fieldType": "TYPE",
+                        "fieldType": "PAYLOAD_TYPE",
                         "selected": true,
                         "ballerinaType": "string[][]",
                         "template": "{{type}}"
@@ -1341,8 +1308,12 @@
                     ],
                     "codedata": {
                       "type": "PAYLOAD_TYPE",
-                      "bindable": false,
-                      "defaultType": "string[][]"
+                      "bindable": true,
+                      "boundType": "",
+                      "typeConstraint": "anydata",
+                      "bindingKind": "USER_SELECTED",
+                      "defaultType": "string[]",
+                      "template": "{{type}}[]"
                     }
                   }
                 }
@@ -1350,7 +1321,7 @@
               "name": {
                 "metadata": {
                   "label": "content",
-                  "description": "Handles a file whose extension routes to the CSV format (.csv), binding its content as string[][]."
+                  "description": "Handles a file whose extension routes to the CSV format (.csv), binding its content as string[][] or as rows of a record type (T[])."
                 },
                 "placeholder": "content",
                 "value": "content",
@@ -1786,35 +1757,6 @@
                         }
                       ]
                     }
-                  }
-                },
-                "fileNamePattern": {
-                  "metadata": {
-                    "label": "File Name Pattern",
-                    "description": "A regular expression that routes matching files to this handler, overriding the extension-based routing"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "TEXT",
-                      "selected": true,
-                      "ballerinaType": "string"
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "selected": false,
-                      "ballerinaType": "string"
-                    }
-                  ],
-                  "value": "",
-                  "enabled": false,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": false,
-                  "codedata": {
-                    "type": "MAPPING_FIELD",
-                    "field": "fileNamePattern",
-                    "optional": true,
-                    "valueKind": "STRING_LITERAL"
                   }
                 }
               }
@@ -2353,35 +2295,6 @@
                       ]
                     }
                   }
-                },
-                "fileNamePattern": {
-                  "metadata": {
-                    "label": "File Name Pattern",
-                    "description": "A regular expression that routes matching files to this handler, overriding the extension-based routing"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "TEXT",
-                      "selected": true,
-                      "ballerinaType": "string"
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "selected": false,
-                      "ballerinaType": "string"
-                    }
-                  ],
-                  "value": "",
-                  "enabled": false,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": false,
-                  "codedata": {
-                    "type": "MAPPING_FIELD",
-                    "field": "fileNamePattern",
-                    "optional": true,
-                    "valueKind": "STRING_LITERAL"
-                  }
                 }
               }
             }
@@ -2390,7 +2303,7 @@
         {
           "metadata": {
             "label": "On Create",
-            "description": "Handles a file whose extension routes to the XML format (.xml).",
+            "description": "Handles a file whose extension routes to the XML format (.xml), binding its content as xml or a record type.",
             "addLabel": "Add On Create Handler (XML)",
             "badge": "onCreate"
           },
@@ -2408,7 +2321,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "ONE_EACH_PER_GROUP",
-          "documentation": "Handles a file whose extension routes to the XML format (.xml).",
+          "documentation": "Handles a file whose extension routes to the XML format (.xml), binding its content as xml or a record type.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onFileXml",
@@ -2419,13 +2332,13 @@
             {
               "metadata": {
                 "label": "Content",
-                "description": "Handles a file whose extension routes to the XML format (.xml)."
+                "description": "Handles a file whose extension routes to the XML format (.xml), binding its content as xml or a record type."
               },
               "kind": "DATA_BINDING",
               "type": {
                 "metadata": {
                   "label": "Content",
-                  "description": "Handles a file whose extension routes to the XML format (.xml)."
+                  "description": "Handles a file whose extension routes to the XML format (.xml), binding its content as xml or a record type."
                 },
                 "types": [
                   {
@@ -2441,8 +2354,8 @@
                 "properties": {
                   "payload": {
                     "metadata": {
-                      "label": "Content",
-                      "description": "The XML file content."
+                      "label": "Content Schema",
+                      "description": "Bound content type (defaults to xml). Bind a record type for schema-checked access."
                     },
                     "value": "xml",
                     "enabled": false,
@@ -2451,7 +2364,7 @@
                     "advanced": false,
                     "types": [
                       {
-                        "fieldType": "TYPE",
+                        "fieldType": "PAYLOAD_TYPE",
                         "selected": true,
                         "ballerinaType": "xml",
                         "template": "{{type}}"
@@ -2459,8 +2372,12 @@
                     ],
                     "codedata": {
                       "type": "PAYLOAD_TYPE",
-                      "bindable": false,
-                      "defaultType": "xml"
+                      "bindable": true,
+                      "boundType": "",
+                      "typeConstraint": "anydata",
+                      "bindingKind": "USER_SELECTED",
+                      "defaultType": "xml",
+                      "template": "{{type}}"
                     }
                   }
                 }
@@ -2468,7 +2385,7 @@
               "name": {
                 "metadata": {
                   "label": "content",
-                  "description": "Handles a file whose extension routes to the XML format (.xml)."
+                  "description": "Handles a file whose extension routes to the XML format (.xml), binding its content as xml or a record type."
                 },
                 "placeholder": "content",
                 "value": "content",
@@ -2904,35 +2821,6 @@
                         }
                       ]
                     }
-                  }
-                },
-                "fileNamePattern": {
-                  "metadata": {
-                    "label": "File Name Pattern",
-                    "description": "A regular expression that routes matching files to this handler, overriding the extension-based routing"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "TEXT",
-                      "selected": true,
-                      "ballerinaType": "string"
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "selected": false,
-                      "ballerinaType": "string"
-                    }
-                  ],
-                  "value": "",
-                  "enabled": false,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": false,
-                  "codedata": {
-                    "type": "MAPPING_FIELD",
-                    "field": "fileNamePattern",
-                    "optional": true,
-                    "valueKind": "STRING_LITERAL"
                   }
                 }
               }
@@ -3457,35 +3345,6 @@
                       ]
                     }
                   }
-                },
-                "fileNamePattern": {
-                  "metadata": {
-                    "label": "File Name Pattern",
-                    "description": "A regular expression that routes matching files to this handler, overriding the extension-based routing"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "TEXT",
-                      "selected": true,
-                      "ballerinaType": "string"
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "selected": false,
-                      "ballerinaType": "string"
-                    }
-                  ],
-                  "value": "",
-                  "enabled": false,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": false,
-                  "codedata": {
-                    "type": "MAPPING_FIELD",
-                    "field": "fileNamePattern",
-                    "optional": true,
-                    "valueKind": "STRING_LITERAL"
-                  }
                 }
               }
             }
@@ -4008,35 +3867,6 @@
                         }
                       ]
                     }
-                  }
-                },
-                "fileNamePattern": {
-                  "metadata": {
-                    "label": "File Name Pattern",
-                    "description": "A regular expression that routes matching files to this handler, overriding the extension-based routing"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "TEXT",
-                      "selected": true,
-                      "ballerinaType": "string"
-                    },
-                    {
-                      "fieldType": "EXPRESSION",
-                      "selected": false,
-                      "ballerinaType": "string"
-                    }
-                  ],
-                  "value": "",
-                  "enabled": false,
-                  "editable": true,
-                  "optional": true,
-                  "advanced": false,
-                  "codedata": {
-                    "type": "MAPPING_FIELD",
-                    "field": "fileNamePattern",
-                    "optional": true,
-                    "valueKind": "STRING_LITERAL"
                   }
                 }
               }
