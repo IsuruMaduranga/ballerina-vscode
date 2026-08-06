@@ -36,6 +36,7 @@ import {
     END_CONTAINER,
     LAST_NODE,
     NODE_GAP_X,
+    NodeTypes,
     START_CONTAINER,
     WHILE_NODE_WIDTH,
 } from "../resources/constants";
@@ -47,7 +48,6 @@ import { EndNodeModel } from "../components/nodes/EndNode";
 import { ErrorNodeModel } from "../components/nodes/ErrorNode";
 import { AgentCallNodeModel } from "../components/nodes/AgentCallNode/AgentCallNodeModel";
 import { EvalNodeModel } from "../components/nodes/EvalNode/EvalNodeModel";
-import { AgentTypeNodeModel } from "../components/nodes/AgentTypeNode/AgentTypeNodeModel";
 import { AgentNodeModel } from "../components/nodes/AgentNode/AgentNodeModel";
 import { PromptNodeModel } from "../components/nodes/PromptNode/PromptNodeModel";
 
@@ -856,7 +856,7 @@ export class NodeFactoryVisitor implements BaseVisitor {
         if (!node.id) {
             return;
         }
-        const nodeModel = new AgentTypeNodeModel(node);
+        const nodeModel = new AgentNodeModel(node, NodeTypes.AGENT_TYPE_NODE);
         this.nodes.push(nodeModel);
         this.updateNodeLinks(node, nodeModel);
         this.addSuggestionsButton(node);
