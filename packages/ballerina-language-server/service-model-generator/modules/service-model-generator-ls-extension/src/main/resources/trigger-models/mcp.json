@@ -662,12 +662,12 @@
               "label": "Return Type",
               "description": "The return type of the MCP tool"
             },
-            "type": "anydata|error",
+            "type": "",
             "typeEditable": true,
             "enabled": true,
             "editable": true,
             "optional": false,
-            "hasError": true,
+            "hasError": false,
             "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
@@ -879,12 +879,12 @@
               "label": "Return Type",
               "description": "The return type of the MCP tool"
             },
-            "type": "anydata|error",
+            "type": "",
             "typeEditable": true,
             "enabled": true,
             "editable": true,
             "optional": false,
-            "hasError": true,
+            "hasError": false,
             "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
