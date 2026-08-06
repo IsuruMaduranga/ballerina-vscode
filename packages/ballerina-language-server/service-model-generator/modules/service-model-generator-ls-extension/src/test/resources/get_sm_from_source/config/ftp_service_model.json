@@ -16,10 +16,10 @@
     "displayName": "FTP Integration",
     "moduleName": "ftp",
     "orgName": "ballerina",
-    "version": "2.19.0",
+    "version": "2.20.0",
     "packageName": "ftp",
     "listenerProtocol": "ftp",
-    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_ftp_2.19.0.png",
+    "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_ftp_2.20.0.png",
     "properties": {
       "listener": {
         "metadata": {
@@ -107,7 +107,7 @@
             "typeMembers": [
               {
                 "type": "ServiceConfiguration",
-                "packageInfo": "ballerina:ftp:2.19.0",
+                "packageInfo": "ballerina:ftp:2.20.0",
                 "packageName": "ftp",
                 "kind": "RECORD_TYPE",
                 "selected": true
@@ -378,7 +378,7 @@
           "orgName": "ballerina",
           "packageName": "ftp",
           "moduleName": "ftp",
-          "version": "2.19.0"
+          "version": "2.20.0"
         },
         "properties": {
           "afterFileProcessing": {
@@ -901,7 +901,7 @@
           "orgName": "ballerina",
           "packageName": "ftp",
           "moduleName": "ftp",
-          "version": "2.19.0"
+          "version": "2.20.0"
         },
         "properties": {
           "afterFileProcessing": {
@@ -1415,7 +1415,7 @@
           "orgName": "ballerina",
           "packageName": "ftp",
           "moduleName": "ftp",
-          "version": "2.19.0"
+          "version": "2.20.0"
         },
         "properties": {
           "afterFileProcessing": {
@@ -1969,7 +1969,7 @@
           "orgName": "ballerina",
           "packageName": "ftp",
           "moduleName": "ftp",
-          "version": "2.19.0"
+          "version": "2.20.0"
         },
         "properties": {
           "afterFileProcessing": {
@@ -2480,7 +2480,7 @@
           "orgName": "ballerina",
           "packageName": "ftp",
           "moduleName": "ftp",
-          "version": "2.19.0"
+          "version": "2.20.0"
         },
         "properties": {
           "afterFileProcessing": {
@@ -2959,7 +2959,7 @@
           "orgName": "ballerina",
           "packageName": "ftp",
           "moduleName": "ftp",
-          "version": "2.19.0"
+          "version": "2.20.0"
         },
         "properties": {},
         "group": "onFileDelete",
@@ -3120,7 +3120,7 @@
           "orgName": "ballerina",
           "packageName": "ftp",
           "moduleName": "ftp",
-          "version": "2.19.0"
+          "version": "2.20.0"
         },
         "properties": {},
         "group": "onError",
