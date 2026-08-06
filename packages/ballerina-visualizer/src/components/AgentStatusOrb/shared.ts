@@ -286,6 +286,14 @@ export function subscribeAgentRunStatus(
     };
 }
 
+/** Test-only: clears the module-level status cache and listeners between test cases. */
+export function __resetAgentRunStatusStoreForTests(): void {
+    currentStatus = null;
+    statusWired = false;
+    receivedStatusNotification = false;
+    statusListeners.clear();
+}
+
 /**
  * True while the Copilot panel is open — inline copilot surfaces stand down so
  * the panel is the only chat entry point. Seeded from the cached status so a
