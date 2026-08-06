@@ -62,6 +62,8 @@ import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentStartBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentUpdateBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.EmbeddingProviderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.ErrorHandlerBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.EvalTemplateBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.EvalTemplateCallBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.EventStartBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.ExpressionBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.FailBuilder;
@@ -168,6 +170,8 @@ public abstract class NodeBuilder implements DiagnosticHandler.DiagnosticCapable
         put(NodeKind.BINARY_DATA, BinaryBuilder::new);
         put(NodeKind.STOP, StopBuilder::new);
         put(NodeKind.FUNCTION_CALL, FunctionCall::new);
+        put(NodeKind.EVAL_TEMPLATE, EvalTemplateBuilder::new);
+        put(NodeKind.EVAL_TEMPLATE_CALL, EvalTemplateCallBuilder::new);
         put(NodeKind.NP_FUNCTION_CALL, NPFunctionCall::new);
         put(NodeKind.NP_FUNCTION_DEFINITION, NPFunctionDefinitionBuilder::new);
         put(NodeKind.METHOD_CALL, MethodCall::new);

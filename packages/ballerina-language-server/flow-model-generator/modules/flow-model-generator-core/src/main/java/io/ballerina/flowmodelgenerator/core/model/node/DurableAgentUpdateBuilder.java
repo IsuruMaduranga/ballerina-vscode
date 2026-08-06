@@ -158,7 +158,7 @@ public class DurableAgentUpdateBuilder extends FunctionCall {
                 .stepOut()
                 .addProperty(DATA_KEY);
 
-        properties().data(Property.RESULT_NAME, context.getAllVisibleSymbolNames(),
+        properties().data(DEFAULT_TOKEN_VAR, context.getAllVisibleSymbolNames(),
                 Property.RESULT_NAME, Property.RESULT_DOC, false);
         properties().checkError(true);
     }

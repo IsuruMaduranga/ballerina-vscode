@@ -173,7 +173,7 @@ public class DurableAgentDataResultBuilder extends FunctionCall {
                 .map(p -> p.value() == null || !"false".equals(p.value().toString()))
                 .orElse(true);
         String resultType = sourceBuilder.getProperty(Property.TYPE_KEY)
-                .map(p -> p.value() == null || p.value().toString().isEmpty()
+                .map(p -> p.value() == null || p.value().toString().isBlank()
                         ? DEFAULT_RESULT_TYPE : p.value().toString())
                 .orElse(DEFAULT_RESULT_TYPE);
         String variableName = sourceBuilder.getProperty(Property.VARIABLE_KEY)

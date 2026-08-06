@@ -92,7 +92,7 @@ public abstract class WorkflowContextFunctionBuilder extends NodeBuilder {
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         FunctionSpec spec = spec();
         String variableName = sourceBuilder.getProperty(Property.VARIABLE_KEY)
-                .map(p -> p.value() == null ? "" : p.value().toString())
+                .map(p -> p.value() == null ? null : p.value().toString())
                 .filter(value -> !value.isBlank())
                 .orElse(spec.defaultVariableName());
 

@@ -2,19 +2,20 @@
   "schemaVersion": "1.0",
   "id": "googleapis.chat",
   "displayName": "Google Chat",
-  "description": "Create a service to handle Google Chat app interaction events (messages, card clicks, app commands, and more)",
+  "description": "Receives Google Chat interaction events via direct HTTP delivery from Google Chat.",
   "orgName": "ballerinax",
   "packageName": "googleapis.chat",
   "moduleName": "googleapis.chat",
   "version": "0.1.0",
   "type": "chat",
-  "icon": "icon.png",
+  "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_googleapis.chat_0.1.0.png",
   "kind": "event",
+  "listenerKind": "MULTIPLE_SELECT_LISTENER",
   "initProperties": {
     "listener": {
       "metadata": {
-        "label": "Configure Google Chat Listener",
-        "description": "Select an existing Google Chat listener or create a new one"
+        "label": "Listener",
+        "description": "Attach the service to a new or existing Google Chat listener."
       },
       "types": [
         {
@@ -33,8 +34,8 @@
       "choices": [
         {
           "metadata": {
-            "label": "Create new",
-            "description": "Create a new Google Chat listener"
+            "label": "Create New Listener",
+            "description": "Define a new Google Chat listener in the project."
           },
           "types": [
             {
@@ -50,7 +51,7 @@
             "listenerConfig": {
               "metadata": {
                 "label": "Listener Configurations",
-                "description": "Configure the Google Chat webhook listener"
+                "description": "Configure the Google Chat trigger listener."
               },
               "types": [
                 {
@@ -96,9 +97,10 @@
                 "listenOn": {
                   "metadata": {
                     "label": "Port",
-                    "description": "A port number to bind a new HTTP listener to, or an existing `http:Listener` to reuse. Defaults to 8000."
+                    "description": "The port or HTTP listener to listen on. Defaults to port 8000."
                   },
                   "value": "8000",
+                  "placeholder": "8000",
                   "enabled": true,
                   "editable": true,
                   "optional": true,
@@ -119,13 +121,12 @@
                       "ballerinaType": "int|http:Listener",
                       "selected": false
                     }
-                  ],
-                  "placeholder": "8000"
+                  ]
                 },
                 "auth": {
                   "metadata": {
                     "label": "Auth Config",
-                    "description": "Authentication for the Chat API client used to respond to events: a service account (JSON key file or inline credentials), OAuth2, or a pre-obtained bearer token."
+                    "description": "Authentication for the Chat API client (service account, OAuth2, or bearer token)"
                   },
                   "value": "",
                   "enabled": true,
@@ -178,18 +179,23 @@
                       "ballerinaType": "chat:ServiceAccountAuthConfig|chat:OAuth2Config|http:BearerTokenConfig",
                       "selected": false
                     }
+                  ],
+                  "validations": [
+                    {
+                      "rule": "common.validate.required"
+                    }
                   ]
                 },
                 "httpListenerConfig": {
                   "metadata": {
                     "label": "HTTP Listener Config",
-                    "description": "Optional inbound HTTP listener settings (SSL/TLS, timeouts, request limits, ...)"
+                    "description": "Optional inbound HTTP listener settings"
                   },
                   "value": "",
                   "enabled": true,
                   "editable": true,
                   "optional": true,
-                  "advanced": true,
+                  "advanced": false,
                   "codedata": {
                     "argType": "LISTENER_PARAM_INCLUDED_DEFAULTABLE_FIELD",
                     "originalName": "httpListenerConfig",
@@ -223,8 +229,8 @@
         },
         {
           "metadata": {
-            "label": "Use existing",
-            "description": "Select an existing Google Chat listener"
+            "label": "Use Existing Listener",
+            "description": "Attach to one or more Google Chat listeners already declared in the project."
           },
           "types": [
             {
@@ -233,18 +239,18 @@
             }
           ],
           "enabled": false,
-          "editable": false,
+          "editable": true,
           "optional": false,
           "advanced": false,
           "properties": {
             "existingListener": {
               "metadata": {
                 "label": "Listener(s)",
-                "description": "Select one or more existing Google Chat listeners to attach to"
+                "description": "Select one or more existing Google Chat listeners to attach to."
               },
               "types": [
                 {
-                  "fieldType": "MULTI_SELECT_LISTENER",
+                  "fieldType": "MULTIPLE_SELECT_LISTENER",
                   "selected": true,
                   "ballerinaType": "googleapis.chat:Listener"
                 }
@@ -268,10 +274,10 @@
     {
       "metadata": {
         "label": "Chat Service",
-        "description": "Handles Google Chat app interaction events. Handler methods are recognised by convention, not declared on the type; declare only the ones you need."
+        "description": "Triggers when a Google Chat interaction event is received."
       },
       "name": "ChatService",
-      "description": "Triggers when a Google Chat interaction event is received.\n\nImplement this service object to handle Chat app events. Each remote function\ncorresponds to a specific event type. You only need to implement the handlers\nrelevant to your Chat app.\n\nEach handler receives the event and an event-specific Caller for responding.\nThe Caller's respond() method sends a synchronous HTTP response back to\nGoogle Chat. Additional async Chat API operations (sendMessage, updateMessage,\netc.) are available on callers that support them.\n\n```ballerina\nremote function onMessage(chat:MessageEvent event, chat:MessageCaller caller) returns error? {\n    check caller->respond({ text: \"Got your message!\" });\n}\nremote function onAppHome(chat:ChatEvent event, chat:AppHomeCaller caller) returns error? {\n    check caller->respond({ sections: [{ widgets: [{ textParagraph: { text: \"Welcome!\" } }] }] });\n}\n```\n\n**Available event handlers:**\n- `onMessage(MessageEvent|ChatEvent, MessageCaller)` - A user sends a message\n- `onAddedToSpace(ChatEvent, MessageCaller)` - The app is added to a space\n- `onRemovedFromSpace(ChatEvent)` - The app is removed from a space (no caller)\n- `onCardClicked(ChatEvent, CardClickedCaller)` - A user clicks a button/card element\n- `onWidgetUpdated(ChatEvent, WidgetUpdatedCaller)` - A user updates a widget\n- `onAppCommand(ChatEvent, MessageCaller)` - A user invokes a command\n- `onAppHome(ChatEvent, AppHomeCaller)` - A user navigates to the app home\n- `onSubmitForm(ChatEvent, SubmitFormCaller)` - A user submits a form from app home",
+      "description": "Triggers when a Google Chat interaction event is received.",
       "enabled": true,
       "editable": false,
       "codedata": {
@@ -283,7 +289,7 @@
         "serviceConfig": {
           "metadata": {
             "label": "Service Config",
-            "description": "@chat:ServiceConfig \u2014 bearer-token verification settings for this Chat app: verify by HTTP endpoint URL (recommended) or by GCP project number."
+            "description": "Service-level configuration for the Google Chat trigger."
           },
           "types": [
             {
@@ -303,11 +309,16 @@
             "moduleName": "chat",
             "path": ""
           },
+          "validations": [
+            {
+              "rule": "common.validate.required"
+            }
+          ],
           "choices": [
             {
               "metadata": {
-                "label": "HTTP Endpoint URL",
-                "description": "Verify the bearer token's audience against this listener's public HTTPS endpoint URL (recommended)."
+                "label": "HTTP Endpoint URL Config",
+                "description": "Verifies bearer tokens using the HTTP endpoint URL as the audience."
               },
               "types": [
                 {
@@ -327,7 +338,7 @@
                 "endpointUrl": {
                   "metadata": {
                     "label": "Endpoint URL",
-                    "description": "The public HTTPS URL of this listener, exactly as entered in the Chat app's HTTP endpoint URL field."
+                    "description": "The public HTTPS URL of this listener."
                   },
                   "types": [
                     {
@@ -349,16 +360,20 @@
                   "advanced": false,
                   "codedata": {
                     "type": "MAPPING_FIELD",
-                    "field": "endpointUrl",
-                    "valueKind": "STRING_LITERAL"
-                  }
+                    "field": "endpointUrl"
+                  },
+                  "validations": [
+                    {
+                      "rule": "common.validate.required"
+                    }
+                  ]
                 }
               }
             },
             {
               "metadata": {
                 "label": "Project Number",
-                "description": "Verify the bearer token's audience against this GCP project number."
+                "description": "Verifies bearer tokens using the GCP project number as the audience."
               },
               "types": [
                 {
@@ -400,9 +415,13 @@
                   "advanced": false,
                   "codedata": {
                     "type": "MAPPING_FIELD",
-                    "field": "projectNumber",
-                    "valueKind": "STRING_LITERAL"
-                  }
+                    "field": "projectNumber"
+                  },
+                  "validations": [
+                    {
+                      "rule": "common.validate.required"
+                    }
+                  ]
                 }
               }
             }
@@ -414,7 +433,7 @@
         {
           "metadata": {
             "label": "On Message",
-            "description": "Invoked when a user sends a message to the Chat app."
+            "description": "A user sends a message."
           },
           "name": "onMessage",
           "nameEditable": false,
@@ -428,6 +447,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A user sends a message.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onMessage",
@@ -437,7 +457,7 @@
             {
               "metadata": {
                 "label": "Event",
-                "description": "Invoked when a user sends a message to the Chat app."
+                "description": "A Google Chat message interaction event."
               },
               "kind": "REQUIRED",
               "type": {
@@ -451,10 +471,6 @@
                   {
                     "fieldType": "TYPE",
                     "selected": true
-                  },
-                  {
-                    "fieldType": "TYPE",
-                    "selected": false
                   }
                 ],
                 "enabled": true,
@@ -465,7 +481,7 @@
               "name": {
                 "metadata": {
                   "label": "event",
-                  "description": "Invoked when a user sends a message to the Chat app."
+                  "description": "A Google Chat message interaction event."
                 },
                 "placeholder": "event",
                 "value": "event",
@@ -492,7 +508,7 @@
             {
               "metadata": {
                 "label": "Caller",
-                "description": "Used to respond to the event, e.g. via `caller->respond(...)`."
+                "description": "An event-specific Caller for responding."
               },
               "kind": "OPTIONAL",
               "type": {
@@ -517,7 +533,7 @@
               "name": {
                 "metadata": {
                   "label": "caller",
-                  "description": "Used to respond to the event."
+                  "description": "An event-specific Caller for responding."
                 },
                 "placeholder": "caller",
                 "value": "caller",
@@ -549,11 +565,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -562,7 +578,7 @@
         {
           "metadata": {
             "label": "On Added To Space",
-            "description": "Invoked when the Chat app is added to a space."
+            "description": "The app is added to a space."
           },
           "name": "onAddedToSpace",
           "nameEditable": false,
@@ -576,6 +592,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "The app is added to a space.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onAddedToSpace",
@@ -585,7 +602,7 @@
             {
               "metadata": {
                 "label": "Event",
-                "description": "Invoked when the Chat app is added to a space."
+                "description": "A Google Chat app interaction event."
               },
               "kind": "REQUIRED",
               "type": {
@@ -609,7 +626,7 @@
               "name": {
                 "metadata": {
                   "label": "event",
-                  "description": "Invoked when the Chat app is added to a space."
+                  "description": "A Google Chat app interaction event."
                 },
                 "placeholder": "event",
                 "value": "event",
@@ -636,7 +653,7 @@
             {
               "metadata": {
                 "label": "Caller",
-                "description": "Used to respond to the event, e.g. via `caller->respond(...)`."
+                "description": "An event-specific Caller for responding."
               },
               "kind": "OPTIONAL",
               "type": {
@@ -661,7 +678,7 @@
               "name": {
                 "metadata": {
                   "label": "caller",
-                  "description": "Used to respond to the event."
+                  "description": "An event-specific Caller for responding."
                 },
                 "placeholder": "caller",
                 "value": "caller",
@@ -693,11 +710,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -706,7 +723,7 @@
         {
           "metadata": {
             "label": "On Removed From Space",
-            "description": "Invoked when the Chat app is removed from a space."
+            "description": "The app is removed from a space (no caller)."
           },
           "name": "onRemovedFromSpace",
           "nameEditable": false,
@@ -720,6 +737,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "The app is removed from a space (no caller).",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onRemovedFromSpace",
@@ -729,7 +747,7 @@
             {
               "metadata": {
                 "label": "Event",
-                "description": "Invoked when the Chat app is removed from a space."
+                "description": "A Google Chat app interaction event."
               },
               "kind": "REQUIRED",
               "type": {
@@ -753,7 +771,7 @@
               "name": {
                 "metadata": {
                   "label": "event",
-                  "description": "Invoked when the Chat app is removed from a space."
+                  "description": "A Google Chat app interaction event."
                 },
                 "placeholder": "event",
                 "value": "event",
@@ -785,11 +803,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -798,7 +816,7 @@
         {
           "metadata": {
             "label": "On Card Clicked",
-            "description": "Invoked when a user clicks a button or card element."
+            "description": "A user clicks a button/card element."
           },
           "name": "onCardClicked",
           "nameEditable": false,
@@ -812,6 +830,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A user clicks a button/card element.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onCardClicked",
@@ -821,7 +840,7 @@
             {
               "metadata": {
                 "label": "Event",
-                "description": "Invoked when a user clicks a button or card element."
+                "description": "A Google Chat app interaction event."
               },
               "kind": "REQUIRED",
               "type": {
@@ -845,7 +864,7 @@
               "name": {
                 "metadata": {
                   "label": "event",
-                  "description": "Invoked when a user clicks a button or card element."
+                  "description": "A Google Chat app interaction event."
                 },
                 "placeholder": "event",
                 "value": "event",
@@ -872,7 +891,7 @@
             {
               "metadata": {
                 "label": "Caller",
-                "description": "Used to respond to the event, e.g. via `caller->respond(...)`."
+                "description": "An event-specific Caller for responding."
               },
               "kind": "OPTIONAL",
               "type": {
@@ -897,7 +916,7 @@
               "name": {
                 "metadata": {
                   "label": "caller",
-                  "description": "Used to respond to the event."
+                  "description": "An event-specific Caller for responding."
                 },
                 "placeholder": "caller",
                 "value": "caller",
@@ -929,11 +948,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -942,7 +961,7 @@
         {
           "metadata": {
             "label": "On Widget Updated",
-            "description": "Invoked when a user updates a widget."
+            "description": "A user updates a widget."
           },
           "name": "onWidgetUpdated",
           "nameEditable": false,
@@ -956,6 +975,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A user updates a widget.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onWidgetUpdated",
@@ -965,7 +985,7 @@
             {
               "metadata": {
                 "label": "Event",
-                "description": "Invoked when a user updates a widget."
+                "description": "A Google Chat app interaction event."
               },
               "kind": "REQUIRED",
               "type": {
@@ -989,7 +1009,7 @@
               "name": {
                 "metadata": {
                   "label": "event",
-                  "description": "Invoked when a user updates a widget."
+                  "description": "A Google Chat app interaction event."
                 },
                 "placeholder": "event",
                 "value": "event",
@@ -1016,7 +1036,7 @@
             {
               "metadata": {
                 "label": "Caller",
-                "description": "Used to respond to the event, e.g. via `caller->respond(...)`."
+                "description": "An event-specific Caller for responding."
               },
               "kind": "OPTIONAL",
               "type": {
@@ -1041,7 +1061,7 @@
               "name": {
                 "metadata": {
                   "label": "caller",
-                  "description": "Used to respond to the event."
+                  "description": "An event-specific Caller for responding."
                 },
                 "placeholder": "caller",
                 "value": "caller",
@@ -1073,11 +1093,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -1086,7 +1106,7 @@
         {
           "metadata": {
             "label": "On App Command",
-            "description": "Invoked when a user invokes a Chat app command."
+            "description": "A user invokes a command."
           },
           "name": "onAppCommand",
           "nameEditable": false,
@@ -1100,6 +1120,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A user invokes a command.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onAppCommand",
@@ -1109,7 +1130,7 @@
             {
               "metadata": {
                 "label": "Event",
-                "description": "Invoked when a user invokes a Chat app command."
+                "description": "A Google Chat app interaction event."
               },
               "kind": "REQUIRED",
               "type": {
@@ -1133,7 +1154,7 @@
               "name": {
                 "metadata": {
                   "label": "event",
-                  "description": "Invoked when a user invokes a Chat app command."
+                  "description": "A Google Chat app interaction event."
                 },
                 "placeholder": "event",
                 "value": "event",
@@ -1160,7 +1181,7 @@
             {
               "metadata": {
                 "label": "Caller",
-                "description": "Used to respond to the event, e.g. via `caller->respond(...)`."
+                "description": "An event-specific Caller for responding."
               },
               "kind": "OPTIONAL",
               "type": {
@@ -1185,7 +1206,7 @@
               "name": {
                 "metadata": {
                   "label": "caller",
-                  "description": "Used to respond to the event."
+                  "description": "An event-specific Caller for responding."
                 },
                 "placeholder": "caller",
                 "value": "caller",
@@ -1217,11 +1238,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -1230,7 +1251,7 @@
         {
           "metadata": {
             "label": "On App Home",
-            "description": "Invoked when a user navigates to the Chat app's home view."
+            "description": "A user navigates to the app home."
           },
           "name": "onAppHome",
           "nameEditable": false,
@@ -1244,6 +1265,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A user navigates to the app home.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onAppHome",
@@ -1253,7 +1275,7 @@
             {
               "metadata": {
                 "label": "Event",
-                "description": "Invoked when a user navigates to the Chat app's home view."
+                "description": "A Google Chat app interaction event."
               },
               "kind": "REQUIRED",
               "type": {
@@ -1277,7 +1299,7 @@
               "name": {
                 "metadata": {
                   "label": "event",
-                  "description": "Invoked when a user navigates to the Chat app's home view."
+                  "description": "A Google Chat app interaction event."
                 },
                 "placeholder": "event",
                 "value": "event",
@@ -1304,7 +1326,7 @@
             {
               "metadata": {
                 "label": "Caller",
-                "description": "Used to respond to the event, e.g. via `caller->respond(...)`."
+                "description": "An event-specific Caller for responding."
               },
               "kind": "OPTIONAL",
               "type": {
@@ -1329,7 +1351,7 @@
               "name": {
                 "metadata": {
                   "label": "caller",
-                  "description": "Used to respond to the event."
+                  "description": "An event-specific Caller for responding."
                 },
                 "placeholder": "caller",
                 "value": "caller",
@@ -1361,11 +1383,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -1374,7 +1396,7 @@
         {
           "metadata": {
             "label": "On Submit Form",
-            "description": "Invoked when a user submits a form from the Chat app's home view."
+            "description": "A user submits a form from app home."
           },
           "name": "onSubmitForm",
           "nameEditable": false,
@@ -1388,6 +1410,7 @@
           "optional": true,
           "canAddParameters": false,
           "repeatable": "FALSE",
+          "documentation": "A user submits a form from app home.",
           "codedata": {
             "type": "FUNCTION",
             "originalName": "onSubmitForm",
@@ -1397,7 +1420,7 @@
             {
               "metadata": {
                 "label": "Event",
-                "description": "Invoked when a user submits a form from the Chat app's home view."
+                "description": "A Google Chat app interaction event."
               },
               "kind": "REQUIRED",
               "type": {
@@ -1421,7 +1444,7 @@
               "name": {
                 "metadata": {
                   "label": "event",
-                  "description": "Invoked when a user submits a form from the Chat app's home view."
+                  "description": "A Google Chat app interaction event."
                 },
                 "placeholder": "event",
                 "value": "event",
@@ -1448,7 +1471,7 @@
             {
               "metadata": {
                 "label": "Caller",
-                "description": "Used to respond to the event, e.g. via `caller->respond(...)`."
+                "description": "An event-specific Caller for responding."
               },
               "kind": "OPTIONAL",
               "type": {
@@ -1473,7 +1496,7 @@
               "name": {
                 "metadata": {
                   "label": "caller",
-                  "description": "Used to respond to the event."
+                  "description": "An event-specific Caller for responding."
                 },
                 "placeholder": "caller",
                 "value": "caller",
@@ -1505,11 +1528,11 @@
             },
             "type": "error?",
             "typeEditable": false,
+            "typeConstraint": "error?",
             "enabled": true,
             "editable": false,
             "optional": true,
             "hasError": true,
-            "importStatements": "",
             "codedata": {
               "type": "FUNCTION_RETURN"
             }
@@ -1517,9 +1540,5 @@
         }
       ]
     }
-  ],
-  "importStatements": [
-    "ballerina/http"
-  ],
-  "listenerKind": "MULTIPLE_SELECT_LISTENER"
+  ]
 }

@@ -328,7 +328,7 @@ export function getNodeTitle(node: FlowNode) {
     // Durable-agentic-workflow register statements keep their plain label ("Register Event", ...)
     // without the module prefix; the registered name renders as the node's second line instead.
     if (isDurableAgentRegisterNode(node)) {
-        return node.metadata?.label;
+        return node.metadata?.label ?? node.codedata.node;
     }
 
     const label = node.metadata.label.includes(".") ? node.metadata.label.split(".").pop() : node.metadata.label;

@@ -37,11 +37,11 @@ import java.util.Map;
  * @param functionKind The kind of the function
  * @param data         The additional data
  * @param connectors   For CONNECTION-typed properties: allowed target connectors. Each entry pairs a
- * @param draft       True for diagram-only draft/placeholder nodes with no source backing
  *                     connector codedata with the label of its "Add new connection" button. When
  *                     non-empty, the UI union-filters the dropdown by (module, object) across entries
  *                     and renders one Add button per entry. When null/empty, the dropdown lists every
  *                     connection in the project and no Add button is shown.
+ * @param draft        True for diagram-only draft/placeholder nodes with no source backing
  * @since 1.0.0
  */
 public record Metadata(String label, String description, List<String> keywords, String icon, String functionKind,

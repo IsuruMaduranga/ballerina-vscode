@@ -163,6 +163,11 @@ name = "ai"
 version = "1.12.0"
 
 [[dependency]]
+org = "ballerina"
+name = "ai.eval"
+version = "0.9.0"
+
+[[dependency]]
 org = "ballerinax"
 name = "solace"
 version = "0.3.0"
