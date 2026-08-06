@@ -21,6 +21,7 @@ package io.ballerina.flowmodelgenerator.core.model.node;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.VariableSymbol;
 import io.ballerina.flowmodelgenerator.core.Constants;
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
@@ -199,26 +200,23 @@ public class DurableAgentPeerBuilder extends CallBuilder {
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         // Object model: a peer lives on the declaration's `peers` list.
-        if (!WorkflowUtil.isDurableAgentObjectTarget(sourceBuilder)) {
-            throw new IllegalStateException("Cannot generate the capability source: "
-                    + "the durable agent declaration target is missing");
-        }
+        WorkflowUtil.requireDurableAgentObjectTarget(sourceBuilder);
         if (WorkflowUtil.isCapabilityDeleteRequest(sourceBuilder)) {
             return WorkflowUtil.removeAgentCapabilityEntry(sourceBuilder);
         }
         String agent = propertyValue(sourceBuilder, AGENT_KEY);
         if (agent.isBlank()) {
-            throw new IllegalStateException("A peer agent is required");
+            throw new UserFacingException("A peer agent is required");
         }
         String name = propertyValue(sourceBuilder, NAME_KEY);
         if (name.isBlank()) {
-            throw new IllegalStateException("A peer tool name is required");
+            throw new UserFacingException("A peer tool name is required");
         }
         String description = propertyValue(sourceBuilder, DESCRIPTION_KEY);
         String callbackChannel = propertyValue(sourceBuilder, CALLBACK_CHANNEL_KEY);
         boolean waits = !"false".equalsIgnoreCase(propertyValue(sourceBuilder, WAIT_KEY));
         if (!waits && callbackChannel.isBlank()) {
-            throw new IllegalStateException("A peer that does not wait must name the callback "
+            throw new UserFacingException("A peer that does not wait must name the callback "
                     + "channel its answer arrives on");
         }
 

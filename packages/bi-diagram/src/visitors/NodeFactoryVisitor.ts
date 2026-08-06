@@ -28,7 +28,6 @@ import { IfNodeModel } from "../components/nodes/IfNode/IfNodeModel";
 import { SendDataNodeModel } from "../components/nodes/SendDataNode";
 import { StartNodeModel } from "../components/nodes/StartNode/StartNodeModel";
 import { WaitDataNodeModel } from "../components/nodes/WaitDataNode";
-import { WorkflowRunNodeModel } from "../components/nodes/WorkflowRunNode";
 import { WhileNodeModel } from "../components/nodes/WhileNode";
 import {
     BUTTON_NODE_HEIGHT,
@@ -131,13 +130,6 @@ export class NodeFactoryVisitor implements BaseVisitor {
 
     private createCallActivityNode(node: FlowNode): NodeModel {
         const nodeModel = new CallActivityNodeModel(node);
-        this.nodes.push(nodeModel);
-        this.updateNodeLinks(node, nodeModel);
-        return nodeModel;
-    }
-
-    private createWorkflowRunNode(node: FlowNode): NodeModel {
-        const nodeModel = new WorkflowRunNodeModel(node);
         this.nodes.push(nodeModel);
         this.updateNodeLinks(node, nodeModel);
         return nodeModel;

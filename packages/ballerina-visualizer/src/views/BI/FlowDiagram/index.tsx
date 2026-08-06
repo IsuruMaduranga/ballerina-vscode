@@ -771,7 +771,10 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 const response = await rpcClient.getBIDiagramRpcClient().search({
                     position: { startLine: targetRef.current.startLine, endLine: targetRef.current.endLine },
                     filePath: model?.fileName,
-                    queryMap: undefined,
+                    // The refreshed list has to stay the list the user opened: without the node
+                    // kind the rebuilt items come back as top-level Run Workflow nodes, so a
+                    // workflow picked right after creating one would insert the wrong node.
+                    queryMap: childWorkflowKindRef.current ? { nodeKind: childWorkflowKindRef.current } : undefined,
                     searchKind: "WORKFLOW_RUN",
                 });
                 const panelCategories = convertFunctionCategoriesToSidePanelCategories(
