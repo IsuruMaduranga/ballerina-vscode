@@ -170,10 +170,13 @@ export function ContextTypeEditor(props: ContextTypeEditorProps) {
                     ? await props.rpcClient.getBIDiagramRpcClient().createGraphqlClassType(request)
                     : await props.rpcClient.getBIDiagramRpcClient().updateType(request);
             } catch (error) {
-                // Only a failure of the save itself is reported as a save failure.
+                // Only a failure of the save itself is reported as a save failure. Lead with
+                // the type name so the toast always says what failed, then append the
+                // underlying reason when the error carries one.
                 console.error(">>> error saving the type", error);
+                const reason = (error as Error)?.message;
                 props.rpcClient.getCommonRpcClient().showErrorMessage({
-                    message: (error as Error)?.message || `Failed to save the type '${name}'. Please try again.`
+                    message: `Failed to save the type '${name}'. ${reason || "Please try again."}`
                 });
                 return;
             }

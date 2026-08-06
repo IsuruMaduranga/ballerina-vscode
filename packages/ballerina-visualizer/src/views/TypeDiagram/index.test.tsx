@@ -86,12 +86,15 @@ import { TypeDiagram } from "./index";
 (global as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 function makeRpc(recordFilePath: string | null = "/p/types.bal") {
-    const pending: Array<(names: string[]) => void> = [];
+    const pending: Array<{ resolve: (names: string[]) => void; reject: (error: Error) => void }> = [];
     const listeners: Array<(state: boolean) => void> = [];
     const getTypes = jest.fn(
         () =>
-            new Promise((resolve) => {
-                pending.push((names) => resolve({ types: names.map((name) => ({ name })) }));
+            new Promise((resolve, reject) => {
+                pending.push({
+                    resolve: (names) => resolve({ types: names.map((name) => ({ name })) }),
+                    reject,
+                });
             })
     );
 
@@ -154,6 +157,7 @@ describe("TypeDiagram model fetching", () => {
     };
 
     const renderedModel = () => container.querySelector('[data-testid="type-model"]');
+    const progressRing = () => container.querySelector('[data-testid="progress-ring"]');
 
     it("ignores a stale response that resolves after a newer request completed", async () => {
         const { rpcClient, getTypes, pending } = makeRpc();
@@ -168,8 +172,8 @@ describe("TypeDiagram model fetching", () => {
         expect(getTypes).toHaveBeenCalledTimes(2);
 
         // The newer request completes first, then the older one comes back late.
-        await act(async () => pending[1](["Newer"]));
-        await act(async () => pending[0](["Stale"]));
+        await act(async () => pending[1].resolve(["Newer"]));
+        await act(async () => pending[0].resolve(["Stale"]));
         await settle();
 
         expect(renderedModel()?.textContent).toBe("Newer");
@@ -180,7 +184,7 @@ describe("TypeDiagram model fetching", () => {
 
         await renderDiagram("/a", rpcClient);
         await settle();
-        await act(async () => pending[0](["First"]));
+        await act(async () => pending[0].resolve(["First"]));
         await settle();
         expect(getTypes).toHaveBeenCalledTimes(1);
 
@@ -201,6 +205,23 @@ describe("TypeDiagram model fetching", () => {
 
         // Nothing can be fetched, but the diagram must still leave the progress ring.
         expect(getTypes).not.toHaveBeenCalled();
+        expect(progressRing()).toBeNull();
         expect(renderedModel()).not.toBeNull();
+    });
+
+    it("clears the loading state when the fetch fails", async () => {
+        const consoleError = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        const { rpcClient, pending } = makeRpc();
+
+        await renderDiagram("/a", rpcClient);
+        await settle();
+        expect(progressRing()).not.toBeNull();
+
+        await act(async () => pending[0].reject(new Error("getTypes failed")));
+        await settle();
+
+        // A rejected fetch must leave the progress ring too, not hang on it forever.
+        expect(progressRing()).toBeNull();
+        consoleError.mockRestore();
     });
 });
