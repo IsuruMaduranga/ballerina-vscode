@@ -325,12 +325,12 @@ export default function createTests() {
             // diagram — no explicit "Open View" navigation is needed.
             artifactWebView = await switchToIFrame(BI_INTEGRATOR_LABEL, page.page, 30000);
 
-            await artifactWebView.getByRole('button', { name: /Add Artifact/i }).click({ force: true });
-            // The floating Copilot orb can dock exactly over this card/link, so a
-            // coordinate click (even with `force`) can silently land on the orb
-            // instead — same failure class `domClick` exists to avoid (see its doc).
+            // The diagram can still be settling right after the previous test's save
+            // (same drag-tolerance trap as elsewhere in this file) — retry the click
+            // rather than assume it registered.
             const connectionCard = artifactWebView.locator('[data-testid="function-card-Connection"], #connection').first();
-            await connectionCard.waitFor({ state: 'visible', timeout: 30000 });
+            await clickUntil(artifactWebView.getByRole('button', { name: /Add Artifact/i }), connectionCard, 'Add Artifact button');
+            // domClick avoids the floating Copilot orb intercepting a coordinate click.
             await domClick(connectionCard);
             await page.page.waitForTimeout(1500);
 
