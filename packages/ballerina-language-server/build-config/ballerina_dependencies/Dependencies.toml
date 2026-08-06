@@ -45,6 +45,20 @@ modules = [
 
 [[package]]
 org = "ballerina"
+name = "ai.eval"
+version = "0.9.0"
+dependencies = [
+	{org = "ballerina", name = "ai"},
+	{org = "ballerina", name = "test"},
+	{org = "ballerina", name = "time"},
+	{org = "ballerina", name = "uuid"}
+]
+modules = [
+	{org = "ballerina", packageName = "ai.eval", moduleName = "ai.eval"}
+]
+
+[[package]]
+org = "ballerina"
 name = "auth"
 version = "2.14.0"
 dependencies = [
@@ -1466,6 +1480,7 @@ name = "ballerina_dependencies"
 version = "0.1.0"
 dependencies = [
 	{org = "ballerina", name = "ai"},
+	{org = "ballerina", name = "ai.eval"},
 	{org = "ballerina", name = "data.csv"},
 	{org = "ballerina", name = "ftp"},
 	{org = "ballerina", name = "grpc"},

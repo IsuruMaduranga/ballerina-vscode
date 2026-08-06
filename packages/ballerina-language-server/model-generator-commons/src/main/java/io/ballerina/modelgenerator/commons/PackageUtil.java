@@ -168,14 +168,6 @@ public class PackageUtil {
         }
     }
 
-    /** First response that actually produced a package; UNRESOLVED entries carry a null package. */
-    private static Optional<ResolutionResponse> firstResolved(Collection<ResolutionResponse> responses) {
-        return responses.stream()
-                .filter(response -> response.resolutionStatus() != ResolutionResponse.ResolutionStatus.UNRESOLVED)
-                .filter(response -> response.resolvedPackage() != null)
-                .findFirst();
-    }
-
     /**
      * Retrieves the semantic model for a given package identified by organization, name, and version.
      *
