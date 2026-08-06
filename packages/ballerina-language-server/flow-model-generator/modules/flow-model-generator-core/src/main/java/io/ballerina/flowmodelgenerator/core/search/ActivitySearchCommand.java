@@ -221,10 +221,11 @@ class ActivitySearchCommand extends SearchCommand {
         }
         Category.Builder toolsCategory = rootBuilder.stepIn(Category.Name.AGENT_TOOLBOX);
         currentPackage.modules().forEach(module -> {
-            SemanticModel semanticModel;
-            try {
-                semanticModel = module.getCompilation().getSemanticModel();
-            } catch (RuntimeException e) {
+            // Same retry as the activity list above: a module compiled concurrently with the
+            // reload a write triggers can fail once, and skipping on that first failure blanks
+            // the tool list the user is looking at.
+            SemanticModel semanticModel = semanticModelOf(currentPackage, module);
+            if (semanticModel == null) {
                 return;
             }
             semanticModel.moduleSymbols().stream()

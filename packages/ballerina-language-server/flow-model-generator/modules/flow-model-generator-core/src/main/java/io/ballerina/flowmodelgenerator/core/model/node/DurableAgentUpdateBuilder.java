@@ -210,7 +210,9 @@ public class DurableAgentUpdateBuilder extends FunctionCall {
         if (trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
             return trimmed;
         }
-        return "\"" + trimmed + "\"";
+        // The field is editable, so a free-form value can carry characters that would otherwise
+        // close the literal early and produce source that does not compile.
+        return "\"" + trimmed.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     private static String requireValue(SourceBuilder sourceBuilder, String key, String message) {

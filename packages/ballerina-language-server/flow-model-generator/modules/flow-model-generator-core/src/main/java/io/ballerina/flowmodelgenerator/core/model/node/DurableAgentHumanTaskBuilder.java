@@ -54,6 +54,9 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
     public static final String TITLE_KEY = "title";
     public static final String DESCRIPTION_KEY = "description";
     private static final String STRING_TYPE = "string";
+    // Named on the Duration record's type-member metadata only when the project pins no
+    // ballerina/workflow version of its own; the resolved version wins.
+    private static final String FALLBACK_WORKFLOW_VERSION = "0.8.0";
 
     @Override
     protected NodeKind getFunctionNodeKind() {
@@ -127,7 +130,9 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
                     .ballerinaType("workflow:Duration?")
                     .typeMembers(java.util.List.of(new io.ballerina.flowmodelgenerator.core.model
                             .PropertyTypeMemberInfo("Duration",
-                            "ballerina:workflow:" + workflowModuleVersion(),
+                            "ballerina:workflow:" + WorkflowUtil.workflowModuleVersion(
+                                    context.workspaceManager(), context.filePath(),
+                                    FALLBACK_WORKFLOW_VERSION),
                             "workflow", "RECORD_TYPE", false)))
                     .selected(true)
                     .stepOut()
@@ -199,12 +204,6 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
                 .addProperty(key);
     }
 
-    // The workflow package version for the Duration record's type-member metadata; the FE
-    // uses it to open the record-constructor editor. Falls back to the current minor.
-    private String workflowModuleVersion() {
-        return "0.8.0";
-    }
-
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         // Object model: the human task lives on the declaration's `humanTasks` list.
@@ -233,7 +232,7 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
         String timeout = sourceBuilder.getProperty(TIMEOUT_KEY)
                 .map(p -> p.value() == null ? "" : p.value().toString().trim()).orElse("");
         StringBuilder entry = new StringBuilder("{name: ").append(WorkflowUtil.constantNameLiteral(name))
-                .append(", roles: ").append(WorkflowUtil.quoteIfPlain(roles));
+                .append(", roles: ").append(WorkflowUtil.quoteIfBareRole(roles));
         if (!resultType.isBlank()) {
             entry.append(", resultType: ").append(resultType);
         }

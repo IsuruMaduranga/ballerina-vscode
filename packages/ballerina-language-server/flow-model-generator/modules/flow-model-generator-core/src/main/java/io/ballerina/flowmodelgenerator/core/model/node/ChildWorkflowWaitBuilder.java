@@ -114,16 +114,16 @@ public class ChildWorkflowWaitBuilder extends NodeBuilder {
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         String childWorkflowId = sourceBuilder.getProperty(CHILD_WORKFLOW_ID_KEY)
-                .map(p -> p.value().toString())
+                .map(p -> p.value() == null ? "" : p.value().toString())
                 .filter(value -> !value.isBlank())
                 .orElseThrow(() -> new IllegalStateException(
                         "A child workflow ID expression is required for CHILD_WORKFLOW_WAIT"));
         String resultType = sourceBuilder.getProperty(Property.TYPE_KEY)
-                .map(p -> p.value().toString())
+                .map(p -> p.value() == null ? "" : p.value().toString())
                 .filter(value -> !value.isBlank())
                 .orElse(DEFAULT_RESULT_TYPE);
         String variableName = sourceBuilder.getProperty(Property.VARIABLE_KEY)
-                .map(p -> p.value().toString())
+                .map(p -> p.value() == null ? "" : p.value().toString())
                 .filter(value -> !value.isBlank())
                 .orElse(DEFAULT_VARIABLE_NAME);
 

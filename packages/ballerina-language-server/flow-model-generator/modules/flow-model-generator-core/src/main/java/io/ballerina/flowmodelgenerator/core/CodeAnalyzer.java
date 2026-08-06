@@ -1070,10 +1070,11 @@ public class CodeAnalyzer extends NodeVisitor {
                 "The running agent's instance ID", positionalArgumentSource(arguments, 0));
         switch (nodeKind) {
             case DURABLE_AGENT_UPDATE -> {
-                if (dataEventName != null) {
-                    addAgentCallProperty(DurableAgentUpdateBuilder.EVENT_NAME_KEY, "Data Event",
-                            "The channel the payload is sent on", "\"" + dataEventName + "\"");
-                }
+                // The argument's own source, not the unquoted name: a literal keeps its escapes
+                // verbatim, and a channel the form cannot represent as a literal is still shown
+                // instead of opening the field blank and writing that blank back on save.
+                addAgentCallProperty(DurableAgentUpdateBuilder.EVENT_NAME_KEY, "Data Event",
+                        "The channel the payload is sent on", positionalArgumentSource(arguments, 1));
                 addAgentCallProperty(DurableAgentUpdateBuilder.DATA_KEY, "Data",
                         "The payload sent on the channel", positionalArgumentSource(arguments, 2));
             }

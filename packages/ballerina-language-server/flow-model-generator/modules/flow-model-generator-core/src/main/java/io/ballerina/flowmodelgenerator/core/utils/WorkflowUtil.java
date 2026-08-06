@@ -58,10 +58,14 @@ import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
 import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.PackageUtil;
+import io.ballerina.projects.DependencyManifest;
 import io.ballerina.projects.Document;
 import io.ballerina.projects.DocumentId;
 import io.ballerina.projects.Module;
 import io.ballerina.projects.Package;
+import io.ballerina.projects.PackageManifest;
+import io.ballerina.projects.PackageName;
+import io.ballerina.projects.PackageOrg;
 import io.ballerina.projects.Project;
 import io.ballerina.tools.text.LinePosition;
 import io.ballerina.tools.text.LineRange;
@@ -355,15 +359,22 @@ public class WorkflowUtil {
         LinePosition insertAt = null;
         String newText = null;
         for (MappingFieldNode field : config.fields()) {
-            if (field instanceof SpecificFieldNode specificField
-                    && fieldName.equals(specificField.fieldName().toSourceCode().trim())
-                    && specificField.valueExpr().isPresent()
-                    && specificField.valueExpr().get()
-                            instanceof ListConstructorExpressionNode list) {
+            if (!(field instanceof SpecificFieldNode specificField)
+                    || !fieldName.equals(specificField.fieldName().toSourceCode().trim())) {
+                continue;
+            }
+            if (specificField.valueExpr().isPresent()
+                    && specificField.valueExpr().get() instanceof ListConstructorExpressionNode list) {
                 insertAt = list.closeBracket().lineRange().startLine();
                 newText = (list.expressions().isEmpty() ? "" : ", ") + entryText;
                 break;
             }
+            // The field is there but is not a list literal (a reference, or a spread): appending a
+            // second `<fieldName>: [...]` would write a duplicate key that does not compile, so say
+            // what is in the way instead.
+            throw new UserFacingException("The durable agent's '" + fieldName
+                    + "' is not a list literal, so it cannot be edited from the designer: "
+                    + "inline it as a list in the agent declaration and try again");
         }
         if (insertAt == null) {
             insertAt = config.closeBrace().lineRange().startLine();
@@ -485,6 +496,49 @@ public class WorkflowUtil {
             return Optional.empty();
         }
         return Optional.of(config);
+    }
+
+    /**
+     * The {@code ballerina/workflow} version the project resolves: the locked
+     * {@code Dependencies.toml} entry first, then the explicit {@code Ballerina.toml} pin. Form
+     * metadata that points at a workflow-declared type (the {@code Duration} record the timeout
+     * fields edit) has to name the version actually in use, or the front end cannot open the
+     * record-constructor editor for it.
+     *
+     * @param workspaceManager the workspace manager to resolve the project from
+     * @param filePath         the file the form is opened in
+     * @param fallback         the version to report when the project pins none, or cannot be read
+     * @return the resolved version, else {@code fallback}
+     */
+    public static String workflowModuleVersion(
+            org.ballerinalang.langserver.commons.workspace.WorkspaceManager workspaceManager, Path filePath,
+            String fallback) {
+        try {
+            Package currentPackage = PackageUtil.loadProject(workspaceManager, filePath).currentPackage();
+            DependencyManifest dependencyManifest = currentPackage.dependencyManifest();
+            if (dependencyManifest != null) {
+                Optional<String> locked = dependencyManifest
+                        .dependency(PackageOrg.from(WORKFLOW_ORG), PackageName.from(WORKFLOW_MODULE))
+                        .map(dependency -> dependency.version().value().toString());
+                if (locked.isPresent()) {
+                    return locked.get();
+                }
+            }
+            PackageManifest manifest = currentPackage.manifest();
+            if (manifest == null || manifest.dependencies() == null) {
+                return fallback;
+            }
+            for (PackageManifest.Dependency dependency : manifest.dependencies()) {
+                if (WORKFLOW_ORG.equals(dependency.org().value())
+                        && WORKFLOW_MODULE.equals(dependency.name().value())
+                        && dependency.version() != null) {
+                    return dependency.version().value().toString();
+                }
+            }
+            return fallback;
+        } catch (RuntimeException e) {
+            return fallback;
+        }
     }
 
     /**

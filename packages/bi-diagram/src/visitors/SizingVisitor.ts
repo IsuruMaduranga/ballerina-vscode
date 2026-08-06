@@ -343,6 +343,7 @@ export class SizingVisitor implements BaseVisitor {
             activities?: unknown[];
             humanTasks?: unknown[];
             events?: unknown[];
+            peers?: unknown[];
             agentBox?: boolean;
             agentName?: string;
         };
@@ -361,8 +362,13 @@ export class SizingVisitor implements BaseVisitor {
 
         // Left column: human task and event circles (arrows point into the box).
         const leftCircles = (nodeMetadata?.humanTasks?.length || 0) + (nodeMetadata?.events?.length || 0);
-        // Right column: the model circle plus AI tool and activity circles.
-        const rightCircles = 1 + (nodeMetadata?.tools?.length || 0) + (nodeMetadata?.activities?.length || 0);
+        // Right column: the model circle plus AI tool, activity and peer circles — the same set the
+        // widget paints there, so the reserved rows match the painted rows.
+        const rightCircles =
+            1 +
+            (nodeMetadata?.tools?.length || 0) +
+            (nodeMetadata?.activities?.length || 0) +
+            (nodeMetadata?.peers?.length || 0);
 
         // Reserve left-side space only when left circles exist (the widget skips the left svg otherwise).
         const containerLeftWidth = halfNodeWidth + (leftCircles > 0 ? sideColumnWidth : 0);

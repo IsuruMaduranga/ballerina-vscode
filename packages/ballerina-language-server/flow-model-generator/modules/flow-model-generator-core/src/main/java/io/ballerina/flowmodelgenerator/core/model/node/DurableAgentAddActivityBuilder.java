@@ -338,7 +338,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 mapping.append(", requiresApproval: true");
             }
             if (!userRoles.isBlank()) {
-                mapping.append(", userRoles: ").append(WorkflowUtil.quoteIfPlain(userRoles));
+                mapping.append(", userRoles: ").append(WorkflowUtil.quoteIfBareRole(userRoles));
             }
             if (retryPolicyValue != null) {
                 mapping.append(", retryPolicy: ").append(retryPolicyValue);
