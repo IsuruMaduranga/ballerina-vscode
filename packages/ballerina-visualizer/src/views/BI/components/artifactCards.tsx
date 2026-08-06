@@ -142,7 +142,7 @@ export const DURABLE_AGENT_CARD: ArtifactCard = {
 export const AI_CHAT_AGENT_CARD: ArtifactCard = {
     id: "ai-agent-card",
     kind: "ai-agent",
-    displayName: "AI Chat Agent",
+    displayName: "Chat Agent Service",
     icon: <Icon name="bi-ai-agent" />,
 };
 
@@ -196,6 +196,8 @@ export interface OtherArtifactCard {
     isBeta?: boolean;
     /** Shown only when natural-programming support and experimental mode are on. */
     requiresNaturalFunctions?: boolean;
+    /** Shown only inside a library package. */
+    requiresLibrary?: boolean;
 }
 
 export const OTHER_ARTIFACT_CARDS: OtherArtifactCard[] = [
@@ -230,6 +232,19 @@ export const OTHER_ARTIFACT_CARDS: OtherArtifactCard[] = [
         displayName: "Connection",
         icon: <Icon name="bi-connection" />,
         directoryKey: DIRECTORY_MAP.CONNECTION,
+    },
+    {
+        id: "agent",
+        displayName: "Agent",
+        icon: <Icon name="bi-ai-agent" />,
+        directoryKey: DIRECTORY_MAP.AGENT,
+    },
+    {
+        id: "agent-definition",
+        displayName: "Agent Definition",
+        icon: <Icon name="symbol-class" isCodicon={true} />,
+        directoryKey: DIRECTORY_MAP.AGENT_DEFINITION,
+        requiresLibrary: true,
     },
     {
         id: "configurable",

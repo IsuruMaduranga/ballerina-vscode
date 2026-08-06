@@ -45,9 +45,10 @@ export function loadAnchor(): Anchor {
     } catch {
         stored = null;
     }
-    // Default to bottom-center so the copilot invitation is front and center
-    // when BI opens; users can drag the orb to any of the six anchors.
-    return stored && (ANCHORS as readonly string[]).includes(stored) ? (stored as Anchor) : "bottom-center";
+    // bottom-center sits on top of whatever the active view docks at its own
+    // bottom-center (form submit buttons, artifact-picker cards, …), so default
+    // to bottom-right instead; users can still drag the orb to any anchor.
+    return stored && (ANCHORS as readonly string[]).includes(stored) ? (stored as Anchor) : "bottom-right";
 }
 
 export const ORB_COLORS: Record<AgentRunState, [string, string, string]> = {
@@ -132,6 +133,8 @@ export const AmbientFrame = styled.div<AmbientFrameProps>`
 `;
 
 /** User-facing label for a non-idle run state, shared by the orb and the hero box. */
+export const AWAITING_INPUT_LABEL = "Copilot needs your input";
+
 export function activeStateLabel(status: AgentRunStatus): string {
     switch (status.state) {
         case "completed":
@@ -139,7 +142,7 @@ export function activeStateLabel(status: AgentRunStatus): string {
         case "running":
             return status.label ?? "Working on it…";
         case "awaiting-input":
-            return status.label ?? "Copilot needs your input";
+            return status.label ?? AWAITING_INPUT_LABEL;
         case "error":
             return status.label ?? "Copilot hit an error";
         default:
@@ -284,6 +287,14 @@ export function subscribeAgentRunStatus(
     };
 }
 
+/** Test-only: clears the module-level status cache and listeners between test cases. */
+export function __resetAgentRunStatusStoreForTests(): void {
+    currentStatus = null;
+    statusWired = false;
+    receivedStatusNotification = false;
+    statusListeners.clear();
+}
+
 /**
  * True while the Copilot panel is open — inline copilot surfaces stand down so
  * the panel is the only chat entry point. Seeded from the cached status so a
@@ -301,6 +312,21 @@ export function useAiPanelOpen(): boolean {
     }, [rpcClient]);
 
     return open;
+}
+
+/** The live run state — says nothing about what the turn will produce. */
+export function useAgentRunState(): AgentRunState | undefined {
+    const { rpcClient } = useRpcContext();
+    const [state, setState] = useState(() => currentStatus?.state);
+
+    useEffect(() => {
+        if (!rpcClient) {
+            return;
+        }
+        return subscribeAgentRunStatus(rpcClient, (status) => setState(status?.state));
+    }, [rpcClient]);
+
+    return state;
 }
 
 // ---------------------------------------------------------------------------

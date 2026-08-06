@@ -158,7 +158,7 @@ public class TriggerModelReaderTest {
         // The monitored path is a service-level annotation field surfaced in the init form.
         Property path = model.initProperties().get("path");
         Assert.assertNotNull(path, "path should be present under initProperties");
-        Assert.assertEquals(path.codedata().type(), "SERVICE_ANNOTATION");
+        Assert.assertEquals(path.codedata().type(), "SERVICE_BASE_PATH");
 
         ServiceTypeModel st = model.serviceTypes().getFirst();
         // Like ftp, each file format is pre-expanded into its own addable schemaFunction.

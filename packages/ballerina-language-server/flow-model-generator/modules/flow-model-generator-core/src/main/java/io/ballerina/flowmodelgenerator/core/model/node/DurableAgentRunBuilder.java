@@ -189,11 +189,11 @@ public class DurableAgentRunBuilder extends CallBuilder {
         AiUtils.AgentPropertyValue instructions = promptValues.get(INSTRUCTIONS_KEY);
         AiUtils.addStringProperty(nodeBuilder, ROLE_KEY, ROLE_LABEL, ROLE_DOC, ROLE_PLACEHOLDER,
                 role == null ? "" : AiUtils.restoreBackticksFromStringTemplate(role.value()),
-                role == null ? Property.ValueType.PROMPT : role.selectedType());
+                role == null ? Property.ValueType.PROMPT : role.selectedType(), false);
         AiUtils.addStringProperty(nodeBuilder, INSTRUCTIONS_KEY, INSTRUCTIONS_LABEL, INSTRUCTIONS_DOC,
                 INSTRUCTIONS_PLACEHOLDER,
                 instructions == null ? "" : AiUtils.restoreBackticksFromStringTemplate(instructions.value()),
-                instructions == null ? Property.ValueType.PROMPT : instructions.selectedType());
+                instructions == null ? Property.ValueType.PROMPT : instructions.selectedType(), false);
 
         // Reorder in place: identity fields first, then everything else in its original order.
         Map<String, Property> ordered = new LinkedHashMap<>();

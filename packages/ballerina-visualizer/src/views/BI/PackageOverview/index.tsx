@@ -44,7 +44,7 @@ import { TitleBar } from "../../../components/TitleBar";
 import { PublishToCentralButton } from "./PublishToCentralButton";
 import { LibraryOverview } from "./LibraryOverview";
 import { CopilotHeroBox } from "../../../components/AgentStatusOrb/CopilotHeroBox";
-import { useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
+import { AWAITING_INPUT_LABEL, useAgentRunState, useAiPanelOpen } from "../../../components/AgentStatusOrb/shared";
 
 /** Only reachable from an empty integration, and it pulls in the whole wizard +
  *  artifact form tree — so keep it out of the overview's own chunk. */
@@ -82,7 +82,14 @@ const ButtonContainer = styled.div`
     gap: 8px;
 `;
 
-const EmptyStateContainer = styled.div`
+const StatusRow = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 24px;
+`;
+
+const EmptyStateContainer = styled.div<{ withHero?: boolean }>`
     position: absolute;
     top: 0;
     left: 0;
@@ -92,6 +99,8 @@ const EmptyStateContainer = styled.div`
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    // Offsets the prompt bar's height so the block keeps its former position.
+    padding-bottom: ${(props: { withHero?: boolean }) => (props.withHero ? "96px" : "0")};
 `;
 
 const PageLayout = styled.div`
@@ -126,14 +135,11 @@ const MainContent = styled.div<{ fullWidth?: boolean }>`
     max-height: calc(100vh - 90px);
 `;
 
-// Pinned to the foot of the design panel (which carries no padding of its own),
-// so it stays reachable once the artifact list is long enough to scroll.
+// Bounded so the prompt box does not stretch the full panel width.
 const HeroRow = styled.div`
-    flex: none;
-    position: sticky;
-    bottom: 0;
-    padding: 16px;
-    background: var(--vscode-editor-background);
+    width: 100%;
+    max-width: 560px;
+    margin-bottom: 24px;
 `;
 
 const DiagramPanel = styled.div<{ noPadding?: boolean, noBorder?: boolean }>`
@@ -843,6 +849,9 @@ export function PackageOverview(props: PackageOverviewProps) {
     const [isLibrary, setIsLibrary] = useState<boolean>(false);
     const [isNPSupported, setIsNPSupported] = useState<boolean>(false);
     const aiPanelOpen = useAiPanelOpen();
+    const agentState = useAgentRunState();
+    const awaitingInput = agentState === "awaiting-input";
+    const agentWorking = agentState === "running" || awaitingInput;
     const showHero = !isLibrary && !aiPanelOpen;
     // Shows the Create Integration wizard in place of the overview, for an empty
     // integration whose owner skipped it at creation time.
@@ -952,7 +961,7 @@ export function PackageOverview(props: PackageOverviewProps) {
             (!projectStructure.directoryMap[DIRECTORY_MAP.SERVICE] || projectStructure.directoryMap[DIRECTORY_MAP.SERVICE].length === 0) &&
             (!projectStructure.directoryMap[DIRECTORY_MAP.WORKFLOW] || projectStructure.directoryMap[DIRECTORY_MAP.WORKFLOW].length === 0) &&
             (!projectStructure.directoryMap[DIRECTORY_MAP.ACTIVITY] || projectStructure.directoryMap[DIRECTORY_MAP.ACTIVITY].length === 0) &&
-            (!projectStructure.directoryMap.agents || projectStructure.directoryMap.agents.length === 0)
+            (!projectStructure.directoryMap[DIRECTORY_MAP.AGENT] || projectStructure.directoryMap[DIRECTORY_MAP.AGENT].length === 0)
         );
     }
 
@@ -1208,22 +1217,49 @@ export function PackageOverview(props: PackageOverviewProps) {
                             {!isLibrary && (
                                 <DiagramContent>
                                     {isEmptyIntegration() ? (
-                                        <EmptyStateContainer>
+                                        <EmptyStateContainer withHero={showHero}>
                                             <Typography variant="h3" sx={{ marginBottom: "16px" }}>
                                                 Your integration is empty
                                             </Typography>
-                                            <Typography
-                                                variant="body1"
-                                                sx={{ marginBottom: "24px", color: "var(--vscode-descriptionForeground)" }}
-                                            >
-                                                Add an artifact to get started, or describe what you want to build in
-                                                the Copilot box below
-                                            </Typography>
+                                            {showHero && (
+                                                <HeroRow>
+                                                    <CopilotHeroBox placeholder="What would you like to build?" />
+                                                </HeroRow>
+                                            )}
+                                            {/* Skipped only while the hero carries the status itself, so
+                                                the two never state it at once. */}
+                                            {!(agentWorking && showHero) && (
+                                                <StatusRow>
+                                                    {agentWorking && (
+                                                        awaitingInput
+                                                            ? <Codicon name="comment-discussion" />
+                                                            : <ProgressRing color={ThemeColors.PRIMARY} sx={{ width: 16, height: 16 }} />
+                                                    )}
+                                                    <Typography
+                                                        variant="body1"
+                                                        sx={{ color: "var(--vscode-descriptionForeground)" }}
+                                                    >
+                                                        {agentWorking
+                                                            ? (awaitingInput ? AWAITING_INPUT_LABEL : "Copilot is working…")
+                                                            : showHero
+                                                                ? "Describe what you want to build, or add an artifact to get started"
+                                                                : "Add an artifact to get started"}
+                                                    </Typography>
+                                                </StatusRow>
+                                            )}
                                             <ButtonContainer>
                                                 {/* An empty integration means the creation wizard was
                                                     skipped — offer it again here rather than the raw
                                                     artifact list, so the guided flow can be resumed. */}
-                                                <Button appearance="primary" onClick={() => setShowAddIntegration(true)}>
+                                                {/* Disabled rather than hidden mid-turn: reverting the
+                                                    generation restores a pre-turn checkpoint and drops
+                                                    whatever is not in it, including an artifact added now. */}
+                                                <Button
+                                                    appearance="primary"
+                                                    onClick={() => setShowAddIntegration(true)}
+                                                    disabled={agentWorking}
+                                                    tooltip={agentWorking ? "Available once Copilot finishes" : undefined}
+                                                >
                                                     <Codicon name="add" sx={{ marginRight: 8 }} /> Add Integration
                                                 </Button>
                                             </ButtonContainer>
@@ -1240,13 +1276,6 @@ export function PackageOverview(props: PackageOverviewProps) {
                                         </React.Suspense>
                                     )}
                                 </DiagramContent>
-                            )}
-                            {showHero && (
-                                <HeroRow>
-                                    <CopilotHeroBox
-                                        placeholder={isEmptyIntegration() ? "What would you like to build?" : "What would you like to change?"}
-                                    />
-                                </HeroRow>
                             )}
                         </DiagramPanel>
                         {!isLibrary && (

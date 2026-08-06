@@ -388,6 +388,10 @@ interface DurableAgentRunNodeWidgetProps {
 export interface NodeWidgetProps extends Omit<DurableAgentRunNodeWidgetProps, "children"> { }
 
 type DurableAgentNodeMetadata = NodeMetadata & {
+    // The durable agent box still carries flat agent/tools metadata from the LS;
+    // upstream's NodeMetadata moved the AI-agent equivalents under agentInfo.
+    agent?: AgentData;
+    tools?: ToolData[];
     activities?: ToolData[];
     humanTasks?: ToolData[];
     events?: ToolData[];
