@@ -33,7 +33,7 @@ export enum NodeTypes {
     ERROR_NODE = "error-node",
     AGENT_CALL_NODE = "agent-call-node",
     EVAL_NODE = "eval-node",
-    AGENT_TYPE_NODE = "agent-type-node",
+    TYPED_AGENT_NODE = "typed-agent-node",
     AGENT_NODE = "agent-node",
     PROMPT_NODE = "prompt-node",
     WORKFLOW_RUN_NODE = "workflow-run-node",
