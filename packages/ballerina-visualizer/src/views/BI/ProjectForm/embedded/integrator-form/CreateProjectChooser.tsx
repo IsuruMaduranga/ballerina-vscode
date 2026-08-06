@@ -216,6 +216,8 @@ export function CreateProjectChooser({
     const [integrationNameError, setIntegrationNameError] = useState<string | null>(null);
     // Folders/titles already used in the target project, for live collision flagging.
     const [takenNames, setTakenNames] = useState<TakenNames>(emptyTakenNames());
+    // Submit-time re-check of the collision list, before anything is created.
+    const [isValidating, setIsValidating] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
 
@@ -400,7 +402,7 @@ export function CreateProjectChooser({
         }
         debouncedSetIntegrationNameError(integrationNameIssue);
         return () => debouncedSetIntegrationNameError.cancel();
-    }, [integrationNameIssue]);
+    }, [debouncedSetIntegrationNameError, integrationNameIssue]);
 
     useRealtimeProjectPathValidation({
         wsClient,
@@ -487,10 +489,35 @@ export function CreateProjectChooser({
      * the creating state until it is torn down.
      */
     const handleCreateIntegration = async () => {
-        if (!canCreateIntegration || workspaceSupportPending || isCreating) return;
+        if (!canCreateIntegration || workspaceSupportPending || isValidating || isCreating) return;
         setCreateError(null);
-        setIsCreating(true);
+        setIsValidating(true);
         try {
+            // Re-check the collision against a FRESH listing rather than trusting the live
+            // one. The project name and location are edited on this same screen, so the
+            // debounced `takenNames` can still describe the previous target when Create is
+            // clicked — and the extension scaffolds over whatever sits at the resolved path
+            // (`createBIProjectPure` writes Ballerina.toml/main.bal/... unconditionally), so
+            // a stale pass here would blank an existing package's sources.
+            let taken: TakenNames | null = null;
+            try {
+                taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: resolvedPath }));
+            } catch (error) {
+                // Unlistable target — in practice a project that does not exist yet, so
+                // there is nothing to collide with. Fail open, as the live check does.
+                console.error("Failed to re-check existing component names:", error);
+            }
+            if (taken) {
+                takenNamesPathRef.current = resolvedPath;
+                setTakenNames(taken);
+                const collision = resolveNameCollisionMessage(effectiveIntegrationName, taken, sanitizePackageName);
+                if (collision) {
+                    setIntegrationNameError(collision);
+                    return;
+                }
+            }
+
+            setIsCreating(true);
             await biWsClient.createIntegration({
                 project: {
                     integrationName: effectiveIntegrationName,
@@ -505,6 +532,8 @@ export function CreateProjectChooser({
             console.error("Failed to create the integration:", error);
             setIsCreating(false);
             setCreateError(error instanceof Error ? error.message : "Failed to create the integration");
+        } finally {
+            setIsValidating(false);
         }
     };
 
@@ -642,12 +671,13 @@ export function CreateProjectChooser({
                         disabled={
                             ballerinaUnavailable ||
                             workspaceSupportPending ||
+                            isValidating ||
                             (isLibrary ? !canProceed : !canCreateIntegration)
                         }
                         onClick={isLibrary ? handleNext : handleCreateIntegration}
                         appearance="primary"
                     >
-                        {isLibrary ? "Next" : "Create Integration"}
+                        {isLibrary ? "Next" : isValidating ? "Validating..." : "Create Integration"}
                     </Button>
                 </span>
             </FormFooter>
