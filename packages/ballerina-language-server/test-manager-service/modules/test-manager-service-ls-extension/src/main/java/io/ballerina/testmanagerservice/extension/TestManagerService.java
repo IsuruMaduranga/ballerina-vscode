@@ -18,6 +18,8 @@
 
 package io.ballerina.testmanagerservice.extension;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.syntax.tree.AnnotationNode;
@@ -202,6 +204,11 @@ public class TestManagerService implements ExtendedLanguageServerService {
                     edits.add(new TextEdit(Utils.toRange(lineRange.startLine()), Constants.IMPORT_TEST_STMT));
                 }
 
+                if (request.evalTemplate() != null) {
+                    return addTemplateEvaluation(request, document.get(), semanticModel.get(), modulePartNode,
+                            lineRange, edits);
+                }
+
                 // Check if dataProviderMode is evalSet
                 String dataProviderMode = getDataProviderMode(request.function());
                 String dataProviderFunctionName;
@@ -239,7 +246,8 @@ public class TestManagerService implements ExtendedLanguageServerService {
                     edits.add(new TextEdit(Utils.toRange(lineRange.endLine()), dataProviderFunction));
 
                     // Add ai:ConversationThread parameter to the test function
-                    addAiConversationThreadParameter(request.function());
+                    addTestParameter(request.function(), Constants.AI_CONVERSATION_THREAD_TYPE,
+                            Constants.EVALSET_PROVIDER_VAR);
 
                     // Update the dataProvider field with the generated function name
                     updateDataProviderField(request.function(), dataProviderFunctionName);
@@ -256,6 +264,103 @@ public class TestManagerService implements ExtendedLanguageServerService {
         });
     }
 
+    /** Creates a complete test function from the selected evaluation-template form. */
+    private CommonSourceResponse addTemplateEvaluation(AddTestFunctionRequest request, Document document,
+                                                       SemanticModel semanticModel, ModulePartNode modulePartNode,
+                                                       LineRange lineRange, List<TextEdit> edits) {
+        JsonObject template = request.evalTemplate();
+        String symbol = template.has("symbol") ? template.get("symbol").getAsString() : "";
+        if (symbol.isBlank()) {
+            throw new IllegalArgumentException("An evaluation template function is required");
+        }
+        if (!Utils.isAiEvalsModuleImportExists(modulePartNode)) {
+            edits.add(new TextEdit(Utils.toRange(lineRange.startLine()), Constants.IMPORT_AI_EVALS_STMT));
+        }
+
+        String boundArgument = null;
+        JsonObject dataSource = template.has("dataSource") && template.get("dataSource").isJsonObject()
+                ? template.getAsJsonObject("dataSource") : null;
+        if (dataSource != null) {
+            String paramName = dataSource.has("paramName") ? dataSource.get("paramName").getAsString() : "";
+            String mode = dataSource.has("mode") ? dataSource.get("mode").getAsString() : "";
+            if (paramName.isBlank()) {
+                throw new IllegalArgumentException("The evaluation input parameter name is required");
+            }
+            Set<String> visibleSymbolNames = semanticModel.visibleSymbols(document, lineRange.endLine()).stream()
+                    .map(Symbol::getName).filter(Optional::isPresent).map(Optional::get).collect(Collectors.toSet());
+            if (Constants.DATA_SOURCE_MODE_QUERIES.equals(mode)) {
+                List<String> queries = readQueries(dataSource);
+                if (queries.isEmpty()) {
+                    throw new IllegalArgumentException("At least one query is required");
+                }
+                String dataProviderFunctionName = NameUtil.getValidatedSymbolName(visibleSymbolNames,
+                        Constants.DEFAULT_QUERIES_FUNCTION_NAME);
+                edits.add(new TextEdit(Utils.toRange(lineRange.endLine()),
+                        Utils.getQueriesDataProviderFunctionTemplate(dataProviderFunctionName, queries)));
+                addTestParameter(request.function(), Constants.STRING_TYPE, Constants.QUERY_PROVIDER_VAR);
+                updateDataProviderField(request.function(), dataProviderFunctionName);
+                boundArgument = paramName + " = " + Constants.QUERY_PROVIDER_VAR;
+            } else {
+                if (!Utils.isAiModuleImportExists(modulePartNode)) {
+                    edits.add(new TextEdit(Utils.toRange(lineRange.startLine()), Constants.IMPORT_AI_STMT));
+                }
+                String evalSetFile = dataSource.has("evalSetFile") ? dataSource.get("evalSetFile").getAsString() : "";
+                if (evalSetFile.isBlank()) {
+                    throw new IllegalArgumentException("An evalset is required for the selected input mode");
+                }
+                String dataProviderFunctionName = NameUtil.getValidatedSymbolName(visibleSymbolNames,
+                        Constants.DEFAULT_EVALSET_FUNCTION_NAME);
+                edits.add(new TextEdit(Utils.toRange(lineRange.endLine()), Utils.getEvalSetDataProviderFunctionTemplate(
+                        dataProviderFunctionName, evalSetFile)));
+                addTestParameter(request.function(), Constants.AI_CONVERSATION_THREAD_TYPE,
+                        Constants.EVALSET_PROVIDER_VAR);
+                updateDataProviderField(request.function(), dataProviderFunctionName);
+                boundArgument = paramName + " = " + Constants.EVALSET_PROVIDER_VAR;
+            }
+        }
+
+        edits.add(new TextEdit(Utils.toRange(lineRange.endLine()), getTemplateTestFunction(request.function(),
+                symbol, template.getAsJsonObject("parameters"), boundArgument)));
+        return new CommonSourceResponse(Map.of(request.filePath(), edits));
+    }
+
+    private List<String> readQueries(JsonObject dataSource) {
+        List<String> queries = new ArrayList<>();
+        if (dataSource.has("queries") && dataSource.get("queries").isJsonArray()) {
+            for (JsonElement element : dataSource.getAsJsonArray("queries")) {
+                if (!element.isJsonNull()) {
+                    String query = element.getAsString().trim();
+                    if (!query.isEmpty()) {
+                        queries.add(query);
+                    }
+                }
+            }
+        }
+        return queries;
+    }
+
+    private String getTemplateTestFunction(TestFunction function, String symbol, JsonObject parameters,
+                                           String boundArgument) {
+        StringBuilder invocation = new StringBuilder("    check ai_evals:").append(symbol).append("(");
+        List<String> arguments = new ArrayList<>();
+        if (parameters != null) {
+            for (Map.Entry<String, JsonElement> entry : parameters.entrySet()) {
+                String value = entry.getValue().isJsonNull() ? "" : entry.getValue().getAsString().trim();
+                if (!value.isEmpty()) {
+                    arguments.add(entry.getKey() + " = " + value);
+                }
+            }
+        }
+        if (boundArgument != null) {
+            arguments.add(boundArgument);
+        }
+        invocation.append(String.join(", ", arguments)).append(");");
+        return Utils.buildAnnotation(function.annotations()) + Constants.LINE_SEPARATOR
+                + Constants.KEYWORD_FUNCTION + Constants.SPACE + function.functionName().value()
+                + Utils.buildFunctionSignature(function) + Constants.SPACE + Constants.OPEN_CURLY_BRACE
+                + Constants.LINE_SEPARATOR + invocation + Constants.LINE_SEPARATOR + Constants.CLOSE_CURLY_BRACE;
+    }
+
     private String getDataProviderMode(TestFunction function) {
         return Utils.getConfigFieldValue(function, "dataProviderMode");
     }
@@ -264,13 +369,13 @@ public class TestManagerService implements ExtendedLanguageServerService {
         return Utils.getConfigFieldValue(function, "evalSetFile");
     }
 
-    private void addAiConversationThreadParameter(TestFunction function) {
+    private void addTestParameter(TestFunction function, String type, String variable) {
         if (function.parameters() == null) {
             return;
         }
         FunctionParameter.FunctionParameterBuilder paramBuilder = new FunctionParameter.FunctionParameterBuilder();
-        paramBuilder.type(Constants.AI_CONVERSATION_THREAD_TYPE);
-        paramBuilder.variable("thread");
+        paramBuilder.type(type);
+        paramBuilder.variable(variable);
         function.parameters().add(paramBuilder.build());
     }
 

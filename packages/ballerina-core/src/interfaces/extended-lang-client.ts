@@ -666,6 +666,17 @@ export interface GetTestFunctionRequest {
 export interface AddOrUpdateTestFunctionRequest {
     filePath: string;
     function: TestFunction;
+    /** Present only when creating an evaluation from an @EvalTemplate function. */
+    evalTemplate?: {
+        symbol: string;
+        parameters: Record<string, string>;
+        dataSource?: {
+            paramName: string;
+            mode: "evalset" | "queries";
+            evalSetFile?: string;
+            queries?: string[];
+        };
+    };
 }
 
 export interface TestSourceEditResponse {
@@ -971,6 +982,7 @@ export type SearchKind =
     | "TYPE"
     | "WORKFLOW_RUN"
     | "ACTIVITY_CALL"
+    | "EVAL_TEMPLATE"
     | "NP_FUNCTION"
     | "MODEL_PROVIDER"
     | "VECTOR_STORE"

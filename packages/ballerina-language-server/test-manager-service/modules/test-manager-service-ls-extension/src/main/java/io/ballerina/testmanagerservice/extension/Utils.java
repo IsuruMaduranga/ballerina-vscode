@@ -527,6 +527,18 @@ public class Utils {
         });
     }
 
+    /** Returns whether the locally configured AI evaluations package is already imported. */
+    public static boolean isAiEvalsModuleImportExists(ModulePartNode node) {
+        return node.imports().stream().anyMatch(importDeclarationNode -> {
+            String moduleName = importDeclarationNode.moduleName().stream()
+                    .map(IdentifierToken::text)
+                    .collect(Collectors.joining("."));
+            return importDeclarationNode.orgName().isPresent()
+                    && Constants.ORG_BALLERINA.equals(importDeclarationNode.orgName().get().orgName().text())
+                    && Constants.MODULE_AI_EVALS.equals(moduleName);
+        });
+    }
+
     /**
      * Get a field value from the Config annotation of a test function.
      *
@@ -633,6 +645,35 @@ public class Utils {
                 .append(Constants.LINE_SEPARATOR)
                 .append(Constants.CLOSE_CURLY_BRACE);
         return builder.toString();
+    }
+
+    public static String getQueriesDataProviderFunctionTemplate(String functionName, List<String> queries) {
+        StringBuilder rows = new StringBuilder();
+        for (int i = 0; i < queries.size(); i++) {
+            if (i > 0) {
+                rows.append(Constants.COMMA).append(Constants.SPACE);
+            }
+            rows.append(Constants.OPEN_BRACKET)
+                    .append(Constants.DOUBLE_QUOTE)
+                    .append(escapeStringLiteral(queries.get(i)))
+                    .append(Constants.DOUBLE_QUOTE)
+                    .append(Constants.CLOSE_BRACKET);
+        }
+        return Constants.LINE_SEPARATOR + Constants.LINE_SEPARATOR
+                + Constants.KEYWORD_ISOLATED + Constants.SPACE + Constants.KEYWORD_FUNCTION + Constants.SPACE
+                + functionName + Constants.OPEN_PARAM + Constants.CLOSED_PARAM + Constants.SPACE
+                + Constants.KEYWORD_RETURNS + Constants.SPACE + Constants.STRING_ARRAY_2D_RETURN_TYPE + Constants.SPACE
+                + Constants.OPEN_CURLY_BRACE + Constants.LINE_SEPARATOR + Constants.TAB_SEPARATOR
+                + "return " + Constants.OPEN_BRACKET + rows + Constants.CLOSE_BRACKET + ";"
+                + Constants.LINE_SEPARATOR + Constants.CLOSE_CURLY_BRACE;
+    }
+
+    private static String escapeStringLiteral(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
     /**

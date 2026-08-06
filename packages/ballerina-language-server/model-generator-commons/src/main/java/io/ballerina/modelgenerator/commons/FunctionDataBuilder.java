@@ -275,6 +275,11 @@ public class FunctionDataBuilder {
     }
 
     private void resolvePackageAndSemanticModel() {
+        // A caller may have already resolved a package from a non-Central repository and supplied its semantic model.
+        // Do not discard that explicit resolution by resolving the same module from Central again.
+        if (resolvedPackage != null || semanticModel != null) {
+            return;
+        }
         if (workspaceManager != null && filePath != null) {
             boolean isLocal = PackageUtil.isLocalFunction(workspaceManager, filePath,
                     moduleInfo.org(), moduleInfo.moduleName());

@@ -206,8 +206,24 @@ public class PackageUtil {
      */
     public static Optional<Package> getModulePackage(BuildProject buildProject, String org, String name,
                                                      String version) {
-        ResolutionRequest resolutionRequest = ResolutionRequest.from(
-                PackageDescriptor.from(PackageOrg.from(org), PackageName.from(name), PackageVersion.from(version)));
+        return getModulePackage(buildProject, org, name, version, null);
+    }
+
+    /**
+     * Retrieves a package from a specific Ballerina repository.
+     *
+     * @param repository the Ballerina repository name, for example {@code local}; {@code null} uses the default
+     *                   repository resolution
+     */
+    public static Optional<Package> getModulePackage(BuildProject buildProject, String org, String name,
+                                                     String version, String repository) {
+        PackageOrg packageOrg = PackageOrg.from(org);
+        PackageName packageName = PackageName.from(name);
+        PackageVersion packageVersion = PackageVersion.from(version);
+        PackageDescriptor packageDescriptor = repository == null
+                ? PackageDescriptor.from(packageOrg, packageName, packageVersion)
+                : PackageDescriptor.from(packageOrg, packageName, packageVersion, repository);
+        ResolutionRequest resolutionRequest = ResolutionRequest.from(packageDescriptor);
         PackageResolver packageResolver = buildProject.projectEnvironmentContext().getService(PackageResolver.class);
 
         Optional<ResolutionResponse> resolutionResponse = resolveResponse(packageResolver, resolutionRequest, false);
