@@ -45,9 +45,10 @@ export function loadAnchor(): Anchor {
     } catch {
         stored = null;
     }
-    // Default to bottom-center so the copilot invitation is front and center
-    // when BI opens; users can drag the orb to any of the six anchors.
-    return stored && (ANCHORS as readonly string[]).includes(stored) ? (stored as Anchor) : "bottom-center";
+    // bottom-center sits on top of whatever the active view docks at its own
+    // bottom-center (form submit buttons, artifact-picker cards, …), so default
+    // to bottom-right instead; users can still drag the orb to any anchor.
+    return stored && (ANCHORS as readonly string[]).includes(stored) ? (stored as Anchor) : "bottom-right";
 }
 
 export const ORB_COLORS: Record<AgentRunState, [string, string, string]> = {
