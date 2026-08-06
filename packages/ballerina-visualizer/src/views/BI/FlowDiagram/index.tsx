@@ -943,11 +943,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     useEffect(() => {
         const openNode = selectedNodeRef.current;
         if (!model || sidePanelView !== SidePanelView.FORM
-                || !openNode?.codedata?.lineRange?.startLine) {
-            return;
-        }
-        if (openNode.codedata.isNew) {
-            reanchorNewNodeTarget(openNode);
+                || !openNode?.codedata?.lineRange?.startLine || openNode.codedata.isNew) {
             return;
         }
         const matchingNode = findNodeByStartLine(model, openNode.codedata.lineRange.startLine);
@@ -957,81 +953,6 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             changeTargetRange(matchingNode.codedata.lineRange);
         }
     }, [model]);
-
-    // A form for a node being created anchors to an insertion point captured from the canvas
-    // model at click time. A model refresh that lands while the form is open (the previous
-    // save's write) can carry new lines above that point, leaving the captured target outside
-    // its function — expression diagnostics then run at module scope and reject every local
-    // symbol. Re-anchor the insertion point by the line delta of the parent node the add
-    // button belonged to. Durable-agent capability forms pin their target to the agent
-    // declaration and must never be re-anchored (see the adoption note above).
-    const reanchorNewNodeTarget = (openNode: FlowNode) => {
-        if (openNode.codedata.node?.startsWith("DURABLE_AGENT_") || openNode.codedata.node === "MCP_TOOL_KIT") {
-            return;
-        }
-        const parent = topNodeRef.current as FlowNode | Branch | undefined;
-        const target = targetRef.current;
-        const parentStart = (parent as FlowNode)?.codedata?.lineRange?.startLine;
-        if (!parentStart || !target?.startLine) {
-            return;
-        }
-        const freshParent = findNodeByKindNearLine(model, (parent as FlowNode).codedata.node, parentStart);
-        if (!freshParent) {
-            return;
-        }
-        const delta = freshParent.codedata.lineRange.startLine.line - parentStart.line;
-        if (delta === 0) {
-            return;
-        }
-        topNodeRef.current = freshParent;
-        const shifted: LineRange = {
-            ...target,
-            startLine: { ...target.startLine, line: target.startLine.line + delta },
-            endLine: target.endLine
-                ? { ...target.endLine, line: target.endLine.line + delta }
-                : target.endLine,
-        };
-        const openLineRange = openNode.codedata.lineRange;
-        openNode.codedata.lineRange = {
-            ...openLineRange,
-            startLine: { ...openLineRange.startLine, line: openLineRange.startLine.line + delta },
-            endLine: openLineRange.endLine
-                ? { ...openLineRange.endLine, line: openLineRange.endLine.line + delta }
-                : openLineRange.endLine,
-        } as typeof openNode.codedata.lineRange;
-        changeTargetRange(shifted);
-    };
-
-    // Finds the fresh-model counterpart of a node whose lines may have shifted: same node
-    // kind, nearest start line (ties broken toward the later line, since edits above a node
-    // only push it down).
-    const findNodeByKindNearLine = (flowModel: Flow, kind: string, startLine: any): FlowNode | undefined => {
-        if (!flowModel?.nodes || !kind || !startLine) {
-            return undefined;
-        }
-        let best: FlowNode | undefined;
-        let bestDistance = Number.MAX_SAFE_INTEGER;
-        const visit = (nodes: FlowNode[]) => {
-            for (const node of nodes) {
-                const nodeStart = node.codedata?.lineRange?.startLine;
-                if (node.codedata?.node === kind && nodeStart) {
-                    const distance = Math.abs(nodeStart.line - startLine.line) * 2
-                        + (nodeStart.line >= startLine.line ? 0 : 1);
-                    if (distance < bestDistance) {
-                        best = node;
-                        bestDistance = distance;
-                    }
-                }
-                node.branches?.forEach((branch) => {
-                    if (branch.children?.length) {
-                        visit(branch.children);
-                    }
-                });
-            }
-        };
-        visit(flowModel.nodes);
-        return best;
-    };
 
     const findNodeByStartLine = (flowModel: Flow, startLine: any): FlowNode | undefined => {
         if (!flowModel || !flowModel.nodes || !startLine) {
