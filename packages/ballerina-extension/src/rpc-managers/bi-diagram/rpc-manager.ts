@@ -2598,7 +2598,9 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
             StateMachine.langClient().deleteType({ filePath: filePath, lineRange: params.lineRange })
                 .then(async (deleteTypeResponse: DeleteTypeResponse) => {
                     if (deleteTypeResponse.textEdits) {
-                        await updateSourceCode({ textEdits: deleteTypeResponse.textEdits, description: 'Type Deletion' });
+                        // Skip the payload check: a deletion publishes an empty artifact list, so
+                        // waiting for a non-empty payload would always hit the 10s timeout.
+                        await updateSourceCode({ textEdits: deleteTypeResponse.textEdits, description: 'Type Deletion', skipPayloadCheck: true });
                         resolve(deleteTypeResponse);
                     } else {
                         reject(deleteTypeResponse.errorMsg);
