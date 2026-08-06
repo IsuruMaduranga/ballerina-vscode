@@ -499,22 +499,27 @@ export function CreateProjectChooser({
             // clicked — and the extension scaffolds over whatever sits at the resolved path
             // (`createBIProjectPure` writes Ballerina.toml/main.bal/... unconditionally), so
             // a stale pass here would blank an existing package's sources.
-            let taken: TakenNames | null = null;
+            let taken: TakenNames;
             try {
                 taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: resolvedPath }));
             } catch (error) {
-                // Unlistable target — in practice a project that does not exist yet, so
-                // there is nothing to collide with. Fail open, as the live check does.
+                // Deliberately NOT failing open. A missing or unreadable target is already
+                // reported as an EMPTY listing rather than a rejection — the extension
+                // swallows the readdir failure and `readBallerinaProject` is existsSync-
+                // guarded — so a rejection here is a genuine failure (transport, or an
+                // unexpected throw), never "this project does not exist yet". Continuing
+                // would scaffold over whatever is at the path without having verified it,
+                // which is the exact outcome this whole block exists to prevent.
                 console.error("Failed to re-check existing component names:", error);
+                setCreateError("Could not verify the contents of the target project. Please try again.");
+                return;
             }
-            if (taken) {
-                takenNamesPathRef.current = resolvedPath;
-                setTakenNames(taken);
-                const collision = resolveNameCollisionMessage(effectiveIntegrationName, taken, sanitizePackageName);
-                if (collision) {
-                    setIntegrationNameError(collision);
-                    return;
-                }
+            takenNamesPathRef.current = resolvedPath;
+            setTakenNames(taken);
+            const collision = resolveNameCollisionMessage(effectiveIntegrationName, taken, sanitizePackageName);
+            if (collision) {
+                setIntegrationNameError(collision);
+                return;
             }
 
             setIsCreating(true);
@@ -531,7 +536,11 @@ export function CreateProjectChooser({
         } catch (error) {
             console.error("Failed to create the integration:", error);
             setIsCreating(false);
-            setCreateError(error instanceof Error ? error.message : "Failed to create the integration");
+            // Lead with the operation, append the reason only when there is one — a bare
+            // transport/filesystem message leaves the user to infer what failed. The raw
+            // error is on the console above, which is where the detail is useful.
+            const reason = error instanceof Error ? error.message : "";
+            setCreateError(`Failed to create the integration.${reason ? ` ${reason}` : ""}`);
         } finally {
             setIsValidating(false);
         }
