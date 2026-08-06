@@ -301,20 +301,6 @@
     "kind": "file"
   },
   "23": {
-    "name": "file",
-    "orgName": "ballerina",
-    "packageName": "file",
-    "keywords": [
-      "file",
-      "directory",
-      "service",
-      "event"
-    ],
-    "triggerName": "Local Files",
-    "version": "1.13.0",
-    "kind": "file"
-  },
-  "24": {
     "name": "smb",
     "orgName": "ballerina",
     "packageName": "smb",
@@ -327,6 +313,20 @@
     ],
     "triggerName": "SMB",
     "version": "2.0.0",
+    "kind": "file"
+  },
+  "24": {
+    "name": "file",
+    "orgName": "ballerina",
+    "packageName": "file",
+    "keywords": [
+      "file",
+      "directory",
+      "service",
+      "event"
+    ],
+    "triggerName": "Local Files",
+    "version": "1.13.0",
     "kind": "file"
   },
   "25": {
