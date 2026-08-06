@@ -54,7 +54,7 @@ jest.mock("../BI/diagramRefreshDebounce", () => ({ __esModule: true, DIAGRAM_REF
 jest.mock("@wso2/ui-toolkit", () => ({
     __esModule: true,
     Button: ({ children, ...rest }: any) => <button {...rest}>{children}</button>,
-    Codicon: () => null,
+    Codicon: (): null => null,
     ProgressRing: () => <div data-testid="progress-ring" />,
     ThemeColors: { PRIMARY: "#000", ON_SURFACE: "#000" },
     View: ({ children }: any) => <div>{children}</div>,
@@ -68,11 +68,11 @@ jest.mock("@wso2/type-editor", () => {
     const react = require("react");
     return { __esModule: true, EditorContext: react.createContext({}) };
 });
-jest.mock("../../components/TopNavigationBar", () => ({ __esModule: true, TopNavigationBar: () => null }));
-jest.mock("../../components/TitleBar", () => ({ __esModule: true, TitleBar: () => null }));
+jest.mock("../../components/TopNavigationBar", () => ({ __esModule: true, TopNavigationBar: (): null => null }));
+jest.mock("../../components/TitleBar", () => ({ __esModule: true, TitleBar: (): null => null }));
 jest.mock("../../components/Modal", () => ({ __esModule: true, default: ({ children }: any) => <div>{children}</div> }));
-jest.mock("../BI/TypeEditor", () => ({ __esModule: true, FormTypeEditor: () => null }));
-jest.mock("./NodeSelectorView/NodeSelector", () => ({ __esModule: true, NodeSelector: () => null }));
+jest.mock("../BI/TypeEditor", () => ({ __esModule: true, FormTypeEditor: (): null => null }));
+jest.mock("./NodeSelectorView/NodeSelector", () => ({ __esModule: true, NodeSelector: (): null => null }));
 jest.mock("../BI/Forms/FlowNodeForm", () => ({
     __esModule: true,
     BreadcrumbContainer: ({ children }: any) => <div>{children}</div>,
@@ -101,7 +101,7 @@ function makeRpc(recordFilePath: string | null = "/p/types.bal") {
         getCommonRpcClient: () => ({ executeCommand: jest.fn(), showErrorMessage: jest.fn() }),
         onProjectContentUpdated: jest.fn((cb: (state: boolean) => void) => {
             listeners.push(cb);
-            return () => undefined;
+            return (): void => undefined;
         }),
     };
 
