@@ -2931,6 +2931,7 @@ const AIChat: React.FC = () => {
                                     skillName={skillName}
                                     onEnable={() => rpcClient.getAiPanelRpcClient().enableSkillFromChat({ requestId, skillId })}
                                     onSkip={() => rpcClient.getAiPanelRpcClient().cancelSkillEnable({ requestId })}
+                                    onStop={handleStop}
                                 />
                             );
                         }
@@ -2943,6 +2944,7 @@ const AIChat: React.FC = () => {
                                     content={webToolApprovalRequest.content}
                                     onAllow={handleWebToolAllow}
                                     onDeny={handleWebToolDeny}
+                                    onStop={handleStop}
                                 />
                             );
                         }
@@ -2952,6 +2954,7 @@ const AIChat: React.FC = () => {
                                     type={approvalRequest.approvalType}
                                     onApprove={handleApprovalApprove}
                                     onReject={handleApprovalReject}
+                                    onStop={handleStop}
                                 />
                             );
                         }

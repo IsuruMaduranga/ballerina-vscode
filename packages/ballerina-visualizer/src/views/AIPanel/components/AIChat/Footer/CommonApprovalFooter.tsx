@@ -20,7 +20,7 @@ import React, { useState, useEffect } from "react";
 import styled from "@emotion/styled";
 import { FooterContainer } from "./index";
 import { ActionButton } from "../../AgentStreamView/styles";
-import { FooterBox, FooterBoxPrompt, FooterDivider, FooterTextInputRow, FooterInput, FooterIconBtn } from "./styles";
+import { FooterBox, FooterBoxPrompt, FooterDivider, FooterHeaderRow, FooterTextInputRow, FooterInput, FooterIconBtn } from "./styles";
 import { AmbientFrame } from "../../../../../components/AgentStatusOrb/shared";
 
 // ── Web tool styles (footer-specific, not shared) ─────────────────────────────
@@ -53,6 +53,7 @@ type PlanCompletionProps = {
     type: "plan" | "completion";
     onApprove: (enableAutoApprove: boolean) => void;
     onReject: (comment: string) => void;
+    onStop: () => void;
     isSubmitting?: boolean;
 };
 
@@ -62,6 +63,7 @@ type WebToolProps = {
     content: string;
     onAllow: () => void;
     onDeny: () => void;
+    onStop: () => void;
 };
 
 type SkillEnableProps = {
@@ -69,18 +71,38 @@ type SkillEnableProps = {
     skillName: string;
     onEnable: () => void;
     onSkip: () => void;
+    onStop: () => void;
 };
 
 type CommonApprovalFooterProps = PlanCompletionProps | WebToolProps | SkillEnableProps;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+// AIChatInput normally owns Escape-to-stop, but it's unmounted while this footer shows.
+const StopControl: React.FC<{ onStop: () => void }> = ({ onStop }) => (
+    <FooterIconBtn onClick={onStop} title="Stop (Escape)">
+        <span className="codicon codicon-stop-circle" />
+    </FooterIconBtn>
+);
+
 const CommonApprovalFooter: React.FC<CommonApprovalFooterProps> = (props) => {
     const [comment, setComment] = useState("");
+    const { onStop } = props;
 
     useEffect(() => {
         setComment("");
     }, [props.type]);
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                onStop();
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [onStop]);
 
     if (props.type === "web_tool") {
         const { toolName, content, onAllow, onDeny } = props;
@@ -89,10 +111,13 @@ const CommonApprovalFooter: React.FC<CommonApprovalFooterProps> = (props) => {
             <FooterContainer>
                 <AmbientFrame $variant="composer" $state="awaiting-input">
                     <FooterBox>
-                        <WebToolHeader>
-                            <span className="codicon codicon-globe" />
-                            {label}
-                        </WebToolHeader>
+                        <FooterHeaderRow>
+                            <WebToolHeader>
+                                <span className="codicon codicon-globe" />
+                                {label}
+                            </WebToolHeader>
+                            <StopControl onStop={onStop} />
+                        </FooterHeaderRow>
                         <WebToolContent>{content}</WebToolContent>
                         <FooterDivider />
                         <WebToolActions>
@@ -111,10 +136,13 @@ const CommonApprovalFooter: React.FC<CommonApprovalFooterProps> = (props) => {
             <FooterContainer>
                 <AmbientFrame $variant="composer" $state="awaiting-input">
                     <FooterBox>
-                        <WebToolHeader>
-                            <span className="codicon codicon-extensions" />
-                            Skill Disabled
-                        </WebToolHeader>
+                        <FooterHeaderRow>
+                            <WebToolHeader>
+                                <span className="codicon codicon-extensions" />
+                                Skill Disabled
+                            </WebToolHeader>
+                            <StopControl onStop={onStop} />
+                        </FooterHeaderRow>
                         <WebToolContent>{skillName}</WebToolContent>
                         <FooterDivider />
                         <WebToolActions>
@@ -155,7 +183,10 @@ const CommonApprovalFooter: React.FC<CommonApprovalFooterProps> = (props) => {
         <FooterContainer>
             <AmbientFrame $variant="composer" $state="awaiting-input">
                 <FooterBox>
-                    <FooterBoxPrompt>{promptText}</FooterBoxPrompt>
+                    <FooterHeaderRow>
+                        <FooterBoxPrompt>{promptText}</FooterBoxPrompt>
+                        <StopControl onStop={onStop} />
+                    </FooterHeaderRow>
                     <FooterDivider />
                     <ActionButton
                         onClick={() => onApprove(false)}
