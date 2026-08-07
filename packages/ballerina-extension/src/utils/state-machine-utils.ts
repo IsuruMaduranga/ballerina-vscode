@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { DIRECTORY_MAP, EVENT_TYPE, FOCUS_FLOW_DIAGRAM_VIEW, HistoryEntry, isSamePath, MACHINE_VIEW, ProjectStructureArtifactResponse, SyntaxTreeResponse, UpdatedArtifactsResponse } from "@wso2/ballerina-core";
+import { DIRECTORY_MAP, EVENT_TYPE, FOCUS_FLOW_DIAGRAM_VIEW, HistoryEntry, isSamePath, MACHINE_VIEW, ProjectStructure, ProjectStructureArtifactResponse, ProjectStructureResponse, SyntaxTreeResponse, UpdatedArtifactsResponse, VisualizerLocation } from "@wso2/ballerina-core";
 import { NodePosition, STKindChecker, STNode, traversNode } from "@wso2/syntax-tree";
 import { StateMachine, openView } from "../stateMachine";
 import { Uri } from "vscode";
@@ -27,6 +27,53 @@ import { FindConstructByIndexVisitor } from "./history/find-construct-by-index-v
 import { getConstructBodyString } from "./history/util";
 import { extension } from "../BalExtensionContext";
 import path from "path";
+
+/**
+ * The single integration a workspace holds, or undefined when it holds anything else.
+ *
+ * Libraries deliberately do not qualify: a workspace whose only package is a library still
+ * needs the workspace overview, which is the only surface offering to add the first
+ * integration.
+ */
+export function getSoleIntegration(projectStructure?: ProjectStructureResponse): ProjectStructure | undefined {
+    const projects = projectStructure?.projects ?? [];
+    if (projects.length !== 1 || projects[0].isLibrary) {
+        return undefined;
+    }
+    return projects[0];
+}
+
+/**
+ * The package overview a navigation should be redirected to, or undefined to leave it alone.
+ *
+ * A workspace overview listing one integration is a list with nothing to choose from, so every
+ * route to it opens that integration instead. Two shapes reach it and both redirect: an explicit
+ * `view: WorkspaceOverview`, and a bare navigation with no view at all (which `findView` would
+ * otherwise resolve to it). Navigations that already name a package, or that carry an artifact
+ * position to resolve, are left alone.
+ *
+ * Back is unaffected — `goBack` replays history through `updateView` and never reaches the
+ * `openView` call site that applies this.
+ */
+export function resolveSingleIntegrationOverride(
+    viewLocation: VisualizerLocation,
+    context: Pick<VisualizerLocation, "workspacePath" | "projectPath" | "projectStructure">
+): VisualizerLocation | undefined {
+    if (viewLocation.projectPath || !context.workspacePath) {
+        return undefined;
+    }
+    const isBareNavigation =
+        !viewLocation.view &&
+        !context.projectPath &&
+        (!viewLocation.position || "groupId" in viewLocation.position);
+    if (viewLocation.view !== MACHINE_VIEW.WorkspaceOverview && !isBareNavigation) {
+        return undefined;
+    }
+    const soleIntegration = getSoleIntegration(context.projectStructure);
+    return soleIntegration
+        ? { view: MACHINE_VIEW.PackageOverview, projectPath: soleIntegration.projectPath }
+        : undefined;
+}
 
 export async function getView(documentUri: string, position: NodePosition, projectPath: string): Promise<HistoryEntry> {
     const haveTreeData = !!StateMachine.context().projectStructure;
