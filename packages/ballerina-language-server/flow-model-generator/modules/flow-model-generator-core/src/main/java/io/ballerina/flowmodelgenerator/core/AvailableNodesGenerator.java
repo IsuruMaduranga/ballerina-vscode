@@ -59,6 +59,7 @@ import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.projects.Document;
+import io.ballerina.projects.Module;
 import io.ballerina.projects.Package;
 import io.ballerina.tools.text.LinePosition;
 import io.ballerina.tools.text.TextRange;
@@ -103,6 +104,7 @@ public class AvailableNodesGenerator {
     private final Package pkg;
     private final Gson gson;
     private final Path filePath;
+    private WorkflowArtifacts workflowArtifacts;
     private static final String BALLERINAX = "ballerinax";
     private static final String TEST_MODULE_PREFIX = "test";
     private static final String TEST_CONFIG_ANNOTATION = "Config";
@@ -366,11 +368,26 @@ public class AvailableNodesGenerator {
             this.rootBuilder.stepIn(Category.Name.AI)
                     .items(getAiNodes(disableBallerinaAiNodes))
                     .stepOut();
+
+            // The client-side workflow verbs, right after AI so they are easy to reach:
+            // shown only when the integration defines the matching artifacts — workflow
+            // functions enable Run Workflow / Send Data Event, durable agents enable the
+            // agent interaction nodes.
+            WorkflowArtifacts artifacts = workflowArtifacts();
+            if (artifacts.hasWorkflows() || artifacts.hasDurableAgents()) {
+                this.rootBuilder.stepIn(Category.Name.WORKFLOW)
+                        .items(getWorkflowNodes(false, artifacts.hasWorkflows(), artifacts.hasDurableAgents()))
+                        .stepOut();
+            }
         }
 
-        this.rootBuilder.stepIn(Category.Name.WORKFLOW)
-                .items(getWorkflowNodes(isInWorkflowFunction))
-                .stepOut();
+        // Inside a workflow function the Workflow section leads the palette — it holds the
+        // durable steps that make up the flow.
+        if (isInWorkflowFunction) {
+            this.rootBuilder.stepIn(Category.Name.WORKFLOW)
+                    .items(getWorkflowNodes(true, true, true))
+                    .stepOut();
+        }
 
         AvailableNode function = new AvailableNode(
                 new Metadata.Builder<>(null)
@@ -416,7 +433,44 @@ public class AvailableNodesGenerator {
                         .node(NodeKind.ROLLBACK)
                         .node(NodeKind.RETRY)
                         .stepOut();
+
         }
+    }
+
+    /**
+     * Which workflow artifacts the package declares.
+     *
+     * @param hasWorkflows     whether it declares a {@code @workflow:Workflow} function
+     * @param hasDurableAgents whether it declares a module-level {@code workflow:DurableAgent}
+     */
+    private record WorkflowArtifacts(boolean hasWorkflows, boolean hasDurableAgents) { }
+
+    /**
+     * Whether the package declares workflow functions and durable agents, scanned across every
+     * module rather than the default one alone — a multi-module package whose workflows live
+     * outside the default module would otherwise lose the whole Workflow category. Both answers
+     * come from one pass, memoized for the lifetime of this generator (one palette open).
+     *
+     * @return the artifacts the package declares
+     */
+    private WorkflowArtifacts workflowArtifacts() {
+        if (this.workflowArtifacts != null) {
+            return this.workflowArtifacts;
+        }
+        boolean hasWorkflows = false;
+        boolean hasDurableAgents = false;
+        for (Module module : this.pkg.modules()) {
+            for (Symbol symbol : module.getCompilation().getSemanticModel().moduleSymbols()) {
+                hasWorkflows = hasWorkflows || WorkflowUtil.isWorkflowFunction(symbol);
+                hasDurableAgents = hasDurableAgents || WorkflowUtil.isDurableAgentVariable(symbol);
+                if (hasWorkflows && hasDurableAgents) {
+                    this.workflowArtifacts = new WorkflowArtifacts(true, true);
+                    return this.workflowArtifacts;
+                }
+            }
+        }
+        this.workflowArtifacts = new WorkflowArtifacts(hasWorkflows, hasDurableAgents);
+        return this.workflowArtifacts;
     }
 
     private List<Item> getAiNodes(boolean disableBallerinaAiNodes) {
@@ -494,89 +548,84 @@ public class AvailableNodesGenerator {
         return List.of(directLlmCategory, ragCategory, agentCategory);
     }
 
-    private List<Item> getWorkflowNodes(boolean isInWorkflowFunction) {
+
+    private List<Item> getWorkflowNodes(boolean isInWorkflowFunction, boolean hasWorkflows,
+                                        boolean hasDurableAgents) {
         List<Item> workflowNodes = new ArrayList<>();
 
         if (isInWorkflowFunction) {
-            // Inside a workflow function: Call Activity, Await HumanTask, Await Data, Sleep
-            AvailableNode callActivity = new AvailableNode(
-                    new Metadata.Builder<>(null)
-                            .label(Workflow.CALL_ACTIVITY_LABEL)
-                            .description(Workflow.CALL_ACTIVITY_DESCRIPTION)
-                            .build(),
-                    new Codedata.Builder<>(null)
-                            .node(NodeKind.ACTIVITY_CALL)
-                            .build(),
-                    true
-            );
+            // Inside a workflow function the single Workflow section groups its items by
+            // functionality: durable Steps, Child Workflows, and the (advanced) context
+            // utility functions.
+            Category steps = new Category.Builder(null).name(Category.Name.WORKFLOW_STEPS)
+                    .items(List.of(
+                            workflowNode(Workflow.CALL_ACTIVITY_LABEL, Workflow.CALL_ACTIVITY_DESCRIPTION,
+                                    NodeKind.ACTIVITY_CALL),
+                            workflowNode(Workflow.HUMAN_TASK_LABEL, Workflow.HUMAN_TASK_DESCRIPTION,
+                                    NodeKind.HUMAN_TASK),
+                            workflowNode(Workflow.WAIT_DATA_LABEL, Workflow.WAIT_DATA_DESCRIPTION,
+                                    NodeKind.WAIT_DATA),
+                            workflowNode(Workflow.SLEEP_LABEL, Workflow.SLEEP_DESCRIPTION, NodeKind.SLEEP)))
+                    .build();
 
-            workflowNodes.add(callActivity);
+            Category childWorkflows = new Category.Builder(null).name(Category.Name.CHILD_WORKFLOWS)
+                    .items(List.of(
+                            workflowNode(Workflow.RUN_CHILD_WORKFLOW_LABEL, Workflow.RUN_CHILD_WORKFLOW_DESCRIPTION,
+                                    NodeKind.CHILD_WORKFLOW_RUN),
+                            workflowNode(Workflow.CALL_CHILD_WORKFLOW_LABEL, Workflow.CALL_CHILD_WORKFLOW_DESCRIPTION,
+                                    NodeKind.CHILD_WORKFLOW_CALL),
+                            workflowNode(Workflow.WAIT_CHILD_WORKFLOW_LABEL, Workflow.WAIT_CHILD_WORKFLOW_DESCRIPTION,
+                                    NodeKind.CHILD_WORKFLOW_WAIT),
+                            workflowNode(Workflow.SEND_DATA_CHILD_WORKFLOW_LABEL,
+                                    Workflow.SEND_DATA_CHILD_WORKFLOW_DESCRIPTION,
+                                    NodeKind.CHILD_WORKFLOW_SEND_DATA)))
+                    .build();
 
-            AvailableNode humanTask = new AvailableNode(
-                    new Metadata.Builder<>(null)
-                            .label(Workflow.HUMAN_TASK_LABEL)
-                            .description(Workflow.HUMAN_TASK_DESCRIPTION)
-                            .build(),
-                    new Codedata.Builder<>(null)
-                            .node(NodeKind.HUMAN_TASK)
-                            .build(),
-                    true
-            );
+            Category workflowFunctions = new Category.Builder(null).name(Category.Name.WORKFLOW_FUNCTIONS)
+                    .items(List.of(
+                            workflowNode(Workflow.CURRENT_TIME_LABEL, Workflow.CURRENT_TIME_DESCRIPTION,
+                                    NodeKind.WORKFLOW_CURRENT_TIME),
+                            workflowNode(Workflow.IS_REPLAYING_LABEL, Workflow.IS_REPLAYING_DESCRIPTION,
+                                    NodeKind.WORKFLOW_IS_REPLAYING),
+                            workflowNode(Workflow.GET_WORKFLOW_ID_LABEL, Workflow.GET_WORKFLOW_ID_DESCRIPTION,
+                                    NodeKind.WORKFLOW_GET_ID),
+                            workflowNode(Workflow.GET_WORKFLOW_TYPE_LABEL, Workflow.GET_WORKFLOW_TYPE_DESCRIPTION,
+                                    NodeKind.WORKFLOW_GET_TYPE)))
+                    .build();
 
-            AvailableNode waitData = new AvailableNode(
-                    new Metadata.Builder<>(null)
-                            .label(Workflow.WAIT_DATA_LABEL)
-                            .description(Workflow.WAIT_DATA_DESCRIPTION)
-                            .build(),
-                    new Codedata.Builder<>(null)
-                            .node(NodeKind.WAIT_DATA)
-                            .build(),
-                    true
-            );
-
-            AvailableNode sleep = new AvailableNode(
-                    new Metadata.Builder<>(null)
-                            .label(Workflow.SLEEP_LABEL)
-                            .description(Workflow.SLEEP_DESCRIPTION)
-                            .build(),
-                    new Codedata.Builder<>(null)
-                            .node(NodeKind.SLEEP)
-                            .build(),
-                    true
-            );
-
-            workflowNodes.add(humanTask);
-            workflowNodes.add(waitData);
-            workflowNodes.add(sleep);
+            workflowNodes.add(steps);
+            workflowNodes.add(childWorkflows);
+            workflowNodes.add(workflowFunctions);
         } else {
-            // Outside workflow function: Run Workflow and Send Data
-            AvailableNode runWorkflow = new AvailableNode(
-                    new Metadata.Builder<>(null)
-                            .label(Workflow.RUN_LABEL)
-                            .description(Workflow.RUN_DESCRIPTION)
-                            .build(),
-                    new Codedata.Builder<>(null)
-                            .node(NodeKind.WORKFLOW_RUN)
-                            .build(),
-                    true
-            );
-
-            AvailableNode sendData = new AvailableNode(
-                    new Metadata.Builder<>(null)
-                            .label(Workflow.SEND_DATA_LABEL)
-                            .description(Workflow.SEND_DATA_DESCRIPTION)
-                            .build(),
-                    new Codedata.Builder<>(null)
-                            .node(NodeKind.SEND_DATA)
-                            .build(),
-                    true
-            );
-
-            workflowNodes.add(runWorkflow);
-            workflowNodes.add(sendData);
+            // Outside workflow functions the items follow the integration's artifacts:
+            // workflow functions bring the workflow verbs, durable agents bring theirs.
+            if (hasWorkflows) {
+                workflowNodes.add(workflowNode(Workflow.RUN_LABEL, Workflow.RUN_DESCRIPTION,
+                        NodeKind.WORKFLOW_RUN));
+                workflowNodes.add(workflowNode(Workflow.SEND_DATA_LABEL, Workflow.SEND_DATA_DESCRIPTION,
+                        NodeKind.SEND_DATA));
+            }
+            if (hasDurableAgents) {
+                workflowNodes.add(workflowNode(Workflow.AGENT_START_LABEL, Workflow.AGENT_START_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_START));
+                workflowNodes.add(workflowNode(Workflow.AGENT_SEND_DATA_LABEL, Workflow.AGENT_SEND_DATA_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_UPDATE));
+                workflowNodes.add(workflowNode(Workflow.AGENT_RESULT_LABEL, Workflow.AGENT_RESULT_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_RESULT));
+                workflowNodes.add(workflowNode(Workflow.AGENT_DATA_RESULT_LABEL,
+                        Workflow.AGENT_DATA_RESULT_DESCRIPTION, NodeKind.DURABLE_AGENT_DATA_RESULT));
+            }
         }
 
         return workflowNodes;
+    }
+
+    // Builds a plain palette entry: a label/description pair whose click resolves to the node kind.
+    private static AvailableNode workflowNode(String label, String description, NodeKind kind) {
+        return new AvailableNode(
+                new Metadata.Builder<>(null).label(label).description(description).build(),
+                new Codedata.Builder<>(null).node(kind).build(),
+                true);
     }
 
     private void setStopNode(NonTerminalNode node) {
