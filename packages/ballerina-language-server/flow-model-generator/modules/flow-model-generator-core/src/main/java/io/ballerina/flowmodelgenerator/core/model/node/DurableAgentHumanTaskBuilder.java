@@ -204,6 +204,12 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
                 .addProperty(key);
     }
 
+    // The workflow package version for the Duration record's type-member metadata; the FE
+    // uses it to open the record-constructor editor. Falls back to the current minor.
+    private String workflowModuleVersion() {
+        return "0.8.3";
+    }
+
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         // Object model: the human task lives on the declaration's `humanTasks` list.
