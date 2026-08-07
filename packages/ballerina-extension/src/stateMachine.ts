@@ -1030,14 +1030,20 @@ export function openView(
     // workspace overview. Applied to every navigation, not just the first: the project explorer
     // re-navigates once its tree finishes loading, seconds after startup, and a first-navigation
     // gate would let that second one land back on the workspace overview.
-    if (!options?.exactView) {
-        Object.assign(viewLocation, resolveSingleIntegrationOverride(viewLocation, StateMachine.context()));
-    }
-    const projectPath = viewLocation.projectPath || StateMachine.context().projectPath;
+    //
+    // The override REPLACES the location rather than merging into it. The fields a redirected
+    // navigation carried describe a target that no longer applies, and `identifier` with
+    // `artifactType` would survive onto the overview's history entry and send `updateView`
+    // hunting for an artifact that this view does not have.
+    const singleIntegrationOverride = options?.exactView
+        ? undefined
+        : resolveSingleIntegrationOverride(viewLocation, StateMachine.context());
+    const location = singleIntegrationOverride ?? viewLocation;
+    const projectPath = location.projectPath || StateMachine.context().projectPath;
     const { orgName, packageName } = getOrgAndPackageName(StateMachine.context().projectInfo, projectPath);
-    viewLocation.org = orgName;
-    viewLocation.package = packageName;
-    stateService.send({ type: type, viewLocation: viewLocation });
+    location.org = orgName;
+    location.package = packageName;
+    stateService.send({ type: type, viewLocation: location });
 }
 
 export function updateView(refreshTreeView?: boolean, updatedIdentifier?: string) {

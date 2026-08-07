@@ -57,6 +57,11 @@ export function getSoleIntegration(projectStructure?: ProjectStructureResponse):
  * otherwise resolve to it). Navigations that already name a package, or that carry an artifact
  * position to resolve, are left alone.
  *
+ * The returned location is the whole location, not a patch: `openView` replaces the caller's
+ * with it, so anything the redirected navigation carried — `documentUri`, `identifier`,
+ * `artifactType`, a `groupId` position — is deliberately dropped. All of it describes a target
+ * that no longer applies once the destination is the package overview.
+ *
  * Back is unaffected — `goBack` replays history through `updateView` and never reaches the
  * `openView` call site that applies this.
  */

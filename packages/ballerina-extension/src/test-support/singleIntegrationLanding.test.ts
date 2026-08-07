@@ -17,11 +17,13 @@
  */
 
 import type {
+    DIRECTORY_MAP as DirectoryMap,
     MACHINE_VIEW as MachineView,
     ProjectStructure,
     ProjectStructureResponse,
     VisualizerLocation,
 } from "@wso2/ballerina-core";
+import type { NodePosition } from "@wso2/syntax-tree";
 
 // The real barrel pulls in a WebSocket LS client that jest cannot load, so stub it. The view
 // names must match the real enum values — the assertions below compare against them.
@@ -30,9 +32,10 @@ const MACHINE_VIEW = {
     WorkspaceOverview: "Workspace Overview",
     ServiceDesigner: "Service Designer",
 } as unknown as typeof MachineView;
+const DIRECTORY_MAP = { FUNCTION: "FUNCTION" } as unknown as typeof DirectoryMap;
 jest.mock("@wso2/ballerina-core", () => ({
     MACHINE_VIEW,
-    DIRECTORY_MAP: {},
+    DIRECTORY_MAP,
     EVENT_TYPE: {},
     FOCUS_FLOW_DIAGRAM_VIEW: {},
     isSamePath: (a: string, b: string) => a === b,
@@ -91,11 +94,22 @@ describe("resolveSingleIntegrationOverride", () => {
     // Both shapes a navigation can take, since the caller cannot tell them apart: the project
     // explorer names the workspace overview outright, other entry points send a bare location
     // and let `findView` resolve it.
+    //
+    // `toEqual(expected)` is also asserting what the redirect DROPS, and that is load-bearing:
+    // `openView` replaces the caller's location with this one, so a field missing here is a
+    // field that does not reach the state machine. The `groupId` position mirrors the clause in
+    // `findView` (stateMachine.ts) that sends such a navigation to the workspace overview —
+    // `groupId` is not on `NodePosition`, so nothing but this test pins the two together.
     it.each<[string, VisualizerLocation]>([
         ["an explicit workspace overview", { view: MACHINE_VIEW.WorkspaceOverview }],
         ["a bare navigation with no view", {}],
         ["a bare navigation carrying only a document", { documentUri: "/workspace/orders/main.bal" }],
-    ])("redirects %s to the sole integration", (_label, viewLocation) => {
+        ["a bare navigation carrying a groupId position", { position: { groupId: "g1" } as unknown as NodePosition }],
+        [
+            "a bare navigation carrying artifact fields",
+            { documentUri: "/workspace/orders/main.bal", identifier: "greet", artifactType: DIRECTORY_MAP.FUNCTION },
+        ],
+    ])("redirects %s to the sole integration, dropping the rest", (_label, viewLocation) => {
         expect(resolveSingleIntegrationOverride(viewLocation, soleIntegration)).toEqual(expected);
     });
 
@@ -108,7 +122,7 @@ describe("resolveSingleIntegrationOverride", () => {
     });
 
     it("names the package it redirects to — the overview renders nothing without one", () => {
-        expect(resolveSingleIntegrationOverride({}, soleIntegration).projectPath).toBeTruthy();
+        expect(resolveSingleIntegrationOverride({}, soleIntegration)?.projectPath).toBeTruthy();
     });
 
     it("leaves every navigation alone outside a single-integration workspace", () => {
