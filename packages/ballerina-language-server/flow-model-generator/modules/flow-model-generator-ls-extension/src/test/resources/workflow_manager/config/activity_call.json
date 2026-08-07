@@ -17,7 +17,7 @@
     "metadata": {
       "label": "sendNotification",
       "description": "Send notification activity",
-      "icon": "https://bcentral-packageicons.azureedge.net/images/test_null_0.1.0.png"
+      "icon": "https://bcentral-packageicons.azureedge.net/images/test_workflow_function_0.1.0.png"
     },
     "codedata": {
       "node": "ACTIVITY_CALL",
