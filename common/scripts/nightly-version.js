@@ -21,10 +21,16 @@
  * VS Code Marketplace version components are int32, max 2147483647. A readable
  * yymmddHHmm stamp (10 digits, e.g. 2608051230) exceeds that limit from 2022
  * onward, so 'vsce publish' would reject every pre-release. Dropping minutes gives
- * an 8-digit yymmddHH stamp (max ~99123123), comfortably under the limit until the
- * year 2099. The tradeoff: two builds cut within the same UTC hour (e.g. a manual
- * re-run) get an identical patch number — accepted since nightlies only run once a
- * day in practice.
+ * an 8-digit yymmddHH stamp (max ~99123123), comfortably under the int32 limit. The
+ * scheme's actual expiry is the year 2100, not int32: 'YY' wraps to "00" and the
+ * non-zero-leading-digit guard in deriveNightlyVersion() below rejects the resulting
+ * stamp outright rather than silently publishing a version that decodes wrong.
+ *
+ * The tradeoff: two builds cut within the same UTC hour collide on an identical
+ * patch number. In practice this is hit not by the once-a-day schedule but by a
+ * manual re-run after a transient failure — the second 'vsce publish' rejects the
+ * now-duplicate version and the job fails red with an error that doesn't obviously
+ * point back to this scheme. Recovery is to wait for the next UTC hour and re-run.
  *
  * Decode one with:
  *     node -e 'const s="<stamp>"; console.log(`20${s.slice(0,2)}-${s.slice(2,4)}-${s.slice(4,6)} ${s.slice(6,8)}:00 UTC`)'
@@ -37,7 +43,7 @@
  * Exit codes:
  * - 0: version printed on stdout
  * - 1: the extension version is not a 'major.minor.patch-SNAPSHOT' with a positive even minor,
- *      or the stamp is not a positive integer below int32
+ *      or the stamp is not exactly 8 decimal digits with a non-zero leading digit
  */
 
 const fs = require('fs');
@@ -45,9 +51,6 @@ const path = require('path');
 
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const SNAPSHOT_VERSION = /^(\d+)\.(\d+)\.\d+-SNAPSHOT$/;
-
-/** Version components must fit in a signed 32-bit int or the Marketplace rejects them. */
-const MAX_VERSION_COMPONENT = 2147483647;
 
 /**
  * YYMMDDHH, UTC. Mirrors the shell in updateVersion/action.yml, which computes the
@@ -67,16 +70,19 @@ function timestamp(now) {
  * Derive an odd-minor nightly version from the next even-minor release snapshot.
  */
 function deriveNightlyVersion(extensionVersion, stamp) {
-  if (typeof stamp !== 'string' || !/^(0|[1-9]\d*)$/.test(stamp)) {
+  // Exactly 8 digits, leading digit non-zero: a stamp is either the computed YYMMDDHH
+  // or a hand-typed '--timestamp' override, and a typo that is still a valid integer
+  // (an extra or dropped digit) would publish a version that outranks every genuine
+  // nightly, permanently, since Marketplace versions cannot be withdrawn. The
+  // non-zero leading digit is what makes the scheme expire in the year 2100 loudly:
+  // 'YY' wraps to "00" then, producing a stamp this regex rejects outright rather
+  // than one that silently decodes to the wrong date. An 8-digit stamp also maxes
+  // out at 99999999, always under the Marketplace's int32 version-component limit
+  // (2147483647), so no separate range check is needed.
+  if (typeof stamp !== 'string' || !/^[1-9]\d{7}$/.test(stamp)) {
     throw new Error(
-      `Invalid nightly timestamp "${stamp}": expected decimal digits (YYMMDDHH, UTC).`
-    );
-  }
-
-  if (Number(stamp) > MAX_VERSION_COMPONENT) {
-    throw new Error(
-      `Invalid nightly timestamp "${stamp}": exceeds the maximum version component ` +
-      `${MAX_VERSION_COMPONENT} (int32), which the VS Code Marketplace rejects.`
+      `Invalid nightly timestamp "${stamp}": expected exactly 8 decimal digits with a ` +
+      `non-zero leading digit (YYMMDDHH, UTC).`
     );
   }
 
@@ -138,4 +144,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { deriveNightlyVersion, timestamp, MAX_VERSION_COMPONENT };
+module.exports = { deriveNightlyVersion, timestamp };
