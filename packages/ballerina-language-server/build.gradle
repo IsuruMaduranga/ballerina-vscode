@@ -108,15 +108,7 @@ subprojects {
         /* Packages bundled in the full Ballerina distribution but not in
            jballerina-tools; test fixtures need them at the versions locked in
            build-config/ballerina_dependencies/Dependencies.toml */
-        /* ballerina/ai is deliberately NOT injected here. Its Maven artifact ships
-           only bala/ (no cache/), so copying it into the test distribution's
-           repo/bala makes ai resolve from the distribution repository without a
-           prebuilt BIR — and loading any package compiled against it then fails
-           with "failed to load the module ... from its BIR due to: unexpected
-           type: other" (ballerina/workflow is the one that trips over it). The
-           build-owned Ballerina home already provisions ai at the version locked
-           in build-config/ballerina_dependencies/Dependencies.toml, so tests
-           resolve it from the central cache instead. */
+        ballerinaStdLibs "io.ballerina.stdlib:ai-ballerina:${stdlibAiVersion}"
         ballerinaStdLibs "io.ballerina.lib:avro-ballerina:${stdlibAvroVersion}"
         ballerinaStdLibs "io.ballerina.stdlib:cache-ballerina:${stdlibCacheVersion}"
         ballerinaStdLibs "io.ballerina:cloud-ballerina:${ballerinaCloudVersion}"
