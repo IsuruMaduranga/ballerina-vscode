@@ -296,6 +296,9 @@
                           "selected": true
                         }
                       ],
+                      "importStatements": [
+                        "ballerinax/aws.auth"
+                      ],
                       "properties": {
                         "defaultCredentialsValue": {
                           "metadata": {
@@ -849,7 +852,5 @@
       "path": "ServiceConfig.queueUrl"
     }
   ],
-  "importStatements": [
-    "ballerinax/aws.auth"
-  ]
+  "importStatements": []
 }
