@@ -21,8 +21,10 @@ import styled from "@emotion/styled";
 import { ClarifyQuestion } from "@wso2/ballerina-core";
 import { FooterContainer } from "./index";
 import { ActionButton } from "../../AgentStreamView/styles";
-import { FooterBox, FooterDivider, FooterTextInputRow, FooterInput } from "./styles";
+import { FooterBox, FooterDivider, FooterHeaderRow, FooterTextInputRow, FooterInput } from "./styles";
 import { AmbientFrame } from "../../../../../components/AgentStatusOrb/shared";
+import StopControl from "./StopControl";
+import { useEscapeToStop } from "./useEscapeToStop";
 
 // ── Clarify-specific styled components ────────────────────────────────────────
 
@@ -55,6 +57,7 @@ const QuestionHeader = styled.div`
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
+    flex: 1;
     gap: 6px;
     margin-bottom: 8px;
 `;
@@ -133,11 +136,12 @@ interface ClarifyFooterProps {
     questions: ClarifyQuestion[];
     requestId: string;
     rpcClient: any;
+    onStop: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const ClarifyFooter: React.FC<ClarifyFooterProps> = ({ questions, requestId, rpcClient }) => {
+const ClarifyFooter: React.FC<ClarifyFooterProps> = ({ questions, requestId, rpcClient, onStop }) => {
     const [page, setPage] = useState(0);
     const [selections, setSelections] = useState<Record<number, string[]>>(
         () => Object.fromEntries(questions.map((_, i): [number, string[]] => [i, []]))
@@ -149,6 +153,8 @@ const ClarifyFooter: React.FC<ClarifyFooterProps> = ({ questions, requestId, rpc
         () => Object.fromEntries(questions.map((_, i): [number, string] => [i, ""]))
     );
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEscapeToStop(onStop);
 
     const q = questions[page];
     const isMulti = q?.selectionType === "multiple";
@@ -234,10 +240,13 @@ const ClarifyFooter: React.FC<ClarifyFooterProps> = ({ questions, requestId, rpc
                         </TabRow>
                     )}
 
-                    <QuestionHeader>
-                        <QuestionText>{q.question}</QuestionText>
-                        <TypeBadge>{isMulti ? "multiple answer" : "single answer"}</TypeBadge>
-                    </QuestionHeader>
+                    <FooterHeaderRow style={{ alignItems: "flex-start" }}>
+                        <QuestionHeader>
+                            <QuestionText>{q.question}</QuestionText>
+                            <TypeBadge>{isMulti ? "multiple answer" : "single answer"}</TypeBadge>
+                        </QuestionHeader>
+                        <StopControl onStop={onStop} />
+                    </FooterHeaderRow>
 
                     <OptionsList>
                         {q.options.map(opt => {
