@@ -335,9 +335,7 @@ const AIChat: React.FC = () => {
     // staleness has to be judged against a ref, not the captured isLoading value.
     const isLoadingRef = useRef(false);
     isLoadingRef.current = isLoading;
-    // Set by the "abort" notification (always delivered before generateAgent's RPC rejection,
-    // whose error loses its name crossing the vscode-messenger boundary) so handleSendQuery's
-    // catch can recognize an abort without trusting that error.
+    // Set by the "abort" notification, which always arrives before the RPC error (whose name is lost in transit).
     const abortHandledRef = useRef(false);
     const [followupSuggestions, setFollowupSuggestions] = useState<FollowupSuggestion[]>([]);
     const [isCompacting, setIsCompacting] = useState(false);

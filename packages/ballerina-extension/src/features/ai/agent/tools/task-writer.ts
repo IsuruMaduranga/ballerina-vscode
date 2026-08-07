@@ -215,9 +215,7 @@ Rules:
                     tasks: allTasks
                 };
             } catch (error) {
-                // Let an abort (e.g. stopping while the plan approval is pending) propagate as a
-                // tool-error instead of surfacing a raw "Failed to process tasks" message — the
-                // turn's own abort handling already shows a clean stopped-by-user message.
+                // Let an abort propagate as a tool-error instead of a raw "Failed to process tasks" message.
                 if ((error as any)?.name === 'AbortError') {
                     throw error;
                 }
