@@ -1515,6 +1515,7 @@ const AIChat: React.FC = () => {
             console.log("Received stop signal");
             setIsWebToolsEnabled(userWebSearchPreferenceRef.current);
             setWebToolApprovalRequest(null);
+            setApprovalRequest(null);
             setIsCompacting(false);
             setIsCodeLoading(false);
             setIsLoading(false);
@@ -1533,6 +1534,7 @@ const AIChat: React.FC = () => {
             activeScaffoldKeyRef.current = null;
             setIsWebToolsEnabled(userWebSearchPreferenceRef.current);
             setWebToolApprovalRequest(null);
+            setApprovalRequest(null);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
