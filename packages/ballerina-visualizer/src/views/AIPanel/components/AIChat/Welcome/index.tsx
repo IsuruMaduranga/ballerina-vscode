@@ -21,10 +21,10 @@ import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { Icon, Typography } from "@wso2/ui-toolkit";
 import React, { useCallback, useState } from "react";
 import { ShaderOrb } from "../../../../../components/AgentStatusOrb/ShaderOrb";
+import { useOrbColors } from "../../../../../components/AgentStatusOrb/orbTheme";
 import {
     Gloss,
     IconOverlay,
-    ORB_COLORS,
     ORB_ENERGY,
     Sphere,
 } from "../../../../../components/AgentStatusOrb/shared";
@@ -131,6 +131,7 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ isOnboarding = false })
     const { rpcClient } = useRpcContext();
     const [webglFailed, setWebglFailed] = useState(false);
     const handleWebglFailed = useCallback(() => setWebglFailed(true), []);
+    const idleColors = useOrbColors("idle");
 
     return (
         <PanelWrapper>
@@ -139,10 +140,10 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ isOnboarding = false })
                 <WelcomeOrbHalo>
                     <WelcomeOrb role="img" aria-label="WSO2 Integration Intelligence">
                         {webglFailed ? (
-                            <Sphere colors={ORB_COLORS.idle} energy={ORB_ENERGY.idle} />
+                            <Sphere colors={idleColors} energy={ORB_ENERGY.idle} />
                         ) : (
                             <ShaderOrb
-                                colors={ORB_COLORS.idle}
+                                colors={idleColors}
                                 energy={ORB_ENERGY.idle}
                                 size={WELCOME_ORB_SIZE}
                                 onContextFailed={handleWebglFailed}
