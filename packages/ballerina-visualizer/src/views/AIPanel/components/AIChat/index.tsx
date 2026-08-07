@@ -2915,6 +2915,7 @@ const AIChat: React.FC = () => {
                                     questions={activeClarifyItem.data.questions}
                                     requestId={activeClarifyItem.data.requestId}
                                     rpcClient={rpcClient}
+                                    onStop={handleStop}
                                 />
                             );
                         }

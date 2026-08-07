@@ -22,6 +22,8 @@ import { FooterContainer } from "./index";
 import { ActionButton } from "../../AgentStreamView/styles";
 import { FooterBox, FooterBoxPrompt, FooterDivider, FooterHeaderRow, FooterTextInputRow, FooterInput, FooterIconBtn } from "./styles";
 import { AmbientFrame } from "../../../../../components/AgentStatusOrb/shared";
+import StopControl from "./StopControl";
+import { useEscapeToStop } from "./useEscapeToStop";
 
 // ── Web tool styles (footer-specific, not shared) ─────────────────────────────
 
@@ -78,13 +80,6 @@ type CommonApprovalFooterProps = PlanCompletionProps | WebToolProps | SkillEnabl
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-// AIChatInput normally owns Escape-to-stop, but it's unmounted while this footer shows.
-const StopControl: React.FC<{ onStop: () => void }> = ({ onStop }) => (
-    <FooterIconBtn onClick={onStop} title="Stop (Escape)">
-        <span className="codicon codicon-stop-circle" />
-    </FooterIconBtn>
-);
-
 const CommonApprovalFooter: React.FC<CommonApprovalFooterProps> = (props) => {
     const [comment, setComment] = useState("");
     const { onStop } = props;
@@ -93,16 +88,7 @@ const CommonApprovalFooter: React.FC<CommonApprovalFooterProps> = (props) => {
         setComment("");
     }, [props.type]);
 
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.preventDefault();
-                onStop();
-            }
-        };
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [onStop]);
+    useEscapeToStop(onStop);
 
     if (props.type === "web_tool") {
         const { toolName, content, onAllow, onDeny } = props;
