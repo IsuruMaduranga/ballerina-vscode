@@ -31,13 +31,18 @@ import path from "path";
 /**
  * The single integration a workspace holds, or undefined when it holds anything else.
  *
- * Libraries deliberately do not qualify: a workspace whose only package is a library still
- * needs the workspace overview, which is the only surface offering to add the first
- * integration.
+ * Cardinality counts packages, not integrations: a workspace pairing one integration with a
+ * library has two things to show, and only the workspace overview shows both. A library-only
+ * workspace is excluded for the same reason — that overview is the sole surface offering to add
+ * the first integration.
+ *
+ * A package with no `projectPath` does not qualify either. The package overview resolves its
+ * contents by path, so redirecting to one without a path would replace the list with a view
+ * that can never finish loading.
  */
 export function getSoleIntegration(projectStructure?: ProjectStructureResponse): ProjectStructure | undefined {
     const projects = projectStructure?.projects ?? [];
-    if (projects.length !== 1 || projects[0].isLibrary) {
+    if (projects.length !== 1 || projects[0].isLibrary || !projects[0].projectPath) {
         return undefined;
     }
     return projects[0];

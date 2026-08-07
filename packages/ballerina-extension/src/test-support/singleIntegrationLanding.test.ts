@@ -75,6 +75,13 @@ describe("getSoleIntegration", () => {
         expect(getSoleIntegration(workspaceOf(pkg("utils", true)))).toBeUndefined();
         expect(getSoleIntegration(undefined)).toBeUndefined();
     });
+
+    // `projectPath` is optional on ProjectStructure. The package overview resolves its contents
+    // by path, so redirecting to a pathless package would hang on a spinner forever — worse than
+    // the one-item list it replaced.
+    it("returns nothing for a sole integration with no project path", () => {
+        expect(getSoleIntegration(workspaceOf({ ...pkg("orders"), projectPath: undefined }))).toBeUndefined();
+    });
 });
 
 describe("resolveSingleIntegrationOverride", () => {
