@@ -215,6 +215,12 @@ Rules:
                     tasks: allTasks
                 };
             } catch (error) {
+                // Let an abort (e.g. stopping while the plan approval is pending) propagate as a
+                // tool-error instead of surfacing a raw "Failed to process tasks" message — the
+                // turn's own abort handling already shows a clean stopped-by-user message.
+                if ((error as any)?.name === 'AbortError') {
+                    throw error;
+                }
                 console.error("Error in TaskWrite tool:", error);
                 return {
                     success: false,
