@@ -21,7 +21,7 @@ import styled from "@emotion/styled";
 import { ClarifyQuestion } from "@wso2/ballerina-core";
 import { FooterContainer } from "./index";
 import { ActionButton } from "../../AgentStreamView/styles";
-import { FooterBox, FooterDivider, FooterHeaderRow, FooterTextInputRow, FooterInput } from "./styles";
+import { FooterBox, FooterDivider, FooterTextInputRow, FooterInput } from "./styles";
 import { AmbientFrame } from "../../../../../components/AgentStatusOrb/shared";
 import StopControl from "./StopControl";
 import { useEscapeToStop } from "./useEscapeToStop";
@@ -57,7 +57,6 @@ const QuestionHeader = styled.div`
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
-    flex: 1;
     gap: 6px;
     margin-bottom: 8px;
 `;
@@ -237,16 +236,21 @@ const ClarifyFooter: React.FC<ClarifyFooterProps> = ({ questions, requestId, rpc
                                     {qu.tabLabel}
                                 </Tab>
                             ))}
+                            <div style={{ marginLeft: "auto" }}>
+                                <StopControl onStop={onStop} />
+                            </div>
                         </TabRow>
                     )}
 
-                    <FooterHeaderRow style={{ alignItems: "flex-start" }}>
-                        <QuestionHeader>
-                            <QuestionText>{q.question}</QuestionText>
-                            <TypeBadge>{isMulti ? "multiple answer" : "single answer"}</TypeBadge>
-                        </QuestionHeader>
-                        <StopControl onStop={onStop} />
-                    </FooterHeaderRow>
+                    <QuestionHeader>
+                        <QuestionText>{q.question}</QuestionText>
+                        <TypeBadge>{isMulti ? "multiple answer" : "single answer"}</TypeBadge>
+                        {questions.length <= 1 && (
+                            <div style={{ marginLeft: "auto" }}>
+                                <StopControl onStop={onStop} />
+                            </div>
+                        )}
+                    </QuestionHeader>
 
                     <OptionsList>
                         {q.options.map(opt => {
