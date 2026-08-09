@@ -583,6 +583,7 @@ export class ApprovalViewManager {
         return {
             views: [],
             currentIndex: 0,
+            generationId,
             semanticDiffs: review.reviewView.semanticDiffs,
             loadDesignDiagrams: review.reviewView.loadDesignDiagrams,
             affectedPackages: review.affectedPackagePaths
