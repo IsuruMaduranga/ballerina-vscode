@@ -213,6 +213,12 @@ function convertToReviewView(diff: SemanticDiff, projectPath: string, packageNam
 }
 
 
+// Semantic-diff URIs carry the ai:// baseline scheme; package paths are plain, so they only compare
+// once the scheme is dropped.
+function toComparablePath(uri: string): string {
+    return uri.replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/\\/g, "/");
+}
+
 // Helper to extract package name from path
 function getPackageName(path: string): string {
     const parts = path.replace(/\\/g, "/").split("/");
@@ -285,7 +291,7 @@ export function ReviewMode(): JSX.Element {
             if (loadDesignDiagrams && semanticDiffs.length > 0) {
                 const pkgsWithDiffs = new Set<string>();
                 for (const diff of semanticDiffs) {
-                    const uriPath = diff.uri.replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/\\/g, "/");
+                    const uriPath = toComparablePath(diff.uri);
                     for (const pkgPath of filteredPackages) {
                         const normalizedPkgPath = pkgPath.replace(/\\/g, "/");
                         if (uriPath.startsWith(normalizedPkgPath + "/") || uriPath === normalizedPkgPath) {
@@ -314,7 +320,7 @@ export function ReviewMode(): JSX.Element {
                 let packageName: string | undefined;
                 if (isWorkspaceProject) {
                     for (const pkgPath of filteredPackages) {
-                        const normalizedUri = diff.uri.replace(/\\/g, "/");
+                        const normalizedUri = toComparablePath(diff.uri);
                         const normalizedPkgPath = pkgPath.replace(/\\/g, "/");
                         if (normalizedUri.startsWith(normalizedPkgPath + "/") || normalizedUri === normalizedPkgPath) {
                             belongsToPackage = pkgPath;
