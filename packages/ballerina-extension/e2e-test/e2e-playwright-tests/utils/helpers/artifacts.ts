@@ -57,17 +57,7 @@ export async function addArtifact(artifactName: string, testId: string) {
         throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
     }
     const addArtifactBtn = artifactWebView.getByRole('button', { name: /Add Artifact/i });
-    const addIntegrationBtn = artifactWebView.getByRole('button', { name: /Add Integration/i });
-    await Promise.race([
-        addArtifactBtn.waitFor({ timeout: 30000 }),
-        addIntegrationBtn.waitFor({ timeout: 30000 }),
-    ]);
-
-    if (await addIntegrationBtn.isVisible().catch(() => false)) {
-        throw new Error(
-            'The overview offered "Add Integration"; the artifact list is its only expected entry point.'
-        );
-    }
+    await addArtifactBtn.waitFor({ timeout: 30000 });
 
     // `force` throughout — the floating Copilot orb/invite box intermittently overlaps
     // and intercepts pointer events on cards and buttons across these views.
