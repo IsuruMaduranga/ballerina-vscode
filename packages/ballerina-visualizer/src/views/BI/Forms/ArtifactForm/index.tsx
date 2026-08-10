@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { ReactNode, RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
     EVENT_TYPE,
     LineRange,
@@ -80,6 +80,7 @@ import { EditorContext, StackItem } from "@wso2/type-editor";
 import DynamicModal from "../../../../components/Modal";
 import { useModalStack } from "../../../../Context";
 import { deserializeForDiagnosticsAPI } from "../form-utils";
+import { FormHostCapabilitiesContext } from "../formHostCapabilities";
 
 interface ArtifactTypeEditorState {
     isOpen: boolean;
@@ -134,10 +135,6 @@ interface ArtifactFormProps {
     recordsOnly?: boolean;
     serverValidationErrors?: ValidationResult[];
     footerActionButton?: boolean;
-    // Hides the type helper's "Create New Type" action. Used by pre-project hosts
-    // (e.g. the Add Integration wizard) where the type editor has no visualizer
-    // state machine to resolve a file path from, so created types have nowhere to go.
-    allowTypeCreation?: boolean;
 }
 
 export function ArtifactForm(props: ArtifactFormProps) {
@@ -179,11 +176,14 @@ export function ArtifactForm(props: ArtifactFormProps) {
         secondarySubmitText,
         onSecondarySubmit,
         serverValidationErrors,
-        footerActionButton,
-        allowTypeCreation = true
+        footerActionButton
     } = props;
 
     const { rpcClient } = useRpcContext();
+    // Hosts (e.g. the pre-project Add Integration wizard) can restrict what forms
+    // mounted beneath them may offer; unrestricted when no provider is present.
+    const hostCapabilities = useContext(FormHostCapabilitiesContext);
+    const allowTypeCreation = hostCapabilities?.typeCreation ?? true;
 
 
 
