@@ -940,7 +940,7 @@ const MainPanel = () => {
                         case MACHINE_VIEW.ReviewMode: {
                             const { ReviewMode } = await import("./views/ReviewMode");
                             if (isStaleNavigation()) return;
-                            setViewComponent(<ReviewMode />);
+                            setViewComponent(<ReviewMode key={remountKey} />);
                             break;
                         }
                         case MACHINE_VIEW.EvalsetViewer: {
