@@ -32,6 +32,7 @@ import { getHashedProjectId } from "../../telemetry/common/project-id";
 import { runEventStore } from "../utils/run-event-store";
 import { sendSaveChatNotification } from "../utils/ai-utils";
 import { finalizeRevertibleGeneration } from "../utils/generation-response";
+import { approvalViewManager } from "../state/ApprovalViewManager";
 
 // ==================================
 // Agent Generation Functions
@@ -131,6 +132,9 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
         // Nothing to clean up: edits already land directly in the real workspace, and there's
         // no separate temp copy anymore (see existingTempPath below).
         finalizeLastGeneration(projectRootPath, threadId);
+
+        // The previous generation's review is no longer the one being worked on.
+        approvalViewManager.closeReviewModeIfOpen();
 
         // Create config using factory function. existingTempPath makes the agent operate
         // directly on the real project root instead of AICommandExecutor creating a

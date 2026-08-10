@@ -22,7 +22,7 @@ import { AiPanelWebview } from '../../../views/ai-panel/webview';
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
 import { sendReviewRestoreDidOpenBatch } from '../utils/project/ls-schema-notifications';
 import { VisualizerWebview } from '../../../views/visualizer/webview';
-import { openView as openMainView, StateMachine } from '../../../stateMachine';
+import { history, openView as openMainView, StateMachine, updateView } from '../../../stateMachine';
 import { openPopupView, StateMachinePopup } from '../../../stateMachinePopup';
 import { notifyApprovalOverlayState, RPCLayer } from '../../../RPCLayer';
 
@@ -592,6 +592,26 @@ export class ApprovalViewManager {
             tempProjectPath,
             isWorkspace: review.reviewView.isWorkspace,
         };
+    }
+
+    /**
+     * Close ReviewMode if it is the current view. A review belongs to one generation, so leaving an
+     * earlier one open while the next starts means the user's next click lands on the previous
+     * generation's diagrams — and the bar hides its Review button while review mode is open, so
+     * there is no way back either.
+     */
+    closeReviewModeIfOpen(): void {
+        const ctx = StateMachine.context();
+        if (ctx.view !== MACHINE_VIEW.ReviewMode) {
+            return;
+        }
+        console.log('[ApprovalViewManager] Closing ReviewMode — a new generation is starting');
+        this.openReviewGenerationId = null;
+        // Same as the panel's own Close: return to whatever the user was looking at before, rather
+        // than dropping them on the package overview.
+        history.pop();
+        updateView(false);
+        this.notifyReviewModeClosed();
     }
 
     /**
