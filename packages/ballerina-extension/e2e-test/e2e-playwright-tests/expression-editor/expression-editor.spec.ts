@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Locator, test } from '@playwright/test';
+import { test } from '@playwright/test';
 import path from 'path';
 import {
     addArtifact,
@@ -34,32 +34,6 @@ import { Diagram, SidePanel } from '../utils/pages';
 // automation so other suites can reach "Add Artifact"; see automation.spec.ts).
 const AUTOMATION_CREATION_PROJECT_TEMPLATE = path.join(__dirname, '..', 'data', 'automation_creation_project');
 
-/**
- * Click an architecture-diagram node until it actually navigates.
- *
- * These nodes (entry, connection, listener) have no onClick — component-diagram
- * wires onMouseDown/onMouseUp through useClickWithDragTolerance, which only
- * fires the handler when the pointer moved less than 5px between the two
- * events. Any layout shift mid-click therefore reads as a drag and the click is
- * dropped with no error at all, so a single attempt can silently do nothing.
- * Retry against `expected` — the thing the click is supposed to open.
- */
-async function clickUntil(
-    node: Locator,
-    expected: Locator,
-    description: string,
-    attempts: number = 5
-): Promise<void> {
-    for (let attempt = 0; attempt < attempts; attempt++) {
-        await node.click({ timeout: 15000 }).catch(() => { /* node re-rendering; retry */ });
-        const opened = await expected.waitFor({ state: 'visible', timeout: 15000 })
-            .then(() => true).catch(() => false);
-        if (opened) {
-            return;
-        }
-    }
-    throw new Error(`Clicking the ${description} did not open the expected view after ${attempts} attempts`);
-}
 
 export default function createTests() {
     test.describe.serial('Expression Editor Tests', {
@@ -76,21 +50,15 @@ export default function createTests() {
             if (!artifactWebView) {
                 throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
             }
-            // "Create" in the in-project form, "Create Integration" in the wizard's Configure step.
+            // "Create" in the in-project form — the only form reachable now that the empty
+            // state offers "Add Artifact" too.
             await submitArtifactCreation(artifactWebView);
 
-            // On this empty integration, the wizard generates the artifact into the existing
-            // package and closes back to the (now non-empty) overview rather than opening the
-            // new automation directly — unlike the in-project form's direct-to-diagram flow.
-            // Wait for the refreshed overview's entry node, then navigate into it.
+            // The in-project form opens the new automation directly. The wizard it replaced
+            // closed back to the overview and needed the entry node clicking into, so this
+            // asserts the direct landing rather than accepting either.
             const diagramCanvas = artifactWebView.getByTestId('bi-diagram-canvas');
-            const automationNode = artifactWebView.locator('[data-testid="entry-node-automation"]');
-            const landedOnDiagram = await diagramCanvas.waitFor({ timeout: 10000 })
-                .then(() => true).catch(() => false);
-            if (!landedOnDiagram) {
-                await automationNode.waitFor({ state: 'visible', timeout: 30000 });
-                await clickUntil(automationNode, diagramCanvas, 'Automation entry node');
-            }
+            await diagramCanvas.waitFor({ timeout: 30000 });
 
             // Add a node to the diagram
             const diagram = new Diagram(page.page);

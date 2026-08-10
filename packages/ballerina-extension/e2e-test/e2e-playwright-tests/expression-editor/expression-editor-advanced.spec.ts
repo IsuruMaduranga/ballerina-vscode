@@ -17,7 +17,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { expect, test, Frame, Locator } from '@playwright/test';
+import { expect, test, Frame } from '@playwright/test';
 import {
     addArtifact,
     BI_INTEGRATOR_LABEL,
@@ -64,34 +64,6 @@ async function pollGenerated(fileName: string, fragment: string, timeoutMs = 300
     throw new Error(`${fileName} did not contain "${fragment}" within ${timeoutMs}ms:\n${content}`);
 }
 
-/**
- * Click an architecture-diagram node until it actually navigates.
- *
- * These nodes (entry, connection, listener) have no onClick — component-diagram
- * wires onMouseDown/onMouseUp through useClickWithDragTolerance, which only
- * fires the handler when the pointer moved less than 5px between the two
- * events. Any layout shift mid-click therefore reads as a drag and the click is
- * dropped with no error at all, so a single attempt can silently do nothing.
- * Retry against `expected` — the thing the click is supposed to open.
- */
-async function clickUntil(
-    node: Locator,
-    expected: Locator,
-    description: string,
-    attempts: number = 5
-): Promise<void> {
-    for (let attempt = 0; attempt < attempts; attempt++) {
-        // `force` — the floating Copilot orb/invite box has been observed to
-        // overlap and intercept pointer events on diagram nodes.
-        await node.click({ force: true, timeout: 15000 }).catch(() => { /* node re-rendering; retry */ });
-        const opened = await expected.waitFor({ state: 'visible', timeout: 15000 })
-            .then(() => true).catch(() => false);
-        if (opened) {
-            return;
-        }
-    }
-    throw new Error(`Clicking the ${description} did not open the expected view after ${attempts} attempts`);
-}
 
 async function getWebviewFrame(): Promise<Frame> {
     const webview = await switchToIFrame(BI_INTEGRATOR_LABEL, page.page);
@@ -311,24 +283,17 @@ export default function createTests() {
 
             await addArtifact('Automation', 'automation');
             const frame = await getWebviewFrame();
-            // "Create" in the in-project form, "Create Integration" in the wizard's
-            // Configure step — this fixture's project starts empty, so "Add Artifact"
-            // is hidden and addArtifact() falls back to the latter.
+            // "Create" in the in-project form. This fixture's project starts empty, which
+            // used to hide "Add Artifact" and route addArtifact() through the wizard; the
+            // empty state now offers the same button, so there is one form either way.
             await submitArtifactCreation(frame);
 
-            // On this empty integration, the wizard generates the artifact into the
-            // existing package and closes back to the (now non-empty) overview rather
-            // than opening the new automation directly — unlike the in-project form's
-            // direct-to-diagram flow. Wait for the refreshed overview's entry node,
-            // then navigate into it.
+            // The in-project form opens the new automation directly. The wizard it replaced
+            // closed back to the overview and needed the entry node clicking into, so this
+            // asserts the direct landing rather than accepting either — accepting both would
+            // keep passing if that flow came back.
             const diagramCanvas = frame.getByTestId('bi-diagram-canvas');
-            const automationNode = frame.locator('[data-testid="entry-node-automation"]');
-            const landedOnDiagram = await diagramCanvas.waitFor({ timeout: 10000 })
-                .then(() => true).catch(() => false);
-            if (!landedOnDiagram) {
-                await automationNode.waitFor({ state: 'visible', timeout: 30000 });
-                await clickUntil(automationNode, diagramCanvas, 'Automation entry node');
-            }
+            await diagramCanvas.waitFor({ timeout: 30000 });
             logStep('Automation created');
 
             const sidePanel = await openNodePalette(frame);

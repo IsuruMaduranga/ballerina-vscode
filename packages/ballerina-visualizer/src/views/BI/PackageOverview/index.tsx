@@ -1217,15 +1217,9 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 </StatusRow>
                                             )}
                                             <ButtonContainer>
-                                                {/* Disabled rather than hidden mid-turn: reverting the
-                                                    generation restores a pre-turn checkpoint and drops
-                                                    whatever is not in it, including an artifact added now. */}
-                                                <Button
-                                                    appearance="primary"
-                                                    onClick={handleAddConstruct}
-                                                    disabled={agentWorking}
-                                                    tooltip={agentWorking ? "Available once Copilot finishes" : undefined}
-                                                >
+                                                {/* Identical to the header's, which this replaces when the
+                                                    integration is empty — same handler, same enablement. */}
+                                                <Button appearance="primary" onClick={handleAddConstruct}>
                                                     <Codicon name="add" sx={{ marginRight: 8 }} /> Add Artifact
                                                 </Button>
                                             </ButtonContainer>

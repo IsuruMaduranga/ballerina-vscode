@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Locator, test } from '@playwright/test';
+import { test } from '@playwright/test';
 import path from 'path';
 import {
     addArtifact,
@@ -35,40 +35,13 @@ import { DEFAULT_PROJECT_NAME } from '../utils/helpers/constants';
 // reach "Add Artifact" on an otherwise-empty integration; see addArtifact()).
 const AUTOMATION_CREATION_PROJECT_TEMPLATE = path.join(__dirname, '..', 'data', 'automation_creation_project');
 
-/**
- * Click an architecture-diagram node until it actually navigates.
- *
- * These nodes (entry, connection, listener) have no onClick — component-diagram
- * wires onMouseDown/onMouseUp through useClickWithDragTolerance, which only
- * fires the handler when the pointer moved less than 5px between the two
- * events. Any layout shift mid-click therefore reads as a drag and the click is
- * dropped with no error at all, so a single attempt can silently do nothing.
- * Retry against `expected` — the thing the click is supposed to open.
- */
-async function clickUntil(
-    node: Locator,
-    expected: Locator,
-    description: string,
-    attempts: number = 5
-): Promise<void> {
-    for (let attempt = 0; attempt < attempts; attempt++) {
-        await node.click({ timeout: 15000 }).catch(() => { /* node re-rendering; retry */ });
-        const opened = await expected.waitFor({ state: 'visible', timeout: 15000 })
-            .then(() => true).catch(() => false);
-        if (opened) {
-            return;
-        }
-    }
-    throw new Error(`Clicking the ${description} did not open the expected view after ${attempts} attempts`);
-}
-
 export default function createTests() {
     test.describe.serial('Automation Tests', {
     }, async () => {
         initTest(true, true, undefined, undefined, AUTOMATION_CREATION_PROJECT_TEMPLATE);
         test('Create Automation', async () => {
-            // 1. Click on the "Add Artifact" button (or, on this empty integration,
-            //    "Add Integration", which reopens the creation wizard's artifact picker)
+            // 1. Click on the "Add Artifact" button — the only entry point, on an empty
+            //    integration as much as a populated one
             // 2. Verify the Artifacts menu is displayed
             // 3. Under "Automation" section, click on "Automation" option
             await addArtifact('Automation', 'automation');
@@ -78,9 +51,10 @@ export default function createTests() {
                 throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
             }
 
-            // 4. Verify the "Create Automation" form is displayed. On an empty
-            // integration this is the creation wizard's Configure step ("Create
-            // Automation"); elsewhere it's the in-project form ("Create New Automation").
+            // 4. Verify the "Create Automation" form is displayed. Always the in-project
+            // form now; the wizard's Configure step is no longer reachable from the
+            // overview. The heading is composed from artifact metadata, so the optional
+            // "New" is kept rather than pinned to a string this suite cannot verify.
             const createForm = artifactWebView.getByRole('heading', { name: /Create( New)? Automation/i });
             await createForm.waitFor({ timeout: 10000 });
 
@@ -100,23 +74,17 @@ export default function createTests() {
                 }
             }
 
-            // 8. Click on the submit button ("Create" in the in-project form,
-            // "Create Integration" in the creation wizard's Configure step).
+            // 8. Click on the submit button ("Create" in the in-project form).
             await submitArtifactCreation(artifactWebView);
 
             // 9. Verify the Automation is created and the automation designer view is displayed.
-            // On this empty integration, the wizard generates the artifact into the existing
-            // package and closes back to the (now non-empty) overview rather than opening the
-            // new automation directly — unlike the in-project form's direct-to-diagram flow.
-            // Wait for the refreshed overview's entry node, then navigate into it.
+            // The in-project form opens the new automation directly. It used to be reachable
+            // from an empty integration through the creation wizard instead, which closed back
+            // to the overview and needed the entry node clicking into — so this asserts the
+            // direct landing rather than accepting either, which would keep passing if that
+            // second flow came back.
             const diagramCanvas = artifactWebView.locator('#bi-diagram-canvas');
-            const automationNode = artifactWebView.locator('[data-testid="entry-node-automation"]');
-            const landedOnDiagram = await diagramCanvas.waitFor({ state: 'visible', timeout: 10000 })
-                .then(() => true).catch(() => false);
-            if (!landedOnDiagram) {
-                await automationNode.waitFor({ state: 'visible', timeout: 30000 });
-                await clickUntil(automationNode, diagramCanvas, 'Automation entry node');
-            }
+            await diagramCanvas.waitFor({ state: 'visible', timeout: 30000 });
 
             // 10. Verify the automation name is displayed (default: "main")
             const diagramTitle = artifactWebView.locator('h2', { hasText: 'Automation' });

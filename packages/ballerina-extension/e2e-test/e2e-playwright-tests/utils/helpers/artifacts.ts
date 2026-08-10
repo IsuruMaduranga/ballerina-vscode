@@ -39,12 +39,15 @@ export async function domClick(locator: Locator): Promise<void> {
 }
 
 /**
- * Add an artifact to the project. The overview header shows "Add Artifact" (opening the
- * flat artifact-list picker) once the integration has at least one artifact; on a still-empty
- * integration it shows "Add Integration" instead, which reopens the creation wizard's Type
- * step — a card picker restricted to the subset of kinds the wizard supports, but sharing the
- * same card ids as the flat picker. That step requires an explicit "Next" after selecting the
- * card, unlike the flat picker's direct card-click.
+ * Add an artifact to the project.
+ *
+ * "Add Artifact" is the only way in, from either state of the overview: the Design header
+ * once the integration has an artifact, and the empty state before that. Both open the flat
+ * artifact-list picker, where a card click goes straight to the artifact's form.
+ *
+ * Asserts "Add Integration" is absent rather than tolerating it. That button opened the
+ * creation wizard's Type step — a restricted card picker needing an explicit "Next" — and
+ * accepting either would let this helper pass against the flow it is meant to have replaced.
  */
 export async function addArtifact(artifactName: string, testId: string) {
     console.log(`Adding artifact: ${artifactName}`);
@@ -53,25 +56,26 @@ export async function addArtifact(artifactName: string, testId: string) {
         throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
     }
     const addArtifactBtn = artifactWebView.getByRole('button', { name: /Add Artifact/i });
-    const addIntegrationBtn = artifactWebView.getByRole('button', { name: /Add Integration/i });
-    await Promise.race([
-        addArtifactBtn.waitFor({ timeout: 30000 }),
-        addIntegrationBtn.waitFor({ timeout: 30000 }),
-    ]);
+    await addArtifactBtn.waitFor({ timeout: 30000 });
+
+    // Checked only once "Add Artifact" is on screen, so this reports a genuine second entry
+    // point rather than racing the overview's first paint.
+    const addIntegrationCount = await artifactWebView
+        .getByRole('button', { name: /Add Integration/i })
+        .count();
+    if (addIntegrationCount > 0) {
+        throw new Error(
+            'The overview offered "Add Integration"; the artifact list is the only expected entry point.'
+        );
+    }
+    // Exactly one, so a future change cannot reintroduce a second by rendering both states' buttons.
+    const addArtifactCount = await addArtifactBtn.count();
+    if (addArtifactCount !== 1) {
+        throw new Error(`Expected exactly one "Add Artifact" button, found ${addArtifactCount}.`);
+    }
 
     // `force` throughout — the floating Copilot orb/invite box intermittently overlaps
     // and intercepts pointer events on cards and buttons across these views.
-    if (await addIntegrationBtn.isVisible().catch(() => false)) {
-        await addIntegrationBtn.click({ force: true });
-        const card = artifactWebView.locator(`#${testId}`);
-        await card.waitFor();
-        await domClick(card);
-        // The Type step's "Next" is right-aligned (not full-width), so it doesn't
-        // sit under the orb's bottom-center dock point — a coordinate click is fine.
-        await artifactWebView.getByRole('button', { name: 'Next' }).click({ force: true, timeout: 60000 });
-        return;
-    }
-
     await addArtifactBtn.click({ force: true });
     const card = artifactWebView.locator(`#${testId}`);
     await card.waitFor();
@@ -90,17 +94,17 @@ export async function createArtifactAndGetWebview(artifactName: string, testId: 
 
 /**
  * Submits the artifact creation form shown after `addArtifact`/
- * `createArtifactAndGetWebview` — "Create" in the in-project form, "Create
- * Integration" in the wizard's Configure step (reached on a still-empty
- * integration). MUST use `domClick`, not a coordinate click: unlike the
- * in-project form's button, the wizard's is a full-width footer action
- * button (see ArtifactForm's `footerActionButton`) whose center sits exactly
- * where the floating Copilot orb docks by default, so a coordinate click —
- * even with `force: true` — can silently land on the orb instead and open its
- * mini chat rather than submitting the form.
+ * `createArtifactAndGetWebview` — always the in-project form's "Create", now that the
+ * wizard's Configure step ("Create Integration") is no longer reachable from the overview.
+ *
+ * Still uses `domClick` rather than a coordinate click: the form's button can be a
+ * full-width footer action button (see ArtifactForm's `footerActionButton`) whose center
+ * sits exactly where the floating Copilot orb docks by default, so a coordinate click —
+ * even with `force: true` — can silently land on the orb instead and open its mini chat
+ * rather than submitting the form.
  */
 export async function submitArtifactCreation(webview: Frame): Promise<void> {
-    const submitBtn = webview.getByRole('button', { name: /^Create( Integration)?$/ });
+    const submitBtn = webview.getByRole('button', { name: /^Create$/ });
     await submitBtn.waitFor({ state: 'visible', timeout: 60000 });
     await domClick(submitBtn);
 }
