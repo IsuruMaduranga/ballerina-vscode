@@ -164,37 +164,44 @@ export function AddProjectForm() {
     });
 
     useEffect(() => {
-        Promise.all([
-            rpcClient.getCommonRpcClient().getWorkspaceRoot(),
-            rpcClient.getCommonRpcClient().getWorkspaceType()
-        ]).then(async ([workspaceRoot, workspaceType]) => {
-            const inProject = workspaceType.type === "BALLERINA_WORKSPACE";
-            setTargetPath(workspaceRoot.path);
-            // The converted project is created next to the current integration by
-            // default, so seed the location with the integration's parent directory.
-            const { base, name } = splitPath(workspaceRoot.path);
-            setConvertBaseDir(base);
-            setCurrentIntegrationDirName(inProject ? "" : name);
-            setIsInProject(inProject);
-
+        // One `finally` around the whole sequence, not just the defaults call: the
+        // integration name field waits on `defaultsReady` before indexing its default, so
+        // any leg failing — workspace discovery included — would strand it unseeded.
+        (async () => {
             try {
-                const defaults = await rpcClient.getBIDiagramRpcClient().getSuggestedProjectDefaults({ isInProject: inProject });
-                setFormData(prev => ({
-                    ...prev,
-                    workspaceName: inProject ? prev.workspaceName : defaults.projectName,
-                    projectHandle: inProject ? prev.projectHandle : defaults.projectHandle,
-                    integrationName: defaults.integrationName,
-                    packageName: defaults.packageName,
-                }));
-            } catch {
-                // defaults unavailable — leave form empty
+                const [workspaceRoot, workspaceType] = await Promise.all([
+                    rpcClient.getCommonRpcClient().getWorkspaceRoot(),
+                    rpcClient.getCommonRpcClient().getWorkspaceType()
+                ]);
+                const inProject = workspaceType.type === "BALLERINA_WORKSPACE";
+                setTargetPath(workspaceRoot.path);
+                // The converted project is created next to the current integration by
+                // default, so seed the location with the integration's parent directory.
+                const { base, name } = splitPath(workspaceRoot.path);
+                setConvertBaseDir(base);
+                setCurrentIntegrationDirName(inProject ? "" : name);
+                setIsInProject(inProject);
+
+                try {
+                    const defaults = await rpcClient.getBIDiagramRpcClient().getSuggestedProjectDefaults({ isInProject: inProject });
+                    setFormData(prev => ({
+                        ...prev,
+                        workspaceName: inProject ? prev.workspaceName : defaults.projectName,
+                        projectHandle: inProject ? prev.projectHandle : defaults.projectHandle,
+                        integrationName: defaults.integrationName,
+                        packageName: defaults.packageName,
+                    }));
+                } catch {
+                    // defaults unavailable — leave form empty
+                }
+            } catch (error) {
+                // Discovery failed: the form stays on its initial state rather than
+                // silently pointing at nothing.
+                console.error("Failed to resolve the workspace for the add-to-project form:", error);
             } finally {
-                // Released even on failure: the integration field waits on this before
-                // indexing its default name, and must not be stranded by a defaults call
-                // that never delivered.
                 setDefaultsReady(true);
             }
-        });
+        })();
     }, []);
 
     const handleConvertPathChange = (value: string) => {
@@ -332,7 +339,11 @@ export function AddProjectForm() {
                 packageDirectoryName,
                 workspaceName: formData.workspaceName,
                 orgName: formData.orgName || undefined,
-                orgHandle,
+                // Omitted rather than sent empty. `createBIProjectPure` writes
+                // `org = "${orgHandle ?? finalOrgName}"`, and `??` does not fall through on
+                // "" — an empty handle would land in Ballerina.toml verbatim. Only reachable
+                // now that the integration route no longer gates submit on the organization.
+                orgHandle: orgHandle || undefined,
                 version: formData.version || undefined,
                 isLibrary: formData.isLibrary,
                 projectHandle: formData.projectHandle,
@@ -471,7 +482,14 @@ export function AddProjectForm() {
                             disabled={
                                 nextDisabled ||
                                 !!componentNameError ||
-                                !isFormValidAddProject(formData, isInProject, addNewAfterConvert) ||
+                                // The organization is not shown, not editable and not
+                                // reportable on this route, so it is not gated on either —
+                                // it is resolved for us and can arrive late, reserved, or
+                                // never, each of which would otherwise disable this button
+                                // with nothing on screen to explain it.
+                                !isFormValidAddProject(formData, isInProject, addNewAfterConvert, {
+                                    requireOrgName: false,
+                                }) ||
                                 isLoading ||
                                 (isConvert && !!convertPathError)
                             }
