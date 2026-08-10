@@ -32,7 +32,6 @@ import { getHashedProjectId } from "../../telemetry/common/project-id";
 import { runEventStore } from "../utils/run-event-store";
 import { sendSaveChatNotification } from "../utils/ai-utils";
 import { finalizeRevertibleGeneration } from "../utils/generation-response";
-import { approvalViewManager } from "../state/ApprovalViewManager";
 
 // ==================================
 // Agent Generation Functions
@@ -133,7 +132,10 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
         // no separate temp copy anymore (see existingTempPath below).
         finalizeLastGeneration(projectRootPath, threadId);
 
-        // The previous generation's review is no longer the one being worked on.
+        // The previous generation's review is no longer the one being worked on. Imported lazily:
+        // ApprovalViewManager reaches the webview layer and vscode-languageclient through RPCLayer,
+        // which cannot load under jest, and this module is imported by unit tests.
+        const { approvalViewManager } = await import("../state/ApprovalViewManager");
         approvalViewManager.closeReviewModeIfOpen();
 
         // Create config using factory function. existingTempPath makes the agent operate
