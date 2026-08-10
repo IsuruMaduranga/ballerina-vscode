@@ -1217,8 +1217,8 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 </StatusRow>
                                             )}
                                             <ButtonContainer>
-                                                {/* Identical to the header's, which this replaces when the
-                                                    integration is empty — same handler, same enablement. */}
+                                                {/* The header's button, restated where the empty state can
+                                                    centre it — same handler, same enablement. */}
                                                 <Button appearance="primary" onClick={handleAddConstruct}>
                                                     <Codicon name="add" sx={{ marginRight: 8 }} /> Add Artifact
                                                 </Button>

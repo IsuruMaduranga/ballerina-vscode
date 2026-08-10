@@ -76,14 +76,12 @@ export default function createTests() {
             if (!artifactWebView) {
                 throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
             }
-            // "Create" in the in-project form — the only form reachable now that the empty
-            // state offers "Add Artifact" too.
+            // "Create" on the artifact form.
             await submitArtifactCreation(artifactWebView);
 
-            // The in-project form opens the new automation directly, so the canvas is the
-            // expected landing. The entry-node fallback below is kept as tolerance for a slow
-            // diagram — not because a second flow lands on the overview any more; the wizard
-            // that did is no longer reachable from here.
+            // Submitting the form normally lands straight on the designer's canvas. When it
+            // settles on the overview instead, the automation is there as an entry node, and
+            // clicking that opens the same designer.
             const diagramCanvas = artifactWebView.getByTestId('bi-diagram-canvas');
             const automationNode = artifactWebView.locator('[data-testid="entry-node-automation"]');
             const landedOnDiagram = await diagramCanvas.waitFor({ timeout: 10000 })

@@ -67,8 +67,8 @@ export default function createTests() {
     }, async () => {
         initTest(true, true, undefined, undefined, AUTOMATION_CREATION_PROJECT_TEMPLATE);
         test('Create Automation', async () => {
-            // 1. Click on the "Add Artifact" button — the only entry point now, on an
-            //    empty integration as much as a populated one
+            // 1. Click the "Add Artifact" button, which the overview offers whether the
+            //    integration is empty or already has artifacts
             // 2. Verify the Artifacts menu is displayed
             // 3. Under "Automation" section, click on "Automation" option
             await addArtifact('Automation', 'automation');
@@ -78,10 +78,9 @@ export default function createTests() {
                 throw new Error(BI_WEBVIEW_NOT_FOUND_ERROR);
             }
 
-            // 4. Verify the "Create Automation" form is displayed. Always the in-project
-            // form now; the wizard's Configure step is no longer reachable from the overview.
-            // The heading is composed from artifact metadata, so the optional "New" is kept
-            // rather than pinned to a string this suite cannot verify.
+            // 4. Verify the "Create Automation" form is displayed. Its heading is composed
+            // from artifact metadata, so the optional "New" is matched rather than pinned to
+            // one spelling.
             const createForm = artifactWebView.getByRole('heading', { name: /Create( New)? Automation/i });
             await createForm.waitFor({ timeout: 10000 });
 
@@ -101,14 +100,13 @@ export default function createTests() {
                 }
             }
 
-            // 8. Click on the submit button ("Create" in the in-project form).
+            // 8. Click the form's "Create" button.
             await submitArtifactCreation(artifactWebView);
 
             // 9. Verify the Automation is created and the automation designer view is displayed.
-            // The in-project form opens the new automation directly, so the canvas is the
-            // expected landing. The entry-node fallback below is kept as tolerance for a slow
-            // diagram — not because a second flow lands on the overview any more; the wizard
-            // that did is no longer reachable from here.
+            // Submitting the form normally lands straight on the designer's canvas. When it
+            // settles on the overview instead, the automation is there as an entry node, and
+            // clicking that opens the same designer.
             const diagramCanvas = artifactWebView.locator('#bi-diagram-canvas');
             const automationNode = artifactWebView.locator('[data-testid="entry-node-automation"]');
             const landedOnDiagram = await diagramCanvas.waitFor({ state: 'visible', timeout: 10000 })

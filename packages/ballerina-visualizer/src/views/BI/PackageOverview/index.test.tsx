@@ -22,9 +22,9 @@
 //
 // Asserted here rather than left to the E2E suite because the two placements are separate
 // JSX branches gated on the same `isEmptyIntegration()` predicate — flip either gate and
-// you get two buttons or none, in a state that is awkward to reach by hand. It also pins
-// the destination: an earlier build sent the empty state to the Create Integration wizard
-// instead, and nothing but the click target distinguishes the two.
+// you get two buttons or none, in a state that is awkward to reach by hand. The destination
+// is pinned too: nothing about the two buttons distinguishes them but their click target,
+// so a wrong one looks identical on screen.
 
 import React from "react";
 import { createRoot, Root } from "react-dom/client";
@@ -255,7 +255,8 @@ describe("PackageOverview add-artifact entry point", () => {
         expect(emptyMessage!.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
-    // The wizard route the empty state used to offer. Nothing should reintroduce it.
+    // A second add action under its own label would defeat the single entry point whatever
+    // it opened, and "Add Integration" is the label most easily confused for this one.
     it("never offers an Add Integration action", async () => {
         for (const directoryMap of [emptyDirectoryMap(), populated()]) {
             const { rpcClient } = makeRpc(directoryMap);
