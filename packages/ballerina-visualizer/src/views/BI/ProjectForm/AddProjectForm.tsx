@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import styled from "@emotion/styled";
-import { Button, Typography } from "@wso2/ui-toolkit";
+import { Button, ProgressRing, ThemeColors, Typography } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { AddProjectFormFields } from "./AddProjectFormFields";
 import { AddComponentFields } from "./AddComponentFields";
@@ -42,6 +42,14 @@ import { useDefaultOrgName } from "./hooks/useDefaultOrgName";
  * wizard back here.
  */
 type Screen = "chooser" | "library";
+
+/** Holds the panel's body height while initialization settles, so it does not collapse. */
+const ShellLoader = styled.div`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 320px;
+`;
 
 /** Submit-time error beside the action button, for failures with no single field. */
 const SubmitError = styled.div`
@@ -71,10 +79,12 @@ export function AddProjectForm() {
     // starting point; library = name + package details.
     const [screen, setScreen] = useState<Screen>("chooser");
     const [targetPath, setTargetPath] = useState<string>("");
-    // Whether the suggested-defaults call has settled. The integration name field mounts
-    // with this screen — unlike the library screen, which the user reaches later — so
-    // without this gate its collision-indexed default and the arriving defaults race, and
-    // whichever resolves last wins.
+    // Whether initialization — workspace discovery and the suggested defaults — has settled.
+    // Gates two things. The body is not rendered until then, because `isInProject` defaults
+    // to the convert variant and would otherwise flash the wrong screen. And the integration
+    // name field, which mounts with this screen rather than on a later one like the library's,
+    // must not index its collision-free default against the arriving defaults, or whichever
+    // resolves last wins.
     const [defaultsReady, setDefaultsReady] = useState<boolean>(false);
     // Convert flow: `convertBaseDir` is the parent location; the folder name defaults to
     // the project name until edited.
@@ -368,6 +378,22 @@ export function AddProjectForm() {
     const startingPointSubtitle = isInProject
         ? undefined
         : `In project ${formData.workspaceName?.trim() || "your new project"}`;
+
+    // `isInProject` is false until workspace discovery resolves, and false is the convert
+    // variant — so rendering straight away shows "Convert to Project" with the project
+    // name/location fields for a frame or two, then swaps the title, the fields, the type
+    // selector and the button all at once when the real answer lands. Hold the body until
+    // it is known. The shell stays mounted, so the backdrop, panel and header row keep
+    // their place and only the content fills in.
+    if (!defaultsReady) {
+        return (
+            <CreateFlowShell title="" onBack={goBack} fill>
+                <ShellLoader>
+                    <ProgressRing color={ThemeColors.PRIMARY} />
+                </ShellLoader>
+            </CreateFlowShell>
+        );
+    }
 
     if (screen === "library") {
         return (
