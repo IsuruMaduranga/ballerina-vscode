@@ -22,6 +22,7 @@ import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { ReadonlyComponentDiagram } from "./ReadonlyComponentDiagram";
 import { ExpectedFlowMetadata, ReadonlyFlowDiagram, ReviewViewMode, getVersionsForChangeType } from "./ReadonlyFlowDiagram";
+import { toComparablePath } from "./path-utils";
 import { ReadonlyTypeDiagram } from "./ReadonlyTypeDiagram";
 import { ReviewNavigation } from "./ReviewNavigation";
 import { Codicon, Icon, ThemeColors } from "@wso2/ui-toolkit";
@@ -212,12 +213,6 @@ function convertToReviewView(diff: SemanticDiff, projectPath: string, packageNam
     };
 }
 
-
-// Semantic-diff URIs carry the ai:// baseline scheme; package paths are plain, so they only compare
-// once the scheme is dropped.
-function toComparablePath(uri: string): string {
-    return uri.replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/\\/g, "/");
-}
 
 // Helper to extract package name from path
 function getPackageName(path: string): string {
