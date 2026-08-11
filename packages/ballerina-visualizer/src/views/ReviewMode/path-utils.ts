@@ -16,18 +16,26 @@
  * under the License.
  */
 
+// Deep import: the core barrel pulls in ESM-only LS transport modules that jest cannot load.
+import { isPathInside } from "@wso2/ballerina-core/lib/utils/path-utils";
+
 /**
- * Semantic-diff URIs carry the ai:// baseline scheme; package paths are plain, so they only compare
- * once the scheme is dropped. Kept in its own module so it can be tested without pulling the whole
- * ReviewMode view in — same reason position-utils is separate.
+ * Semantic-diff URIs come from Java's `Path.toUri()` (`SemanticDiffComputer.resolveUri`), so they are
+ * percent-encoded and three-slash — the latter leaving a leading slash before a Windows drive letter.
  */
 export function toComparablePath(uri: string): string {
-    return uri.replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/\\/g, "/");
+    const withoutScheme = uri.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+    let decoded: string;
+    try {
+        decoded = decodeURIComponent(withoutScheme);
+    } catch {
+        decoded = withoutScheme;
+    }
+    return decoded.replace(/\\/g, "/").replace(/^\/(?=[A-Za-z]:)/, "");
 }
 
 /** Whether a semantic diff's uri falls under the given package root. */
 export function diffBelongsToPackage(uri: string, packagePath: string): boolean {
-    const uriPath = toComparablePath(uri);
-    const pkgPath = packagePath.replace(/\\/g, "/");
-    return uriPath.startsWith(`${pkgPath}/`) || uriPath === pkgPath;
+    // isPathInside normalises the drive letter and trailing slashes, but not separators.
+    return isPathInside(packagePath.replace(/\\/g, "/"), toComparablePath(uri));
 }
