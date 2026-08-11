@@ -134,6 +134,13 @@ public class BallerinaBaseCompilerApi extends BallerinaCompilerApi {
     }
 
     @Override
+    public BuildOptions getBalaBuildOptions(boolean offline) {
+        // PackageLockingMode only exists from 2201.13.0; sticky = false is the equivalent knob before it.
+        return offline ? BuildOptions.builder().setOffline(true).setSticky(false).build()
+                : BuildOptions.builder().setSticky(true).build();
+    }
+
+    @Override
     public boolean isWorkspaceProjectRoot(Path path) {
         return false;
     }
