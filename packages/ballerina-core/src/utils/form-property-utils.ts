@@ -18,9 +18,41 @@
 
 import { DropdownType, InputType, TemplateType } from "../interfaces/bi";
 
+const STRING_TEMPLATE = /^string\s*`[^`]*`$/;
+const RAW_TEMPLATE = /^`[^`]*`$/;
+const STRING_LITERAL = /^"(?:[^"\\]|\\.)*"$/;
+
+/**
+ * Removes the wrapper from a complete Ballerina string literal or template.
+ * Expressions are returned unchanged.
+ */
+export function unwrapBallerinaString(value?: string): string {
+  const trimmed = value?.trim() ?? "";
+  if (STRING_TEMPLATE.test(trimmed)) {
+    return trimmed.replace(/^string\s*`/, "").slice(0, -1);
+  }
+  if (RAW_TEMPLATE.test(trimmed)) {
+    return trimmed.slice(1, -1);
+  }
+  if (STRING_LITERAL.test(trimmed)) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
 export const getPrimaryInputType = (types: InputType[]): InputType | undefined => {
   if (!types || types.length === 0) return undefined;
   return types[0];
+}
+
+// The type shown as a field's type hint. The primary input type is often a narrowed input mode — e.g.
+// a `string|string[]` field is split into a `TEXT string` mode first, and an optional `time:Duration?`
+// into a `RECORD_MAP time:Duration` mode first — while the field's full declared type lives on the
+// EXPRESSION entry. Prefer that so unions/optionals (and dynamic activity params) display their full type.
+export const getFieldTypeLabel = (types?: InputType[]): string | undefined => {
+  if (!types || types.length === 0) return undefined;
+  const expressionType = types.find((t) => t.fieldType === "EXPRESSION" && !!t.ballerinaType);
+  return expressionType?.ballerinaType ?? getPrimaryInputType(types)?.ballerinaType;
 }
 
 export const getSecondaryInputType = (inputTypes: InputType[]) => {

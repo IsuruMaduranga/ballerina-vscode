@@ -35,10 +35,11 @@ import { useFormContext } from "../../context";
 import { Controller } from "react-hook-form";
 import { S } from "./ExpressionEditor";
 import { buildRequiredRule, sanitizeType } from "./utils";
+import { buildValidate } from "../Form/validationRules";
 import { debounce } from "lodash";
 import styled from "@emotion/styled";
 import ReactMarkdown from "react-markdown";
-import { getPrimaryInputType, NodeProperties } from "@wso2/ballerina-core";
+import { getFieldTypeLabel, NodeProperties } from "@wso2/ballerina-core";
 import TypeModeSwitcher, { TypeInputMode } from "../TypeModeSwitcher";
 
 interface TypeEditorProps {
@@ -268,9 +269,9 @@ export function TypeEditor(props: TypeEditorProps) {
                             <S.LabelContainer>
                                 <S.Label>{field.label}</S.Label>
                                 {!field.optional && <RequiredFormInput />}
-                                {getPrimaryInputType(field.types)?.ballerinaType && (
-                                    <S.Type style={{ marginLeft: '5px' }} isVisible={focused} title={getPrimaryInputType(field.types)?.ballerinaType}>
-                                        {sanitizeType(getPrimaryInputType(field.types)?.ballerinaType)}
+                                {getFieldTypeLabel(field.types) && (
+                                    <S.Type style={{ marginLeft: '5px' }} isVisible={focused} title={getFieldTypeLabel(field.types)}>
+                                        {sanitizeType(getFieldTypeLabel(field.types))}
                                     </S.Type>
                                 )}
                             </S.LabelContainer>
@@ -294,7 +295,8 @@ export function TypeEditor(props: TypeEditorProps) {
                 name={field.key}
                 defaultValue={field.value}
                 rules={{
-                    required: buildRequiredRule({ isRequired: !field.optional, label: field.label })
+                    required: buildRequiredRule({ isRequired: !field.optional, label: field.label }),
+                    validate: buildValidate(field)
                 }}
                 render={({ field: { name, value, onChange }, fieldState: { error } }) => (
                     <div>

@@ -19,7 +19,7 @@
 import React, { useMemo } from 'react';
 import styled from '@emotion/styled';
 import { Codicon, Icon, Tooltip, Typography } from '@wso2/ui-toolkit';
-import { EVENT_TYPE, MACHINE_VIEW, ProjectStructureResponse, SCOPE } from '@wso2/ballerina-core';
+import { DIRECTORY_MAP, EVENT_TYPE, MACHINE_VIEW, ProjectStructureResponse, SCOPE } from '@wso2/ballerina-core';
 import { useRpcContext } from '@wso2/ballerina-rpc-client';
 import { getIntegrationTypes } from '../PackageOverview/utils';
 
@@ -221,7 +221,7 @@ const getTypeIcon = (type: SCOPE): { name: string; source: 'icon' | 'codicon' } 
         [SCOPE.AI_AGENT]: { name: 'bi-ai-agent', source: 'icon' },
         [SCOPE.MCP]: { name: 'bi-mcp', source: 'icon' },
         [SCOPE.LIBRARY]: { name: 'library', source: 'codicon' },
-        [SCOPE.WORKFLOW]: { name: 'bi-workflow', source: 'icon' },
+        [SCOPE.WORKFLOW]: { name: 'bi-flowchart', source: 'icon' },
         [SCOPE.ANY]: { name: 'package', source: 'codicon' }
     };
     return icons[type];
@@ -277,7 +277,10 @@ export function PackageListView(props: PackageListViewProps) {
                 name: project.projectTitle,
                 projectPath: project.projectPath,
                 isLibrary: project.isLibrary ?? false,
-                types: getIntegrationTypes(project)
+                types: getIntegrationTypes(project),
+                hasAgentDefinitions: Boolean(
+                    project.isLibrary && project.directoryMap[DIRECTORY_MAP.AGENT_DEFINITION]?.length
+                )
             }
         });
     }, [projectCollection]);
@@ -335,6 +338,11 @@ export function PackageListView(props: PackageListViewProps) {
                                         {type !== SCOPE.ANY ? getTypeLabel(type) : ''}
                                     </Chip>
                                 ))}
+                                {item.hasAgentDefinitions && (
+                                    <Chip color="var(--vscode-terminal-ansiBlue)">
+                                        Agent Definition
+                                    </Chip>
+                                )}
                             </ChipContainer>
                             {showICPBadge && !item.isLibrary && icpStatusByProjectPath[item.projectPath] && (
                                 <Tooltip content="Integration Control Plane is enabled for this integration">
