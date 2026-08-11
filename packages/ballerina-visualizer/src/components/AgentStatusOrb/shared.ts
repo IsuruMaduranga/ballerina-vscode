@@ -51,11 +51,13 @@ export function loadAnchor(): Anchor {
 
 /** Flow speed / contrast of the shader per state (0 = still, 1 = lively). */
 export const ORB_ENERGY: Record<AgentRunState, number> = {
-    "idle": 0.35,
+    // Raised across the board so the single-hue orb visibly flows (the motion,
+    // not the color, is what carries "alive"). Running stays at the ceiling.
+    "idle": 0.6,
     "running": 1.0,
-    "awaiting-input": 0.55,
-    "completed": 0.45,
-    "error": 0.5,
+    "awaiting-input": 0.72,
+    "completed": 0.6,
+    "error": 0.65,
 };
 
 const ambientGradientShift = keyframes`
