@@ -88,6 +88,7 @@ import { McpManagerPanel } from "../../McpManagerPanel";
 
 /** Full-page panels reachable from the chat. The chat itself is the empty stack. */
 export type PanelRoute = "settings" | "mcp" | "skills";
+const PANEL_TITLES: Record<PanelRoute, string> = { settings: "Settings", mcp: "MCP Servers", skills: "Skills" };
 import WelcomeMessage from "./Welcome";
 import { getOnboardingOpens, incrementOnboardingOpens, convertToUIMessages, isContainsSyntaxError } from "./utils/utils";
 import { applyGenerationStatus, deriveReviewBarState, PanelMessage } from "./utils/reviewBarState";
@@ -364,6 +365,7 @@ const AIChat: React.FC = () => {
     const activePanel = panelStack[panelStack.length - 1];
     const pushPanel = (route: PanelRoute) => setPanelStack(s => [...s, route]);
     const popPanel = () => setPanelStack(s => s.slice(0, -1));
+    const backTooltip = `Back to ${PANEL_TITLES[panelStack[panelStack.length - 2]] ?? "chat"}`;
     const [isAutoApproveEnabled, setIsAutoApproveEnabled] = useState(false);
     const [isWebToolsEnabled, setIsWebToolsEnabled] = useState(false);
     const userWebSearchPreferenceRef = useRef(false);
@@ -3008,10 +3010,10 @@ const AIChat: React.FC = () => {
                 </AIChatView>
             )}
             {activePanel === "settings" && (
-                <SettingsPanel onClose={popPanel} onNavigate={pushPanel} mcpToolsEnabled={mcpToolsEnabled} />
+                <SettingsPanel onClose={popPanel} backTooltip={backTooltip} onNavigate={pushPanel} mcpToolsEnabled={mcpToolsEnabled} />
             )}
-            {activePanel === "mcp" && <McpManagerPanel onClose={popPanel} />}
-            {activePanel === "skills" && <SkillsManager onClose={popPanel} onSkillsChange={refreshSkills} />}
+            {activePanel === "mcp" && <McpManagerPanel onClose={popPanel} backTooltip={backTooltip} />}
+            {activePanel === "skills" && <SkillsManager onClose={popPanel} backTooltip={backTooltip} onSkillsChange={refreshSkills} />}
         </>
     );
 };
