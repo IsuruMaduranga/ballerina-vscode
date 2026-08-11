@@ -247,10 +247,9 @@ export interface ReviewViewItem {
 export interface ReviewModeData {
     views: ReviewViewItem[];
     currentIndex: number;
-    // Distinguishes one generation's review from another's. MainPanel keys its remount on this:
-    // without it, opening review for a later generation reuses the mounted ReviewMode, whose data
-    // is only read on mount, so the previous generation's diagrams stay on screen.
-    generationId?: string;
+    /** MainPanel keys ReviewMode's remount on this; without it a later generation reuses the
+     *  mounted view, whose data is only read on mount. */
+    generationId: string;
     onAccept?: string;
     onReject?: string;
     semanticDiffs?: object[];
