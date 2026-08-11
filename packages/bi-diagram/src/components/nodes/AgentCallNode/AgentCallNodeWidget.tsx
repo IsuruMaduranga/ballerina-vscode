@@ -876,6 +876,36 @@ export function AgentCallNodeWidget(props: AgentCallNodeWidgetProps) {
                                 </div>
                             </foreignObject>
 
+                            {/* Approval-required badge: a lock on the tool's top-right corner when the
+                                tool's @ai:AgentTool annotation gates it for human-in-the-loop approval */}
+                            {tool.requiresApproval && (
+                                <g>
+                                    <title>Requires approval</title>
+                                    <circle
+                                        cx="97"
+                                        cy="8"
+                                        r="8.5"
+                                        fill={NODE_BG_COLOR}
+                                        stroke={ThemeColors.SECONDARY}
+                                        strokeWidth={1.5}
+                                    />
+                                    <foreignObject x="89" y="0" width="16" height="16" style={{ pointerEvents: "none" }}>
+                                        <div
+                                            style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                width: 16,
+                                                height: 16,
+                                                color: ThemeColors.SECONDARY,
+                                            }}
+                                        >
+                                            <Icon name="bi-lock" sx={{ fontSize: "11px" }} />
+                                        </div>
+                                    </foreignObject>
+                                </g>
+                            )}
+
                             <text
                                 x="110"
                                 y="28"

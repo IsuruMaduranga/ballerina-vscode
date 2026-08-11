@@ -1475,7 +1475,8 @@ public class AiUtils {
         return false;
     }
 
-    private record AgentToolData(String name, String path, String description, String type) {
+    private record AgentToolData(String name, String path, String description, String type,
+                                 boolean requiresApproval) {
     }
 
     private record WiredParam(String name, int index) {
@@ -1691,7 +1692,8 @@ public class AiUtils {
             if (name.isEmpty() || !hasAiAnnotation(method.annotAttachments(), AGENT_TOOL_ANNOT)) {
                 continue;
             }
-            tools.add(new AgentToolData(name.get(), readDisplayIcon(method), null, null));
+            tools.add(new AgentToolData(name.get(), readDisplayIcon(method), null, null,
+                    readRequiresApproval(method.annotAttachments())));
         }
         return tools;
     }
@@ -1721,6 +1723,32 @@ public class AiUtils {
             }
         }
         return null;
+    }
+
+    /**
+     * Reads the {@code requiresApproval} field of a function's {@code @ai:AgentTool} annotation. The
+     * field type is {@code boolean | isolated function}: returns true for {@code requiresApproval: true}
+     * or a predicate-function reference (not a compile-time constant, so treated as "approval may be
+     * required"). A bare {@code @ai:AgentTool}, an explicit {@code requiresApproval: false}, or a missing
+     * field all return false.
+     */
+    public static boolean readRequiresApproval(List<AnnotationAttachmentSymbol> annotations) {
+        for (AnnotationAttachmentSymbol annot : annotations) {
+            if (annot.typeDescriptor() == null || !annot.typeDescriptor().nameEquals(AGENT_TOOL_ANNOT)
+                    || annot.typeDescriptor().getModule().map(ModuleSymbol::id)
+                    .filter(id -> CommonUtils.isAiModule(id.orgName(), id.packageName())).isEmpty()) {
+                continue;
+            }
+            if (annot.attachmentValue().isEmpty()) {
+                return false;
+            }
+            if (unwrapConstant(annot.attachmentValue().get()) instanceof Map<?, ?> map
+                    && map.containsKey("requiresApproval")) {
+                return !Boolean.FALSE.equals(unwrapConstant(map.get("requiresApproval")));
+            }
+            return false;
+        }
+        return false;
     }
 
     public static boolean isMcpToolKitSymbol(Symbol symbol) {
@@ -1806,7 +1834,12 @@ public class AiUtils {
             return null;
         }
         boolean isMcp = "MCP_TOOLKIT".equals(constantString(toolMap.get("kind")));
-        return new AgentToolData(name, constantString(toolMap.get("icon")), null, isMcp ? "MCP Server" : null);
+        // Prebuilt/published agents carry tool metadata in the compiled @display{agentMetadata}. The
+        // requiresApproval flag is read here defensively so it works once the generation side emits it;
+        // absent → false.
+        boolean requiresApproval = "true".equals(constantString(toolMap.get("requiresApproval")));
+        return new AgentToolData(name, constantString(toolMap.get("icon")), null,
+                isMcp ? "MCP Server" : null, requiresApproval);
     }
 
     private static Object unwrapConstant(Object value) {
