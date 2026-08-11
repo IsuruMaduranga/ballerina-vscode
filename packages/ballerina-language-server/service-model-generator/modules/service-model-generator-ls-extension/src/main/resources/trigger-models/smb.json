@@ -3450,8 +3450,8 @@
                   "label": "Parameter Type",
                   "description": "The type of the parameter"
                 },
-                "placeholder": "error",
-                "value": "error",
+                "placeholder": "smb:Error",
+                "value": "smb:Error",
                 "types": [
                   {
                     "fieldType": "TYPE",
@@ -3486,6 +3486,58 @@
               "optional": false,
               "advanced": false,
               "hidden": true,
+              "codedata": {
+                "type": "FUNCTION_PARAM"
+              }
+            },
+            {
+              "metadata": {
+                "label": "SMB Connection (caller)",
+                "description": "SMB connection handle for performing additional file operations within the handler."
+              },
+              "kind": "OPTIONAL",
+              "type": {
+                "metadata": {
+                  "label": "Include SMB Connection (caller)",
+                  "description": "Tick to include the SMB Connection (caller) parameter in the handler signature."
+                },
+                "placeholder": "smb:Caller",
+                "value": false,
+                "types": [
+                  {
+                    "fieldType": "FLAG",
+                    "selected": true,
+                    "ballerinaType": "smb:Caller"
+                  }
+                ],
+                "enabled": true,
+                "editable": true,
+                "optional": true,
+                "advanced": false
+              },
+              "name": {
+                "metadata": {
+                  "label": "caller",
+                  "description": "SMB connection handle for performing additional file operations within the handler."
+                },
+                "placeholder": "caller",
+                "value": "caller",
+                "types": [
+                  {
+                    "fieldType": "IDENTIFIER",
+                    "selected": true
+                  }
+                ],
+                "enabled": true,
+                "editable": false,
+                "optional": false,
+                "advanced": false
+              },
+              "enabled": false,
+              "editable": true,
+              "optional": true,
+              "advanced": true,
+              "hidden": false,
               "codedata": {
                 "type": "FUNCTION_PARAM"
               }
