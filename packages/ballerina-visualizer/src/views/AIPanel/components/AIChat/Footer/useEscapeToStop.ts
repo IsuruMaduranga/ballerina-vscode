@@ -18,10 +18,8 @@
 
 import { useEffect } from "react";
 
-// Mirrors the Escape-to-stop handling in AIChatInput, which is unmounted while these footers show.
-// Listening on window means this sees Escape wherever focus is, so anything the user opened on top —
-// the chat sessions dropdown, a popup — gets first refusal by calling preventDefault on the way up.
-// Without that, one Escape both dismissed the thing on top and aborted the run.
+// On window so Escape is seen wherever focus is; anything opened on top (the sessions dropdown, a
+// popup) gets first refusal via preventDefault, or one Escape would dismiss it AND abort the run.
 export function useEscapeToStop(onStop: () => void) {
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {

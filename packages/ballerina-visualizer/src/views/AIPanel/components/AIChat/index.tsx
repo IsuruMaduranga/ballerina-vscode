@@ -2955,8 +2955,7 @@ const AIChat: React.FC = () => {
                             />
                         ) : null;
 
-                        // The composer stays mounted behind an approval footer — unmounting it would
-                        // discard whatever the user had typed and attached while waiting.
+                        // Kept mounted behind the approval footer so the draft and attachments survive.
                         return (
                         <>
                             {approvalFooter}
