@@ -38,6 +38,30 @@ describe("review mode diff-to-package attribution", () => {
         expect(toComparablePath("ai://C:\\ws\\school\\types.bal")).toBe("C:/ws/school/types.bal");
     });
 
+    it("decodes a percent-encoded path", () => {
+        expect(toComparablePath("ai:///ws/my%20project/school/types.bal")).toBe(
+            "/ws/my project/school/types.bal"
+        );
+        expect(diffBelongsToPackage("ai:///ws/my%20project/school/types.bal", "/ws/my project/school")).toBe(true);
+    });
+
+    it("leaves a malformed escape alone rather than throwing", () => {
+        expect(() => toComparablePath("ai:///ws/100%/school/types.bal")).not.toThrow();
+    });
+
+    it("drops the leading slash the three-slash form leaves before a drive letter", () => {
+        expect(toComparablePath("file:///c:/ws/school/types.bal")).toBe("c:/ws/school/types.bal");
+        expect(diffBelongsToPackage("file:///c:/ws/school/types.bal", "c:\\ws\\school")).toBe(true);
+    });
+
+    it("matches a windows package whose drive letter case differs", () => {
+        expect(diffBelongsToPackage("ai:///C:/ws/school/types.bal", "c:\\ws\\school")).toBe(true);
+    });
+
+    it("matches an uppercase scheme", () => {
+        expect(toComparablePath(`AI://${SCHOOL}/types.bal`)).toBe(`${SCHOOL}/types.bal`);
+    });
+
     it("matches an ai:// diff to its own package and not to a sibling", () => {
         expect(diffBelongsToPackage(`ai://${SCHOOL}/types.bal`, SCHOOL)).toBe(true);
         expect(diffBelongsToPackage(`ai://${SCHOOL}/types.bal`, INSTITUTES)).toBe(false);
@@ -47,25 +71,9 @@ describe("review mode diff-to-package attribution", () => {
         expect(diffBelongsToPackage(`ai://${SCHOOL}-archive/types.bal`, SCHOOL)).toBe(false);
     });
 
-    // The regression this guards: comparing the raw uri never matched, so in a workspace every diff
-    // fell back to the workspace root — losing its package name and collapsing all packages' type
-    // views into a single one.
-    it("would never match with the scheme left on the uri", () => {
-        expect(`ai://${SCHOOL}/types.bal`.startsWith(`${SCHOOL}/`)).toBe(false);
-    });
-
     it("attributes diffs from two packages to their own packages", () => {
         const uris = [`ai://${SCHOOL}/types.bal`, `ai://${INSTITUTES}/types.bal`];
         const owners = uris.map((u) => [SCHOOL, INSTITUTES].find((p) => diffBelongsToPackage(u, p)));
         expect(owners).toEqual([SCHOOL, INSTITUTES]);
-    });
-
-    it("gives each package its own type view instead of collapsing them", () => {
-        const uris = [`ai://${SCHOOL}/types.bal`, `ai://${INSTITUTES}/types.bal`];
-        const seen = new Set<string>();
-        for (const u of uris) {
-            seen.add([SCHOOL, INSTITUTES].find((p) => diffBelongsToPackage(u, p)) ?? "/ws/education");
-        }
-        expect([...seen]).toEqual([SCHOOL, INSTITUTES]);
     });
 });
