@@ -3418,7 +3418,7 @@
         {
           "metadata": {
             "label": "On Error",
-            "description": "Invoked when an error occurs during file processing.",
+            "description": "Invoked when an error occurs while processing a file in the monitored directory.",
             "addLabel": "Add On Error Handler",
             "badge": "onError"
           },
@@ -3442,7 +3442,7 @@
             {
               "metadata": {
                 "label": "SMB Error",
-                "description": "The error that occurred during file processing."
+                "description": "The error that occurred while processing the file."
               },
               "kind": "REQUIRED",
               "type": {
@@ -3466,7 +3466,7 @@
               "name": {
                 "metadata": {
                   "label": "err",
-                  "description": "The error that occurred during file processing."
+                  "description": "The error that occurred while processing the file."
                 },
                 "placeholder": "err",
                 "value": "err",
