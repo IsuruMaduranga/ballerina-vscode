@@ -19,7 +19,7 @@
 import React from "react";
 import { FooterIconBtn } from "./styles";
 
-// AIChatInput normally owns Escape-to-stop, but it's unmounted while an approval/clarify footer shows.
+// AIChatInput normally owns Escape-to-stop, but it is hidden while an approval/clarify footer shows.
 const StopControl: React.FC<{ onStop: () => void }> = ({ onStop }) => (
     <FooterIconBtn onClick={onStop} title="Stop (Escape)">
         <span className="codicon codicon-stop-circle" />

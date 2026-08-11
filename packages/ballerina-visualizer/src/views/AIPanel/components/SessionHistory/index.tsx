@@ -366,9 +366,8 @@ export function SessionHistoryDropdown({
             e.preventDefault();
             if (confirmDelete) { setConfirmDelete(null); } else if (renaming) { cancelRename(); } else { onClose(); }
         };
-        // Capture phase: the approval footers listen for Escape on window to stop the run, and a
-        // bubble-phase listener here is not reliably ahead of that. Capture runs before any
-        // bubble-phase handler in this document, so the dropdown can claim the key first.
+        // Capture runs before any bubble-phase handler, so the dropdown claims Escape ahead of the
+        // approval footers' window listener.
         document.addEventListener('keydown', handleKeyDown, true);
         return () => document.removeEventListener('keydown', handleKeyDown, true);
     }, [onClose, confirmDelete, renaming]);

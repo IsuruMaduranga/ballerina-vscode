@@ -87,10 +87,6 @@ export const FooterInput = styled.input`
     }
 `;
 
-/**
- * Header row for approval footers — title/content on the left, a corner
- * control (e.g. stop) on the right.
- */
 export const FooterHeaderRow = styled.div`
     display: flex;
     align-items: center;

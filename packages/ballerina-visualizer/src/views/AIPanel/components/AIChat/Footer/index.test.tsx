@@ -16,10 +16,8 @@
  * under the License.
  */
 
-// L2: `hidden` must hide the footer WITHOUT unmounting it. An approval prompt renders its own
-// footer in the composer's place, and the composer owns the user's draft and attachments as local
-// state — so conditionally rendering it, the obvious way to write this, silently discards both.
-// Nothing on screen distinguishes "hidden" from "unmounted", which is why it is pinned here.
+// L2: `hidden` must hide the footer WITHOUT unmounting it — the composer owns the draft and
+// attachments as local state, and nothing on screen distinguishes hidden from unmounted.
 
 import React from "react";
 import { createRoot, Root } from "react-dom/client";
@@ -27,8 +25,7 @@ import { act } from "react-dom/test-utils";
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-// The core barrel pulls in ESM-only LS transport modules that jest cannot load. Footer only reads
-// TemplateId, and only for the suggestion chips this test does not render.
+// The core barrel pulls in ESM-only LS transport modules that jest cannot load.
 jest.mock("@wso2/ballerina-core", () => ({
     __esModule: true,
     TemplateId: { Wildcard: "Wildcard" },
@@ -36,45 +33,43 @@ jest.mock("@wso2/ballerina-core", () => ({
 
 jest.mock("../../../commandTemplates/data/commandTemplates.const", () => ({
     __esModule: true,
-    commandTemplates: {},
-    suggestedCommandTemplates: [],
+    commandTemplates: {} as Record<string, unknown>,
+    suggestedCommandTemplates: [] as unknown[],
 }));
 
 jest.mock("../../../commandTemplates/utils/utils", () => ({
     __esModule: true,
-    getTemplateTextById: () => "",
+    getTemplateTextById: (): string => "",
 }));
 
 jest.mock("../../CodeContextCard", () => ({
     __esModule: true,
-    default: () => null,
+    default: (): null => null,
 }));
 
-// Reaches @wso2/ballerina-rpc-client, which ships ESM. Only the loading indicator draws the orb.
+// Reaches @wso2/ballerina-rpc-client, which ships ESM.
 jest.mock("../../../../../components/AgentStatusOrb/shared", () => ({
     __esModule: true,
-    Sphere: () => null,
-    Gloss: () => null,
-    ORB_COLORS: { running: [] },
+    Sphere: (): null => null,
+    Gloss: (): null => null,
+    ORB_COLORS: { running: [] as string[] },
     ORB_ENERGY: { running: 0 },
 }));
 
-// Stands in for the composer. Its presence in the DOM is the whole point: the draft lives inside
-// the real one as local state, so "still rendered" is what "draft preserved" reduces to.
 jest.mock("../../AIChatInput", () => ({
     __esModule: true,
-    default: React.forwardRef(() => <div data-testid="composer" />),
+    default: React.forwardRef((): JSX.Element => <div data-testid="composer" />),
 }));
 
 import Footer from "./index";
 
-const noop = () => undefined;
+const noop = (): void => undefined;
 const baseProps = {
     aiChatInputRef: React.createRef<any>(),
     tagOptions: {} as any,
     attachmentOptions: {} as any,
     inputPlaceholder: "What would you like to change?",
-    onSend: async () => undefined,
+    onSend: async (): Promise<void> => undefined,
     onStop: noop,
     isLoading: false,
     showSuggestedCommands: false,
