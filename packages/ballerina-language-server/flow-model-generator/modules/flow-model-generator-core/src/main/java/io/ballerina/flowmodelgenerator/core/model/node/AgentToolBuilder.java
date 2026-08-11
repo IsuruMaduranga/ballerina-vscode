@@ -291,60 +291,79 @@ public class AgentToolBuilder extends NodeBuilder {
         Map<String, Object> data = ctx.data != null && ctx.data.containsKey("auth")
                 ? ctx.data
                 : ctx.wrappedNode != null ? ctx.wrappedNode.codedata().data() : null;
-        if (data == null || !data.containsKey("auth")) {
+        if (data == null) {
             ctx.sb.token().name("@ai:AgentTool").name(System.lineSeparator());
             return;
         }
 
-        String authStr = data.get("auth").toString();
-        JsonObject authConfig = gson.fromJson(authStr, JsonObject.class);
+        // Each entry is a fully-rendered mapping field (already indented) to place inside the
+        // `@ai:AgentTool { ... }` record. When empty, a bare `@ai:AgentTool` is emitted instead.
+        List<String> annotationFields = new ArrayList<>();
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("@ai:AgentTool {").append(System.lineSeparator());
-        sb.append("    auth: {").append(System.lineSeparator());
+        // auth: { ... } — OAuth client configuration block.
+        if (data.containsKey("auth")) {
+            String authStr = data.get("auth").toString();
+            JsonObject authConfig = gson.fromJson(authStr, JsonObject.class);
 
-        List<String> fields = new ArrayList<>();
-        for (Map.Entry<String, JsonElement> entry : authConfig.entrySet()) {
-            String key = entry.getKey();
-            JsonElement valueElement = entry.getValue();
-            String value = valueElement.isJsonArray() ? valueElement.toString() : valueElement.getAsString();
+            List<String> fields = new ArrayList<>();
+            for (Map.Entry<String, JsonElement> entry : authConfig.entrySet()) {
+                String key = entry.getKey();
+                JsonElement valueElement = entry.getValue();
+                String value = valueElement.isJsonArray() ? valueElement.toString() : valueElement.getAsString();
 
-            if (value == null || value.isEmpty() || value.equals("()") || value.trim().matches("\\{\\s*}")) {
-                continue;
-            }
-
-            if (key.equals("scopes")) {
-                if (value.startsWith("[") && value.endsWith("]")) {
-                    fields.add("        " + key + ": " + value);
+                if (value == null || value.isEmpty() || value.equals("()") || value.trim().matches("\\{\\s*}")) {
                     continue;
                 }
-                String[] scopeParts = value.split(",");
-                List<String> scopeItems = new ArrayList<>();
-                for (String part : scopeParts) {
-                    String trimmed = part.trim();
-                    if (!trimmed.isEmpty()) {
-                        scopeItems.add(trimmed);
+
+                if (key.equals("scopes")) {
+                    if (value.startsWith("[") && value.endsWith("]")) {
+                        fields.add("        " + key + ": " + value);
+                        continue;
                     }
+                    String[] scopeParts = value.split(",");
+                    List<String> scopeItems = new ArrayList<>();
+                    for (String part : scopeParts) {
+                        String trimmed = part.trim();
+                        if (!trimmed.isEmpty()) {
+                            scopeItems.add(trimmed);
+                        }
+                    }
+                    if (scopeItems.isEmpty()) {
+                        continue;
+                    }
+                    fields.add("        " + key + ": [" + String.join(", ", scopeItems) + "]");
+                } else {
+                    fields.add("        " + key + ": " + value);
                 }
-                if (scopeItems.isEmpty()) {
-                    continue;
-                }
-                fields.add("        " + key + ": [" + String.join(", ", scopeItems) + "]");
-            } else {
-                fields.add("        " + key + ": " + value);
+            }
+
+            if (!fields.isEmpty()) {
+                annotationFields.add("    auth: {" + System.lineSeparator()
+                        + String.join("," + System.lineSeparator(), fields) + System.lineSeparator()
+                        + "    }");
             }
         }
 
-        if (fields.isEmpty()) {
+        // requiresApproval: <boolean|isolated function> — human-in-the-loop gate. The value is
+        // emitted verbatim: "true" for the toggle, or an identifier for a predicate function pointer.
+        if (data.containsKey("requiresApproval")) {
+            Object approvalValue = data.get("requiresApproval");
+            String approval = approvalValue == null ? "" : approvalValue.toString().trim();
+            if (!approval.isEmpty()) {
+                annotationFields.add("    requiresApproval: " + approval);
+            }
+        }
+
+        if (annotationFields.isEmpty()) {
             ctx.sb.token().name("@ai:AgentTool").name(System.lineSeparator());
             return;
         }
 
-        sb.append(String.join("," + System.lineSeparator(), fields)).append(System.lineSeparator());
-        sb.append("    }").append(System.lineSeparator());
-        sb.append("}");
+        String sb = "@ai:AgentTool {" + System.lineSeparator()
+                + String.join("," + System.lineSeparator(), annotationFields) + System.lineSeparator()
+                + "}";
 
-        ctx.sb.token().name(sb.toString()).name(System.lineSeparator());
+        ctx.sb.token().name(sb).name(System.lineSeparator());
     }
 
     private enum ToolKind {
@@ -595,6 +614,9 @@ public class AgentToolBuilder extends NodeBuilder {
         sourceBuilder.token()
                 .keyword(SyntaxKind.CLOSE_BRACE_TOKEN);
         sourceBuilder.textEdit(SourceBuilder.SourceKind.DECLARATION).acceptImport();
+        // If the form asked to scaffold a conditional-approval predicate, emit it as a sibling
+        // declaration reusing the tool wrapper's exact parameter list.
+        appendApprovalPredicate(ctx);
         Map<Path, List<TextEdit>> textEdits = sourceBuilder.build();
         List<TextEdit> te = new ArrayList<>();
         Path p = addIsolateKeyword(ctx.semanticModel, funcName.trim(), ctx.filePath, te, ctx.workspaceManager);
@@ -602,6 +624,48 @@ public class AgentToolBuilder extends NodeBuilder {
             textEdits.computeIfAbsent(p, ignored -> new ArrayList<>()).addAll(te);
         }
         return textEdits;
+    }
+
+    // Emit a sibling `isolated function` predicate stub for the @ai:AgentTool `requiresApproval` gate,
+    // when the form requested one (codedata.data.generateApprovalFunction == "true"). The predicate
+    // mirrors the tool wrapper's own parameter list (the exact list its signature was built from,
+    // via the same FUNCTION.resolveParams) and returns boolean, satisfying the RequiresApproval
+    // contract (the ai module binds the proposed call's arguments to the predicate by name). Its
+    // name is the `requiresApproval` annotation value. Must be called AFTER the tool declaration has
+    // been flushed via textEdit(DECLARATION) (so the token buffer is empty); it appends a second
+    // DECLARATION text edit to the same file, which build() returns alongside the tool's. FUNCTION
+    // kind only — matches the original feature's scope (Create Tool from Function).
+    private static void appendApprovalPredicate(ToolGenContext ctx) {
+        Map<String, Object> data = ctx.wrappedNode != null ? ctx.wrappedNode.codedata().data() : null;
+        if (data == null || !"true".equals(String.valueOf(data.get("generateApprovalFunction")))) {
+            return;
+        }
+        Object approvalValue = data.get("requiresApproval");
+        String predicateName = approvalValue == null ? "" : approvalValue.toString().trim();
+        if (predicateName.isEmpty()) {
+            return;
+        }
+        String paramDecls = ToolKind.FUNCTION.resolveParams(ctx).stream()
+                .map(ToolParam::decl)
+                .collect(Collectors.joining(", "));
+        ctx.sb.token()
+                .keyword(SyntaxKind.ISOLATED_KEYWORD)
+                .keyword(SyntaxKind.FUNCTION_KEYWORD)
+                .name(predicateName)
+                .keyword(SyntaxKind.OPEN_PAREN_TOKEN)
+                .name(paramDecls)
+                .keyword(SyntaxKind.CLOSE_PAREN_TOKEN)
+                .keyword(SyntaxKind.RETURNS_KEYWORD)
+                .name("boolean")
+                .keyword(SyntaxKind.OPEN_BRACE_TOKEN)
+                .newLine()
+                .comment("// TODO: inspect the proposed arguments and return true to require approval")
+                .newLine()
+                .keyword(SyntaxKind.RETURN_KEYWORD)
+                .name("true")
+                .endOfStatement()
+                .keyword(SyntaxKind.CLOSE_BRACE_TOKEN);
+        ctx.sb.textEdit(SourceBuilder.SourceKind.DECLARATION);
     }
 
     private static Map<Path, List<TextEdit>> buildRemoteActionBody(ToolGenContext ctx, ReturnInfo returnInfo) {

@@ -46,7 +46,10 @@ export function AutoCompleteEditor(props: AutoCompleteEditorProps) {
                 required: buildRequiredRule({ isRequired: !field.optional, label: field.label }),
                 value: getValueForDropdown(field)
             })}
-            label={capitalize(field.label)}
+            // Append "(Optional)" AFTER capitalize() — capitalize is lodash startCase, which strips
+            // parentheses and title-cases words, so a paren'd label can't be passed through directly.
+            // Symmetric with required fields showing "*".
+            label={field.optional ? `${capitalize(field.label)} (Optional)` : capitalize(field.label)}
             items={field.items}
             allowItemCreate={true}
             required={!field.optional}

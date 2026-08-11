@@ -442,10 +442,113 @@ function reorderFunctionCategories(categories: PanelCategory[]): PanelCategory[]
     return categories;
 }
 
-const INITIAL_FIELDS: FormField[] = buildAgentToolFields("", "");
-
 const getConnectionFieldName = (name: string): string =>
     name.startsWith("self.") ? name.slice("self.".length) : name;
+
+// Categories in the FUNCTION search response that are NOT the project's own functions: standard
+// library and imported/third-party modules (plus agent tools). We offer only the user's own
+// module-level functions as approval-predicate candidates, so these are skipped.
+const NON_LOCAL_FUNCTION_CATEGORIES = ["Standard Library", "Agent Tools"];
+function isLocalFunctionCategory(label: string | undefined): boolean {
+    if (!label) return true;
+    return !NON_LOCAL_FUNCTION_CATEGORIES.includes(label) && !label.includes("Imported");
+}
+
+// Recursively collect the names of the project's own functions from raw search-result categories,
+// to offer as approval-predicate candidates. The list-level search response has no reliable return
+// type to filter on (codedata.inferredReturnType is only populated in niche type-inference cases,
+// not for ordinary `boolean` returns), so we offer all local functions and let the compiler/LS flag
+// an incompatible pick after generation — the RequiresApproval contract (params mirror the tool,
+// returns boolean) is verified there, not here. Agent-tool functions are excluded.
+function collectLocalFunctionNames(items: (Category | AvailableNode)[], acc: Set<string>): void {
+    for (const item of items) {
+        if (item && "items" in item && Array.isArray((item as Category).items)) {
+            if (isLocalFunctionCategory((item as Category).metadata?.label)) {
+                collectLocalFunctionNames((item as Category).items as (Category | AvailableNode)[], acc);
+            }
+            continue;
+        }
+        const node = item as AvailableNode;
+        const name = node?.codedata?.symbol;
+        if (name && !(node.metadata?.data as NodeMetadata)?.isAgentTool) {
+            acc.add(name);
+        }
+    }
+}
+
+// Rebuild the static "Requires Approval" CONDITIONAL_FIELDS field with the runtime-fetched picker
+// candidates injected into its "On" branch. `items` populate the AUTOCOMPLETE dropdown; the label,
+// description and placeholder are preserved from the static definition.
+function buildRequiresApprovalField(baseField: FormField, candidates: string[]): FormField {
+    const onChoice = baseField.choices?.[0];
+    const approvalProp = onChoice?.properties?.approvalFunction;
+    if (!approvalProp) {
+        return baseField;
+    }
+    return {
+        ...baseField,
+        choices: [
+            {
+                ...onChoice,
+                properties: {
+                    ...onChoice.properties,
+                    approvalFunction: {
+                        ...approvalProp,
+                        items: candidates,
+                    },
+                },
+            },
+            ...baseField.choices.slice(1),
+        ],
+    };
+}
+
+// Tool Name + Description are shared with UseAgentToolForm's "Use Agent Tool" flow via
+// buildAgentToolFields; Requires Approval is appended locally, scoped to this form only.
+const INITIAL_FIELDS: FormField[] = [
+    ...buildAgentToolFields("", ""),
+    {
+        // The annotation value is `boolean | isolated function`: checking the box alone emits
+        // `requiresApproval: true`; picking a function in the revealed sub-field emits that
+        // function reference instead, so approval becomes conditional at runtime. Modeled as
+        // CONDITIONAL_FIELDS (CheckBoxConditionalEditor) so the function picker is a part of this
+        // field rather than a separate, disconnected form entry.
+        key: `requiresApproval`,
+        label: "Requires Approval",
+        type: "CONDITIONAL_FIELDS",
+        optional: true,
+        editable: true,
+        documentation: "Pause this tool before it runs and wait for human approval.",
+        value: false,
+        types: [{ fieldType: "CONDITIONAL_FIELDS", selected: false }],
+        enabled: true,
+        choices: [
+            {
+                metadata: { label: "On" },
+                properties: {
+                    approvalFunction: {
+                        metadata: {
+                            // "(optional)" is appended by AutoCompleteEditor for optional fields; keeping
+                            // it here would double up (capitalize() = startCase would also mangle it).
+                            label: "Approval Function",
+                            description:
+                                "Decides per call whether approval is needed. Pick one of your functions, or type a name to create one.",
+                        },
+                        // AUTOCOMPLETE (not EXPRESSION): the annotation slot takes a function *reference*
+                        // (a bare name), never a call expression. `items` are injected at runtime in
+                        // loadFunctionCallFields; free-typed names are accepted (AutoCompleteEditor
+                        // sets allowItemCreate) and drive the "create a new predicate" path.
+                        types: [{ fieldType: "AUTOCOMPLETE", selected: true }],
+                        value: "",
+                        optional: true,
+                        editable: true,
+                    },
+                },
+            },
+            { metadata: { label: "Off" }, properties: {} },
+        ],
+    } as unknown as FormField,
+];
 
 export function AIAgentSidePanel(props: BIFlowDiagramProps) {
     const { agentNode, projectPath, onSubmit, mode = NewToolSelectionMode.ALL, onViewChange, onAgentToolCreated, onCancel, connectionDependency } = props;
@@ -493,6 +596,10 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
     const parameterFieldsRef = useRef<ToolParameterItem[]>([]);
     const oauthConfigPropertiesRef = useRef<{ key: string; property: Property }[]>([]);
     const isSelectingNodeRef = useRef<boolean>(false);
+    // Names of existing module functions offered in the approval-predicate picker. Source of truth
+    // for the pick-vs-create decision at submit: a name in here is referenced as-is; a name NOT in
+    // here (free-typed) signals the LS to scaffold a new correctly-signed predicate.
+    const compatibleApprovalFunctionsRef = useRef<string[]>([]);
 
     // Create custom diagnostic filter for Tool Input parameters
     const customDiagnosticFilter = useCallback((diagnostics: Diagnostic[]) => {
@@ -762,6 +869,34 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
         return extractRecordTypeFieldsFromEntries(entries);
     };
 
+    // Fetch the project's own module-level functions (excluding the tool's own function) as
+    // approval-predicate candidates. Reuses the FUNCTION search with an empty queryMap, which returns
+    // the current module's functions; stdlib/imported/agent-tool categories are filtered out by the
+    // collector. Return-type/signature compatibility is verified by the compiler after generation.
+    const fetchCompatibleApprovalFunctions = async (toolFunctionSymbol?: string): Promise<string[]> => {
+        try {
+            const request: BISearchRequest = {
+                position: {
+                    startLine: targetRef.current.startLine,
+                    endLine: targetRef.current.endLine,
+                },
+                filePath: agentFilePath.current,
+                queryMap: undefined,
+                searchKind: "FUNCTION",
+            };
+            const response = await rpcClient.getBIDiagramRpcClient().search(request);
+            const names = new Set<string>();
+            collectLocalFunctionNames((response?.categories ?? []) as (Category | AvailableNode)[], names);
+            if (toolFunctionSymbol) {
+                names.delete(toolFunctionSymbol);
+            }
+            return Array.from(names);
+        } catch (error) {
+            console.error(">>> Error fetching compatible approval functions", error);
+            return [];
+        }
+    };
+
     const loadFunctionCallFields = async (node: AvailableNode): Promise<void> => {
         try {
             const functionNodeResponse = await rpcClient.getBIDiagramRpcClient().getFunctionNode({
@@ -833,10 +968,22 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
             const oauthRecordTypeFields = extractRecordTypeFieldsFromEntries(oauthProperties);
             setRecordTypeFields([...nodeRecordTypeFields, ...oauthRecordTypeFields]);
 
+            // Build the approval-predicate picker: fetch the project's module-level functions and keep
+            // the boolean-returning ones as candidates. Injected into the "Requires Approval" control's
+            // "On" branch so the picker sits under the checkbox; free-typed names drive the create path.
+            const approvalCandidates = await fetchCompatibleApprovalFunctions(node.codedata?.symbol);
+            compatibleApprovalFunctionsRef.current = approvalCandidates;
+
             setFields((prevFields) => [
-                ...prevFields.map((field) =>
-                    field.key === "description" ? { ...field, value: templateDescription } : field
-                ),
+                ...prevFields.map((field) => {
+                    if (field.key === "description") {
+                        return { ...field, value: templateDescription };
+                    }
+                    if (field.key === "requiresApproval") {
+                        return buildRequiresApprovalField(field, approvalCandidates);
+                    }
+                    return field;
+                }),
                 ...toolInputFields,
                 ...functionParameterFields.map(field => ({
                     ...field,
@@ -1252,6 +1399,32 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
                     ...targetNode.codedata.data,
                     auth: JSON.stringify(config),
                 };
+            }
+        }
+
+        // Mark the tool as requiring human-in-the-loop approval. This rides along in codedata.data
+        // (like `auth` above) and is rendered into the @ai:AgentTool annotation by the language
+        // server. The gate is the checkbox itself, not the function field — unchecking it must not
+        // leak a function picked earlier and left registered, since CheckBoxConditionalEditor doesn't
+        // clear the "on"-state sub-field on uncheck.
+        //
+        // Three cases when checked:
+        //   - no function       -> `requiresApproval: true` (unconditional).
+        //   - existing function -> `requiresApproval: <name>` (reference an already-defined predicate).
+        //   - new (free-typed)  -> `requiresApproval: <name>` PLUS generateApprovalFunction, telling
+        //                          the LS to also scaffold a correctly-signed predicate stub.
+        if (targetNode) {
+            const requiresApproval = data["requiresApproval"] === true || data["requiresApproval"] === "true";
+            if (requiresApproval) {
+                const approvalFn = typeof data["approvalFunction"] === "string" ? data["approvalFunction"].trim() : "";
+                const data_: Record<string, string> = {
+                    ...(targetNode.codedata.data as Record<string, string>),
+                    requiresApproval: approvalFn || "true",
+                };
+                if (approvalFn && !compatibleApprovalFunctionsRef.current.includes(approvalFn)) {
+                    data_.generateApprovalFunction = "true";
+                }
+                targetNode.codedata.data = data_;
             }
         }
 
