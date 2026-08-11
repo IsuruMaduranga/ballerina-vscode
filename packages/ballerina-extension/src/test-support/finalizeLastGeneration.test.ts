@@ -118,7 +118,6 @@ describe('finalizeLastGeneration', () => {
         expect(sendSaveChatNotification).not.toHaveBeenCalled();
     });
 
-    // The open review belongs to the turn that just ended, whether or not it was still revertible.
     it('closes review mode even when there was no done generation to finalize', () => {
         chatStateStorage.getOrCreateThread(ROOT, 'thread-noreview');
 

@@ -18,9 +18,7 @@
 
 import { diffBelongsToPackage, toComparablePath } from "./path-utils";
 
-// Semantic diffs come back against the ai:// baseline scheme while affectedPackages are plain paths.
-// Matching one to the other decides a diff's package — and so its label, its project path, and
-// whether each package gets its own type view.
+// Matching a diff's uri to a package decides its label, its project path, and its type view.
 const SCHOOL = "/ws/education/school";
 const INSTITUTES = "/ws/education/institutes";
 

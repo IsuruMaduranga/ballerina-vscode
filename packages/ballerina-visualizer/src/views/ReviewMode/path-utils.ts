@@ -34,7 +34,6 @@ export function toComparablePath(uri: string): string {
     return decoded.replace(/\\/g, "/").replace(/^\/(?=[A-Za-z]:)/, "");
 }
 
-/** Whether a semantic diff's uri falls under the given package root. */
 export function diffBelongsToPackage(uri: string, packagePath: string): boolean {
     // isPathInside normalises the drive letter and trailing slashes, but not separators.
     return isPathInside(packagePath.replace(/\\/g, "/"), toComparablePath(uri));
