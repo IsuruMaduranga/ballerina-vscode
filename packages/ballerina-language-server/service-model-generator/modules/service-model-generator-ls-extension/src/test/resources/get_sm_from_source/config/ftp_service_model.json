@@ -2950,14 +2950,14 @@
       {
         "metadata": {
           "label": "On Error",
-          "description": "Invoked when an error occurs during file processing.",
+          "description": "Invoked when an error occurs while processing a file in the monitored directory.",
           "badge": "onError"
         },
         "kind": "REMOTE",
         "name": {
           "metadata": {
             "label": "On Error",
-            "description": "Invoked when an error occurs during file processing."
+            "description": "Invoked when an error occurs while processing a file in the monitored directory."
           },
           "placeholder": "onError",
           "value": "onError",
@@ -2976,7 +2976,7 @@
           {
             "metadata": {
               "label": "FTP Error",
-              "description": "The error that occurred during file processing."
+              "description": "The error that occurred while processing the file."
             },
             "kind": "REQUIRED",
             "type": {
@@ -3000,7 +3000,7 @@
             "name": {
               "metadata": {
                 "label": "FTP Error",
-                "description": "The error that occurred during file processing."
+                "description": "The error that occurred while processing the file."
               },
               "placeholder": "ftpError",
               "value": "ftpError",
