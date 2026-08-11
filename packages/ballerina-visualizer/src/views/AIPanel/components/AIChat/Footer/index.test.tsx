@@ -23,12 +23,21 @@ import React from "react";
 import { createRoot, Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 
-(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+declare global {
+    var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 // The core barrel pulls in ESM-only LS transport modules that jest cannot load.
 jest.mock("@wso2/ballerina-core", () => ({
     __esModule: true,
     TemplateId: { Wildcard: "Wildcard" },
+    // placeholderTags is keyed by Command, so the real fixture needs these to initialise.
+    Command: {
+        Agent: "Agent", Ask: "Ask", Compact: "Compact", Doc: "Doc", Healthcare: "Healthcare",
+        NaturalProgramming: "NaturalProgramming", OpenAPI: "OpenAPI", Tests: "Tests",
+        TypeCreator: "TypeCreator",
+    },
 }));
 
 jest.mock("../../../commandTemplates/data/commandTemplates.const", () => ({
@@ -62,12 +71,22 @@ jest.mock("../../AIChatInput", () => ({
 }));
 
 import Footer from "./index";
+import type { AIChatInputRef } from "../../AIChatInput";
+import { placeholderTags } from "../../../commandTemplates/data/placeholderTags.const";
 
 const noop = (): void => undefined;
-const baseProps = {
-    aiChatInputRef: React.createRef<any>(),
-    tagOptions: {} as any,
-    attachmentOptions: {} as any,
+const baseProps: React.ComponentProps<typeof Footer> = {
+    aiChatInputRef: React.createRef<AIChatInputRef>(),
+    tagOptions: {
+        placeholderTags,
+        loadGeneralTags: async () => [],
+        injectPlaceholderTags: async () => undefined,
+    },
+    attachmentOptions: {
+        multiple: true,
+        acceptResolver: () => "",
+        handleAttachmentSelection: async () => [],
+    },
     inputPlaceholder: "What would you like to change?",
     onSend: async (): Promise<void> => undefined,
     onStop: noop,
