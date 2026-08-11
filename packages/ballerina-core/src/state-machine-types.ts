@@ -247,8 +247,7 @@ export interface ReviewViewItem {
 export interface ReviewModeData {
     views: ReviewViewItem[];
     currentIndex: number;
-    /** MainPanel keys ReviewMode's remount on this; without it a later generation reuses the
-     *  mounted view, whose data is only read on mount. */
+    /** MainPanel keys ReviewMode's remount on this; its data is only read on mount. */
     generationId: string;
     onAccept?: string;
     onReject?: string;

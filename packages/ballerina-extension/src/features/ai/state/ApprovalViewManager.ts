@@ -594,11 +594,7 @@ export class ApprovalViewManager {
         };
     }
 
-    /**
-     * A review belongs to one generation, so an earlier one must not stay open into the next. Same
-     * steps as the panel's own Close (`goBack`), which likewise clears the open generation through
-     * `notifyReviewModeClosed`.
-     */
+    /** Same steps as the panel's own Close (`goBack`): a review belongs to one generation. */
     closeReviewModeIfOpen(): void {
         if (StateMachine.context().view !== MACHINE_VIEW.ReviewMode) {
             return;
