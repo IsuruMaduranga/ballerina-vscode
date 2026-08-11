@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -28,6 +28,7 @@ import {
     rgbToHsl,
     shiftLightness,
     stateColorVar,
+    subscribeToThemeChanges,
 } from "./orbTheme";
 
 describe("hexToRgb", () => {
@@ -73,9 +74,10 @@ describe("shiftLightness", () => {
     });
 
     it("clamps at the extremes instead of overflowing", () => {
-        expect(hexToRgb(shiftLightness("#ffffff", 0.5))).toEqual(hexToRgb(shiftLightness("#ffffff", 0.5)));
+        const nearWhite = hexToRgb(shiftLightness("#ffffff", 0.5));
         const nearBlack = hexToRgb(shiftLightness("#000000", -0.5));
-        expect(nearBlack.every((c) => c >= 0 && c <= 255)).toBe(true);
+        expect(nearWhite.every((c) => c > 0 && c < 255)).toBe(true);
+        expect(nearBlack.every((c) => c > 0 && c < 255)).toBe(true);
     });
 });
 
@@ -105,10 +107,102 @@ describe("ambientBorderColor", () => {
     });
 });
 
-describe("resolveCssColorToHex (no DOM)", () => {
+const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+const computedStyleDescriptor = Object.getOwnPropertyDescriptor(globalThis, "getComputedStyle");
+const mutationObserverDescriptor = Object.getOwnPropertyDescriptor(globalThis, "MutationObserver");
+
+function restoreGlobalProperty(name: string, descriptor?: PropertyDescriptor): void {
+    if (descriptor) {
+        Object.defineProperty(globalThis, name, descriptor);
+    } else {
+        Reflect.deleteProperty(globalThis, name);
+    }
+}
+
+afterEach(() => {
+    restoreGlobalProperty("document", documentDescriptor);
+    restoreGlobalProperty("getComputedStyle", computedStyleDescriptor);
+    restoreGlobalProperty("MutationObserver", mutationObserverDescriptor);
+});
+
+describe("resolveCssColorToHex", () => {
+    function mockComputedColor(color: string): void {
+        const probe = { style: { cssText: "", color: "" }, remove: jest.fn() };
+        Object.defineProperty(globalThis, "document", {
+            configurable: true,
+            value: {
+                body: { appendChild: jest.fn() },
+                createElement: jest.fn(() => probe),
+            },
+        });
+        Object.defineProperty(globalThis, "getComputedStyle", {
+            configurable: true,
+            value: jest.fn(() => ({ color })),
+        });
+    }
+
+    it("parses legacy and modern computed RGB syntax", () => {
+        mockComputedColor("rgba(85, 103, 213, 0.5)");
+        expect(resolveCssColorToHex("var(--vscode-button-background)")).toBe("#5567d5");
+
+        mockComputedColor("rgb(85 103 213 / 0.5)");
+        expect(resolveCssColorToHex("var(--vscode-button-background)")).toBe("#5567d5");
+    });
+
     it("returns the BI fallback accent when there is no document", () => {
-        // Runs under @jest-environment node, so `document` is undefined.
+        restoreGlobalProperty("document");
         expect(resolveCssColorToHex("var(--vscode-button-background)")).toBe("#5567D5");
+    });
+});
+
+describe("subscribeToThemeChanges", () => {
+    it("shares one observer across both theme metadata roots", () => {
+        const documentElement = {};
+        const body = {};
+        const observe = jest.fn();
+        const disconnect = jest.fn();
+        let callback: MutationCallback | undefined;
+        class FakeMutationObserver {
+            constructor(next: MutationCallback) {
+                callback = next;
+            }
+
+            observe = observe;
+            disconnect = disconnect;
+        }
+        Object.defineProperty(globalThis, "document", {
+            configurable: true,
+            value: { documentElement, body },
+        });
+        Object.defineProperty(globalThis, "MutationObserver", {
+            configurable: true,
+            value: FakeMutationObserver,
+        });
+
+        const firstListener = jest.fn();
+        const secondListener = jest.fn();
+        const unsubscribeFirst = subscribeToThemeChanges(firstListener);
+        const unsubscribeSecond = subscribeToThemeChanges(secondListener);
+
+        const options = {
+            attributes: true,
+            attributeFilter: ["class", "data-vscode-theme-kind", "data-vscode-theme-id", "style"],
+        };
+        expect(observe).toHaveBeenCalledTimes(2);
+        expect(observe).toHaveBeenNthCalledWith(1, documentElement, options);
+        expect(observe).toHaveBeenNthCalledWith(2, body, options);
+
+        callback?.([], {} as MutationObserver);
+        expect(firstListener).toHaveBeenCalledTimes(1);
+        expect(secondListener).toHaveBeenCalledTimes(1);
+
+        unsubscribeFirst();
+        callback?.([], {} as MutationObserver);
+        expect(firstListener).toHaveBeenCalledTimes(1);
+        expect(secondListener).toHaveBeenCalledTimes(2);
+
+        unsubscribeSecond();
+        expect(disconnect).toHaveBeenCalledTimes(1);
     });
 });
 

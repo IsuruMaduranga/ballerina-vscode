@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -141,17 +141,28 @@ export function shiftLightness(hex: string, delta: number): string {
     return rgbToHex(hslToRgb([h, s, clamp(l + delta, 0.06, 0.96)]));
 }
 
-/** Parse `rgb(r, g, b)` / `rgba(r, g, b, a)`; null if it isn't one. */
+/** Parse legacy comma-separated and modern space-separated CSS rgb() values. */
 function parseRgbFunc(value: string): Rgb | null {
-    const match = value.match(/rgba?\(([^)]+)\)/i);
+    const match = value.trim().match(/^rgba?\((.*)\)$/i);
     if (!match) {
         return null;
     }
-    const parts = match[1].split(",").map((p) => parseFloat(p.trim()));
-    if (parts.length < 3 || parts.some((n, i) => i < 3 && Number.isNaN(n))) {
+    const content = match[1].trim();
+    const components = content.includes(",")
+        ? content.split(",")
+        : content.split(/\s*\/\s*/)[0].trim().split(/\s+/);
+    const channels = components.slice(0, 3).map((component) => {
+        const channel = component.trim().match(/^(\d+(?:\.\d+)?|\.\d+)(%)?$/);
+        if (!channel) {
+            return null;
+        }
+        const value = Number(channel[1]);
+        return channel[2] ? value * 2.55 : value;
+    });
+    if (components.length < 3 || channels.some((channel) => channel === null)) {
         return null;
     }
-    return [parts[0], parts[1], parts[2]];
+    return channels as Rgb;
 }
 
 /**
@@ -185,23 +196,45 @@ export function deriveOrbColors(state: AgentRunState): [string, string, string] 
 
 /**
  * The shader-ready hex triad for a run state, re-resolved when the VS Code
- * theme changes. VS Code stamps the theme onto `<html>`'s `class` /
- * `data-vscode-theme-kind`, so a MutationObserver there catches every switch
- * (mirrors bi-diagram's `ThemeListener`). `ShaderOrb` lerps toward the new
- * `colors` each frame, so the change crossfades.
+ * theme changes. VS Code stamps theme metadata on `<body>`, while some webview
+ * hosts update root styles; one shared observer watches both roots. `ShaderOrb`
+ * lerps toward the new `colors` each frame, so the change crossfades.
  */
+const THEME_ATTRIBUTE_FILTER = ["class", "data-vscode-theme-kind", "data-vscode-theme-id", "style"];
+const themeChangeListeners = new Set<() => void>();
+let themeObserver: MutationObserver | undefined;
+
+export function subscribeToThemeChanges(listener: () => void): () => void {
+    if (typeof document === "undefined" || !document.body || typeof MutationObserver === "undefined") {
+        return () => undefined;
+    }
+    themeChangeListeners.add(listener);
+    if (!themeObserver) {
+        themeObserver = new MutationObserver(() => {
+            for (const listener of themeChangeListeners) {
+                listener();
+            }
+        });
+        const options = { attributes: true, attributeFilter: THEME_ATTRIBUTE_FILTER };
+        themeObserver.observe(document.documentElement, options);
+        themeObserver.observe(document.body, options);
+    }
+    return () => {
+        themeChangeListeners.delete(listener);
+        if (themeChangeListeners.size === 0) {
+            themeObserver?.disconnect();
+            themeObserver = undefined;
+        }
+    };
+}
+
 export function useOrbColors(state: AgentRunState): [string, string, string] {
     const [colors, setColors] = useState<[string, string, string]>(() => deriveOrbColors(state));
 
     useEffect(() => {
-        setColors(deriveOrbColors(state));
-        const observer = new MutationObserver((mutations) => {
-            if (mutations.some((m) => m.attributeName === "class" || m.attributeName === "data-vscode-theme-kind")) {
-                setColors(deriveOrbColors(state));
-            }
-        });
-        observer.observe(document.documentElement, { attributes: true });
-        return () => observer.disconnect();
+        const updateColors = () => setColors(deriveOrbColors(state));
+        updateColors();
+        return subscribeToThemeChanges(updateColors);
     }, [state]);
 
     return colors;
