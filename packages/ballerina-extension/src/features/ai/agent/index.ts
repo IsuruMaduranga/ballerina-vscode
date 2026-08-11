@@ -132,12 +132,6 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
         // no separate temp copy anymore (see existingTempPath below).
         finalizeLastGeneration(projectRootPath, threadId);
 
-        // The previous generation's review is no longer the one being worked on. Imported lazily:
-        // ApprovalViewManager reaches the webview layer and vscode-languageclient through RPCLayer,
-        // which cannot load under jest, and this module is imported by unit tests.
-        const { approvalViewManager } = await import("../state/ApprovalViewManager");
-        approvalViewManager.closeReviewModeIfOpen();
-
         // Create config using factory function. existingTempPath makes the agent operate
         // directly on the real project root instead of AICommandExecutor creating a
         // throwaway temp copy — file edits land live in the real workspace (M1+), so there's
