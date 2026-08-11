@@ -104,10 +104,6 @@ subprojects {
         ballerinaStdLibs "io.ballerina:observe-ballerina:${observeInternalVersion}"
         ballerinaStdLibs "io.ballerina.stdlib:observe-ballerina:${observeVersion}"
         ballerinaStdLibs "io.ballerina.stdlib:tcp-ballerina:${stdlibTcpVersion}"
-
-        /* Packages bundled in the full Ballerina distribution but not in
-           jballerina-tools; test fixtures need them at the versions locked in
-           build-config/ballerina_dependencies/Dependencies.toml */
         ballerinaStdLibs "io.ballerina.stdlib:ai-ballerina:${stdlibAiVersion}"
         ballerinaStdLibs "io.ballerina.lib:avro-ballerina:${stdlibAvroVersion}"
         ballerinaStdLibs "io.ballerina.stdlib:cache-ballerina:${stdlibCacheVersion}"
