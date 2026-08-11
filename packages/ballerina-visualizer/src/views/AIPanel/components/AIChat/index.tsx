@@ -1540,6 +1540,7 @@ const AIChat: React.FC = () => {
             setIsCodeLoading(false);
             setIsLoading(false);
             setBackendRequestTriggered(false);
+            setAgentMode(AgentMode.Edit);
             if (isMigrationEnhancementRunning) {
                 setIsMigrationEnhancementRunning(false);
                 // Re-fetch session so the Resume card appears
@@ -2190,6 +2191,7 @@ const AIChat: React.FC = () => {
         setApprovalRequest(null);
         setContextUsage(null);
         setFollowupSuggestions([]);
+        setAgentMode(AgentMode.Edit);
         await rpcClient.getAiPanelRpcClient().clearChat();
         loadThreads();
     }
