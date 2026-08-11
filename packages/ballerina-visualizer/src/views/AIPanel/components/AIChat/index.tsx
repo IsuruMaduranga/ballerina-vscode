@@ -2913,58 +2913,55 @@ const AIChat: React.FC = () => {
                             (item: StreamItem) => item.kind === "ask" && (item as any).data?.stage === "asking"
                         ) as { kind: "ask"; data: { requestId: string; questions: any[] } } | undefined;
 
-                        if (activeClarifyItem) {
-                            return (
-                                <ClarifyFooter
-                                    questions={activeClarifyItem.data.questions}
-                                    requestId={activeClarifyItem.data.requestId}
-                                    rpcClient={rpcClient}
-                                    onStop={handleStop}
-                                />
-                            );
-                        }
-
                         const activeSkillEnableItem = lastStreamItems.find(
                             (item: StreamItem) => item.kind === "skill_enable" && (item as any).data?.stage === "prompting"
                         ) as { kind: "skill_enable"; data: { requestId: string; skillName: string; skillId: string } } | undefined;
 
-                        if (activeSkillEnableItem) {
-                            const { requestId, skillName, skillId } = activeSkillEnableItem.data;
-                            return (
-                                <CommonApprovalFooter
-                                    type="skill_enable"
-                                    skillName={skillName}
-                                    onEnable={() => rpcClient.getAiPanelRpcClient().enableSkillFromChat({ requestId, skillId })}
-                                    onSkip={() => rpcClient.getAiPanelRpcClient().cancelSkillEnable({ requestId })}
-                                    onStop={handleStop}
-                                />
-                            );
-                        }
+                        const approvalFooter = activeClarifyItem ? (
+                            <ClarifyFooter
+                                questions={activeClarifyItem.data.questions}
+                                requestId={activeClarifyItem.data.requestId}
+                                rpcClient={rpcClient}
+                                onStop={handleStop}
+                            />
+                        ) : activeSkillEnableItem ? (
+                            <CommonApprovalFooter
+                                type="skill_enable"
+                                skillName={activeSkillEnableItem.data.skillName}
+                                onEnable={() => rpcClient.getAiPanelRpcClient().enableSkillFromChat({
+                                    requestId: activeSkillEnableItem.data.requestId,
+                                    skillId: activeSkillEnableItem.data.skillId,
+                                })}
+                                onSkip={() => rpcClient.getAiPanelRpcClient().cancelSkillEnable({
+                                    requestId: activeSkillEnableItem.data.requestId,
+                                })}
+                                onStop={handleStop}
+                            />
+                        ) : webToolApprovalRequest ? (
+                            <CommonApprovalFooter
+                                type="web_tool"
+                                toolName={webToolApprovalRequest.toolName}
+                                content={webToolApprovalRequest.content}
+                                onAllow={handleWebToolAllow}
+                                onDeny={handleWebToolDeny}
+                                onStop={handleStop}
+                            />
+                        ) : approvalRequest ? (
+                            <CommonApprovalFooter
+                                type={approvalRequest.approvalType}
+                                onApprove={handleApprovalApprove}
+                                onReject={handleApprovalReject}
+                                onStop={handleStop}
+                            />
+                        ) : null;
 
-                        if (webToolApprovalRequest) {
-                            return (
-                                <CommonApprovalFooter
-                                    type="web_tool"
-                                    toolName={webToolApprovalRequest.toolName}
-                                    content={webToolApprovalRequest.content}
-                                    onAllow={handleWebToolAllow}
-                                    onDeny={handleWebToolDeny}
-                                    onStop={handleStop}
-                                />
-                            );
-                        }
-                        if (approvalRequest) {
-                            return (
-                                <CommonApprovalFooter
-                                    type={approvalRequest.approvalType}
-                                    onApprove={handleApprovalApprove}
-                                    onReject={handleApprovalReject}
-                                    onStop={handleStop}
-                                />
-                            );
-                        }
+                        // The composer stays mounted behind an approval footer — unmounting it would
+                        // discard whatever the user had typed and attached while waiting.
                         return (
+                        <>
+                            {approvalFooter}
                             <Footer
+                            hidden={!!approvalFooter}
                             aiChatInputRef={aiChatInputRef}
                             tagOptions={{
                                 placeholderTags: placeholderTags,
@@ -3009,6 +3006,7 @@ const AIChat: React.FC = () => {
                             }}
                             skills={skills}
                         />
+                        </>
                         );
                     })()}
                 </AIChatView>
