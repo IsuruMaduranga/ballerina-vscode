@@ -595,20 +595,15 @@ export class ApprovalViewManager {
     }
 
     /**
-     * Close ReviewMode if it is the current view. A review belongs to one generation, so leaving an
-     * earlier one open while the next starts means the user's next click lands on the previous
-     * generation's diagrams — and the bar hides its Review button while review mode is open, so
-     * there is no way back either.
+     * A review belongs to one generation, so an earlier one must not stay open into the next. Same
+     * steps as the panel's own Close (`goBack`), which likewise clears the open generation through
+     * `notifyReviewModeClosed`.
      */
     closeReviewModeIfOpen(): void {
-        const ctx = StateMachine.context();
-        if (ctx.view !== MACHINE_VIEW.ReviewMode) {
+        if (StateMachine.context().view !== MACHINE_VIEW.ReviewMode) {
             return;
         }
         console.log('[ApprovalViewManager] Closing ReviewMode — a new generation is starting');
-        this.openReviewGenerationId = null;
-        // Same as the panel's own Close: return to whatever the user was looking at before, rather
-        // than dropping them on the package overview.
         history.pop();
         updateView(false);
         this.notifyReviewModeClosed();
