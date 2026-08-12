@@ -35,6 +35,16 @@ const Container = styled.div`
     pointer-events: auto;
 `;
 
+const MessageContainer = styled.div`
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    color: var(--vscode-descriptionForeground);
+    padding: 0 24px;
+    text-align: center;
+`;
+
 interface ItemMetadata {
     type: string;
     name: string;
@@ -52,17 +62,21 @@ export function ReadonlyTypeDiagram(props: ReadonlyTypeDiagramProps): JSX.Elemen
     const { filePath, onModelLoaded, useFileSchema } = props;
     const { rpcClient } = useRpcContext();
     const [typesModel, setTypesModel] = useState<Type[] | null>(null);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     useEffect(() => {
         setTypesModel(null);
-        fetchTypesModel();
-    }, [filePath, useFileSchema]);
-
-    const fetchTypesModel = () => {
+        setErrorMessage(null);
+        // Stale-response guard: a slower earlier request (e.g. after toggling Old/New)
+        // must not overwrite this render with the other version's model.
+        let cancelled = false;
         rpcClient
             .getBIDiagramRpcClient()
             .getTypes({ filePath: filePath, useFileSchema })
             .then((response) => {
+                if (cancelled) {
+                    return;
+                }
                 if (response?.types) {
                     setTypesModel(response.types);
 
@@ -84,17 +98,31 @@ export function ReadonlyTypeDiagram(props: ReadonlyTypeDiagramProps): JSX.Elemen
                             name: "No Types",
                         });
                     }
+                } else {
+                    // A resolved-but-empty response (e.g. the source is mid-edit and not
+                    // parseable) previously left the spinner up forever.
+                    setErrorMessage("The type diagram is unavailable for the selected version.");
                 }
             })
             .catch((error) => {
                 console.error("Error fetching types model:", error);
+                if (!cancelled) {
+                    setErrorMessage("The type diagram could not be loaded.");
+                }
             });
-    };
+        return () => {
+            cancelled = true;
+        };
+    }, [filePath, useFileSchema, rpcClient]);
 
     // No-op handlers for readonly mode
     const noOpHandler = () => {
         console.log("Diagram is in readonly mode");
     };
+
+    if (errorMessage) {
+        return <MessageContainer>{errorMessage}</MessageContainer>;
+    }
 
     if (!typesModel) {
         return (

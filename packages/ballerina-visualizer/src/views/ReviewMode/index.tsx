@@ -17,13 +17,15 @@
  */
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { SemanticDiffResponse, SemanticDiff, ChangeTypeEnum, NodePosition } from "@wso2/ballerina-core";
+import { SemanticDiffResponse, SemanticDiff, ChangeTypeEnum, NodeKindEnum, NodePosition } from "@wso2/ballerina-core";
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { ReadonlyComponentDiagram } from "./ReadonlyComponentDiagram";
 import { ExpectedFlowMetadata, ReadonlyFlowDiagram, ReviewViewMode, getVersionsForChangeType } from "./ReadonlyFlowDiagram";
 import { diffBelongsToPackage } from "./path-utils";
 import { ReadonlyTypeDiagram } from "./ReadonlyTypeDiagram";
+import { ReadonlySourceDiff } from "./ReadonlySourceDiff";
+import { getNodeKindLabel, SOURCE_VIEW_KINDS } from "./nodeKindLabels";
 import { ReviewNavigation } from "./ReviewNavigation";
 import { Codicon, Icon, ThemeColors } from "@wso2/ui-toolkit";
 import { TitleBar } from "../../components/TitleBar";
@@ -150,6 +152,7 @@ enum DiagramType {
     COMPONENT = "component",
     FLOW = "flow",
     TYPE = "type",
+    SOURCE = "source",
 }
 
 interface ReviewView {
@@ -161,12 +164,8 @@ interface ReviewView {
     label?: string;
     changeType: number;
     expectedMetadata?: ExpectedFlowMetadata;
-}
-
-enum NodeKindEnum {
-    FUNCTION = 0,
-    RESOURCE_FUNCTION = 1,
-    TYPE = 2,
+    /** Construct name + before/after source, for SOURCE views (carried in diff metadata). */
+    sourceMeta?: { name?: string; oldSource?: string; newSource?: string };
 }
 
 // Map numeric changeType to string
@@ -183,23 +182,12 @@ function getChangeTypeString(changeType: number): string {
     }
 }
 
-// Map numeric nodeKind to string
-function getNodeKindString(nodeKind: number): string {
-    switch (nodeKind) {
-        case NodeKindEnum.FUNCTION:
-            return "function";
-        case NodeKindEnum.RESOURCE_FUNCTION:
-            return "resource";
-        case NodeKindEnum.TYPE:
-            return "type";
-        default:
-            return "component";
-    }
-}
-
 function getDiagramType(nodeKind: number): DiagramType {
-    if (nodeKind === NodeKindEnum.TYPE) {
+    if (nodeKind === NodeKindEnum.TYPE_DEFINITION) {
         return DiagramType.TYPE;
+    }
+    if (SOURCE_VIEW_KINDS.has(nodeKind)) {
+        return DiagramType.SOURCE;
     }
     return DiagramType.FLOW;
 }
@@ -208,15 +196,20 @@ function getDiagramType(nodeKind: number): DiagramType {
 function convertToReviewView(diff: SemanticDiff, projectPath: string, packageName?: string): ReviewView {
     const fileName = diff.uri.split("/").pop() || diff.uri;
     const changeTypeStr = getChangeTypeString(diff.changeType);
-    const nodeKindStr = getNodeKindString(diff.nodeKind);
+    const nodeKindStr = getNodeKindLabel(diff.nodeKind, diff.metadata);
+    const diagramType = getDiagramType(diff.nodeKind);
 
     // Include package name in label if provided (for multi-package scenarios)
     const changeLabel = packageName
         ? `${changeTypeStr}: ${nodeKindStr} in ${packageName}/${fileName}`
         : `${changeTypeStr}: ${nodeKindStr} in ${fileName}`;
 
+    const metadata = diff.metadata as
+        | { name?: string; oldSource?: string; newSource?: string }
+        | undefined;
+
     return {
-        type: getDiagramType(diff.nodeKind),
+        type: diagramType,
         filePath: diff.uri,
         position: {
             startLine: diff.lineRange.startLine.line,
@@ -239,6 +232,10 @@ function convertToReviewView(diff: SemanticDiff, projectPath: string, packageNam
             nodeKind: diff.nodeKind,
             metadata: diff.metadata,
         },
+        sourceMeta:
+            diagramType === DiagramType.SOURCE
+                ? { name: metadata?.name, oldSource: metadata?.oldSource, newSource: metadata?.newSource }
+                : undefined,
     };
 }
 
@@ -273,6 +270,7 @@ export function ReviewMode(): JSX.Element {
     const [isLoading, setIsLoading] = useState(true);
     const [currentItemMetadata, setCurrentItemMetadata] = useState<ItemMetadata | null>(null);
     const [isWorkspace, setIsWorkspace] = useState(false);
+    const [modifiedFiles, setModifiedFiles] = useState<string[]>([]);
     const [semanticDiffError, setSemanticDiffError] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<ReviewViewMode>("diff");
     // View indices where the unified diff could not be built (old version missing/mismatched)
@@ -304,6 +302,7 @@ export function ReviewMode(): JSX.Element {
 
             setProjectPath(tempDirPath);
             setIsWorkspace(isWorkspaceProject);
+            setModifiedFiles(data.modifiedFiles ?? []);
             setSemanticDiffError(data.semanticDiffError ?? null);
             setSemanticDiffData({ semanticDiffs, loadDesignDiagrams });
 
@@ -388,12 +387,19 @@ export function ReviewMode(): JSX.Element {
         });
     }, [rpcClient]);
 
-    // Set metadata for component diagram when view changes
+    // Set metadata for component/source views when view changes (they don't load a model
+    // that would report metadata back)
     useEffect(() => {
         if (currentView?.type === "component" && !currentItemMetadata) {
             setCurrentItemMetadata({
                 type: "Design",
                 name: "",
+            });
+        }
+        if (currentView?.type === "source" && !currentItemMetadata) {
+            setCurrentItemMetadata({
+                type: "Change",
+                name: currentView.sourceMeta?.name ?? "",
             });
         }
     }, [currentView, currentItemMetadata]);
@@ -445,6 +451,12 @@ export function ReviewMode(): JSX.Element {
         if (!currentView) {
             return { diff: false, new: true, old: false };
         }
+        if (currentView.type === DiagramType.SOURCE) {
+            // Source views carry their own before/after text; "diff" shows both blocks.
+            const hasOld = currentView.sourceMeta?.oldSource !== undefined;
+            const hasNew = currentView.sourceMeta?.newSource !== undefined;
+            return { diff: hasOld && hasNew, new: hasNew, old: hasOld };
+        }
         const versions = getVersionsForChangeType(currentView.changeType);
         const diff = currentView.type === DiagramType.FLOW && !diffUnavailableViews.has(currentIndex);
         return { diff, new: versions.new, old: versions.old };
@@ -465,8 +477,15 @@ export function ReviewMode(): JSX.Element {
             return <div>No view to display</div>;
         }
 
-        // Create a unique key for each diagram to force re-mount when switching views
-        const diagramKey = `${currentView.type}-${currentIndex}-${currentView.filePath}`;
+        // Create a unique key for each diagram to force re-mount when switching views.
+        // For type/design diagrams the Old/New toggle is part of the key: their fetch
+        // effects have no stale-response guard, so remounting on toggle prevents an
+        // out-of-order response from rendering the wrong version. Flow diagrams cache
+        // versions internally and derive the toggle locally, so their key excludes it.
+        const diagramKey =
+            currentView.type === "flow"
+                ? `${currentView.type}-${currentIndex}-${currentView.filePath}`
+                : `${currentView.type}-${currentIndex}-${currentView.filePath}-${effectiveViewMode}`;
 
         switch (currentView.type) {
             case "component":
@@ -503,6 +522,17 @@ export function ReviewMode(): JSX.Element {
                         filePath={currentView.filePath}
                         onModelLoaded={handleModelLoaded}
                         useFileSchema={effectiveViewMode === "old"}
+                    />
+                );
+            case "source":
+                // The construct's name is shown by the TitleBar (via currentItemMetadata).
+                return (
+                    <ReadonlySourceDiff
+                        key={diagramKey}
+                        oldSource={currentView.sourceMeta?.oldSource}
+                        newSource={currentView.sourceMeta?.newSource}
+                        changeType={currentView.changeType}
+                        viewMode={effectiveViewMode}
                     />
                 );
             default:
@@ -552,6 +582,22 @@ export function ReviewMode(): JSX.Element {
                                 dependency, running <code>bal build</code> in the project usually resolves it
                                 by refreshing <code>Dependencies.toml</code>.
                             </div>
+                        </CompileErrorMessage>
+                    ) : modifiedFiles.length > 0 ? (
+                        // Files changed but nothing produced a reviewable code diff (e.g. only
+                        // Config.toml / markdown / JSON edits). Say what changed instead of the
+                        // misleading "No changes to review".
+                        <CompileErrorMessage style={{ borderColor: "var(--vscode-panel-border)", background: "transparent" }}>
+                            <strong>No code changes to review as diagrams.</strong>
+                            <div>
+                                {modifiedFiles.length} file{modifiedFiles.length === 1 ? " was" : "s were"} changed
+                                and already applied to your project:
+                            </div>
+                            <ErrorDetail style={{ color: "var(--vscode-foreground)" }}>
+                                {modifiedFiles.map((f) => (
+                                    <div key={f}>{f}</div>
+                                ))}
+                            </ErrorDetail>
                         </CompileErrorMessage>
                     ) : (
                         <div style={{ color: "var(--vscode-foreground)" }}>No changes to review</div>

@@ -63,28 +63,40 @@ export function ReadonlyComponentDiagram(props: ReadonlyComponentDiagramProps): 
     const { rpcClient } = useRpcContext();
     const [project, setProject] = useState<CDModel | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
+    const [loadFailed, setLoadFailed] = useState(false);
 
     useEffect(() => {
         setProject(null);
         setIsLoaded(false);
-        fetchProject();
-    }, [projectPath, useFileSchema]);
-
-    const fetchProject = () => {
+        setLoadFailed(false);
+        // Stale-response guard: a slower earlier request (e.g. after toggling Old/New)
+        // must not overwrite this render with the other version's model.
+        let cancelled = false;
         rpcClient
             .getBIDiagramRpcClient()
             .getDesignModel({ projectPath, useFileSchema })
             .then((response) => {
+                if (cancelled) {
+                    return;
+                }
                 if (response?.designModel) {
                     setProject(response.designModel);
+                } else {
+                    setLoadFailed(true);
                 }
                 setIsLoaded(true);
             })
             .catch((error) => {
                 console.error("Error getting design model", error);
-                setIsLoaded(true);
+                if (!cancelled) {
+                    setLoadFailed(true);
+                    setIsLoaded(true);
+                }
             });
-    };
+        return () => {
+            cancelled = true;
+        };
+    }, [projectPath, useFileSchema, rpcClient]);
 
     // No-op handlers for readonly mode
     const noOpHandler = () => {
@@ -99,10 +111,17 @@ export function ReadonlyComponentDiagram(props: ReadonlyComponentDiagramProps): 
         );
     }
 
+    // A load failure is not the same as a genuinely empty design — say which one it is,
+    // and name the version actually being shown.
+    const versionLabel = useFileSchema ? "previous" : "current";
+    if (loadFailed) {
+        return <EmptyMessage>The design diagram for the {versionLabel} version could not be loaded.</EmptyMessage>;
+    }
+
     if (!project || isDesignModelEmpty(project)) {
         return (
             <EmptyMessage>
-                No top-level constructs found in the previous version
+                No top-level constructs found in the {versionLabel} version
             </EmptyMessage>
         );
     }
