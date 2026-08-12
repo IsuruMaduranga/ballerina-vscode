@@ -214,7 +214,7 @@ public class PackageUtil {
         PackageResolver packageResolver = buildProject.projectEnvironmentContext().getService(PackageResolver.class);
 
         Optional<ResolutionResponse> resolutionResponse =
-                resolveResponse(packageResolver, ResolutionRequest.from(packageDescriptor), false);
+                resolveResponse(packageResolver, ResolutionRequest.from(packageDescriptor), CommonUtil.TEST_OFFLINE);
         if (resolutionResponse.isEmpty()) {
             return Optional.empty();
         }
