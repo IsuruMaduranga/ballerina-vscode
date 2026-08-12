@@ -17,12 +17,12 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { ChangeTypeEnum, Flow, NodePosition, ParentMetadata, SemanticDiff } from "@wso2/ballerina-core";
+import { Flow, NodePosition, ParentMetadata, SemanticDiff } from "@wso2/ballerina-core";
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { ProgressRing, ThemeColors } from "@wso2/ui-toolkit";
 import { Diagram, mergeFlowModelsForDiff, stampDiffState } from "@wso2/bi-diagram";
-import { getFlowLookupPosition } from "./position-utils";
+import { fetchFlowModelVersion, getVersionsForChangeType, ReviewModelCache } from "./reviewModelCache";
 
 const SpinnerContainer = styled.div`
     display: flex;
@@ -65,22 +65,6 @@ export type ExpectedFlowMetadata = Pick<SemanticDiff, "nodeKind" | "metadata">;
 const NODE_KIND_FUNCTION = 0;
 const NODE_KIND_RESOURCE = 1;
 
-/**
- * Which versions of a file structurally exist for a semantic-diff change type.
- * Single source of truth for the toggle availability (ReviewMode) and the
- * diff-mode fetch branching below.
- */
-export function getVersionsForChangeType(changeType: number): { old: boolean; new: boolean } {
-    switch (changeType) {
-        case ChangeTypeEnum.ADDITION:
-            return { old: false, new: true };
-        case ChangeTypeEnum.DELETION:
-            return { old: true, new: false };
-        default:
-            return { old: true, new: true };
-    }
-}
-
 interface ReadonlyFlowDiagramProps {
     projectPath: string;
     filePath: string;
@@ -91,6 +75,8 @@ interface ReadonlyFlowDiagramProps {
     changeType: number;
     expectedMetadata?: ExpectedFlowMetadata;
     onDiffUnavailable?: () => void;
+    /** Session-scoped model cache owned by ReviewMode — survives navigation remounts. */
+    modelCache: ReviewModelCache;
 }
 
 function getEventStartData(flow: Flow): ParentMetadata | undefined {
@@ -160,6 +146,7 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
         changeType,
         expectedMetadata,
         onDiffUnavailable,
+        modelCache,
     } = props;
     const { rpcClient } = useRpcContext();
     const [flowModel, setFlowModel] = useState<Flow | null>(null);
@@ -176,9 +163,6 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
     const onDiffUnavailableRef = useRef(onDiffUnavailable);
     onModelLoadedRef.current = onModelLoaded;
     onDiffUnavailableRef.current = onDiffUnavailable;
-    // Review content is frozen while the review is open, so fetched versions are cached
-    // per view — toggling Diff/New/Old re-derives locally instead of re-querying the LS.
-    const flowCache = useRef<{ key: string; versions: Map<boolean, Flow | null> }>({ key: "", versions: new Map() });
 
     useEffect(() => {
         setIsLoading(true);
@@ -223,54 +207,16 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
         };
     }, [filePath, position, oldPosition, viewMode, expectedMetadata, changeType, rpcClient]);
 
-    // Fetch one version of the enclosing function's flow model.
+    // Fetch one version of the enclosing function's flow model, through the session
+    // cache owned by ReviewMode — toggling Diff/New/Old or navigating back to this
+    // item re-derives locally instead of re-querying the LS.
     // useFileSchema=true reads the frozen original (ai://); false reads the live edits (file://).
-    const fetchFlowModelVersion = async (useFileSchema: boolean): Promise<Flow | null> => {
-        const lookupPosition = getFlowLookupPosition(position, oldPosition, useFileSchema);
-        const cacheKey = `${filePath}:${position.startLine}:${position.startColumn}:${position.endLine}:` +
-            `${position.endColumn}:${oldPosition?.startLine ?? ""}:${oldPosition?.startColumn ?? ""}:` +
-            `${oldPosition?.endLine ?? ""}:${oldPosition?.endColumn ?? ""}`;
-        if (flowCache.current.key !== cacheKey) {
-            flowCache.current = { key: cacheKey, versions: new Map() };
-        }
-        // capture the entry so a late response can't poison a newer view's cache
-        const cacheEntry = flowCache.current;
-        if (cacheEntry.versions.has(useFileSchema)) {
-            return cacheEntry.versions.get(useFileSchema);
-        }
-
-        // First resolve the full function range using getEnclosedFunction,
-        // since the position from semantic diff may only cover the changed statement
-        const enclosedFn = await rpcClient.getBIDiagramRpcClient().getEnclosedFunction({
-            filePath: filePath,
-            position: { line: lookupPosition.startLine, offset: lookupPosition.startColumn },
-            useFileSchema,
-        });
-        const startLine = enclosedFn?.startLine ?? {
-            line: lookupPosition.startLine,
-            offset: lookupPosition.startColumn,
-        };
-        const endLine = enclosedFn?.endLine ?? {
-            line: lookupPosition.endLine,
-            offset: lookupPosition.endColumn,
-        };
-
-        const response = await rpcClient.getBIDiagramRpcClient().getFlowModel({
-            filePath: filePath,
-            startLine,
-            endLine,
-            useFileSchema,
-        });
-        const flow = response?.flowModel ?? null;
-        if (flowCache.current === cacheEntry) {
-            cacheEntry.versions.set(useFileSchema, flow);
-        }
-        return flow;
-    };
+    const fetchVersion = (useFileSchema: boolean): Promise<Flow | null> =>
+        fetchFlowModelVersion(rpcClient, modelCache, { filePath, position, oldPosition, useFileSchema });
 
     const loadFlowModel = async (): Promise<Flow | null> => {
         if (viewMode === "old") {
-            const oldFlow = await fetchFlowModelVersion(true);
+            const oldFlow = await fetchVersion(true);
             if (oldFlow && !metadataMatchesExpected(oldFlow, expectedMetadata)) {
                 onDiffUnavailableRef.current?.();
                 return null;
@@ -278,7 +224,7 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
             return oldFlow;
         }
         if (viewMode === "new") {
-            const newFlow = await fetchFlowModelVersion(false);
+            const newFlow = await fetchVersion(false);
             if (newFlow && !metadataMatchesExpected(newFlow, expectedMetadata)) {
                 // Match the "old" branch: disable the diff toggle up front instead of
                 // waiting for the user to click Diff and discover it later.
@@ -291,11 +237,11 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
         // unified diff mode
         const versions = getVersionsForChangeType(changeType);
         if (!versions.old) {
-            const newFlow = await fetchFlowModelVersion(false);
+            const newFlow = await fetchVersion(false);
             return newFlow ? stampDiffState(newFlow, "added") : null;
         }
         if (!versions.new) {
-            const oldFlow = await fetchFlowModelVersion(true);
+            const oldFlow = await fetchVersion(true);
             return oldFlow ? stampDiffState(oldFlow, "removed") : null;
         }
 
@@ -306,8 +252,8 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
         // if the user then toggles to New/Old.
         let oldFetchError: unknown = null;
         const [newFlow, oldFlow] = await Promise.all([
-            fetchFlowModelVersion(false),
-            fetchFlowModelVersion(true).catch((error): Flow | null => {
+            fetchVersion(false),
+            fetchVersion(true).catch((error): Flow | null => {
                 console.error("[Reviewing Changes] Error fetching old flow model:", error);
                 oldFetchError = error;
                 return null;

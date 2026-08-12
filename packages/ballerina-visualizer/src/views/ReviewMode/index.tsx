@@ -21,11 +21,12 @@ import { SemanticDiffResponse, SemanticDiff, ChangeTypeEnum, NodeKindEnum, NodeP
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { ReadonlyComponentDiagram } from "./ReadonlyComponentDiagram";
-import { ExpectedFlowMetadata, ReadonlyFlowDiagram, ReviewViewMode, getVersionsForChangeType } from "./ReadonlyFlowDiagram";
+import { ExpectedFlowMetadata, ReadonlyFlowDiagram, ReviewViewMode } from "./ReadonlyFlowDiagram";
 import { diffBelongsToPackage } from "./path-utils";
 import { ReadonlyTypeDiagram } from "./ReadonlyTypeDiagram";
 import { ReadonlySourceDiff } from "./ReadonlySourceDiff";
 import { getNodeKindLabel, SOURCE_VIEW_KINDS } from "./nodeKindLabels";
+import { getVersionsForChangeType, prefetchReviewView, ReviewModelCache } from "./reviewModelCache";
 import { ReviewNavigation } from "./ReviewNavigation";
 import { Codicon, Icon, ThemeColors } from "@wso2/ui-toolkit";
 import { TitleBar } from "../../components/TitleBar";
@@ -277,6 +278,11 @@ export function ReviewMode(): JSX.Element {
     const [diffUnavailableViews, setDiffUnavailableViews] = useState<Set<number>>(new Set());
     const pendingIndexRef = useRef<number | null>(null);
     const viewsLengthRef = useRef<number>(0);
+    // Session-scoped LS model cache shared by all diagram components. The per-item
+    // components are remounted on navigation/toggle (their keys include currentIndex),
+    // so any cache they hold themselves dies with them — this one survives, making
+    // revisits and Old/New toggles cache hits instead of fresh LS round trips.
+    const modelCacheRef = useRef<ReviewModelCache>(new Map());
 
     useEffect(() => {
         viewsLengthRef.current = views.length;
@@ -293,6 +299,9 @@ export function ReviewMode(): JSX.Element {
             const location = await rpcClient.getVisualizerLocation();
             const data = location?.reviewData;
             if (!data?.semanticDiffs || !data?.tempProjectPath) return;
+
+            // New review payload — models cached for a previous generation are stale.
+            modelCacheRef.current = new Map();
 
             const tempDirPath = data.tempProjectPath;
             const isWorkspaceProject = data.isWorkspace ?? false;
@@ -386,6 +395,37 @@ export function ReviewMode(): JSX.Element {
             }
         });
     }, [rpcClient]);
+
+    // Warm the session cache for EVERY item once per review payload, ordered outward
+    // from the item the review opened on, so any chip click or prev/next lands on an
+    // already-fetched model. Two workers keep the sweep from starving the mounted
+    // component's own fetch (which the promise cache dedups against anyway); a failed
+    // prefetch evicts itself, so the visit-time fetch still gets a fresh attempt.
+    const prefetchedViewsRef = useRef<ReviewView[] | null>(null);
+    useEffect(() => {
+        if (views.length === 0 || prefetchedViewsRef.current === views) {
+            return;
+        }
+        prefetchedViewsRef.current = views;
+        const cache = modelCacheRef.current;
+        const order: ReviewView[] = [];
+        for (let distance = 0; order.length < views.length; distance++) {
+            const ahead = currentIndex + distance;
+            const behind = currentIndex - distance;
+            if (ahead < views.length) order.push(views[ahead]);
+            if (distance > 0 && behind >= 0) order.push(views[behind]);
+        }
+        let nextIndex = 0;
+        const worker = (): void => {
+            if (nextIndex >= order.length || modelCacheRef.current !== cache) {
+                // A new review payload replaced the cache — stop sweeping stale views.
+                return;
+            }
+            prefetchReviewView(rpcClient, cache, order[nextIndex++]).then(worker);
+        };
+        worker();
+        worker();
+    }, [views, currentIndex, rpcClient]);
 
     // Set metadata for component/source views when view changes (they don't load a model
     // that would report metadata back)
@@ -497,6 +537,7 @@ export function ReviewMode(): JSX.Element {
                         filePath={currentView.filePath}
                         position={currentView.position}
                         useFileSchema={effectiveViewMode === "old"}
+                        modelCache={modelCacheRef.current}
                     />
                 );
             case "flow":
@@ -512,6 +553,7 @@ export function ReviewMode(): JSX.Element {
                         changeType={currentView.changeType}
                         expectedMetadata={currentView.expectedMetadata}
                         onDiffUnavailable={handleDiffUnavailable}
+                        modelCache={modelCacheRef.current}
                     />
                 );
             case "type":
@@ -522,6 +564,7 @@ export function ReviewMode(): JSX.Element {
                         filePath={currentView.filePath}
                         onModelLoaded={handleModelLoaded}
                         useFileSchema={effectiveViewMode === "old"}
+                        modelCache={modelCacheRef.current}
                     />
                 );
             case "source":

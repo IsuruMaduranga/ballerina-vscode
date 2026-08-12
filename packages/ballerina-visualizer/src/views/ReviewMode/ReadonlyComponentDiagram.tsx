@@ -22,6 +22,7 @@ import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { Diagram } from "@wso2/component-diagram";
 import { ProgressRing, ThemeColors } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
+import { fetchDesignModel, ReviewModelCache } from "./reviewModelCache";
 
 const SpinnerContainer = styled.div`
     display: flex;
@@ -40,6 +41,8 @@ interface ReadonlyComponentDiagramProps {
     filePath: string;
     position: NodePosition;
     useFileSchema?: boolean;
+    /** Session-scoped model cache owned by ReviewMode — survives toggle/navigation remounts. */
+    modelCache: ReviewModelCache;
 }
 
 const EmptyMessage = styled.div`
@@ -59,7 +62,7 @@ function isDesignModelEmpty(model: CDModel): boolean {
 }
 
 export function ReadonlyComponentDiagram(props: ReadonlyComponentDiagramProps): JSX.Element {
-    const { projectPath, useFileSchema } = props;
+    const { projectPath, useFileSchema, modelCache } = props;
     const { rpcClient } = useRpcContext();
     const [project, setProject] = useState<CDModel | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -72,15 +75,13 @@ export function ReadonlyComponentDiagram(props: ReadonlyComponentDiagramProps): 
         // Stale-response guard: a slower earlier request (e.g. after toggling Old/New)
         // must not overwrite this render with the other version's model.
         let cancelled = false;
-        rpcClient
-            .getBIDiagramRpcClient()
-            .getDesignModel({ projectPath, useFileSchema })
-            .then((response) => {
+        fetchDesignModel(rpcClient, modelCache, projectPath, useFileSchema)
+            .then((designModel) => {
                 if (cancelled) {
                     return;
                 }
-                if (response?.designModel) {
-                    setProject(response.designModel);
+                if (designModel) {
+                    setProject(designModel);
                 } else {
                     setLoadFailed(true);
                 }
@@ -96,7 +97,7 @@ export function ReadonlyComponentDiagram(props: ReadonlyComponentDiagramProps): 
         return () => {
             cancelled = true;
         };
-    }, [projectPath, useFileSchema, rpcClient]);
+    }, [projectPath, useFileSchema, rpcClient, modelCache]);
 
     // No-op handlers for readonly mode
     const noOpHandler = () => {
