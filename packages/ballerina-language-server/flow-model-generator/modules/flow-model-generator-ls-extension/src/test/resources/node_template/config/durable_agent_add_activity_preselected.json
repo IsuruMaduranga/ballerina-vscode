@@ -1,74 +1,77 @@
 {
-  "source": "builtin_activity/functions.bal",
+  "source": "durable_agent_activities.bal",
   "position": {
-    "line": 5,
+    "line": 27,
     "offset": 0
   },
-  "description": "Builtin activity - Send Email (SMTP) node template",
+  "description": "Register Activity template for a chosen activity: the selector is pre-selected and hidden, and a binding selector is offered for the client parameter",
   "codedata": {
-    "node": "BUILTIN_ACTIVITY",
+    "node": "DURABLE_AGENT_ADD_ACTIVITY",
     "org": "ballerina",
-    "module": "workflow.activity",
-    "symbol": "sendEmail"
+    "module": "workflow",
+    "symbol": "lookupBill"
   },
   "output": {
     "id": "31",
     "metadata": {
-      "label": "Send Email",
-      "description": "Send a plain-text email as a workflow activity using a configured email:SmtpClient connection."
+      "label": "Register Activity",
+      "description": "Register a workflow activity as a durable agent activity"
     },
     "codedata": {
-      "node": "CONNECTION_ACTIVITY_CALL",
+      "node": "DURABLE_AGENT_ADD_ACTIVITY",
       "org": "ballerina",
-      "module": "workflow.activity",
-      "symbol": "sendEmail",
+      "module": "workflow",
+      "object": "AgenticWorkflowContext",
+      "symbol": "registerActivity",
       "isNew": true
     },
     "returning": false,
     "properties": {
-      "connection": {
+      "activity": {
         "metadata": {
-          "label": "Connection",
-          "description": "Connection to use",
-          "connectors": [
-            {
-              "codedata": {
-                "node": "NEW_CONNECTION",
-                "org": "ballerina",
-                "module": "email",
-                "packageName": "email",
-                "object": "SmtpClient",
-                "symbol": "init"
+          "label": "Activity",
+          "description": "The @workflow:Activity function to expose as an agent tool"
+        },
+        "types": [
+          {
+            "fieldType": "SINGLE_SELECT",
+            "options": [
+              {
+                "label": "lookupBill",
+                "value": "lookupBill"
               },
-              "addNewConnectionLabel": "Add new SMTP connection"
-            }
-          ]
-        },
-        "types": [
-          {
-            "fieldType": "CONNECTION",
+              {
+                "label": "recordPayment",
+                "value": "recordPayment"
+              }
+            ],
             "selected": true
           }
         ],
-        "value": "NEW_CONNECTION",
-        "placeholder": "NEW_CONNECTION",
+        "value": "lookupBill",
         "optional": false,
         "editable": true,
         "advanced": false,
-        "hidden": false,
+        "hidden": true,
         "codedata": {
-          "searchNodesKind": "EMAIL"
+          "kind": "REQUIRED"
         }
       },
-      "to": {
+      "bindings.api": {
         "metadata": {
-          "label": "To",
-          "description": "Recipient email address (or list of addresses)"
+          "label": "Api",
+          "description": "Fixed at registration and hidden from the model: the agent cannot supply a 'ballerina/http:2.16.6:Client'"
         },
         "types": [
           {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string|string[]",
+            "fieldType": "SINGLE_SELECT",
+            "ballerinaType": "ballerina/http:2.16.6:Client",
+            "options": [
+              {
+                "label": "billingApi",
+                "value": "billingApi"
+              }
+            ],
             "selected": true
           }
         ],
@@ -81,199 +84,46 @@
           "kind": "REQUIRED"
         }
       },
-      "subject": {
+      "name": {
         "metadata": {
-          "label": "Subject",
-          "description": "Email subject line"
+          "label": "Tool Name",
+          "description": "The tool name advertised to the model. Defaults to the function name"
         },
         "types": [
           {
-            "fieldType": "EXPRESSION",
+            "fieldType": "TEXT",
             "ballerinaType": "string",
             "selected": true
           }
         ],
         "value": "",
-        "optional": false,
+        "optional": true,
         "editable": true,
         "advanced": false,
-        "hidden": false,
-        "codedata": {
-          "kind": "REQUIRED"
-        }
+        "hidden": true
       },
-      "body": {
+      "description": {
         "metadata": {
-          "label": "Body",
-          "description": "Plain-text body of the email"
+          "label": "Description",
+          "description": "Tells the model what this tool does and when to use it"
         },
         "types": [
           {
-            "fieldType": "EXPRESSION",
+            "fieldType": "DOC_TEXT",
             "ballerinaType": "string",
             "selected": true
           }
         ],
         "value": "",
-        "optional": false,
+        "optional": true,
         "editable": true,
         "advanced": false,
-        "hidden": false,
-        "codedata": {
-          "kind": "REQUIRED"
-        }
+        "hidden": true
       },
-      "from": {
+      "requiresApproval": {
         "metadata": {
-          "label": "From",
-          "description": "Sender address"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string",
-            "selected": true
-          }
-        ],
-        "value": "",
-        "optional": false,
-        "editable": true,
-        "advanced": false,
-        "hidden": false,
-        "codedata": {
-          "kind": "REQUIRED"
-        }
-      },
-      "cc": {
-        "metadata": {
-          "label": "CC",
-          "description": "Optional CC recipient(s)"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string|string[]?",
-            "selected": true
-          }
-        ],
-        "value": "",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": false
-      },
-      "bcc": {
-        "metadata": {
-          "label": "BCC",
-          "description": "Optional BCC recipient(s)"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string|string[]?",
-            "selected": true
-          }
-        ],
-        "value": "",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": false
-      },
-      "htmlBody": {
-        "metadata": {
-          "label": "HTML Body",
-          "description": "Optional HTML body (sent alongside the plain-text body)"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string?",
-            "selected": true
-          }
-        ],
-        "value": "",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": false
-      },
-      "contentType": {
-        "metadata": {
-          "label": "Content Type",
-          "description": "MIME content type override (e.g., \"text/plain\")"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string?",
-            "selected": true
-          }
-        ],
-        "value": "",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": false
-      },
-      "emailHeaders": {
-        "metadata": {
-          "label": "Email Headers",
-          "description": "Additional mail headers as map<string>"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "map<string>?",
-            "selected": true
-          }
-        ],
-        "value": "",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": false
-      },
-      "replyTo": {
-        "metadata": {
-          "label": "Reply To",
-          "description": "Optional Reply-To address(es)"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string|string[]?",
-            "selected": true
-          }
-        ],
-        "value": "",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": false
-      },
-      "sender": {
-        "metadata": {
-          "label": "Sender",
-          "description": "Sender address (used when the envelope sender differs from From)"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string?",
-            "selected": true
-          }
-        ],
-        "value": "",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": false
-      },
-      "checkError": {
-        "metadata": {
-          "label": "Check Error",
-          "description": "Add 'check' to propagate errors. Uncheck to handle errors manually."
+          "label": "Requires Approval",
+          "description": "Gate this tool: before the agent runs it, a review activity is created and the agent suspends durably until a reviewer proceeds (optionally editing the arguments) or rejects."
         },
         "types": [
           {
@@ -282,10 +132,28 @@
             "selected": true
           }
         ],
-        "value": "true",
+        "value": "false",
         "optional": true,
         "editable": true,
-        "advanced": false,
+        "advanced": true,
+        "hidden": false
+      },
+      "userRoles": {
+        "metadata": {
+          "label": "Reviewer Roles",
+          "description": "Role(s) permitted to decide the approval review of this activity, e.g. \"support-lead\" or [\"finance\", \"manager\"]."
+        },
+        "types": [
+          {
+            "fieldType": "EXPRESSION",
+            "ballerinaType": "string|string[]",
+            "selected": true
+          }
+        ],
+        "placeholder": "",
+        "optional": true,
+        "editable": true,
+        "advanced": true,
         "hidden": false
       },
       "retryPolicy": {
@@ -523,22 +391,22 @@
         "advanced": false,
         "hidden": true
       },
-      "advanced": {
+      "checkError": {
         "metadata": {
-          "label": "Activity call configurations",
-          "description": "Activity call configurations"
+          "label": "Check Error",
+          "description": "Trigger error flow"
         },
         "types": [
           {
-            "fieldType": "ADVANCE_PARAM_LIST",
-            "selected": false
+            "fieldType": "FLAG",
+            "selected": true
           }
         ],
-        "value": {},
+        "value": true,
         "optional": false,
-        "editable": false,
-        "advanced": false,
-        "hidden": false
+        "editable": true,
+        "advanced": true,
+        "hidden": true
       }
     },
     "flags": 0

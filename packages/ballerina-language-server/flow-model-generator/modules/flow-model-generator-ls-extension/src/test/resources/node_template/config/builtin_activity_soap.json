@@ -349,7 +349,7 @@
             "selected": true
           }
         ],
-        "value": "",
+        "value": "3",
         "optional": true,
         "editable": true,
         "advanced": false,
@@ -367,7 +367,7 @@
             "selected": true
           }
         ],
-        "value": "",
+        "value": "1.0",
         "optional": true,
         "editable": true,
         "advanced": false,
@@ -403,7 +403,7 @@
             "selected": true
           }
         ],
-        "value": "",
+        "value": "2.0",
         "optional": true,
         "editable": true,
         "advanced": false,

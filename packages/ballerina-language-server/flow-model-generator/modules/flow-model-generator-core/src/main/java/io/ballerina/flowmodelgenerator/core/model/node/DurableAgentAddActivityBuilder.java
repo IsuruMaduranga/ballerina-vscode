@@ -51,7 +51,7 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_M
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_ORG;
 
 /**
- * Registers a workflow activity as a durable agent tool. Generates
+ * Registers a workflow activity as a durable agent activity. Generates
  * {@code check durableAgentContext.registerActivity(<activity>);}.
  *
  * <p>Built-in activities (Call REST API, Call SOAP API, Send Email) are registered as-is — no wrapper
@@ -123,6 +123,8 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
             preSelected = contextSymbol;
         }
 
+        // A pre-selected activity is the form's subject, not a choice: the selector is hidden and
+        // the value only travels for source generation.
         properties().custom()
                 .metadata()
                     .label(ACTIVITY_LABEL)
@@ -138,6 +140,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                     .stepOut()
                 .value(preSelected)
                 .editable(true)
+                .hidden(!preSelected.isEmpty())
                 .stepOut()
                 .addProperty(ACTIVITY_KEY);
         addBindingProperties(context, preSelected);
@@ -221,8 +224,9 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
         return options;
     }
 
-    // The name/description advertised to the model, mirroring the workflow activity form's
-    // identity fields; both default to the function's own name and doc comment.
+    // Hidden carriers for the declaration's optional name/description fields: the form does not
+    // present them (the activity's own identity is enough), but an entry declared with them in
+    // source must round-trip through an edit-save without losing them.
     private void addToolIdentityProperties() {
         properties().custom()
                 .metadata()
@@ -237,7 +241,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 .value("")
                 .editable(true)
                 .optional(true)
-                .advanced(true)
+                .hidden(true)
                 .stepOut()
                 .addProperty(TOOL_NAME_KEY);
         properties().custom()
@@ -253,7 +257,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 .value("")
                 .editable(true)
                 .optional(true)
-                .advanced(true)
+                .hidden(true)
                 .stepOut()
                 .addProperty(TOOL_DESCRIPTION_KEY);
     }

@@ -150,6 +150,7 @@ import io.ballerina.flowmodelgenerator.core.model.node.ChunkerBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.ClassInitBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataLoaderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataMapperBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentAddActivityBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentDataResultBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentResultBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRunBuilder;
@@ -1541,6 +1542,35 @@ public class CodeAnalyzer extends NodeVisitor {
                     }
                     String fieldName = specificField.fieldName().toSourceCode().trim();
                     String rawValue = specificField.valueExpr().get().toSourceCode().trim();
+                    // Activity entries carry two composite fields the generic key mapping cannot
+                    // express, and both must hydrate or an edit-save regenerates the entry
+                    // without them. retryPolicy decomposes into the retry form's dropdown value
+                    // plus sub-fields; bindings explodes into the form's per-parameter selectors.
+                    if ("activity".equals(capabilityType) && "retryPolicy".equals(fieldName)) {
+                        RetryPolicyForm retryForm = normalizeRetryPolicy(rawValue);
+                        values.put(ActivityCallBuilder.RETRY_POLICY_PARAM, retryForm.dropdownValue());
+                        putIfNotBlank(values, ActivityCallBuilder.MAX_RETRIES_KEY, retryForm.maxRetries());
+                        putIfNotBlank(values, ActivityCallBuilder.RETRY_DELAY_KEY, retryForm.retryDelay());
+                        putIfNotBlank(values, ActivityCallBuilder.RETRY_BACKOFF_KEY, retryForm.retryBackoff());
+                        putIfNotBlank(values, ActivityCallBuilder.MAX_RETRY_DELAY_KEY,
+                                retryForm.maxRetryDelay());
+                        putIfNotBlank(values, ActivityCallBuilder.RETRY_USER_ROLES_KEY,
+                                retryForm.retryUserRoles());
+                        continue;
+                    }
+                    if ("activity".equals(capabilityType) && "bindings".equals(fieldName)
+                            && specificField.valueExpr().get().kind() == SyntaxKind.MAPPING_CONSTRUCTOR) {
+                        for (MappingFieldNode bindingField
+                                : ((MappingConstructorExpressionNode) specificField.valueExpr().get()).fields()) {
+                            if (bindingField instanceof SpecificFieldNode bindingSpecific
+                                    && bindingSpecific.valueExpr().isPresent()) {
+                                values.put(DurableAgentAddActivityBuilder.BINDING_KEY_PREFIX
+                                                + bindingSpecific.fieldName().toSourceCode().trim(),
+                                        bindingSpecific.valueExpr().get().toSourceCode().trim());
+                            }
+                        }
+                        continue;
+                    }
                     String propertyKey = fieldToPropertyKey.get(fieldName);
                     if (propertyKey != null) {
                         // The cardinality enum may be module-qualified in source (workflow:SINGLE_EVENT);
@@ -1574,6 +1604,12 @@ public class CodeAnalyzer extends NodeVisitor {
     // Capability declaration fields whose values render in text-mode form fields.
     private static final Set<String> TEXT_MODE_CAPABILITY_FIELDS =
             Set.of("name", "title", "description", "roles");
+
+    private static void putIfNotBlank(Map<String, String> values, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            values.put(key, value);
+        }
+    }
 
     private static String stripModulePrefix(String value) {
         int colon = value.lastIndexOf(':');
@@ -2155,6 +2191,19 @@ public class CodeAnalyzer extends NodeVisitor {
      * then adds them as root-level properties on the current nodeBuilder.
      */
     private void addNormalizedRetryPolicyProperties(String rawValue) {
+        RetryPolicyForm form = normalizeRetryPolicy(rawValue);
+        ActivityCallBuilder.addRetryPolicyFormProperties(nodeBuilder, form.dropdownValue(),
+                form.maxRetries(), form.retryDelay(), form.retryBackoff(), form.maxRetryDelay(),
+                form.retryUserRoles());
+    }
+
+    // The retry-policy form's decomposition of a raw retryPolicy source value: the dropdown
+    // selection plus its sub-field values.
+    private record RetryPolicyForm(String dropdownValue, String maxRetries, String retryDelay,
+                                   String retryBackoff, String maxRetryDelay, String retryUserRoles) {
+    }
+
+    private static RetryPolicyForm normalizeRetryPolicy(String rawValue) {
         String dropdownValue = ActivityCallBuilder.NO_RETRY_VALUE;
         String maxRetries = "", retryDelay = "", retryBackoff = "", maxRetryDelay = "";
         String retryUserRoles = "";
@@ -2186,9 +2235,8 @@ public class CodeAnalyzer extends NodeVisitor {
                 dropdownValue = trimmed;
             }
         }
-
-        ActivityCallBuilder.addRetryPolicyFormProperties(nodeBuilder, dropdownValue,
-                maxRetries, retryDelay, retryBackoff, maxRetryDelay, retryUserRoles);
+        return new RetryPolicyForm(dropdownValue, maxRetries, retryDelay, retryBackoff,
+                maxRetryDelay, retryUserRoles);
     }
 
     // Whether the retryPolicy source is a literal reviewer role (a string) or role list, the two

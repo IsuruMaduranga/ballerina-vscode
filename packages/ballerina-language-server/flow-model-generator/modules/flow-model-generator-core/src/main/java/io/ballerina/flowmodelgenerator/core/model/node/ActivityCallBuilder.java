@@ -105,6 +105,11 @@ public class ActivityCallBuilder extends CallBuilder {
     public static final String RETRY_DELAY_KEY = "retryDelay";
     public static final String RETRY_BACKOFF_KEY = "retryBackoff";
     public static final String MAX_RETRY_DELAY_KEY = "maxRetryDelay";
+    // The workflow module's AutoRetry record defaults (types.bal); pre-filled in the form so
+    // choosing Auto Retry shows the values that would apply. maxRetryDelay has no default.
+    public static final String DEFAULT_MAX_RETRIES = "3";
+    public static final String DEFAULT_RETRY_DELAY = "1.0";
+    public static final String DEFAULT_RETRY_BACKOFF = "2.0";
     // retryPolicy is excluded from ADVANCE_PARAM_LIST; it is added at root level as a DROPDOWN_CHOICE.
     public static final Set<String> EXCLUDED_CALL_ACTIVITY_PARAMS = Set.of("activityFunction", "args", "T",
             CHECK_ERROR_KEY, Property.CONNECTION_KEY, RETRY_POLICY_PARAM);
@@ -377,6 +382,18 @@ public class ActivityCallBuilder extends CallBuilder {
                                                     String retryUserRoles) {
         String selectedValue = retryPolicyValue == null || retryPolicyValue.isBlank()
                 ? NO_RETRY_VALUE : retryPolicyValue;
+        // Blank Auto Retry sub-fields fall back to the module's AutoRetry record defaults, so
+        // selecting Auto Retry presents the values that would apply rather than an empty form.
+        // An entry saved with them emits the same behavior the record defaults give.
+        if (maxRetries == null || maxRetries.isBlank()) {
+            maxRetries = DEFAULT_MAX_RETRIES;
+        }
+        if (retryDelay == null || retryDelay.isBlank()) {
+            retryDelay = DEFAULT_RETRY_DELAY;
+        }
+        if (retryBackoff == null || retryBackoff.isBlank()) {
+            retryBackoff = DEFAULT_RETRY_BACKOFF;
+        }
         List<Option> options = new ArrayList<>(List.of(
                 new Option("No Automatic Retry", NO_RETRY_VALUE),
                 new Option("Auto Retry", AUTO_RETRY_VALUE),

@@ -131,6 +131,17 @@ type NodePromptLaunchOptions = {
 
 const SIDE_PANEL_DEFAULT_ERROR_MESSAGE = "Error while performing the action.";
 
+// The form node kind behind each capability of the durable agent box. A capability type with
+// no entry here has no form, and is refused rather than routed to whichever branch happened
+// to be last.
+const DURABLE_CAPABILITY_NODE_KINDS: Record<string, string> = {
+    activity: "DURABLE_AGENT_ADD_ACTIVITY",
+    event: "DURABLE_AGENT_REGISTER_EVENT",
+    tool: "DURABLE_AGENT_REGISTER_TOOL",
+    humanTask: "DURABLE_AGENT_HUMAN_TASK",
+    peer: "DURABLE_AGENT_PEER",
+};
+
 // AI component pickers resolve templates from Central, so selecting one shows a full-panel loader.
 const AI_COMPONENT_PICKER_VIEWS: SidePanelView[] = [
     SidePanelView.MODEL_PROVIDERS,
@@ -1958,9 +1969,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     break;
                 }
 
-                // Selecting a project activity from the list is a complete choice — append it to
-                // the agent declaration's activities list directly (no intermediate form),
-                // unless it needs a binding.
+                // Selecting a project activity from the list opens its registration form
+                // (retry policy, approval gating, bindings) before anything is written.
                 setShowProgressIndicator(true);
                 addActivityToDurableAgent(node.codedata, fileName)
                     .catch((error) => {
@@ -2256,6 +2266,20 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 updatedNode.codedata.lineRange = selectedLineRange;
             }
             hasRenameOperation.current = false;
+        }
+
+        // A durable-agent capability edit writes back to the entry's own range inside the
+        // declaration's config literal, but the form re-stamps the submitted node with
+        // targetLineRange — the expression-editor probe position at the declaration START
+        // (see probeRangeForCapability). Submitting that range would splice the entry text
+        // into the declaration line, so restore the entry range stamped on the selected node
+        // by handleOnEditDurableCapability.
+        if (
+            updatedNode.codedata?.isNew === false &&
+            Object.values(DURABLE_CAPABILITY_NODE_KINDS).includes(updatedNode.codedata.node) &&
+            selectedNodeRef.current?.codedata?.lineRange
+        ) {
+            updatedNode.codedata.lineRange = selectedNodeRef.current.codedata.lineRange;
         }
 
         setShowProgressIndicator(true);
@@ -3437,11 +3461,11 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         return node;
     };
 
-    // Appends a project activity to the agent declaration's activities. An activity that takes
-    // something the model cannot supply — the client of a connection-based activity, say — comes
-    // back with a binding selector per such parameter: those open the register form so the
-    // connection is picked, because an entry registered without it could never be invoked.
-    // Everything else is a complete choice and is written straight to the declaration.
+    // Opens the registration form for a project activity picked from the agent's activity list.
+    // The activity itself is already chosen (its selector arrives pre-selected and hidden), so
+    // the form presents the registration config: retry policy, approval gating, and a binding
+    // selector for every parameter the model cannot supply — the client of a connection-based
+    // activity, say. Saving appends the entry to the agent declaration's activities.
     const addActivityToDurableAgent = async (activityCodedata: AvailableNode["codedata"], fileName?: string) => {
         const response = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
             position: targetRef.current.startLine,
@@ -3457,20 +3481,16 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             startLine: targetRef.current.startLine,
             endLine: targetRef.current.startLine,
         } as any;
-        if (Object.keys(activityNode.properties ?? {}).some((key) => key.startsWith("bindings."))) {
-            selectedNodeRef.current = activityNode;
-            nodeTemplateRef.current = activityNode;
-            showEditForm.current = false;
-            setSidePanelView(SidePanelView.FORM);
-            setShowSidePanel(true);
-            return;
-        }
-        await rpcClient.getBIDiagramRpcClient().getSourceCode({
-            filePath: model.fileName,
-            flowNode: activityNode,
-        });
-        durableAgentActivityListRef.current = false;
-        finishCapabilityOpAfterRefresh();
+        // Title the form with the chosen activity, like the edit path does.
+        activityNode.metadata = {
+            ...activityNode.metadata,
+            label: activityCodedata?.symbol || activityNode.metadata?.label,
+        } as any;
+        selectedNodeRef.current = activityNode;
+        nodeTemplateRef.current = activityNode;
+        showEditForm.current = false;
+        setSidePanelView(SidePanelView.FORM);
+        setShowSidePanel(true);
     };
 
     // Adds a workflow activity to the durable agent: the registerActivities statement is
@@ -3608,13 +3628,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     // The form behind each capability of the agent box. A kind with no entry here has no form,
     // and is refused rather than routed to whichever branch happened to be last.
     const durableCapabilityNodeKind = (type?: string): string | undefined =>
-        ({
-            activity: "DURABLE_AGENT_ADD_ACTIVITY",
-            event: "DURABLE_AGENT_REGISTER_EVENT",
-            tool: "DURABLE_AGENT_REGISTER_TOOL",
-            humanTask: "DURABLE_AGENT_HUMAN_TASK",
-            peer: "DURABLE_AGENT_PEER",
-        } as Record<string, string>)[type ?? ""];
+        DURABLE_CAPABILITY_NODE_KINDS[type ?? ""];
 
     const handleOnEditDurableCapability = async (runNode: FlowNode, capability: any) => {
         const superseded = beginPanelNav();
@@ -3648,10 +3662,16 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         setTargetLineRange(probeRange);
         setShowProgressIndicator(true);
         try {
+            // An activity capability's template is requested with the activity function as the
+            // symbol: the selector arrives pre-selected (and hidden — the entry's activity is its
+            // identity, not a choice) and the template carries the binding selector properties,
+            // without which a declared `bindings` field could not round-trip through the form.
+            const activityRef =
+                capability?.type === "activity" ? (capability?.values as any)?.activity : undefined;
             const response = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
                 position: lineRange.startLine,
                 filePath: model?.fileName,
-                id: { node: nodeKind } as any,
+                id: (activityRef ? { node: nodeKind, symbol: activityRef } : { node: nodeKind }) as any,
             });
             const node = response.flowNode;
             // Seed the form with the existing statement's values and point it at that statement.
