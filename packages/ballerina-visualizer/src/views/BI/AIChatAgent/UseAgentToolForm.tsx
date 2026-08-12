@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
-import { ArtifactData, FlowNode, NodePosition } from "@wso2/ballerina-core";
+import { ArtifactData, AvailableNode, BISearchRequest, Category, FlowNode, LinePosition, NodePosition } from "@wso2/ballerina-core";
 import { FormField, FormValues } from "@wso2/ballerina-side-panel";
 import { Icon } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
@@ -26,7 +26,7 @@ import ArtifactForm from "../Forms/ArtifactForm";
 import { RelativeLoader } from "../../../components/RelativeLoader";
 import { ImplementationBadge } from "../../../components/ImplementationBadge";
 import { addToolToAgentNode, AgentToolHostClass, buildAgentCallToolNode, refreshAgentNodeLineRange, resolveAgentNodePosition } from "./utils";
-import { buildAgentToolFields, stripCodeFencesInline } from "./formUtils";
+import { buildAgentToolFields, buildApprovalToolData, buildRequiresApprovalField, collectLocalFunctionNames, createRequiresApprovalField, stripCodeFencesInline } from "./formUtils";
 
 const LoaderContainer = styled.div`
     display: flex;
@@ -74,25 +74,53 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
     const [ready, setReady] = useState<boolean>(false);
     const [saving, setSaving] = useState<boolean>(false);
     const [includeContext, setIncludeContext] = useState<boolean>(false);
+    const [fields, setFields] = useState<FormField[]>([]);
+    // Candidate list backing the approval-predicate picker; consulted at submit to decide whether a
+    // free-typed name should scaffold a new predicate stub. See formUtils.buildApprovalToolData.
+    const compatibleApprovalFunctionsRef = useRef<string[]>([]);
+
+    // Fetch the project's own module-level functions as approval-predicate candidates. Same shape as
+    // the other tool-creation forms; see formUtils.collectLocalFunctionNames for the filtering rules.
+    const fetchCompatibleApprovalFunctions = async (filePath: string, position: LinePosition): Promise<string[]> => {
+        try {
+            const request: BISearchRequest = {
+                position: { startLine: position, endLine: position },
+                filePath,
+                queryMap: undefined,
+                searchKind: "FUNCTION",
+            };
+            const response = await rpcClient.getBIDiagramRpcClient().search(request);
+            const names = new Set<string>();
+            collectLocalFunctionNames((response?.categories ?? []) as (Category | AvailableNode)[], names);
+            return Array.from(names);
+        } catch (error) {
+            console.error(">>> Error fetching compatible approval functions", error);
+            return [];
+        }
+    };
 
     useEffect(() => {
-        if (hostClass) {
-            setAgentFilePath(hostClass.filePath);
-            setReady(true);
-            return;
-        }
         (async () => {
-            const fileName = agentNode?.codedata?.lineRange?.fileName ?? "agents.bal";
-            const { filePath } = await rpcClient.getVisualizerRpcClient().joinProjectPath({ segments: [fileName] });
+            const filePath = hostClass
+                ? hostClass.filePath
+                : (await rpcClient.getVisualizerRpcClient().joinProjectPath({
+                    segments: [agentNode?.codedata?.lineRange?.fileName ?? "agents.bal"],
+                })).filePath;
+            const position = agentNode?.codedata?.lineRange?.startLine ?? { line: 0, offset: 0 };
+            const approvalCandidates = await fetchCompatibleApprovalFunctions(filePath, position);
+            compatibleApprovalFunctionsRef.current = approvalCandidates;
+
             setAgentFilePath(filePath);
+            setFields([
+                ...buildAgentToolFields(
+                    `${agentVarName}Tool`,
+                    `Delegates a query to ${agentLabel === "Agent" ? "the generic agent" : agentLabel}.`
+                ),
+                buildRequiresApprovalField(createRequiresApprovalField(), approvalCandidates),
+            ]);
             setReady(true);
         })();
     }, [agentNode]);
-
-    const fields: FormField[] = buildAgentToolFields(
-        `${agentVarName}Tool`,
-        `Delegates a query to ${agentLabel === "Agent" ? "the generic agent" : agentLabel}.`
-    );
 
     const handleSubmit = async (data: FormValues) => {
         if (saving) {
@@ -104,10 +132,11 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
             const toolName = String(data["name"] ?? "").trim() || `${agentVarName}Tool`;
             const description = stripCodeFencesInline(String(data["description"] ?? ""));
             const toolFilePath = hostClass ? hostClass.filePath : agentFilePath;
+            const approvalData = buildApprovalToolData(data, compatibleApprovalFunctionsRef.current);
             const toolResponse = await rpcClient.getBIDiagramRpcClient().getSourceCode({
                 filePath: toolFilePath,
                 flowNode: buildAgentCallToolNode(toolName, agentVarName, includeContext, description,
-                    hostClass, agentReceiver),
+                    hostClass, agentReceiver, approvalData),
                 artifactData,
             });
             let agentPosition: NodePosition | undefined;

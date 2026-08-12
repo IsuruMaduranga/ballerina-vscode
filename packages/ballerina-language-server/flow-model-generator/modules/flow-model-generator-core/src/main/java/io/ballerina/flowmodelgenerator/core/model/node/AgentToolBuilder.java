@@ -233,6 +233,7 @@ public class AgentToolBuilder extends NodeBuilder {
     private static Map<Path, List<TextEdit>> generate(ToolKind kind, ToolGenContext ctx) {
         ctx.sb.acceptImport(Constants.Ai.BALLERINA_ORG, Constants.Ai.AI_PACKAGE);
         List<ToolParam> params = kind.resolveParams(ctx);
+        ctx.resolvedParams = params;
         ReturnInfo returnInfo = kind.resolveReturn(ctx);
 
         emitDoc(ctx, params, returnInfo);
@@ -639,12 +640,12 @@ public class AgentToolBuilder extends NodeBuilder {
     // call's arguments to the predicate by name). Its name is the `requiresApproval` annotation value.
     // Must be called AFTER the tool declaration has been flushed via textEdit(DECLARATION) (so the
     // token buffer is empty); it appends a second DECLARATION text edit to the same file, which
-    // build() returns alongside the tool's. Called from buildFunctionBody, buildRemoteActionBody,
-    // buildResourceActionBody, and CUSTOM's buildBody — every ToolKind whose form exposes the
-    // "Requires Approval" gate.
+    // build() returns alongside the tool's. Called from every ToolKind's body builder
+    // (buildFunctionBody, buildRemoteActionBody, buildResourceActionBody, CUSTOM's buildBody, and
+    // buildAgentCallBody) — every path whose form exposes the "Requires Approval" gate.
     private static void appendApprovalPredicate(ToolGenContext ctx) {
-        // CUSTOM tools have no wrapped node — generateApprovalFunction/requiresApproval live
-        // directly on the tool's own data (ctx.data) instead, mirroring emitAnnotation's fallback.
+        // CUSTOM and AGENT_CALL tools have no wrapped node — generateApprovalFunction/requiresApproval
+        // live directly on the tool's own data (ctx.data) instead, mirroring emitAnnotation's fallback.
         Map<String, Object> data = ctx.wrappedNode != null ? ctx.wrappedNode.codedata().data() : ctx.data;
         if (data == null || !"true".equals(String.valueOf(data.get("generateApprovalFunction")))) {
             return;
@@ -654,9 +655,10 @@ public class AgentToolBuilder extends NodeBuilder {
         if (predicateName.isEmpty()) {
             return;
         }
-        // resolveParams is the shared enum-level default (only AGENT_CALL overrides it), so any
-        // ToolKind constant yields the same result here — FUNCTION is used as a stand-in.
-        String paramDecls = ToolKind.FUNCTION.resolveParams(ctx).stream()
+        // Mirror the tool's own signature exactly, using the same param list generate() built it
+        // from (stashed on ctx) — each ToolKind resolves params differently, so this must not
+        // recompute with a fixed kind.
+        String paramDecls = ctx.resolvedParams.stream()
                 .map(ToolParam::decl)
                 .collect(Collectors.joining(", "));
         ctx.sb.token()
@@ -814,6 +816,7 @@ public class AgentToolBuilder extends NodeBuilder {
                 .endOfStatement();
         sourceBuilder.token().keyword(SyntaxKind.CLOSE_BRACE_TOKEN);
         sourceBuilder.textEdit(SourceBuilder.SourceKind.DECLARATION).acceptImport();
+        appendApprovalPredicate(ctx);
         return sourceBuilder.build();
     }
 
@@ -1119,6 +1122,10 @@ public class AgentToolBuilder extends NodeBuilder {
         private final String agentReceiver;
         private final String hostClassName;
         private final boolean includeContext;
+        // The tool signature's parameter list, stashed by generate() so appendApprovalPredicate can
+        // mirror it exactly (each ToolKind resolves params differently — AGENT_CALL uses `query`,
+        // not the wrapped node's params — so recomputing with a fixed kind would be wrong).
+        private List<ToolParam> resolvedParams = List.of();
 
         private ToolGenContext(SourceBuilder sb, FlowNode wrappedNode, Map<String, Object> data,
                                String connection, String description,

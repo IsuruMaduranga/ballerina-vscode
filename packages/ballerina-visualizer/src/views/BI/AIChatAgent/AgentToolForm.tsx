@@ -41,6 +41,7 @@ import { convertConfig, convertNodePropertyToFormField, getImportsForProperty } 
 import ArtifactForm from "../Forms/ArtifactForm";
 import { AgentToolHostClass, fetchOAuthConfigProperties } from "./utils";
 import {
+    buildApprovalToolData,
     buildRequiresApprovalField,
     collectLocalFunctionNames,
     createRequiresApprovalField,
@@ -663,14 +664,10 @@ export function AgentToolForm(props: AgentToolFormProps): JSX.Element {
             // codedata.data and is rendered into the @ai:AgentTool annotation by the language server
             // (AgentToolBuilder.emitAnnotation / appendApprovalPredicate). Only consulted on create —
             // isEdit rewrites the already-existing annotation text directly below instead.
-            const approvalSourceForCreate = resolveApprovalSource(data);
             updatedNode.codedata.data = {
                 ...updatedNode.codedata.data,
                 ...(Object.keys(auth).length > 0 ? { auth: JSON.stringify(auth) } : {}),
-                ...(approvalSourceForCreate ? { requiresApproval: approvalSourceForCreate } : {}),
-                ...(approvalSourceForCreate && approvalSourceForCreate !== "true"
-                    && !compatibleApprovalFunctionsRef.current.includes(approvalSourceForCreate)
-                    ? { generateApprovalFunction: "true" } : {}),
+                ...buildApprovalToolData(data, compatibleApprovalFunctionsRef.current),
             };
 
             let response;

@@ -17,7 +17,7 @@
  */
 
 import { AvailableNode, Category, NodeMetadata, ValueTypeConstraint, ToolParameters, getPrimaryInputType } from "@wso2/ballerina-core";
-import { FormField, Parameter } from "@wso2/ballerina-side-panel";
+import { FormField, FormValues, Parameter } from "@wso2/ballerina-side-panel";
 
 const SQL_PARAMETERIZED_TYPES = ["sql:ParameterizedQuery", "sql:ParameterizedCallQuery"];
 const isSqlParameterizedField = (field: FormField): boolean =>
@@ -401,6 +401,32 @@ export function buildRequiresApprovalField(baseField: FormField, candidates: str
             ...baseField.choices.slice(1),
         ],
     };
+}
+
+// The `codedata.data` fields that carry the human-in-the-loop gate into AgentToolBuilder's code
+// generator, derived from the "Requires Approval" control's submitted state. Shared by every
+// tool-creation path (function, connection, custom, agent-call) so they emit identical data.
+//   - box unchecked        -> {} (no gate).
+//   - checked, no function  -> { requiresApproval: "true" } (unconditional).
+//   - checked, existing fn  -> { requiresApproval: <name> } (reference an already-defined predicate).
+//   - checked, new fn       -> { requiresApproval: <name>, generateApprovalFunction: "true" } (the LS
+//                              also scaffolds a correctly-signed predicate stub).
+// `compatibleFunctions` is the picker's candidate list; a typed name absent from it is treated as new.
+export function buildApprovalToolData(
+    data: FormValues, compatibleFunctions: string[]
+): { requiresApproval?: string; generateApprovalFunction?: string } {
+    const checked = data["requiresApproval"] === true || data["requiresApproval"] === "true";
+    if (!checked) {
+        return {};
+    }
+    const approvalFn = typeof data["approvalFunction"] === "string" ? data["approvalFunction"].trim() : "";
+    const result: { requiresApproval?: string; generateApprovalFunction?: string } = {
+        requiresApproval: approvalFn || "true",
+    };
+    if (approvalFn && !compatibleFunctions.includes(approvalFn)) {
+        result.generateApprovalFunction = "true";
+    }
+    return result;
 }
 
 export function buildAgentToolFields(nameValue: string, descriptionValue: string): FormField[] {

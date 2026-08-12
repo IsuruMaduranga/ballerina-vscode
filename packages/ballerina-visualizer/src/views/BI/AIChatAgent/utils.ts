@@ -616,7 +616,8 @@ export function buildAgentToolNode(wrappedNode: FlowNode, toolName: string, desc
 }
 
 export function buildAgentCallToolNode(toolName: string, agentVarName: string, includeContext: boolean,
-    description: string, hostClass?: AgentToolHostClass, agentReceiver?: string): FlowNode {
+    description: string, hostClass?: AgentToolHostClass, agentReceiver?: string,
+    approvalData?: { requiresApproval?: string; generateApprovalFunction?: string }): FlowNode {
     const data: AgentToolData = {
         toolKind: "AGENT_CALL",
         agentVarName,
@@ -624,6 +625,7 @@ export function buildAgentCallToolNode(toolName: string, agentVarName: string, i
         description,
         ...(agentReceiver ? { agentReceiver } : {}),
         ...(hostClass ? { hostClassName: hostClass.className, filePath: hostClass.filePath } : {}),
+        ...(approvalData ?? {}),
     };
     return createAgentToolNode(toolName, data);
 }

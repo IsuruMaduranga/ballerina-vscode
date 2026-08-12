@@ -60,7 +60,7 @@ import { RelativeLoader } from "../../../components/RelativeLoader";
 import styled from "@emotion/styled";
 import { URI, Utils } from "vscode-uri";
 import { cloneDeep } from "lodash";
-import { buildAgentToolFields, buildRequiresApprovalField, collectLocalFunctionNames, createDefaultParameterValue, createRequiresApprovalField, createToolInputFields, createToolParameters, prepareToolInputFields, stripCodeFences, stripCodeFencesInline } from "./formUtils";
+import { buildAgentToolFields, buildApprovalToolData, buildRequiresApprovalField, collectLocalFunctionNames, createDefaultParameterValue, createRequiresApprovalField, createToolInputFields, createToolParameters, prepareToolInputFields, stripCodeFences, stripCodeFencesInline } from "./formUtils";
 import { ImplementationBadge } from "../../../components/ImplementationBadge";
 import { FUNCTION_CALL, METHOD_CALL, REMOTE_ACTION_CALL, RESOURCE_ACTION_CALL } from "../../../constants";
 import { NewToolSelectionMode } from "./NewTool";
@@ -1320,27 +1320,17 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
 
         // Mark the tool as requiring human-in-the-loop approval. This rides along in codedata.data
         // (like `auth` above) and is rendered into the @ai:AgentTool annotation by the language
-        // server. The gate is the checkbox itself, not the function field — unchecking it must not
-        // leak a function picked earlier and left registered, since CheckBoxConditionalEditor doesn't
-        // clear the "on"-state sub-field on uncheck.
-        //
-        // Three cases when checked:
-        //   - no function       -> `requiresApproval: true` (unconditional).
-        //   - existing function -> `requiresApproval: <name>` (reference an already-defined predicate).
-        //   - new (free-typed)  -> `requiresApproval: <name>` PLUS generateApprovalFunction, telling
-        //                          the LS to also scaffold a correctly-signed predicate stub.
+        // server. The gate is the checkbox itself, not the function field — unchecking it yields an
+        // empty object, so a function picked earlier and left registered can't leak (buildApprovalToolData
+        // reads the checkbox first), which matters since CheckBoxConditionalEditor doesn't clear the
+        // "on"-state sub-field on uncheck.
         if (targetNode) {
-            const requiresApproval = data["requiresApproval"] === true || data["requiresApproval"] === "true";
-            if (requiresApproval) {
-                const approvalFn = typeof data["approvalFunction"] === "string" ? data["approvalFunction"].trim() : "";
-                const data_: Record<string, string> = {
-                    ...(targetNode.codedata.data as Record<string, string>),
-                    requiresApproval: approvalFn || "true",
+            const approvalData = buildApprovalToolData(data, compatibleApprovalFunctionsRef.current);
+            if (Object.keys(approvalData).length > 0) {
+                targetNode.codedata.data = {
+                    ...targetNode.codedata.data,
+                    ...approvalData,
                 };
-                if (approvalFn && !compatibleApprovalFunctionsRef.current.includes(approvalFn)) {
-                    data_.generateApprovalFunction = "true";
-                }
-                targetNode.codedata.data = data_;
             }
         }
 
