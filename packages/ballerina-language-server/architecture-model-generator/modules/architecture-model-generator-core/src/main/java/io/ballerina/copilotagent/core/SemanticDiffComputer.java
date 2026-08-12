@@ -28,6 +28,7 @@ import io.ballerina.compiler.syntax.tree.FunctionBodyBlockNode;
 import io.ballerina.compiler.syntax.tree.FunctionBodyNode;
 import io.ballerina.compiler.syntax.tree.FunctionDefinitionNode;
 import io.ballerina.compiler.syntax.tree.IfElseStatementNode;
+import io.ballerina.compiler.syntax.tree.ImportDeclarationNode;
 import io.ballerina.compiler.syntax.tree.LockStatementNode;
 import io.ballerina.compiler.syntax.tree.MatchClauseNode;
 import io.ballerina.compiler.syntax.tree.MatchStatementNode;
@@ -200,8 +201,40 @@ public class SemanticDiffComputer {
         computeSourceDiffs(originalNodeRefMap.getEnumNodeMap(), modifiedNodeRefMap.getEnumNodeMap(),
                 NodeKind.ENUM_DECLARATION, false);
         computeClassDiffs(originalNodeRefMap.getClassNodeMap(), modifiedNodeRefMap.getClassNodeMap());
-        computeSourceDiffs(originalNodeRefMap.getImportNodeMap(), modifiedNodeRefMap.getImportNodeMap(),
-                NodeKind.IMPORT_DECLARATION, false);
+        computeImportDiffs(originalNodeRefMap.getImportNodeMap(), modifiedNodeRefMap.getImportNodeMap());
+    }
+
+    /**
+     * Computes import differences by key alone. An import's map key (org/module plus alias)
+     * already encodes everything semantic about the declaration, so two imports with the same
+     * key can only differ in surrounding trivia — e.g. a file-header comment that re-attached
+     * to a different import when one was inserted above it. Comparing source text here (as
+     * {@link #computeSourceDiffs} does) flagged such untouched imports as "modified", showing
+     * reviewers a comment shuffle. Only genuine additions and deletions are reported, and
+     * their displayed source is the canonical {@code import <key>;} form rather than
+     * {@code toSourceCode()}, which would drag any attached leading comment into the view.
+     */
+    private void computeImportDiffs(Map<String, ImportDeclarationNode> originalImportMap,
+                                    Map<String, ImportDeclarationNode> modifiedImportMap) {
+
+        for (Map.Entry<String, ImportDeclarationNode> entry : originalImportMap.entrySet()) {
+            String name = entry.getKey();
+            if (modifiedImportMap.containsKey(name)) {
+                modifiedImportMap.remove(name);
+                continue;
+            }
+            addDeletionDiff(NodeKind.IMPORT_DECLARATION, entry.getValue().lineRange(),
+                    buildSourceMetadata(name, canonicalImportSource(name), null));
+        }
+
+        for (Map.Entry<String, ImportDeclarationNode> entry : modifiedImportMap.entrySet()) {
+            addAdditionDiff(NodeKind.IMPORT_DECLARATION, entry.getValue().lineRange(),
+                    buildSourceMetadata(entry.getKey(), null, canonicalImportSource(entry.getKey())));
+        }
+    }
+
+    private static String canonicalImportSource(String importKey) {
+        return "import " + importKey + ";";
     }
 
     /**
