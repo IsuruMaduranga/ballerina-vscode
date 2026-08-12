@@ -23,6 +23,7 @@ import { ModelMessage, stepCountIs, streamText, TextStreamPart } from 'ai';
 import { getAnthropicClient, getProviderCacheControl, getProviderModelOptions, addCacheControlToMessages, ANTHROPIC_SONNET } from '../utils/ai-client';
 import { populateHistoryForAgent, getErrorMessage, getErrorCode, buildChatError } from '../utils/ai-utils';
 import { seedAiBaselines } from '../utils/project/ls-schema-notifications';
+import { mapWithConcurrency } from '../utils/concurrency';
 import { getSystemPrompt, getUserPrompt } from './prompts';
 import { FollowupSituation, startFollowupSuggestions } from './followups';
 import { prepareAgentsMdForTurn } from './agents-md';
@@ -307,6 +308,18 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                 await seedAiBaselines(tempProjectPath, projects);
             } else {
                 console.log(`[AgentExecutor] Skipping ai:// baseline seed (skipFreshProjectSetup)`);
+            }
+
+            // Fire-and-forget: warm the LS module-package caches for each package's
+            // dependencies while the generation streams, so the first review-diff diagram
+            // does not pay the one-time dependency resolution/compilation cost (seconds)
+            // interactively. Failures are irrelevant — the fetch path pays the cost lazily.
+            for (const project of projects) {
+                const pkgRoot = project.packagePath
+                    ? path.join(tempProjectPath, project.packagePath)
+                    : tempProjectPath;
+                StateMachine.langClient().prewarmDependencies({ projectPath: pkgRoot })
+                    .catch(() => { /* best-effort warm-up only */ });
             }
 
             const workspaceId = this.config.executionContext.workspacePath || this.config.executionContext.projectPath;
@@ -1073,9 +1086,15 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             const isWorkspace = StateMachine.context().projectInfo?.projectKind === PROJECT_KIND.WORKSPACE_PROJECT;
             let semanticDiffError: string | undefined;
             let diffedPackageCount = 0;
-            for (const pkg of affectedPackages) {
+            // Each package's diff is an independent LS request against its own project root,
+            // so fetch them concurrently; results are folded back in affectedPackages order
+            // below to keep diffPackageMap/semanticDiffs alignment and error-message order
+            // deterministic. Bounded, because each request can trigger two full package
+            // compilations and migration turns can touch many packages at once.
+            const diffPackages = affectedPackages.filter(
                 // Skip workspace root — it only contains Ballerina.toml, not a real package
-                if (isWorkspace && pkg === workingProjectPath) { continue; }
+                pkg => !(isWorkspace && pkg === workingProjectPath));
+            const packageResults = await mapWithConcurrency(diffPackages, 3, async pkg => {
                 const pkgName = path.basename(pkg);
                 try {
                     const res = await langClient.getSemanticDiff({ projectPath: pkg });
@@ -1085,23 +1104,29 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                     if (res?.errorMsg) {
                         throw new Error(res.errorMsg);
                     }
-                    if (res) {
-                        diffedPackageCount++;
-                        diffPackageMap.push(...Array(res.semanticDiffs.length).fill(pkgName));
-                        semanticDiffs.push(...res.semanticDiffs);
-                        loadDesignDiagrams = loadDesignDiagrams || res.loadDesignDiagrams;
-                        // Partial success: diffs are valid but the package failed to compile,
-                        // so flow diagrams will likely be unavailable. Keep the diffs and
-                        // surface the reason as a warning.
-                        semanticDiffError = semanticDiffError ?? res.compilationError ?? undefined;
-                    }
+                    return { pkgName, res, error: undefined as string | undefined };
                 } catch (err) {
-                    // One package failing must not discard the diffs already collected for
-                    // its siblings — keep going and report the failure alongside them.
+                    // One package failing must not discard the diffs collected for its
+                    // siblings — record the failure and report it alongside them.
                     console.error(`[AgentExecutor] getSemanticDiff failed for package ${pkg}; keeping other packages' diffs`, err);
                     const message = err instanceof Error ? err.message : String(err);
-                    const packageError = isWorkspace ? `${pkgName}: ${message}` : message;
-                    semanticDiffError = semanticDiffError ? `${semanticDiffError}\n${packageError}` : packageError;
+                    return { pkgName, res: undefined, error: isWorkspace ? `${pkgName}: ${message}` : message };
+                }
+            });
+            for (const { pkgName, res, error } of packageResults) {
+                if (error !== undefined) {
+                    semanticDiffError = semanticDiffError ? `${semanticDiffError}\n${error}` : error;
+                    continue;
+                }
+                if (res) {
+                    diffedPackageCount++;
+                    diffPackageMap.push(...Array(res.semanticDiffs.length).fill(pkgName));
+                    semanticDiffs.push(...res.semanticDiffs);
+                    loadDesignDiagrams = loadDesignDiagrams || res.loadDesignDiagrams;
+                    // Partial success: diffs are valid but the package failed to compile,
+                    // so flow diagrams will likely be unavailable. Keep the diffs and
+                    // surface the reason as a warning.
+                    semanticDiffError = semanticDiffError ?? res.compilationError ?? undefined;
                 }
             }
 

@@ -416,6 +416,20 @@ export interface EnsureAiBaselineResponse {
     errorMsg?: string;
 }
 
+/**
+ * Request to warm the LS module-package caches for a package's direct dependencies,
+ * so the first review-diff flow-model fetch does not pay the one-time dependency
+ * resolution/compilation cost interactively. Fired in the background at run start.
+ */
+export interface PrewarmDependenciesRequest {
+    projectPath: string;
+}
+
+export interface PrewarmDependenciesResponse {
+    warmedDependencyCount?: number;
+    errorMsg?: string;
+}
+
 // Numeric enum values from the API
 export enum ChangeTypeEnum {
     ADDITION = 0,

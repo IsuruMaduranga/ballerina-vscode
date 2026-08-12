@@ -19,6 +19,7 @@ import * as path from 'path';
 import { Uri } from 'vscode';
 import { StateMachine } from "../../../../stateMachine";
 import { ProjectSource, PROJECT_KIND } from "@wso2/ballerina-core";
+import { mapWithConcurrency } from "../concurrency";
 
 /**
  * How the ai:// baseline works, and the Language Server behaviours every caller here depends
@@ -162,7 +163,11 @@ export async function seedAiBaselines(tempProjectPath: string, projects: Project
     }
   }
 
-  for (const project of projects) {
+  // Packages are independent project roots on the LS side (per-project locks), so seed
+  // them concurrently — only the workspace-root toml above must land first. Bounded,
+  // because this runs every turn over every package in the workspace and each request
+  // rebuilds that package's ai:// project.
+  await mapWithConcurrency(projects, 4, async project => {
     const pkgPath = project.packagePath || '';
     const packageRoot = pkgPath ? path.join(tempProjectPath, pkgPath) : tempProjectPath;
     const files = collectBaselineFiles(project);
@@ -181,7 +186,7 @@ export async function seedAiBaselines(tempProjectPath: string, projects: Project
       const tomlRel = pkgPath ? path.join(pkgPath, 'Ballerina.toml') : 'Ballerina.toml';
       seedAiBaseline(tempProjectPath, tomlRel);
     }
-  }
+  });
 }
 
 /**
