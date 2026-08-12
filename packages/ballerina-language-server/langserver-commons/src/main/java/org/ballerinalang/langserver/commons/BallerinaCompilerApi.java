@@ -263,12 +263,18 @@ public abstract class BallerinaCompilerApi {
      * <p>
      * How a bala's baked transitive versions are re-resolved is expressed differently across versions
      * ({@code PackageLockingMode} only exists from 2201.13.0), so the knob is chosen here rather than by the caller.
+     * Concrete on purpose: implementations compiled against an earlier version of this SPI keep working and inherit
+     * the pre-2201.13.0 behaviour.
      *
      * @param offline {@code true} to load without contacting Ballerina Central, re-resolving transitives to whatever
      *                the local repositories hold; {@code false} for the default sticky behaviour.
      * @return The build options to pass to {@code BalaProject.loadProject}.
      */
-    public abstract BuildOptions getBalaBuildOptions(boolean offline);
+    public BuildOptions getBalaBuildOptions(boolean offline) {
+        // PackageLockingMode only exists from 2201.13.0; sticky = false is the equivalent knob before it.
+        return offline ? BuildOptions.builder().setOffline(true).setSticky(false).build()
+                : BuildOptions.builder().setSticky(true).build();
+    }
 
     /**
      * Loads a project from the given path with custom project environment builder.
