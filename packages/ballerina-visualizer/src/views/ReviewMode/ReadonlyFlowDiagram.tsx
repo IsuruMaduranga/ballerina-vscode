@@ -44,6 +44,15 @@ const MessageContainer = styled.div`
     color: var(--vscode-descriptionForeground);
 `;
 
+const DiffNoticeBanner = styled.div`
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+    background: var(--vscode-inputValidation-warningBackground, transparent);
+    border-bottom: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
+    word-break: break-word;
+`;
+
 interface ItemMetadata {
     type: string;
     name: string;
@@ -156,6 +165,10 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
     const [flowModel, setFlowModel] = useState<Flow | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [unavailableMessage, setUnavailableMessage] = useState<string | null>(null);
+    // Why the unified diff degraded to the New-only view, when it did. Rendering the
+    // fallback silently made an old-side fetch failure indistinguishable from "nothing
+    // to highlight" — the single most confusing form of a broken diff.
+    const [diffNotice, setDiffNotice] = useState<string | null>(null);
     // Latest callbacks held in refs so the load effect can call them without listing them
     // as dependencies — the parent re-creates onModelLoaded on every render, which would
     // otherwise retrigger a full refetch each render.
@@ -171,6 +184,7 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
         setIsLoading(true);
         setFlowModel(null);
         setUnavailableMessage(null);
+        setDiffNotice(null);
         let cancelled = false;
         loadFlowModel()
             .then((model) => {
@@ -290,10 +304,12 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
         // them sequentially doubled the time-to-first-render for diff mode. Results are
         // cached per version, so the extra fetch on a metadata-mismatch fallback is free
         // if the user then toggles to New/Old.
+        let oldFetchError: unknown = null;
         const [newFlow, oldFlow] = await Promise.all([
             fetchFlowModelVersion(false),
             fetchFlowModelVersion(true).catch((error): Flow | null => {
                 console.error("[Reviewing Changes] Error fetching old flow model:", error);
+                oldFetchError = error;
                 return null;
             }),
         ]);
@@ -310,6 +326,11 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
         }
         if (!oldFlow || !isSameExpectedFunction(oldFlow, newFlow, expectedMetadata)) {
             onDiffUnavailableRef.current?.();
+            setDiffNotice(
+                oldFetchError
+                    ? "The previous version of this diagram could not be loaded, so change highlighting is unavailable. Showing the new version."
+                    : "The previous version could not be matched to this change, so change highlighting is unavailable. Showing the new version."
+            );
             return newFlow;
         }
 
@@ -318,6 +339,7 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
         } catch (error) {
             console.error("[Reviewing Changes] Error merging flow models for diff:", error);
             onDiffUnavailableRef.current?.();
+            setDiffNotice("The unified diff could not be built for this change. Showing the new version.");
             return newFlow;
         }
     };
@@ -336,6 +358,7 @@ export function ReadonlyFlowDiagram(props: ReadonlyFlowDiagramProps): JSX.Elemen
 
     return (
         <Container>
+            {viewMode === "diff" && diffNotice && <DiffNoticeBanner>⚠ {diffNotice}</DiffNoticeBanner>}
             <Diagram model={flowModel} readOnly={true} />
         </Container>
     );
