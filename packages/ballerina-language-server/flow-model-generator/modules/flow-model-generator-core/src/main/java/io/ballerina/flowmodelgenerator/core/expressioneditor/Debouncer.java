@@ -95,9 +95,11 @@ public class Debouncer {
     }
 
     /**
-     * Holder for scheduled task information.
+     * Mutable holder that lets a task remove only its own map entry while its Future is assigned after scheduling.
+     * It prevents a superseded task's cleanup from removing a newer pending task's entry from the map.
+     * Otherwise, the newer task cannot be cancelled and multiple tasks may run for the same key.
      *
-     * @param <T>     the type of result promised by the CompletableFuture.
+     * @param <T> the type of result promised by the CompletableFuture.
      */
     private static final class ScheduledTaskHolder<T> {
 
