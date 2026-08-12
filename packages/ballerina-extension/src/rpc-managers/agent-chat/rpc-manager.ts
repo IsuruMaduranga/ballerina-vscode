@@ -32,7 +32,11 @@ import {
     SessionInfoResponse,
     AvailableAgentsResponse,
     SwitchAgentRequest,
-    SwitchAgentResponse
+    SwitchAgentResponse,
+    SubmitDecisionRequest,
+    DecisionMessage,
+    HumanResponse,
+    PendingApprovalInfo
 } from "@wso2/ballerina-core";
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -81,7 +85,18 @@ export class AgentChatRpcManager implements AgentChatAPI {
                     payload,
                     this.currentAbortController.signal
                 );
-                if (response && response.message) {
+                if (response && response.pendingApproval) {
+                    const pendingApproval: PendingApprovalInfo = response.pendingApproval;
+
+                    this.addMessageToHistory(sessionId, {
+                        type: 'approval',
+                        text: '',
+                        isUser: false,
+                        pendingApproval
+                    });
+
+                    resolve({ message: '', pendingApproval } as ChatRespMessage);
+                } else if (response && response.message) {
                     // Find trace and extract tool calls and execution steps
                     const trace = this.findTraceForMessage(extension.agentChatContext.chatSessionId, params.message, response.message);
                     const executionSteps = trace ? this.extractExecutionSteps(trace) : undefined;
@@ -149,6 +164,100 @@ export class AgentChatRpcManager implements AgentChatAPI {
         AgentChatRpcManager.chatHistoryMap.get(sessionId)!.push(message);
     }
 
+    // Merges the decisions just submitted into whichever 'approval' history entry they belong
+    // to (a batch may be resolved across several submitDecision calls, one request at a time),
+    // so a later getChatHistory()/switchChatAgent() replay renders resolved requests collapsed
+    // rather than as if still pending.
+    private resolvePendingApprovalInHistory(sessionId: string, decisions: Record<string, HumanResponse>): void {
+        const history = AgentChatRpcManager.chatHistoryMap.get(sessionId);
+        if (!history) {
+            return;
+        }
+        const decidedIds = Object.keys(decisions);
+        for (let i = history.length - 1; i >= 0; i--) {
+            const entry = history[i];
+            if (entry.type !== 'approval' || !entry.pendingApproval) {
+                continue;
+            }
+            const belongsToThisBatch = entry.pendingApproval.requests.some(r => decidedIds.includes(r.id));
+            if (belongsToThisBatch) {
+                entry.decisions = { ...(entry.decisions || {}), ...decisions };
+                break;
+            }
+        }
+    }
+
+    // The dispatcher attaches `chat` and `decision` as sibling resources under the same
+    // service base path (see ai:Listener's ChatDispatcherService), and `chatEp` is always
+    // built ending in `/chat` (see buildChatEndpoint in features/tryit/activator.ts).
+    private toDecisionEndpoint(chatEp: string): string {
+        return chatEp.replace(/\/chat$/, '/decision');
+    }
+
+    async submitDecision(params: SubmitDecisionRequest): Promise<ChatRespMessage> {
+        return new Promise(async (resolve, reject) => {
+            try {
+                if (
+                    !extension.agentChatContext.chatEp || typeof extension.agentChatContext.chatEp !== 'string' ||
+                    !extension.agentChatContext.chatSessionId || typeof extension.agentChatContext.chatSessionId !== 'string'
+                ) {
+                    throw new Error('Invalid Agent Chat Context: Missing or incorrect ChatEP or ChatSessionID!');
+                }
+
+                const sessionId = extension.agentChatContext.chatSessionId;
+                const decisionEp = this.toDecisionEndpoint(extension.agentChatContext.chatEp);
+                const payload: DecisionMessage = { sessionId, decisions: params.decisions };
+
+                this.currentAbortController = new AbortController();
+                const response = await this.fetchTestData(decisionEp, payload, this.currentAbortController.signal);
+
+                this.resolvePendingApprovalInHistory(sessionId, params.decisions);
+
+                if (response && response.pendingApproval) {
+                    // The run resumed only to pause again (e.g. a further gated call surfaced
+                    // in the same turn), so this is a fresh batch, not a resolution of the last one.
+                    const pendingApproval: PendingApprovalInfo = response.pendingApproval;
+
+                    this.addMessageToHistory(sessionId, {
+                        type: 'approval',
+                        text: '',
+                        isUser: false,
+                        pendingApproval
+                    });
+
+                    resolve({ message: '', pendingApproval } as ChatRespMessage);
+                } else if (response && response.message) {
+                    const trace = this.findTraceForMessage(sessionId, '', response.message);
+                    const executionSteps = trace ? this.extractExecutionSteps(trace) : undefined;
+
+                    this.addMessageToHistory(sessionId, {
+                        type: 'message',
+                        text: response.message,
+                        isUser: false,
+                        traceId: trace?.traceId,
+                        executionSteps
+                    });
+
+                    resolve({
+                        message: response.message,
+                        traceId: trace?.traceId,
+                        executionSteps
+                    } as ChatRespMessage);
+                } else {
+                    reject(new Error("Invalid response format from the decision endpoint."));
+                }
+            } catch (error) {
+                const errorMessage =
+                    error && typeof error === "object" && "message" in error
+                        ? String(error.message)
+                        : "An unknown error occurred";
+                reject(new Error(errorMessage));
+            } finally {
+                this.currentAbortController = null;
+            }
+        });
+    }
+
     abortChatRequest(): void {
         if (this.currentAbortController) {
             this.currentAbortController.abort();
@@ -178,7 +287,21 @@ export class AgentChatRpcManager implements AgentChatAPI {
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
+                const errorData: any = await response.json().catch(() => undefined);
+
+                // The dispatcher maps a paused run (ai:ApprovalRequiredError) to HTTP 403 with a
+                // structured `{ requests: ApprovalRequest[] }` body - not a real error, so surface
+                // it to the caller instead of throwing.
+                if (response.status === 403 && errorData && Array.isArray(errorData.requests)) {
+                    return { pendingApproval: { requests: errorData.requests } };
+                }
+
+                // A `decision` resume naming a session/id with nothing pending maps to 404/400
+                // with a stable `errorType` discriminator (ApprovalNotFoundError/UnknownApprovalIdError).
+                if (errorData?.errorType === 'ApprovalNotFoundError' || errorData?.errorType === 'UnknownApprovalIdError') {
+                    throw new Error(errorData.message || 'The pending approval could not be resumed.');
+                }
+
                 switch (response.status) {
                     case 400:
                         throw new Error("Bad Request: The server could not understand the request.");
