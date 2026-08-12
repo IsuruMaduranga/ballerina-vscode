@@ -573,12 +573,24 @@ export class ApprovalViewManager {
         }
 
         const tempProjectPath = review.tempProjectPath ?? projectRootPath;
-        sendReviewRestoreDidOpenBatch(
+        const { restoredCount, skippedCount } = sendReviewRestoreDidOpenBatch(
             tempProjectPath,
             review.modifiedFiles,
             undefined,
             generation.checkpoint?.workspaceSnapshot
         );
+
+        // Without original content (no checkpoint — disabled or size-capped), the ai://
+        // baseline could not be re-established, so the "old" side of every diagram is
+        // gone. Surface that instead of silently degrading to New-only views.
+        let semanticDiffError = review.reviewView.semanticDiffError;
+        if (restoredCount === 0 && skippedCount > 0) {
+            const restoreWarning =
+                'The original (pre-change) version of the files could not be restored after the window reload ' +
+                '(no checkpoint snapshot exists for this generation), so only the New view is available.';
+            semanticDiffError = semanticDiffError ? `${semanticDiffError}\n${restoreWarning}` : restoreWarning;
+            console.error(`[ApprovalViewManager] Review restore had no original content for ${generationId} — ${skippedCount} file(s) skipped.`);
+        }
 
         return {
             views: [],
@@ -591,7 +603,7 @@ export class ApprovalViewManager {
             modifiedFiles: review.modifiedFiles,
             tempProjectPath,
             isWorkspace: review.reviewView.isWorkspace,
-            semanticDiffError: review.reviewView.semanticDiffError,
+            semanticDiffError,
         };
     }
 
