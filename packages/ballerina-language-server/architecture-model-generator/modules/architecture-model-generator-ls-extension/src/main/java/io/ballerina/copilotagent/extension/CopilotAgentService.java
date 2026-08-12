@@ -21,10 +21,17 @@ package io.ballerina.copilotagent.extension;
 import io.ballerina.copilotagent.core.SemanticDiffComputer;
 import io.ballerina.copilotagent.core.models.Result;
 import io.ballerina.copilotagent.extension.request.EnsureAiBaselineRequest;
+import io.ballerina.copilotagent.extension.request.PrewarmDependenciesRequest;
 import io.ballerina.copilotagent.extension.request.SemanticDiffRequest;
 import io.ballerina.copilotagent.extension.response.EnsureAiBaselineResponse;
+import io.ballerina.copilotagent.extension.response.PrewarmDependenciesResponse;
 import io.ballerina.copilotagent.extension.response.SemanticDiffResponse;
+import io.ballerina.modelgenerator.commons.PackageUtil;
+import io.ballerina.projects.DependencyGraph;
+import io.ballerina.projects.Package;
+import io.ballerina.projects.PackageDescriptor;
 import io.ballerina.projects.Project;
+import io.ballerina.projects.ResolvedPackageDependency;
 import org.ballerinalang.annotation.JavaSPIService;
 import org.ballerinalang.langserver.common.utils.PathUtil;
 import org.ballerinalang.langserver.commons.LanguageServerContext;
@@ -122,6 +129,57 @@ public class CopilotAgentService implements ExtendedLanguageServerService {
 
     private static String toAiUri(Path path) {
         return "ai" + path.toUri().toString().substring(4);
+    }
+
+    /**
+     * Warms the standalone module-package caches (see {@code PackageUtil}) for the package's
+     * direct dependencies. The flow-model generator resolves and compiles each dependency's
+     * standalone package the first time a diagram references it — a one-time-per-session cost
+     * of seconds that otherwise lands on the first review-diff click. Callers fire this in the
+     * background at generation start so the caches are hot by the time the review opens.
+     */
+    @JsonRequest
+    public CompletableFuture<PrewarmDependenciesResponse> prewarmDependencies(PrewarmDependenciesRequest request) {
+        return CompletableFuture.supplyAsync(() -> {
+            PrewarmDependenciesResponse response = new PrewarmDependenciesResponse();
+            try {
+                Path path = PathUtil.convertUriStringToPath(request.projectPath());
+                Project project = this.workspaceManager.loadProject(path);
+                Package currentPackage = project.currentPackage();
+                PackageDescriptor rootDescriptor = currentPackage.descriptor();
+                DependencyGraph<ResolvedPackageDependency> graph =
+                        currentPackage.getResolution().dependencyGraph();
+                // Only direct dependencies: the flow-model generator standalone-resolves the
+                // modules referenced from user code, which come from the package's own imports.
+                // Warming the transitive closure multiplies the background compile cost for
+                // packages the diagrams rarely touch.
+                ResolvedPackageDependency root = graph.getNodes().stream()
+                        .filter(node -> node.packageInstance().descriptor().equals(rootDescriptor))
+                        .findFirst().orElse(null);
+                if (root == null) {
+                    response.setWarmedDependencyCount(0);
+                    return response;
+                }
+                int warmed = 0;
+                for (ResolvedPackageDependency dependency : graph.getDirectDependencies(root)) {
+                    PackageDescriptor descriptor = dependency.packageInstance().descriptor();
+                    if (descriptor.equals(rootDescriptor) || descriptor.isLangLibPackage()
+                            || descriptor.isBuiltInPackage()) {
+                        continue;
+                    }
+                    PackageUtil.resolveModulePackage(descriptor.org().value(), descriptor.name().value(),
+                                    descriptor.version().value().toString())
+                            // The flow-model generator needs the dependency's own semantic model,
+                            // so pre-compile it too; memoized on the cached Package instance.
+                            .ifPresent(PackageUtil::getCompilation);
+                    warmed++;
+                }
+                response.setWarmedDependencyCount(warmed);
+            } catch (Exception e) {
+                response.setError(e);
+            }
+            return response;
+        });
     }
 
     @JsonRequest
