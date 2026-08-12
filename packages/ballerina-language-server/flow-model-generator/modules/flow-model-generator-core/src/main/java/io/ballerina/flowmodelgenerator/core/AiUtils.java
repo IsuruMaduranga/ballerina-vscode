@@ -44,6 +44,7 @@ import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.UnionTypeSymbol;
 import io.ballerina.compiler.api.symbols.VariableSymbol;
 import io.ballerina.compiler.api.values.ConstantValue;
+import io.ballerina.compiler.syntax.tree.AnnotationNode;
 import io.ballerina.compiler.syntax.tree.AssignmentStatementNode;
 import io.ballerina.compiler.syntax.tree.CheckExpressionNode;
 import io.ballerina.compiler.syntax.tree.ExpressionNode;
@@ -91,6 +92,7 @@ import io.ballerina.projects.environment.ResolutionOptions;
 import io.ballerina.projects.environment.ResolutionRequest;
 import io.ballerina.projects.environment.ResolutionResponse;
 import io.ballerina.tools.diagnostics.Location;
+import org.ballerinalang.langserver.common.utils.CommonUtil;
 import org.ballerinalang.langserver.commons.BallerinaCompilerApi;
 import org.wso2.ballerinalang.compiler.tree.BLangConstantValue;
 
@@ -207,6 +209,7 @@ public class AiUtils {
     private static final String PRESENTATION_KEY = "presentation";
     private static final String MEMORY_INTERFACE_NAME = "Memory";
     private static final String AGENT_TOOL_ANNOT = "AgentTool";
+    private static final String REQUIRES_APPROVAL = "requiresApproval";
     private static final String DISPLAY_ANNOT = "display";
     private static final String SYSTEM_PROMPT_ROLE = "role";
     private static final String SYSTEM_PROMPT_INSTRUCTIONS = "instructions";
@@ -1567,7 +1570,7 @@ public class AiUtils {
         if (!isWorkspaceClass(classSymbol, project)) {
             return AgentInfo.EMPTY;
         }
-        return new AgentInfo(workspaceSystemPrompt(classSymbol, project), toolMethodsOf(classSymbol),
+        return new AgentInfo(workspaceSystemPrompt(classSymbol, project), toolMethodsOf(classSymbol, project),
                 initParamOfType(classSymbol, Ai.MODEL_PROVIDER_TYPE_NAME).orElse(null),
                 initParamOfType(classSymbol, MEMORY_INTERFACE_NAME).orElse(null));
     }
@@ -1685,7 +1688,7 @@ public class AiUtils {
         return findInitParam(classSymbol, param -> isAiInterfaceType(param.typeDescriptor(), interfaceName));
     }
 
-    private static List<AgentToolData> toolMethodsOf(ClassSymbol classSymbol) {
+    private static List<AgentToolData> toolMethodsOf(ClassSymbol classSymbol, Project project) {
         List<AgentToolData> tools = new ArrayList<>();
         for (MethodSymbol method : classSymbol.methods().values()) {
             Optional<String> name = method.getName();
@@ -1693,7 +1696,7 @@ public class AiUtils {
                 continue;
             }
             tools.add(new AgentToolData(name.get(), readDisplayIcon(method), null, null,
-                    readRequiresApproval(method.annotAttachments())));
+                    readRequiresApproval(method, project)));
         }
         return tools;
     }
@@ -1726,29 +1729,55 @@ public class AiUtils {
     }
 
     /**
-     * Reads the {@code requiresApproval} field of a function's {@code @ai:AgentTool} annotation. The
-     * field type is {@code boolean | isolated function}: returns true for {@code requiresApproval: true}
-     * or a predicate-function reference (not a compile-time constant, so treated as "approval may be
-     * required"). A bare {@code @ai:AgentTool}, an explicit {@code requiresApproval: false}, or a missing
-     * field all return false.
+     * Reports whether a tool function is gated for human-in-the-loop approval, by reading its
+     * {@code @ai:AgentTool} annotation from the syntax tree. The tool is gated when a
+     * {@code requiresApproval} field is present with any value other than the literal {@code false}
+     * (i.e. {@code true} or a predicate-function reference). A bare {@code @ai:AgentTool}, an explicit
+     * {@code requiresApproval: false}, or a missing field are all not gated.
+     * <p>
+     * The annotation value is read syntactically rather than via
+     * {@code AnnotationAttachmentSymbol.attachmentValue()} because the AgentTool config record has a
+     * function-typed field ({@code RequiresApproval = boolean | isolated function}), which makes the
+     * compiler's constant-value construction throw for every AgentTool annotation.
      */
-    public static boolean readRequiresApproval(List<AnnotationAttachmentSymbol> annotations) {
-        for (AnnotationAttachmentSymbol annot : annotations) {
-            if (annot.typeDescriptor() == null || !annot.typeDescriptor().nameEquals(AGENT_TOOL_ANNOT)
-                    || annot.typeDescriptor().getModule().map(ModuleSymbol::id)
-                    .filter(id -> CommonUtils.isAiModule(id.orgName(), id.packageName())).isEmpty()) {
-                continue;
-            }
-            if (annot.attachmentValue().isEmpty()) {
+    public static boolean readRequiresApproval(Symbol toolSymbol, Project project) {
+        try {
+            Optional<Location> location = toolSymbol.getLocation();
+            if (location.isEmpty()) {
                 return false;
             }
-            if (unwrapConstant(annot.attachmentValue().get()) instanceof Map<?, ?> map
-                    && map.containsKey("requiresApproval")) {
-                return !Boolean.FALSE.equals(unwrapConstant(map.get("requiresApproval")));
+            Document document = CommonUtils.getDocument(project, location.get());
+            NonTerminalNode node = CommonUtil.findNode(toolSymbol, document.syntaxTree()).orElse(null);
+            while (node != null && !(node instanceof FunctionDefinitionNode)) {
+                node = node.parent();
+            }
+            if (node == null) {
+                return false;
+            }
+            FunctionDefinitionNode functionDefinition = (FunctionDefinitionNode) node;
+            if (functionDefinition.metadata().isEmpty()) {
+                return false;
+            }
+            for (AnnotationNode annotation : functionDefinition.metadata().get().annotations()) {
+                if (!annotation.annotReference().toSourceCode().trim().endsWith(AGENT_TOOL_ANNOT)) {
+                    continue;
+                }
+                return annotation.annotValue()
+                        .flatMap(mapping -> mapping.fields().stream()
+                                .filter(field -> field instanceof SpecificFieldNode specificField
+                                        && REQUIRES_APPROVAL.equals(specificField.fieldName().toSourceCode().trim()))
+                                .map(field -> (SpecificFieldNode) field)
+                                .findFirst())
+                        // Gated unless the value is the literal `false`; absent field -> not gated.
+                        .map(specificField -> !"false".equals(
+                                specificField.valueExpr().map(expr -> expr.toSourceCode().trim()).orElse("")))
+                        .orElse(false);
             }
             return false;
+        } catch (RuntimeException e) {
+            // Never let annotation reading break flow-model generation.
+            return false;
         }
-        return false;
     }
 
     public static boolean isMcpToolKitSymbol(Symbol symbol) {
@@ -1837,7 +1866,7 @@ public class AiUtils {
         // Prebuilt/published agents carry tool metadata in the compiled @display{agentMetadata}. The
         // requiresApproval flag is read here defensively so it works once the generation side emits it;
         // absent → false.
-        boolean requiresApproval = "true".equals(constantString(toolMap.get("requiresApproval")));
+        boolean requiresApproval = "true".equals(constantString(toolMap.get(REQUIRES_APPROVAL)));
         return new AgentToolData(name, constantString(toolMap.get("icon")), null,
                 isMcp ? "MCP Server" : null, requiresApproval);
     }

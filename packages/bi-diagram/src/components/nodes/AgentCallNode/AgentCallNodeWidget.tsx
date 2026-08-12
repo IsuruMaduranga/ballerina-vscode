@@ -876,8 +876,10 @@ export function AgentCallNodeWidget(props: AgentCallNodeWidgetProps) {
                                 </div>
                             </foreignObject>
 
-                            {/* Approval-required badge: a lock on the tool's top-right corner when the
-                                tool's @ai:AgentTool annotation gates it for human-in-the-loop approval */}
+                            {/* Approval-required badge: a shield on the tool's top-right corner when the
+                                tool's @ai:AgentTool annotation gates it for human-in-the-loop approval.
+                                The glyph is drawn as centered SVG text (text-anchor/dominant-baseline)
+                                so it sits exactly in the middle of the ring at small sizes. */}
                             {tool.requiresApproval && (
                                 <g>
                                     <title>Requires approval</title>
@@ -889,20 +891,18 @@ export function AgentCallNodeWidget(props: AgentCallNodeWidgetProps) {
                                         stroke={ThemeColors.SECONDARY}
                                         strokeWidth={1.5}
                                     />
-                                    <foreignObject x="89" y="0" width="16" height="16" style={{ pointerEvents: "none" }}>
-                                        <div
-                                            style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                width: 16,
-                                                height: 16,
-                                                color: ThemeColors.SECONDARY,
-                                            }}
-                                        >
-                                            <Icon name="bi-lock" sx={{ fontSize: "11px" }} />
-                                        </div>
-                                    </foreignObject>
+                                    <text
+                                        x="97"
+                                        y="8"
+                                        textAnchor="middle"
+                                        dominantBaseline="central"
+                                        fontFamily="wso2-vscode"
+                                        fontSize="10px"
+                                        fill={ThemeColors.SECONDARY}
+                                    >
+                                        {/* bi-shield glyph (wso2-vscode font, U+F18A) */}
+                                        {"\uf18a"}
+                                    </text>
                                 </g>
                             )}
 

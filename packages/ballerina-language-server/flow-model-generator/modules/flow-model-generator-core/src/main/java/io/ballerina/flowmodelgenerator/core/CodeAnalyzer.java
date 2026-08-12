@@ -793,7 +793,7 @@ public class CodeAnalyzer extends NodeVisitor {
                             .flatMap(Documentation::description)
                             .orElse("");
                     boolean requiresApproval = method != null
-                            && AiUtils.readRequiresApproval(method.annotAttachments());
+                            && AiUtils.readRequiresApproval(method, project);
                     toolsData.add(new ToolData(toolName, icon, description, type, requiresApproval));
                 } else if (element instanceof SimpleNameReferenceNode nameRef) {
                     String toolName = nameRef.name().text();
@@ -803,8 +803,8 @@ public class CodeAnalyzer extends NodeVisitor {
                     } else {
                         String type = symbol instanceof FunctionSymbol function && isAgentDelegationTool(function)
                                 ? AGENT_TOOL_TYPE : null;
-                        boolean requiresApproval = symbol instanceof FunctionSymbol approvalFn
-                                && AiUtils.readRequiresApproval(approvalFn.annotAttachments());
+                        boolean requiresApproval = symbol != null
+                                && AiUtils.readRequiresApproval(symbol, project);
                         toolsData.add(new ToolData(toolName, getIcon(toolName), getToolDescription(toolName), type,
                                 requiresApproval));
                     }
