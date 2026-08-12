@@ -553,13 +553,19 @@ const ChatInterface: React.FC = () => {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const infoPopoverRef = useRef<HTMLDivElement>(null);
     const agentDropdownRef = useRef<HTMLDivElement>(null);
+    // Bumped whenever the active session changes (switch agent, clear chat, or a switch pushed
+    // from the extension host). In-flight requests capture this value and drop their response
+    // if it no longer matches, rather than applying it to whatever session is now on screen.
+    const sessionTokenRef = useRef(0);
 
     // Check if we have any traces (to enable/disable Session Traces button)
     const hasTraces = messages.some(msg => !msg.isUser && msg.traceId);
 
-    // Block free-text input while the latest turn is an unresolved approval request
-    const lastMessage = messages[messages.length - 1];
-    const isApprovalPending = !!lastMessage && isApprovalUnresolved(lastMessage);
+    // Block free-text input while any turn has an unresolved approval request. Scanning the
+    // whole list (not just the last message) matters because a failed decision submission
+    // appends an error message after the approval card, which would otherwise become
+    // `lastMessage` and incorrectly report nothing pending.
+    const isApprovalPending = messages.some(isApprovalUnresolved);
 
     // Load chat history and check tracing status on mount
     useEffect(() => {
@@ -615,6 +621,7 @@ const ChatInterface: React.FC = () => {
     useEffect(() => {
         rpcClient.getAgentChatRpcClient().onActiveAgentChanged(async (agentName: string) => {
             try {
+                sessionTokenRef.current++;
                 const response = await rpcClient.getAgentChatRpcClient().switchChatAgent({ agentName });
                 setActiveAgentName(agentName);
 
@@ -691,6 +698,7 @@ const ChatInterface: React.FC = () => {
         if (agentName === activeAgentName || isLoading) return;
 
         try {
+            sessionTokenRef.current++;
             const response = await rpcClient.getAgentChatRpcClient().switchChatAgent({ agentName });
             setActiveAgentName(agentName);
 
@@ -772,8 +780,17 @@ const ChatInterface: React.FC = () => {
     };
 
     const handleApprovalDecision = async (msgIndex: number, decisions: Record<string, HumanResponse>) => {
+        // Lock session-changing actions (switch agent, clear chat) while a decision is in
+        // flight, and capture the session token so a response that arrives after the user
+        // switched/cleared sessions anyway is dropped instead of applied to the wrong chat.
+        const requestToken = sessionTokenRef.current;
+        setIsLoading(true);
         try {
             const response = await rpcClient.getAgentChatRpcClient().submitDecision({ decisions });
+
+            if (sessionTokenRef.current !== requestToken) {
+                return;
+            }
 
             setMessages((prev) => {
                 const updated = [...prev];
@@ -802,6 +819,10 @@ const ChatInterface: React.FC = () => {
                 ]);
             }
         } catch (error) {
+            if (sessionTokenRef.current !== requestToken) {
+                return;
+            }
+
             let errorMessage = "An unknown error occurred";
             let traceId: string | undefined;
             let executionSteps: ExecutionStep[] | undefined;
@@ -830,6 +851,10 @@ const ChatInterface: React.FC = () => {
                 traceId,
                 executionSteps
             }]);
+        } finally {
+            // Always clear the lock, even if the session moved on while this was in flight -
+            // otherwise nothing would ever reset isLoading for the session now on screen.
+            setIsLoading(false);
         }
     };
 
@@ -863,6 +888,7 @@ const ChatInterface: React.FC = () => {
 
     const confirmClearChat = async () => {
         try {
+            sessionTokenRef.current++;
             // Clear the chat history on the backend and get a new session ID
             await rpcClient.getAgentChatRpcClient().clearChatHistory();
             // Clear the messages in the UI
