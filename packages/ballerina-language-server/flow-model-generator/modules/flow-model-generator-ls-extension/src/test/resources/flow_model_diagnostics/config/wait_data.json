@@ -540,7 +540,16 @@
                 "optional": false,
                 "editable": true,
                 "advanced": false,
-                "hidden": false
+                "hidden": false,
+                "diagnostics": {
+                  "hasDiagnostics": true,
+                  "diagnostics": [
+                    {
+                      "severity": "ERROR",
+                      "message": "Tuple member at position 0 must be nilable (e.g., string?) when minCount (1) is less than the number of futures (2). Not all futures are guaranteed to complete"
+                    }
+                  ]
+                }
               },
               "dataName": {
                 "metadata": {
@@ -591,7 +600,16 @@
                 "optional": false,
                 "editable": true,
                 "advanced": false,
-                "hidden": false
+                "hidden": false,
+                "diagnostics": {
+                  "hasDiagnostics": true,
+                  "diagnostics": [
+                    {
+                      "severity": "ERROR",
+                      "message": "Tuple member at position 1 must be nilable (e.g., boolean?) when minCount (1) is less than the number of futures (2). Not all futures are guaranteed to complete"
+                    }
+                  ]
+                }
               },
               "dataName": {
                 "metadata": {
@@ -642,6 +660,9 @@
           ]
         }
       }
+    },
+    "diagnostics": {
+      "hasDiagnostics": true
     },
     "flags": 1
   }
