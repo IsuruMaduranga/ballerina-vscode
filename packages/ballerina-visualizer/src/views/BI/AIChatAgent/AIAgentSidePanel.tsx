@@ -60,7 +60,7 @@ import { RelativeLoader } from "../../../components/RelativeLoader";
 import styled from "@emotion/styled";
 import { URI, Utils } from "vscode-uri";
 import { cloneDeep } from "lodash";
-import { buildAgentToolFields, createDefaultParameterValue, createToolInputFields, createToolParameters, prepareToolInputFields, stripCodeFences, stripCodeFencesInline } from "./formUtils";
+import { buildAgentToolFields, buildRequiresApprovalField, collectLocalFunctionNames, createDefaultParameterValue, createRequiresApprovalField, createToolInputFields, createToolParameters, prepareToolInputFields, stripCodeFences, stripCodeFencesInline } from "./formUtils";
 import { ImplementationBadge } from "../../../components/ImplementationBadge";
 import { FUNCTION_CALL, METHOD_CALL, REMOTE_ACTION_CALL, RESOURCE_ACTION_CALL } from "../../../constants";
 import { NewToolSelectionMode } from "./NewTool";
@@ -445,109 +445,12 @@ function reorderFunctionCategories(categories: PanelCategory[]): PanelCategory[]
 const getConnectionFieldName = (name: string): string =>
     name.startsWith("self.") ? name.slice("self.".length) : name;
 
-// Categories in the FUNCTION search response that are NOT the project's own functions: standard
-// library and imported/third-party modules (plus agent tools). We offer only the user's own
-// module-level functions as approval-predicate candidates, so these are skipped.
-const NON_LOCAL_FUNCTION_CATEGORIES = ["Standard Library", "Agent Tools"];
-function isLocalFunctionCategory(label: string | undefined): boolean {
-    if (!label) return true;
-    return !NON_LOCAL_FUNCTION_CATEGORIES.includes(label) && !label.includes("Imported");
-}
-
-// Recursively collect the names of the project's own functions from raw search-result categories,
-// to offer as approval-predicate candidates. The list-level search response has no reliable return
-// type to filter on (codedata.inferredReturnType is only populated in niche type-inference cases,
-// not for ordinary `boolean` returns), so we offer all local functions and let the compiler/LS flag
-// an incompatible pick after generation — the RequiresApproval contract (params mirror the tool,
-// returns boolean) is verified there, not here. Agent-tool functions are excluded.
-function collectLocalFunctionNames(items: (Category | AvailableNode)[], acc: Set<string>): void {
-    for (const item of items) {
-        if (item && "items" in item && Array.isArray((item as Category).items)) {
-            if (isLocalFunctionCategory((item as Category).metadata?.label)) {
-                collectLocalFunctionNames((item as Category).items as (Category | AvailableNode)[], acc);
-            }
-            continue;
-        }
-        const node = item as AvailableNode;
-        const name = node?.codedata?.symbol;
-        if (name && !(node.metadata?.data as NodeMetadata)?.isAgentTool) {
-            acc.add(name);
-        }
-    }
-}
-
-// Rebuild the static "Requires Approval" CONDITIONAL_FIELDS field with the runtime-fetched picker
-// candidates injected into its "On" branch. `items` populate the AUTOCOMPLETE dropdown; the label,
-// description and placeholder are preserved from the static definition.
-function buildRequiresApprovalField(baseField: FormField, candidates: string[]): FormField {
-    const onChoice = baseField.choices?.[0];
-    const approvalProp = onChoice?.properties?.approvalFunction;
-    if (!approvalProp) {
-        return baseField;
-    }
-    return {
-        ...baseField,
-        choices: [
-            {
-                ...onChoice,
-                properties: {
-                    ...onChoice.properties,
-                    approvalFunction: {
-                        ...approvalProp,
-                        items: candidates,
-                    },
-                },
-            },
-            ...baseField.choices.slice(1),
-        ],
-    };
-}
-
-// Tool Name + Description are shared with UseAgentToolForm's "Use Agent Tool" flow via
-// buildAgentToolFields; Requires Approval is appended locally, scoped to this form only.
+// Tool Name + Description are shared with the "Use Connection"/"Create Custom Tool" flows via
+// buildAgentToolFields; Requires Approval (createRequiresApprovalField, shared across all three
+// tool-creation paths) is appended here, scoped to this form only.
 const INITIAL_FIELDS: FormField[] = [
     ...buildAgentToolFields("", ""),
-    {
-        // The annotation value is `boolean | isolated function`: checking the box alone emits
-        // `requiresApproval: true`; picking a function in the revealed sub-field emits that
-        // function reference instead, so approval becomes conditional at runtime. Modeled as
-        // CONDITIONAL_FIELDS (CheckBoxConditionalEditor) so the function picker is a part of this
-        // field rather than a separate, disconnected form entry.
-        key: `requiresApproval`,
-        label: "Requires Approval",
-        type: "CONDITIONAL_FIELDS",
-        optional: true,
-        editable: true,
-        documentation: "Pause this tool before it runs and wait for human approval.",
-        value: false,
-        types: [{ fieldType: "CONDITIONAL_FIELDS", selected: false }],
-        enabled: true,
-        choices: [
-            {
-                metadata: { label: "On" },
-                properties: {
-                    approvalFunction: {
-                        metadata: {
-                            // "(optional)" is appended by AutoCompleteEditor for optional fields; keeping
-                            // it here would double up (capitalize() = startCase would also mangle it).
-                            label: "Approval Function",
-                            description:
-                                "Decides per call whether approval is needed. Pick one of your functions, or type a name to create one.",
-                        },
-                        // AUTOCOMPLETE (not EXPRESSION): the annotation slot takes a function *reference*
-                        // (a bare name), never a call expression. `items` are injected at runtime in
-                        // loadFunctionCallFields; free-typed names are accepted (AutoCompleteEditor
-                        // sets allowItemCreate) and drive the "create a new predicate" path.
-                        types: [{ fieldType: "AUTOCOMPLETE", selected: true }],
-                        value: "",
-                        optional: true,
-                        editable: true,
-                    },
-                },
-            },
-            { metadata: { label: "Off" }, properties: {} },
-        ],
-    } as unknown as FormField,
+    createRequiresApprovalField(),
 ];
 
 export function AIAgentSidePanel(props: BIFlowDiagramProps) {

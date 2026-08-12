@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { ValueTypeConstraint, ToolParameters, getPrimaryInputType } from "@wso2/ballerina-core";
+import { AvailableNode, Category, NodeMetadata, ValueTypeConstraint, ToolParameters, getPrimaryInputType } from "@wso2/ballerina-core";
 import { FormField, Parameter } from "@wso2/ballerina-side-panel";
 
 const SQL_PARAMETERIZED_TYPES = ["sql:ParameterizedQuery", "sql:ParameterizedCallQuery"];
@@ -293,6 +293,115 @@ export const stripCodeFences = (text: string): string => text.replace(CODE_FENCE
 // Same, for fields that must stay on a single line (tool descriptions are written into source).
 export const stripCodeFencesInline = (text: string): string =>
     text.replace(CODE_FENCE_REGEX, "").replace(/\n/g, " ").trim();
+
+// Categories in the FUNCTION search response that are NOT the project's own functions: standard
+// library and imported/third-party modules (plus agent tools). Approval-predicate pickers offer
+// only the user's own module-level functions as candidates, so these are skipped.
+const NON_LOCAL_FUNCTION_CATEGORIES = ["Standard Library", "Agent Tools"];
+function isLocalFunctionCategory(label: string | undefined): boolean {
+    if (!label) return true;
+    return !NON_LOCAL_FUNCTION_CATEGORIES.includes(label) && !label.includes("Imported");
+}
+
+// Recursively collect the names of the project's own functions from raw search-result categories,
+// to offer as approval-predicate candidates. The list-level search response has no reliable return
+// type to filter on (codedata.inferredReturnType is only populated in niche type-inference cases,
+// not for ordinary `boolean` returns), so all local functions are offered and the compiler/LS flags
+// an incompatible pick after generation — the RequiresApproval contract (params mirror the tool,
+// returns boolean) is verified there, not here. Agent-tool functions are excluded.
+export function collectLocalFunctionNames(items: (Category | AvailableNode)[], acc: Set<string>): void {
+    for (const item of items) {
+        if (item && "items" in item && Array.isArray((item as Category).items)) {
+            if (isLocalFunctionCategory((item as Category).metadata?.label)) {
+                collectLocalFunctionNames((item as Category).items as (Category | AvailableNode)[], acc);
+            }
+            continue;
+        }
+        const node = item as AvailableNode;
+        const name = node?.codedata?.symbol;
+        if (name && !(node.metadata?.data as NodeMetadata)?.isAgentTool) {
+            acc.add(name);
+        }
+    }
+}
+
+// Prefill state for the "Requires Approval" control, parsed from an existing @ai:AgentTool
+// annotation when editing a tool that already has the gate set.
+export interface ExistingApprovalConfig {
+    functionName?: string;
+}
+
+// The static "Requires Approval" CONDITIONAL_FIELDS field, shared by every tool-creation path
+// (function, connection, custom). The annotation value is `boolean | isolated function`: checking
+// the box alone emits `requiresApproval: true`; picking a function in the revealed sub-field emits
+// that function reference instead, so approval becomes conditional at runtime. Modeled as
+// CONDITIONAL_FIELDS (CheckBoxConditionalEditor) so the function picker is part of this field
+// rather than a separate, disconnected form entry.
+export function createRequiresApprovalField(existing?: ExistingApprovalConfig): FormField {
+    return {
+        key: "requiresApproval",
+        label: "Requires Approval",
+        type: "CONDITIONAL_FIELDS",
+        optional: true,
+        editable: true,
+        documentation: "Pause this tool before it runs and wait for human approval.",
+        value: Boolean(existing),
+        types: [{ fieldType: "CONDITIONAL_FIELDS", selected: false }],
+        enabled: true,
+        choices: [
+            {
+                metadata: { label: "On" },
+                properties: {
+                    approvalFunction: {
+                        metadata: {
+                            // "(optional)" is appended by AutoCompleteEditor for optional fields; keeping
+                            // it here would double up (capitalize() = startCase would also mangle it).
+                            label: "Approval Function",
+                            description:
+                                "Decides per call whether approval is needed. Pick one of your functions, or type a name to create one.",
+                        },
+                        // AUTOCOMPLETE (not EXPRESSION): the annotation slot takes a function *reference*
+                        // (a bare name), never a call expression. `items` are injected at runtime once the
+                        // candidate list is fetched; free-typed names are accepted (AutoCompleteEditor
+                        // sets allowItemCreate) and drive the "create a new predicate" path.
+                        types: [{ fieldType: "AUTOCOMPLETE", selected: true }],
+                        value: existing?.functionName || "",
+                        optional: true,
+                        editable: true,
+                    },
+                },
+            },
+            { metadata: { label: "Off" }, properties: {} },
+        ],
+    } as unknown as FormField;
+}
+
+// Rebuild the static "Requires Approval" field with the runtime-fetched picker candidates injected
+// into its "On" branch. `items` populate the AUTOCOMPLETE dropdown; the label, description and
+// placeholder are preserved from the static definition.
+export function buildRequiresApprovalField(baseField: FormField, candidates: string[]): FormField {
+    const onChoice = baseField.choices?.[0];
+    const approvalProp = onChoice?.properties?.approvalFunction;
+    if (!approvalProp) {
+        return baseField;
+    }
+    return {
+        ...baseField,
+        choices: [
+            {
+                ...onChoice,
+                properties: {
+                    ...onChoice.properties,
+                    approvalFunction: {
+                        ...approvalProp,
+                        items: candidates,
+                    },
+                },
+            },
+            ...baseField.choices.slice(1),
+        ],
+    };
+}
 
 export function buildAgentToolFields(nameValue: string, descriptionValue: string): FormField[] {
     return [

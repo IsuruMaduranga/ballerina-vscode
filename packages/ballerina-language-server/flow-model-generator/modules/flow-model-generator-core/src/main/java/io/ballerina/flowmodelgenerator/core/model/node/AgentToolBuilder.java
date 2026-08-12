@@ -288,7 +288,12 @@ public class AgentToolBuilder extends NodeBuilder {
     }
 
     private static void emitAnnotation(ToolGenContext ctx) {
-        Map<String, Object> data = ctx.data != null && ctx.data.containsKey("auth")
+        // CUSTOM tools (and AGENT_CALL) have no wrapped node — auth/requiresApproval live directly
+        // on the tool's own data (ctx.data) instead. Checking both keys (not just "auth") keeps a
+        // custom tool's requiresApproval from being dropped when auth was never set.
+        boolean useTopLevelData = ctx.data != null
+                && (ctx.data.containsKey("auth") || ctx.data.containsKey("requiresApproval"));
+        Map<String, Object> data = useTopLevelData
                 ? ctx.data
                 : ctx.wrappedNode != null ? ctx.wrappedNode.codedata().data() : null;
         if (data == null) {
@@ -391,6 +396,7 @@ public class AgentToolBuilder extends NodeBuilder {
                 }
                 ctx.sb.token().keyword(SyntaxKind.CLOSE_BRACE_TOKEN);
                 ctx.sb.textEdit(SourceBuilder.SourceKind.DECLARATION).acceptImport();
+                appendApprovalPredicate(ctx);
                 return ctx.sb.build();
             }
         },
@@ -633,10 +639,13 @@ public class AgentToolBuilder extends NodeBuilder {
     // call's arguments to the predicate by name). Its name is the `requiresApproval` annotation value.
     // Must be called AFTER the tool declaration has been flushed via textEdit(DECLARATION) (so the
     // token buffer is empty); it appends a second DECLARATION text edit to the same file, which
-    // build() returns alongside the tool's. Called from buildFunctionBody, buildRemoteActionBody, and
-    // buildResourceActionBody — i.e. every ToolKind that reaches this via a real wrapped node.
+    // build() returns alongside the tool's. Called from buildFunctionBody, buildRemoteActionBody,
+    // buildResourceActionBody, and CUSTOM's buildBody — every ToolKind whose form exposes the
+    // "Requires Approval" gate.
     private static void appendApprovalPredicate(ToolGenContext ctx) {
-        Map<String, Object> data = ctx.wrappedNode != null ? ctx.wrappedNode.codedata().data() : null;
+        // CUSTOM tools have no wrapped node — generateApprovalFunction/requiresApproval live
+        // directly on the tool's own data (ctx.data) instead, mirroring emitAnnotation's fallback.
+        Map<String, Object> data = ctx.wrappedNode != null ? ctx.wrappedNode.codedata().data() : ctx.data;
         if (data == null || !"true".equals(String.valueOf(data.get("generateApprovalFunction")))) {
             return;
         }
