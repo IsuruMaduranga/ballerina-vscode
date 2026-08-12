@@ -24,6 +24,7 @@ import io.ballerina.projects.DocumentId;
 import io.ballerina.projects.Module;
 import io.ballerina.projects.ModuleId;
 import io.ballerina.projects.Project;
+import io.ballerina.projects.ProjectException;
 import io.ballerina.projects.util.ProjectConstants;
 import org.ballerinalang.langserver.commons.BallerinaCompilerApi;
 import org.ballerinalang.langserver.workspace.eventbus.EventKind;
@@ -193,8 +194,10 @@ public final class ProjectServiceImpl implements ProjectService {
             Project target = registerLoadedProject(root, loaded);
             publishWm(EventKind.WORKSPACE_PROJECT_REGISTERED, root);
             return target;
+        } catch (ProjectException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load project for " + root, e);
+            throw new RuntimeException("Failed to load project for " + root + ": " + e.getMessage(), e);
         }
     }
 
