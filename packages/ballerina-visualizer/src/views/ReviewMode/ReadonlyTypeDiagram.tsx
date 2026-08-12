@@ -22,6 +22,7 @@ import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { ProgressRing, ThemeColors } from "@wso2/ui-toolkit";
 import { TypeDiagram as TypeDesignDiagram } from "@wso2/type-diagram";
+import { fetchTypesModel, ReviewModelCache } from "./reviewModelCache";
 
 const SpinnerContainer = styled.div`
     display: flex;
@@ -56,10 +57,12 @@ interface ReadonlyTypeDiagramProps {
     filePath: string;
     onModelLoaded?: (metadata: ItemMetadata) => void;
     useFileSchema?: boolean;
+    /** Session-scoped model cache owned by ReviewMode — survives toggle/navigation remounts. */
+    modelCache: ReviewModelCache;
 }
 
 export function ReadonlyTypeDiagram(props: ReadonlyTypeDiagramProps): JSX.Element {
-    const { filePath, onModelLoaded, useFileSchema } = props;
+    const { filePath, onModelLoaded, useFileSchema, modelCache } = props;
     const { rpcClient } = useRpcContext();
     const [typesModel, setTypesModel] = useState<Type[] | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -70,26 +73,24 @@ export function ReadonlyTypeDiagram(props: ReadonlyTypeDiagramProps): JSX.Elemen
         // Stale-response guard: a slower earlier request (e.g. after toggling Old/New)
         // must not overwrite this render with the other version's model.
         let cancelled = false;
-        rpcClient
-            .getBIDiagramRpcClient()
-            .getTypes({ filePath: filePath, useFileSchema })
-            .then((response) => {
+        fetchTypesModel(rpcClient, modelCache, filePath, useFileSchema)
+            .then((types) => {
                 if (cancelled) {
                     return;
                 }
-                if (response?.types) {
-                    setTypesModel(response.types);
+                if (types) {
+                    setTypesModel(types);
 
                     // Extract metadata from the types
-                    if (onModelLoaded && response.types.length > 0) {
+                    if (onModelLoaded && types.length > 0) {
                         // If there's a single type, use it; otherwise show "Types" as plural
-                        const firstType = response.types[0];
+                        const firstType = types[0];
                         onModelLoaded({
                             type: "Type",
                             name:
-                                response.types.length === 1
+                                types.length === 1
                                     ? firstType.name || "Unknown"
-                                    : `${response.types.length} Types`,
+                                    : `${types.length} Types`,
                         });
                     } else if (onModelLoaded) {
                         // No types found
@@ -113,7 +114,7 @@ export function ReadonlyTypeDiagram(props: ReadonlyTypeDiagramProps): JSX.Elemen
         return () => {
             cancelled = true;
         };
-    }, [filePath, useFileSchema, rpcClient]);
+    }, [filePath, useFileSchema, rpcClient, modelCache]);
 
     // No-op handlers for readonly mode
     const noOpHandler = () => {
