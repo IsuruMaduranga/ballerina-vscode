@@ -869,10 +869,12 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
         return extractRecordTypeFieldsFromEntries(entries);
     };
 
-    // Fetch the project's own module-level functions (excluding the tool's own function) as
-    // approval-predicate candidates. Reuses the FUNCTION search with an empty queryMap, which returns
-    // the current module's functions; stdlib/imported/agent-tool categories are filtered out by the
-    // collector. Return-type/signature compatibility is verified by the compiler after generation.
+    // Fetch the project's own module-level functions (excluding the tool's own function, when it is
+    // one — connection-based tools have no local function to exclude) as approval-predicate
+    // candidates. Reuses the FUNCTION search with an empty queryMap, which returns the current
+    // module's functions; stdlib/imported/agent-tool categories are filtered out by the collector.
+    // Shared by both the "Use Function" and "Use Connection" tool-creation paths. Return-type/
+    // signature compatibility is verified by the compiler after generation.
     const fetchCompatibleApprovalFunctions = async (toolFunctionSymbol?: string): Promise<string[]> => {
         try {
             const request: BISearchRequest = {
@@ -1039,10 +1041,21 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
             const oauthRecordTypeFields = extractRecordTypeFieldsFromEntries(oauthProperties);
             setRecordTypeFields([...nodeRecordTypeFields, ...oauthRecordTypeFields]);
 
+            // Same approval-predicate picker as the function-call path: fetch the project's
+            // module-level functions and inject them into the "Requires Approval" control.
+            const approvalCandidates = await fetchCompatibleApprovalFunctions();
+            compatibleApprovalFunctionsRef.current = approvalCandidates;
+
             setFields((prevFields) => [
-                ...prevFields.map((field) =>
-                    field.key === "description" ? { ...field, value: templateDescription } : field
-                ),
+                ...prevFields.map((field) => {
+                    if (field.key === "description") {
+                        return { ...field, value: templateDescription };
+                    }
+                    if (field.key === "requiresApproval") {
+                        return buildRequiresApprovalField(field, approvalCandidates);
+                    }
+                    return field;
+                }),
                 ...toolInputFields,
                 ...nodeParameterFields.map(field => ({
                     ...field,

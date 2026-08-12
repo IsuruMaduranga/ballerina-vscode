@@ -628,13 +628,13 @@ public class AgentToolBuilder extends NodeBuilder {
 
     // Emit a sibling `isolated function` predicate stub for the @ai:AgentTool `requiresApproval` gate,
     // when the form requested one (codedata.data.generateApprovalFunction == "true"). The predicate
-    // mirrors the tool wrapper's own parameter list (the exact list its signature was built from,
-    // via the same FUNCTION.resolveParams) and returns boolean, satisfying the RequiresApproval
-    // contract (the ai module binds the proposed call's arguments to the predicate by name). Its
-    // name is the `requiresApproval` annotation value. Must be called AFTER the tool declaration has
-    // been flushed via textEdit(DECLARATION) (so the token buffer is empty); it appends a second
-    // DECLARATION text edit to the same file, which build() returns alongside the tool's. FUNCTION
-    // kind only — matches the original feature's scope (Create Tool from Function).
+    // mirrors the tool wrapper's own parameter list (the exact list its signature was built from) and
+    // returns boolean, satisfying the RequiresApproval contract (the ai module binds the proposed
+    // call's arguments to the predicate by name). Its name is the `requiresApproval` annotation value.
+    // Must be called AFTER the tool declaration has been flushed via textEdit(DECLARATION) (so the
+    // token buffer is empty); it appends a second DECLARATION text edit to the same file, which
+    // build() returns alongside the tool's. Called from buildFunctionBody, buildRemoteActionBody, and
+    // buildResourceActionBody — i.e. every ToolKind that reaches this via a real wrapped node.
     private static void appendApprovalPredicate(ToolGenContext ctx) {
         Map<String, Object> data = ctx.wrappedNode != null ? ctx.wrappedNode.codedata().data() : null;
         if (data == null || !"true".equals(String.valueOf(data.get("generateApprovalFunction")))) {
@@ -645,6 +645,8 @@ public class AgentToolBuilder extends NodeBuilder {
         if (predicateName.isEmpty()) {
             return;
         }
+        // resolveParams is the shared enum-level default (only AGENT_CALL overrides it), so any
+        // ToolKind constant yields the same result here — FUNCTION is used as a stand-in.
         String paramDecls = ToolKind.FUNCTION.resolveParams(ctx).stream()
                 .map(ToolParam::decl)
                 .collect(Collectors.joining(", "));
@@ -682,7 +684,7 @@ public class AgentToolBuilder extends NodeBuilder {
                 .stepOut()
                 .functionParameters(flowNode, ignoredKeys);
 
-        return finishActionBody(sourceBuilder, flowNode, returnType);
+        return finishActionBody(ctx, flowNode, returnType);
     }
 
     private static Map<Path, List<TextEdit>> buildResourceActionBody(ToolGenContext ctx, ReturnInfo returnInfo) {
@@ -748,7 +750,7 @@ public class AgentToolBuilder extends NodeBuilder {
                 .stepOut()
                 .functionParameters(flowNode, ignoredKeys);
 
-        return finishActionBody(sourceBuilder, flowNode, returnType);
+        return finishActionBody(ctx, flowNode, returnType);
     }
 
     private static void beginActionBody(SourceBuilder sourceBuilder, FlowNode flowNode, String returnType) {
@@ -762,8 +764,9 @@ public class AgentToolBuilder extends NodeBuilder {
         }
     }
 
-    private static Map<Path, List<TextEdit>> finishActionBody(SourceBuilder sourceBuilder, FlowNode flowNode,
+    private static Map<Path, List<TextEdit>> finishActionBody(ToolGenContext ctx, FlowNode flowNode,
                                                                 String returnType) {
+        SourceBuilder sourceBuilder = ctx.sb;
         if (!returnType.isEmpty()) {
             sourceBuilder.token().keyword(SyntaxKind.RETURN_KEYWORD)
                     .name(flowNode.getProperty(Property.VARIABLE_KEY).orElseThrow().value().toString())
@@ -772,6 +775,9 @@ public class AgentToolBuilder extends NodeBuilder {
         sourceBuilder.token().keyword(SyntaxKind.CLOSE_BRACE_TOKEN);
         sourceBuilder.textEdit(SourceBuilder.SourceKind.DECLARATION);
         sourceBuilder.acceptImport();
+        // If the form asked to scaffold a conditional-approval predicate, emit it as a sibling
+        // declaration reusing the tool wrapper's exact parameter list (mirrors buildFunctionBody).
+        appendApprovalPredicate(ctx);
         return sourceBuilder.build();
     }
 
