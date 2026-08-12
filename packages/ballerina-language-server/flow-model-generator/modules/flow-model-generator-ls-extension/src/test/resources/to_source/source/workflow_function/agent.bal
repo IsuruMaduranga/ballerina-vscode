@@ -20,3 +20,11 @@ final workflow:DurableAgent claimAgent = check new ({
         myActivity
     ]
 });
+
+# Search the claims knowledge base
+@ai:AgentTool
+isolated function searchClaimDocs(string query) returns string|error {
+    return "results for " + query;
+}
+
+final ai:McpToolKit claimMcp = check new ("http://localhost:9092/mcp");

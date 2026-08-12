@@ -27,3 +27,9 @@ final workflow:DurableAgent billingAgent = check new ({
 function interactWithBillingAgent() returns error? {
 
 }
+
+# Search the billing knowledge base
+@ai:AgentTool
+isolated function searchBillingDocs(string query) returns string|error {
+    return "results for " + query;
+}
