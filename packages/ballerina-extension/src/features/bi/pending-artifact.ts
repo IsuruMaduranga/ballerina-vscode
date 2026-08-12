@@ -29,6 +29,7 @@ import {
     PendingIntegrationArtifactPayload,
 } from "@wso2/ballerina-core";
 import { openView, StateMachine } from "../../stateMachine";
+import { claimCreateLanding } from "../../utils/state-machine-utils";
 import { ServiceDesignerRpcManager } from "../../rpc-managers/service-designer/rpc-manager";
 import { BiDiagramRpcManager } from "../../rpc-managers/bi-diagram/rpc-manager";
 import { extension } from "../../BalExtensionContext";
@@ -38,7 +39,6 @@ import {
     clearPendingIntegrationPointer,
     isPendingPointerFresh,
     PendingIntegrationArtifactPointer,
-    PendingIntegrationLanding,
     readPendingIntegrationPointer,
     writePendingIntegrationPointer,
 } from "./startup-progress";
@@ -67,14 +67,12 @@ export interface PendingIntegrationSchedule {
     isNewProject?: boolean;
     /** Defaults to "integration" on read. */
     componentLabel?: IntegrationComponentLabel;
-    /** Where the reloaded window should land. */
-    landing: PendingIntegrationLanding;
 }
 
 /**
  * Records the create so the reloaded window can finish it. Written even for an empty
- * integration or a library — it is also what lets the new window narrate the create and
- * know where to land. Call right before `openInVSCode(openRoot)`.
+ * integration or a library — it is also what lets the new window narrate the create.
+ * Call right before `openInVSCode(openRoot)`.
  */
 export async function schedulePendingIntegration(schedule: PendingIntegrationSchedule): Promise<void> {
     const { packageRoot, payload } = schedule;
@@ -92,11 +90,9 @@ export async function schedulePendingIntegration(schedule: PendingIntegrationSch
         projectName: schedule.projectName,
         isNewProject: schedule.isNewProject,
         componentLabel: schedule.componentLabel,
-        landing: schedule.landing,
     });
     console.log(
-        `[IntegrationWizard] Scheduled pending ${payload?.kind ?? "empty"} integration for project: ${packageRoot} ` +
-        `(landing=${schedule.landing})`
+        `[IntegrationWizard] Scheduled pending ${payload?.kind ?? "empty"} integration for project: ${packageRoot}`
     );
 }
 
@@ -138,19 +134,17 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
             return;
         }
 
-        const landOnPackageOverview = resolveLandsOnPackage(stored, opensStoredPackage);
-
         // An empty integration has no payload: there is nothing to generate, only
         // the landing view below to open.
         if (!payload) {
-            ensureLandedOnNewIntegration(stored, landOnPackageOverview);
+            openPackageOverview(stored.projectRoot);
             return;
         }
 
         const label = ARTIFACT_KIND_LABELS[payload.kind];
         if (!label || payload.version !== 1) {
             console.error(`[IntegrationWizard] Unsupported pending artifact payload:`, payload);
-            ensureLandedOnNewIntegration(stored, landOnPackageOverview);
+            openPackageOverview(stored.projectRoot);
             return;
         }
 
@@ -158,10 +152,11 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
         console.log(
             `[IntegrationWizard] Pending artifact: kind=${payload.kind}, projectRoot=${stored.projectRoot}, ` +
             `opensStoredPackage=${opensStoredPackage}, insideOpenWorkspace=${insideOpenWorkspace}, ` +
-            `addedIntoWorkspace=${addedIntoWorkspace}, landOnPackageOverview=${landOnPackageOverview}`
+            `addedIntoWorkspace=${addedIntoWorkspace}`
         );
+        let claimedView = false;
         try {
-            await generatePendingArtifact(payload, stored.projectRoot, landOnPackageOverview);
+            claimedView = await generatePendingArtifact(payload, stored.projectRoot);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error(`[IntegrationWizard] Failed to generate pending ${payload.kind} artifact:`, error);
@@ -170,47 +165,16 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
                 `Your integration was created; you can add the artifact from the Artifacts panel.`
             );
         }
-        // Whatever generation did (navigated, didn't, or failed), never leave the window
-        // on the startup screen.
-        ensureLandedOnNewIntegration(stored, landOnPackageOverview);
+        // Unconditional, and it has to be: this runs after awaiting generation, and the
+        // project explorer's own startup navigation lands during that await. Standing down
+        // because something had already navigated is what left the window on the workspace
+        // overview — a create is the last word on where a create ends up.
+        if (!claimedView) {
+            openPackageOverview(stored.projectRoot);
+        }
     } catch (error) {
         console.error("[IntegrationWizard] Unexpected error while checking pending artifact:", error);
     }
-}
-
-/**
- * Whether this create lands on the new package's own overview rather than the project
- * overview. The submit already decided (`landing`); a pointer written by an older build
- * has no such field, so it falls back to the previous rule — package overview only when
- * the package itself is the opened folder.
- */
-function resolveLandsOnPackage(
-    pointer: PendingIntegrationArtifactPointer,
-    opensStoredPackage: boolean
-): boolean {
-    return pointer.landing ? pointer.landing === "package" : opensStoredPackage;
-}
-
-/**
- * Guarantees the window lands on a real view after a wizard create. Acts only when
- * nothing has navigated yet (machine still in `extensionReady`), so it stays a no-op on
- * paths that navigate themselves.
- */
-function ensureLandedOnNewIntegration(
-    pointer: PendingIntegrationArtifactPointer,
-    landOnPackageOverview: boolean
-): void {
-    // Read the raw machine value rather than `StateMachine.state()`: the shared
-    // `MachineStateValue` type predates the startup states and does not include
-    // `extensionReady`, which is exactly the one being tested here.
-    if (StateMachine.service().getSnapshot().value !== "extensionReady") {
-        return;
-    }
-    if (landOnPackageOverview) {
-        openPackageOverview(pointer.projectRoot);
-        return;
-    }
-    openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.WorkspaceOverview });
 }
 
 /** Reads and immediately deletes the payload file; undefined when missing (empty integration) or unreadable. */
@@ -245,8 +209,7 @@ function consumePendingArtifactPayload(projectRoot: string): PendingIntegrationA
  */
 export async function generateArtifactInPlace(
     packageRoot: string,
-    payload: PendingIntegrationArtifactPayload,
-    landOnPackageOverview = false
+    payload: PendingIntegrationArtifactPayload
 ): Promise<void> {
     const label = ARTIFACT_KIND_LABELS[payload.kind];
     if (!label || payload.version !== 1) {
@@ -255,13 +218,16 @@ export async function generateArtifactInPlace(
     }
 
     try {
-        await window.withProgress(
+        const claimedView = await window.withProgress(
             { location: ProgressLocation.Notification, title: `Generating your ${label}...` },
-            () => generatePendingArtifact(payload, packageRoot, landOnPackageOverview)
+            () => generatePendingArtifact(payload, packageRoot)
         );
-        // A non-silent refresh lands on the workspace overview, which would clobber the
-        // package overview navigated to above.
-        StateMachine.refreshProjectInfo({ silent: landOnPackageOverview });
+        if (!claimedView) {
+            openPackageOverview(packageRoot);
+        }
+        // Silent: a non-silent refresh lands on the workspace overview, which would clobber
+        // the package overview navigated to above.
+        StateMachine.refreshProjectInfo({ silent: true });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[IntegrationWizard] Failed to generate ${payload.kind} artifact in place:`, error);
@@ -273,16 +239,18 @@ export async function generateArtifactInPlace(
 }
 
 /**
- * Runs the kind-specific generation and navigates to the result. All files target
- * `projectRoot` (the new package). `landOnPackageOverview`: true when the new package is
- * the thing to show (standalone, or added into an existing project); false when the
- * project itself was just created, so the window stays on the project overview.
+ * Runs the kind-specific generation. All files target `projectRoot` (the new package).
+ *
+ * Returns whether generation claimed the view for a destination of its own, in which case the
+ * caller leaves it alone. Only the agent does that — it hands off to a wizard rather than
+ * finishing here. Everything else leaves the caller to land on the new integration, which is
+ * the thing the user came to see whether it went into a project that already existed or one
+ * this same submit created.
  */
 async function generatePendingArtifact(
     payload: PendingIntegrationArtifactPayload,
-    projectRoot: string,
-    landOnPackageOverview: boolean
-): Promise<void> {
+    projectRoot: string
+): Promise<boolean> {
     switch (payload.kind) {
         case "SERVICE": {
             if (!payload.serviceInitModel) {
@@ -295,10 +263,7 @@ async function generatePendingArtifact(
                 projectPath: projectRoot,
                 serviceInitModel: payload.serviceInitModel,
             });
-            if (landOnPackageOverview) {
-                openPackageOverview(projectRoot);
-            }
-            return;
+            return false;
         }
         case "AUTOMATION":
         case "WORKFLOW": {
@@ -315,10 +280,7 @@ async function generatePendingArtifact(
             if (payload.flowNode.codedata?.node === "DURABLE_AGENT") {
                 await configureDurableAgentModelProvider(projectRoot);
             }
-            if (landOnPackageOverview) {
-                openPackageOverview(projectRoot);
-            }
-            return;
+            return false;
         }
         case "AI_CHAT_AGENT": {
             // Pragmatic v1: the agent's multi-RPC orchestration stays webview-side —
@@ -328,7 +290,7 @@ async function generatePendingArtifact(
                 view: MACHINE_VIEW.AIChatAgentWizard,
                 identifier: payload.aiAgent?.name,
             });
-            return;
+            return true;
         }
         default:
             throw new Error(`Unsupported artifact kind: ${(payload as PendingIntegrationArtifactPayload).kind}`);
@@ -367,5 +329,10 @@ async function configureDurableAgentModelProvider(projectRoot: string): Promise<
  */
 export function openPackageOverview(projectRoot: string): void {
     openView(EVENT_TYPE.OPEN_VIEW, { view: MACHINE_VIEW.PackageOverview, projectPath: projectRoot });
+    // Claimed as well as navigated: the project explorer issues its own Open Overview once its
+    // tree finishes loading, which can be after this lands, and would otherwise replace the
+    // integration the user just made. Claimed AFTER the navigation above, so that navigation
+    // does not consume its own claim.
+    claimCreateLanding(projectRoot);
 }
 

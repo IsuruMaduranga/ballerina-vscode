@@ -28,6 +28,54 @@ import { getConstructBodyString } from "./history/util";
 import { extension } from "../BalExtensionContext";
 import path from "path";
 
+/** The package a create landed on, held until the next navigation resolves. */
+let createLanding: string | undefined;
+
+/**
+ * Marks a package as the view a create just landed on.
+ *
+ * The project explorer issues its own Open Overview once its tree finishes loading, which can
+ * be after a create has landed, and would replace the new integration with the workspace
+ * overview. Claim AFTER navigating: {@link resolveCreateLandingOverride} consumes the claim on
+ * the next navigation, and the landing must not consume its own.
+ */
+export function claimCreateLanding(projectPath: string): void {
+    createLanding = projectPath;
+}
+
+/** Drops the claim — for a caller that means the workspace overview literally, i.e. Home. */
+export function releaseCreateLanding(): void {
+    createLanding = undefined;
+}
+
+/**
+ * Redirects a workspace-overview navigation after a create back to the package it landed on.
+ *
+ * Startup issues more than one navigation, and their order relative to the create varies run to
+ * run: a bare "show the visualizer" arrives either side of the landing, and the workspace
+ * overview follows it. Spending the claim on the first navigation of any kind therefore made the
+ * fix intermittent — the bare one would spend it, leaving the workspace overview to win.
+ *
+ * So only the navigation the claim exists for spends it. A bare navigation resolves against the
+ * context, which the landing has already pointed at the new package, so letting it pass changes
+ * nothing. A navigation naming some other view is the user moving on, and releases the claim so
+ * it cannot affect a workspace overview they ask for later.
+ */
+export function resolveCreateLandingOverride(viewLocation: VisualizerLocation): VisualizerLocation | undefined {
+    if (!createLanding) {
+        return undefined;
+    }
+    if (viewLocation.view === MACHINE_VIEW.WorkspaceOverview) {
+        const claimed = createLanding;
+        createLanding = undefined;
+        return { view: MACHINE_VIEW.PackageOverview, projectPath: claimed };
+    }
+    if (viewLocation.view && viewLocation.view !== MACHINE_VIEW.PackageOverview) {
+        createLanding = undefined;
+    }
+    return undefined;
+}
+
 /**
  * The single integration a workspace holds, or undefined when it holds anything else.
  *
