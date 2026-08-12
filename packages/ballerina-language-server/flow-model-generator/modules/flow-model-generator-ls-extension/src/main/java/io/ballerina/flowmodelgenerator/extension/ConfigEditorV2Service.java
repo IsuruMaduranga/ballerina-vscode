@@ -98,7 +98,6 @@ import io.ballerina.tools.diagnostics.DiagnosticSeverity;
 import io.ballerina.tools.text.LinePosition;
 import io.ballerina.tools.text.LineRange;
 import org.ballerinalang.annotation.JavaSPIService;
-import org.ballerinalang.langserver.commons.CompilerCompilationGuard;
 import org.ballerinalang.langserver.commons.eventsync.exceptions.EventSyncException;
 import org.ballerinalang.langserver.commons.service.spi.ExtendedLanguageServerService;
 import org.ballerinalang.langserver.commons.workspace.WorkspaceDocumentException;
@@ -761,7 +760,7 @@ public class ConfigEditorV2Service implements ExtendedLanguageServerService {
                     packageInstance.getResolution(
                             CompilationOptions.builder().setOffline(true).build());
                 }
-                SemanticModel semanticModel = CompilerCompilationGuard.getCompilation(packageInstance)
+                SemanticModel semanticModel = PackageUtil.getCompilation(packageInstance)
                         .getSemanticModel(module.moduleId());
                 return Optional.ofNullable(semanticModel);
             }
