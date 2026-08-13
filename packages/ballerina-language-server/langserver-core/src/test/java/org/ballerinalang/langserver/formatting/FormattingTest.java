@@ -120,7 +120,7 @@ public class FormattingTest {
         Path expectedFilePath = inputProjectDir.resolve("expectedMain.bal");
 
         String expectedInitial = new String(Files.readAllBytes(expectedInitialFilePath))
-                .replaceAll("\\r\\n", "\\n");
+                .replaceAll("\\r\\n", "\n");
 
         // The on-disk file represents the previously formatted text. The client then sends a
         // didChange with additional content before requesting formatting. The formatting response
@@ -131,7 +131,7 @@ public class FormattingTest {
         this.didSaveDocument(inputFilePath);
         this.didChangeWatchedFile(inputFilePath);
 
-        String expected = new String(Files.readAllBytes(expectedFilePath)).replaceAll("\\r\\n", "\\n");
+        String expected = new String(Files.readAllBytes(expectedFilePath)).replaceAll("\\r\\n", "\n");
         String actual = this.formatAndGetNewText(inputFilePath);
         TestUtil.closeDocument(this.serviceEndpoint, inputFilePath);
         Assert.assertEquals(actual, expected,
@@ -157,7 +157,7 @@ public class FormattingTest {
         ResponseMessage responseMessage = gson.fromJson(result, ResponseMessage.class);
         String actual =
                 (String) ((LinkedTreeMap<?, ?>) ((List<?>) responseMessage.getResult()).get(0)).get("newText");
-        return actual.replaceAll("\\r\\n", "\\n");
+        return actual.replaceAll("\\r\\n", "\n");
     }
 
     /**

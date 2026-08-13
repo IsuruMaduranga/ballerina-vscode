@@ -30,6 +30,7 @@ import org.ballerinalang.langserver.workspace.workspacemanager.project.EvictionR
 import org.ballerinalang.langserver.workspace.workspacemanager.project.ProjectKind;
 import org.ballerinalang.langserver.workspace.workspacemanager.uri.DocumentUri;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -194,6 +195,7 @@ public class ExecutionManagerComponentsTest {
      */
     @Test(timeOut = 15000)
     public void executionService_run_publishesStartAndOutput_usingVirtualThreads() throws Exception {
+        skipOnWindows();
         List<EventKind> events = new CopyOnWriteArrayList<>();
         List<Boolean> virtualThreadFlags = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(3);
@@ -232,6 +234,7 @@ public class ExecutionManagerComponentsTest {
      */
     @Test(timeOut = 15000)
     public void executionService_subscriptions_cleanupOnEvictionAndUnsupportedKind() throws Exception {
+        skipOnWindows();
         AtomicInteger terminatedCount = new AtomicInteger();
         CountDownLatch terminationLatch = new CountDownLatch(2);
 
@@ -289,6 +292,19 @@ public class ExecutionManagerComponentsTest {
 
     private void subscribe(Set<EventKind> kinds, java.util.function.Consumer<DomainEvent> consumer) {
         eventBus.subscribe("execution-test-" + System.nanoTime(), SubscriberTier.CRITICAL, kinds, consumer);
+    }
+
+    /**
+     * These tests spawn a POSIX shell ({@code /bin/sh}) to simulate a long-running process with
+     * interleaved stdout/stderr output. There is no equivalent shell available by that path on
+     * Windows, so the scenario is skipped there rather than shipped with an unverified cmd.exe
+     * translation.
+     * TODO: Support the test for windows.
+     */
+    private static void skipOnWindows() {
+        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            throw new SkipException("Requires a POSIX shell (/bin/sh), not available on Windows");
+        }
     }
 
     private static final class FakeProcess extends Process {

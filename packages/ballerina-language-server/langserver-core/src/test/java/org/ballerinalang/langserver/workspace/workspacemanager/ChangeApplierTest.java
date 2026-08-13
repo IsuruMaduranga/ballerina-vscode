@@ -382,6 +382,9 @@ public class ChangeApplierTest {
         TextDocument mockText1 = mock(TextDocument.class);
         TextDocument mockText2 = mock(TextDocument.class);
 
+        Path sourceRoot1 = Path.of("/workspace/p1").toAbsolutePath().normalize();
+        Path sourceRoot2 = Path.of("/workspace/p2").toAbsolutePath().normalize();
+
         when(changeBuffer.pendingUris()).thenReturn(Set.of(uri1, uri2));
         when(changeBuffer.drain(uri1)).thenReturn(List.of(change1));
         when(changeBuffer.drain(uri2)).thenReturn(List.of(change2));
@@ -391,8 +394,8 @@ public class ChangeApplierTest {
         when(mockDoc2.module()).thenReturn(mockModule2);
         when(mockModule1.project()).thenReturn(mockProject1);
         when(mockModule2.project()).thenReturn(mockProject2);
-        when(mockProject1.sourceRoot()).thenReturn(Path.of("/workspace/p1"));
-        when(mockProject2.sourceRoot()).thenReturn(Path.of("/workspace/p2"));
+        when(mockProject1.sourceRoot()).thenReturn(sourceRoot1);
+        when(mockProject2.sourceRoot()).thenReturn(sourceRoot2);
         when(mockDoc1.textDocument()).thenReturn(mockText1);
         when(mockDoc2.textDocument()).thenReturn(mockText2);
         when(mockText1.toString()).thenReturn("");
@@ -407,6 +410,7 @@ public class ChangeApplierTest {
         ChangeApplier applier = new ChangeApplier(changeBuffer, uriResolver);
         Set<DocumentUri> affectedRoots = applier.applyAll();
 
-        Assert.assertEquals(affectedRoots, Set.of(fileUri("/workspace/p1"), fileUri("/workspace/p2")));
+        Assert.assertEquals(affectedRoots,
+                Set.of(new DocumentUri.FileUri(sourceRoot1.toUri()), new DocumentUri.FileUri(sourceRoot2.toUri())));
     }
 }
