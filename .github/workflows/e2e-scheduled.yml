@@ -1,0 +1,119 @@
+name: Scheduled E2E Tests
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      sourceBranch:
+        description: >-
+          Branch to run the E2E suite against. Leave blank to auto-select: the
+          latest staging/* branch if one exists, otherwise main.
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# Runs every 6 hours; a run should always finish well within that window, but
+# guard against overlap rather than assume it.
+concurrency:
+  group: e2e-scheduled
+  cancel-in-progress: false
+
+jobs:
+  resolve-branch:
+    name: Resolve source branch
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.resolve.outputs.branch }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Resolve source branch
+        id: resolve
+        uses: ./.github/actions/resolve-source-branch
+        with:
+          sourceBranch: ${{ inputs.sourceBranch }}
+
+  E2E:
+    name: Run E2E suite
+    needs: resolve-branch
+    uses: ./.github/workflows/reusable-build.yml
+    secrets:
+      COPILOT_ROOT_URL: ${{ secrets.COPILOT_ROOT_URL }}
+      COPILOT_DEV_ROOT_URL: ${{ secrets.COPILOT_DEV_ROOT_URL }}
+      APPINSIGHTS_INSTRUMENTATION_KEY: ${{ secrets.APPINSIGHTS_INSTRUMENTATION_KEY }}
+    with:
+      ref: ${{ needs.resolve-branch.outputs.branch }}
+      runOnAWS: false
+      isPreRelease: true
+      nightly: false
+      ballerina: false
+      isReleaseBuild: false
+      runFastTests: false
+      runBalE2ETests: true
+      runLSTests: false
+
+  Report:
+    name: Aggregate flakiness report
+    needs:
+      - resolve-branch
+      - E2E
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Download E2E test results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        continue-on-error: true
+        with:
+          pattern: Ballerina-e2e-test-results-linux-*-${{ github.run_attempt }}
+          path: e2e-results
+
+      - name: Aggregate results
+        id: aggregate
+        env:
+          E2E_SOURCE_BRANCH: ${{ needs.resolve-branch.outputs.branch }}
+        run: node .github/scripts/aggregate-e2e-results.js e2e-results e2e-run-stats.jsonl | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Persist run stats
+        if: ${{ always() && github.repository == 'ballerina-platform/ballerina-vscode' }}
+        run: |
+          set -euo pipefail
+          if [ ! -f e2e-run-stats.jsonl ]; then
+            echo "No test results to persist; skipping."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin e2e-metrics || true
+          if git show-ref --verify --quiet refs/remotes/origin/e2e-metrics; then
+            git checkout -B e2e-metrics origin/e2e-metrics
+          else
+            git checkout --orphan e2e-metrics
+            git rm -rf --quiet . || true
+          fi
+          mkdir -p history
+          cat e2e-run-stats.jsonl >> history/e2e-history.jsonl
+          git add history/e2e-history.jsonl
+          git commit -m "E2E stats: run ${{ github.run_id }} attempt ${{ github.run_attempt }}"
+          git push origin e2e-metrics
+
+      - name: Notify on failure
+        if: ${{ always() && (steps.aggregate.outcome == 'failure' || contains(needs.*.result, 'failure')) && github.repository == 'ballerina-platform/ballerina-vscode' }}
+        uses: ./.github/actions/failure-notification
+        with:
+          title: "Scheduled E2E Tests Failed"
+          run_id: ${{ github.run_id }}
+          chat_api: ${{ secrets.EDITOR_TEAM_CHAT_API }}
+          repository: ${{ github.repository }}
+          thread_key: e2e-scheduled
