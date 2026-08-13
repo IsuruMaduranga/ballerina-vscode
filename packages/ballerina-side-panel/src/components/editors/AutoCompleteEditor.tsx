@@ -51,7 +51,7 @@ export function AutoCompleteEditor(props: AutoCompleteEditorProps) {
             // Symmetric with required fields showing "*".
             label={field.optional ? `${capitalize(field.label)} (Optional)` : capitalize(field.label)}
             items={field.items}
-            allowItemCreate={true}
+            allowItemCreate={field.allowItemCreate ?? true}
             required={!field.optional}
             disabled={!field.editable}
             onValueChange={(val: string) => {

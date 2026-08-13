@@ -53,6 +53,9 @@ export type FormField = {
     advanceProps?: FormField[];
     diagnostics?: DiagnosticMessage[];
     items?: string[];
+    /** AUTOCOMPLETE only: allow typing a value not in `items` (creates a new entry). Defaults to
+     * true when unset, preserving the editor's original behavior; set false for a strict pick-list. */
+    allowItemCreate?: boolean;
     itemOptions?: OptionProps[]
     choices?: PropertyModel[];
     dynamicFormFields?: { [key: string]: FormField[] }

@@ -194,6 +194,14 @@ function parseRequiresApproval(annotationValue: string): ExistingApprovalConfig 
     return raw === "true" ? {} : { functionName: raw };
 }
 
+// Ensure the function the tool currently references is always a selectable candidate, even if the
+// module-function fetch didn't surface it. Edit forms use a strict (no-create) picker, so without
+// this a referenced-but-unlisted function would be silently dropped on save.
+function withExistingCandidate(candidates: string[], existing?: ExistingApprovalConfig): string[] {
+    const name = existing?.functionName;
+    return name && !candidates.includes(name) ? [...candidates, name] : candidates;
+}
+
 // Insert, replace, or remove a scalar `key: value` field (no nested braces, unlike auth's record
 // value) inside an @ai:AgentTool annotation string. Mirrors the auth block's matchBraced-based
 // upsert in spirit, but auth's value is itself a `{ ... }` record while requiresApproval's value is
@@ -443,11 +451,16 @@ export function AgentToolForm(props: AgentToolFormProps): JSX.Element {
                     });
 
                     oauthPropertiesRef.current = oauthProperties;
-                    compatibleApprovalFunctionsRef.current = approvalCandidates;
+                    const existingApproval = parseRequiresApproval(annotationValue);
+                    const approvalItems = withExistingCandidate(approvalCandidates, existingApproval);
+                    compatibleApprovalFunctionsRef.current = approvalItems;
                     const existingConfig = parseAuth(annotationValue, oauthProperties.map(({ key }) => key));
                     const { oauthFields, oauthRecordFields } = buildOAuthFields(oauthProperties, existingConfig);
+                    // Edit restricts the picker to existing functions (allowCreate=false): this path
+                    // rewrites the annotation source directly and never reaches AgentToolBuilder, so a
+                    // free-typed new name would leave `requiresApproval: <name>` with no such function.
                     const requiresApprovalField = buildRequiresApprovalField(
-                        createRequiresApprovalField(parseRequiresApproval(annotationValue)), approvalCandidates
+                        createRequiresApprovalField(existingApproval, false), approvalItems
                     );
 
                     setToolNode(node);
@@ -471,14 +484,19 @@ export function AgentToolForm(props: AgentToolFormProps): JSX.Element {
 
                     oauthPropertiesRef.current = oauthProperties;
                     const annotationValue = findAgentToolAnnotation(model)?.value ?? "";
-                    compatibleApprovalFunctionsRef.current = approvalCandidates.filter(
-                        (name) => name !== String(model.name.value)
+                    const existingApproval = parseRequiresApproval(annotationValue);
+                    const approvalItems = withExistingCandidate(
+                        approvalCandidates.filter((name) => name !== String(model.name.value)),
+                        existingApproval
                     );
+                    compatibleApprovalFunctionsRef.current = approvalItems;
                     const existingConfig = parseAuth(annotationValue, oauthProperties.map(({ key }) => key));
                     const { oauthFields, oauthRecordFields } = buildOAuthFields(oauthProperties, existingConfig);
+                    // Edit restricts the picker to existing functions (allowCreate=false) — see the
+                    // top-level edit branch; the class-edit save likewise rebuilds annotation text
+                    // directly rather than going through AgentToolBuilder's predicate scaffolding.
                     const requiresApprovalField = buildRequiresApprovalField(
-                        createRequiresApprovalField(parseRequiresApproval(annotationValue)),
-                        compatibleApprovalFunctionsRef.current
+                        createRequiresApprovalField(existingApproval, false), approvalItems
                     );
 
                     setFunctionModel(model);
@@ -698,9 +716,10 @@ export function AgentToolForm(props: AgentToolFormProps): JSX.Element {
                                     `@ai:AgentTool {\n    ${configBlock}\n}`);
                             }
                         }
-                        // Edits reference the typed approval-function name as-is (no stub scaffolding —
-                        // this path rewrites already-generated source text directly, bypassing
-                        // AgentToolBuilder's codegen where the predicate stub is normally emitted).
+                        // Edits reference an existing function only (the edit picker is a strict
+                        // pick-list — allowCreate=false), so no predicate scaffolding is needed: this
+                        // path rewrites already-generated source text directly and never reaches
+                        // AgentToolBuilder's codegen where a new predicate stub would be emitted.
                         annotationStr = upsertScalarAnnotationField(
                             annotationStr, "requiresApproval", resolveApprovalSource(data)
                         );

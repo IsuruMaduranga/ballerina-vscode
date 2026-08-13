@@ -337,7 +337,13 @@ export interface ExistingApprovalConfig {
 // that function reference instead, so approval becomes conditional at runtime. Modeled as
 // CONDITIONAL_FIELDS (CheckBoxConditionalEditor) so the function picker is part of this field
 // rather than a separate, disconnected form entry.
-export function createRequiresApprovalField(existing?: ExistingApprovalConfig): FormField {
+// `allowCreate` controls whether the picker accepts a free-typed (new) function name. Create flows
+// pass true (a new name drives predicate scaffolding via AgentToolBuilder); edit flows pass false —
+// those paths rewrite source directly and never reach the generator, so a new name would produce a
+// dangling reference. Restricting edits to existing functions keeps the annotation always resolvable.
+export function createRequiresApprovalField(
+    existing?: ExistingApprovalConfig, allowCreate: boolean = true
+): FormField {
     return {
         key: "requiresApproval",
         label: "Requires Approval",
@@ -357,14 +363,17 @@ export function createRequiresApprovalField(existing?: ExistingApprovalConfig): 
                             // "(optional)" is appended by AutoCompleteEditor for optional fields; keeping
                             // it here would double up (capitalize() = startCase would also mangle it).
                             label: "Approval Function",
-                            description:
-                                "Decides per call whether approval is needed. Pick one of your functions, or type a name to create one.",
+                            description: allowCreate
+                                ? "Decides per call whether approval is needed. Pick one of your functions, or type a name to create one."
+                                : "Decides per call whether approval is needed. Pick one of your existing functions.",
                         },
                         // AUTOCOMPLETE (not EXPRESSION): the annotation slot takes a function *reference*
                         // (a bare name), never a call expression. `items` are injected at runtime once the
-                        // candidate list is fetched; free-typed names are accepted (AutoCompleteEditor
-                        // sets allowItemCreate) and drive the "create a new predicate" path.
+                        // candidate list is fetched. When allowCreate is true, free-typed names are accepted
+                        // (drive the "create a new predicate" path); when false, the picker is a strict
+                        // pick-list of existing functions.
                         types: [{ fieldType: "AUTOCOMPLETE", selected: true }],
+                        allowItemCreate: allowCreate,
                         value: existing?.functionName || "",
                         optional: true,
                         editable: true,
