@@ -160,6 +160,24 @@ public class LSPackageLoader {
 
                 this.getDistributionRepoModules().forEach(packageInfo ->
                         packagesList.put(packageInfo.packageIdentifier(), packageInfo));
+
+                // The user-home repositories hold the centrally-pulled and locally-published
+                // packages that do NOT ship inside the distribution (ballerina/workflow, for
+                // one). Without loading them here, the "import module" code action and
+                // unimported-module completions only ever offer distribution packages — a
+                // module the project itself pulled would still get no import suggestion.
+                // The empty listener map skips the listener-metadata compilation pass.
+                lsClientLogger.logTrace("Loading packages from the Ballerina user home repositories");
+                BallerinaUserHome ballerinaUserHome = BallerinaUserHome.from(environment);
+                this.remoteRepoPackages.addAll(checkAndResolvePackagesFromRepository(
+                        ballerinaUserHome.remotePackageRepository(), Collections.emptyMap(),
+                        Collections.emptyList(), packagesList.keySet()));
+                this.getRemoteRepoModules().forEach(packageInfo ->
+                        packagesList.putIfAbsent(packageInfo.packageIdentifier(), packageInfo));
+                this.localRepoPackages.addAll(checkAndResolvePackagesFromRepository(
+                        ballerinaUserHome.localPackageRepository(), Collections.emptyMap(),
+                        Collections.emptyList(), packagesList.keySet()));
+
                 List<ModuleInfo> repoPackages = new ArrayList<>(this.getLocalRepoModules());
                 repoPackages.stream().filter(packageInfo -> !packagesList.containsKey(packageInfo.packageIdentifier()))
                         .forEach(packageInfo -> packagesList.put(packageInfo.packageIdentifier(), packageInfo));
