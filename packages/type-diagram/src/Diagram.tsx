@@ -33,6 +33,7 @@ import { FilteringInfoBanner } from './components/FilteringInfoBanner';
 import { Type } from '@wso2/ballerina-core';
 import { focusToNode } from './utils/utils';
 import { graphqlModeller } from './utils/model-mapper/entityModelMapper';
+import { EntityChangeStatus } from './components/common/DiagramContext/DiagramContext';
 
 interface TypeDiagramProps {
     typeModel: Type[];
@@ -47,6 +48,8 @@ interface TypeDiagramProps {
     onTypeEdit: (typeId: string, isGraphqlRoot?: boolean) => void;
     onTypeDelete: (typeId: string) => void;
     verifyTypeDelete: (typeId: string) => Promise<boolean>;
+    /** Review-diff only: per-type-name change status, badged on each node header. */
+    changeStatusByType?: Record<string, EntityChangeStatus>;
 }
 
 export interface ModelResult {
@@ -55,7 +58,7 @@ export interface ModelResult {
 }
 
 export function TypeDiagram(props: TypeDiagramProps) {
-    const { typeModel, showProblemPanel, selectedNodeId, goToSource, focusedNodeId, readonly, updateFocusedNodeId, rootService, isGraphql, verifyTypeDelete } = props;
+    const { typeModel, showProblemPanel, selectedNodeId, goToSource, focusedNodeId, readonly, updateFocusedNodeId, rootService, isGraphql, verifyTypeDelete, changeStatusByType } = props;
 
     const [diagramEngine] = useState<DiagramEngine>(createEntitiesEngine());
     const [diagramModel, setDiagramModel] = useState<DiagramModel>(undefined);
@@ -144,7 +147,8 @@ export function TypeDiagram(props: TypeDiagramProps) {
         onEditNode: onTypeEdit,
         goToSource,
         onNodeDelete,
-        verifyTypeDelete
+        verifyTypeDelete,
+        changeStatusByType
     }
 
     const refreshDiagram = () => {

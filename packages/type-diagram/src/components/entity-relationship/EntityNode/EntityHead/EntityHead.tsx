@@ -75,6 +75,27 @@ const ImportedLabel = styled.span`
     white-space: nowrap;
 `;
 
+// Review-diff badge shown on a node header when the type was added/modified/deleted. Colors
+// mirror the chat review bar's change pills.
+const CHANGE_BADGE: Record<string, { label: string; color: string }> = {
+    added: { label: "Added", color: "var(--vscode-charts-green)" },
+    modified: { label: "Modified", color: "var(--vscode-charts-yellow)" },
+    deleted: { label: "Deleted", color: "var(--vscode-charts-red)" },
+};
+
+const ChangeBadge = styled.span<{ color: string }>`
+    background-color: ${(props: { color: string }) => `color-mix(in srgb, ${props.color} 18%, transparent)`};
+    border-radius: 3px;
+    color: ${(props: { color: string }) => props.color};
+    font-family: GilmerRegular;
+    font-size: 10px;
+    height: 20px;
+    line-height: 20px;
+    padding: 0 6px;
+    margin-left: 8px;
+    white-space: nowrap;
+`;
+
 const GraphqlIconContainer = styled.div`
     margin-right: 10px;
     display: flex;
@@ -91,10 +112,11 @@ interface Origin {
 
 export function EntityHeadWidget(props: ServiceHeadProps) {
     const { engine, node, isSelected } = props;
-    const { setFocusedNodeId, onEditNode, goToSource, onNodeDelete, verifyTypeDelete, readonly } = useContext(DiagramContext);
+    const { setFocusedNodeId, onEditNode, goToSource, onNodeDelete, verifyTypeDelete, readonly, changeStatusByType } = useContext(DiagramContext);
 
     const displayName: string = node.getID()?.slice(node.getID()?.lastIndexOf(':') + 1);
     const isImported = !node?.entityObject?.editable;
+    const changeStatus = changeStatusByType?.[displayName];
 
     const [anchorEl, setAnchorEl] = useState<HTMLElement | SVGSVGElement>(null);
     const isMenuOpen = Boolean(anchorEl);
@@ -249,6 +271,11 @@ export function EntityHeadWidget(props: ServiceHeadProps) {
                             <ImportedLabel>
                                 Imported Type
                             </ImportedLabel>
+                        )}
+                        {changeStatus && CHANGE_BADGE[changeStatus] && (
+                            <ChangeBadge color={CHANGE_BADGE[changeStatus].color}>
+                                {CHANGE_BADGE[changeStatus].label}
+                            </ChangeBadge>
                         )}
                     </EntityNameContainer>
                     <HeaderButtonsContainer>

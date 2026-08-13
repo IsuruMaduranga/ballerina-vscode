@@ -21,7 +21,7 @@ import { Type } from "@wso2/ballerina-core";
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { ProgressRing, ThemeColors } from "@wso2/ui-toolkit";
-import { TypeDiagram as TypeDesignDiagram } from "@wso2/type-diagram";
+import { TypeDiagram as TypeDesignDiagram, EntityChangeStatus } from "@wso2/type-diagram";
 import { fetchTypesModel, ReviewModelCache } from "./reviewModelCache";
 
 const SpinnerContainer = styled.div`
@@ -59,10 +59,16 @@ interface ReadonlyTypeDiagramProps {
     useFileSchema?: boolean;
     /** Session-scoped model cache owned by ReviewMode — survives toggle/navigation remounts. */
     modelCache: ReviewModelCache;
+    /**
+     * Per-type-name change status, so each node header carries an Added/Modified/Deleted badge.
+     * The merged Types view collapses every type change into one diagram, so this is what tells
+     * the user which record changed and how.
+     */
+    changeStatusByType?: Record<string, EntityChangeStatus>;
 }
 
 export function ReadonlyTypeDiagram(props: ReadonlyTypeDiagramProps): JSX.Element {
-    const { filePath, onModelLoaded, useFileSchema, modelCache } = props;
+    const { filePath, onModelLoaded, useFileSchema, modelCache, changeStatusByType } = props;
     const { rpcClient } = useRpcContext();
     const [typesModel, setTypesModel] = useState<Type[] | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -142,6 +148,7 @@ export function ReadonlyTypeDiagram(props: ReadonlyTypeDiagramProps): JSX.Elemen
                 onTypeDelete={noOpHandler}
                 verifyTypeDelete={async () => true}
                 readonly={true}
+                changeStatusByType={changeStatusByType}
             />
         </Container>
     );

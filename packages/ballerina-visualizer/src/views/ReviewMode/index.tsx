@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { SemanticDiffResponse, SemanticDiff, ChangeTypeEnum, NodeKindEnum, NodePosition } from "@wso2/ballerina-core";
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
@@ -28,6 +28,7 @@ import { ReadonlySourceDiff } from "./ReadonlySourceDiff";
 import { getNodeKindLabel, SOURCE_VIEW_KINDS } from "./nodeKindLabels";
 import { getVersionsForChangeType, prefetchReviewView, ReviewModelCache } from "./reviewModelCache";
 import { ReviewNavigation } from "./ReviewNavigation";
+import { EntityChangeStatus } from "@wso2/type-diagram";
 import { Codicon, Icon, ThemeColors } from "@wso2/ui-toolkit";
 import { TitleBar } from "../../components/TitleBar";
 import { getTitleBarSubEl } from "../BI/DiagramWrapper";
@@ -193,6 +194,44 @@ function getDiagramType(nodeKind: number): DiagramType {
     return DiagramType.FLOW;
 }
 
+// Constructs that render as nodes in the Types diagram. Restricting to these kinds keeps a
+// same-named variable/resource from mislabeling a type node.
+const TYPE_LIKE_KINDS: ReadonlySet<number> = new Set([
+    NodeKindEnum.TYPE_DEFINITION,
+    NodeKindEnum.ENUM_DECLARATION,
+    NodeKindEnum.CLASS_DEFINITION,
+]);
+
+function changeTypeToStatus(changeType: number): EntityChangeStatus {
+    switch (changeType) {
+        case ChangeTypeEnum.ADDITION:
+            return "added";
+        case ChangeTypeEnum.DELETION:
+            return "deleted";
+        default:
+            return "modified";
+    }
+}
+
+// The merged Types view collapses every type change into one diagram, so per-type change info
+// would otherwise be lost. This maps each type-like construct's name to how it changed, so the
+// diagram can badge each node. Scoped to the view's package for workspace projects.
+function buildTypeChangeStatusMap(
+    diffs: SemanticDiff[],
+    packagePath: string | undefined,
+    isWorkspaceProject: boolean
+): Record<string, EntityChangeStatus> {
+    const map: Record<string, EntityChangeStatus> = {};
+    for (const diff of diffs) {
+        if (!TYPE_LIKE_KINDS.has(diff.nodeKind)) continue;
+        if (isWorkspaceProject && packagePath && !diffBelongsToPackage(diff.uri, packagePath)) continue;
+        const name = (diff.metadata as { name?: string } | undefined)?.name;
+        if (!name) continue;
+        map[name] = changeTypeToStatus(diff.changeType);
+    }
+    return map;
+}
+
 // Utility function to convert SemanticDiff to ReviewView
 function convertToReviewView(diff: SemanticDiff, projectPath: string, packageName?: string): ReviewView {
     const fileName = diff.uri.split("/").pop() || diff.uri;
@@ -291,6 +330,17 @@ export function ReviewMode(): JSX.Element {
     // Derive current view from views array and currentIndex - no separate state needed
     const currentView =
         views.length > 0 && currentIndex >= 0 && currentIndex < views.length ? views[currentIndex] : null;
+
+    // Per-type change status for the merged Types diagram's badges. Memoized so it isn't rebuilt
+    // on every render (renderDiagram runs each render, and the type diagram's onModelLoaded feeds
+    // state back in) and so the prop identity handed down to the diagram stays stable.
+    const typeChangeStatusMap = useMemo(
+        () =>
+            semanticDiffData
+                ? buildTypeChangeStatusMap(semanticDiffData.semanticDiffs, currentView?.projectPath, isWorkspace)
+                : undefined,
+        [semanticDiffData, currentView?.projectPath, isWorkspace]
+    );
 
     // Load review data pushed via OPEN_VIEW reviewData field — no separate RPC calls needed
     const loadFromReviewData = useCallback(async () => {
@@ -565,6 +615,7 @@ export function ReviewMode(): JSX.Element {
                         onModelLoaded={handleModelLoaded}
                         useFileSchema={effectiveViewMode === "old"}
                         modelCache={modelCacheRef.current}
+                        changeStatusByType={typeChangeStatusMap}
                     />
                 );
             case "source":

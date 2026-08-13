@@ -274,10 +274,41 @@ interface DiffEntry {
     viewIndex: number;
 }
 
+type GroupKind = "design" | "service" | "functions" | "types" | "declaration";
+
 interface DiffGroup {
-    groupLabel: string;
+    kind: GroupKind;
+    /** Header text shown to the user. */
+    displayLabel: string;
+    /** Codicon class for the header icon (declaration groups). */
+    icon?: string;
     entries: DiffEntry[];
+    /**
+     * For merged single-row groups (Types): how many underlying constructs the row stands
+     * for. `entries` holds a single navigable entry, so `entries.length` understates it —
+     * this is what lets the row show "Types (3)" so its count reconciles with the review-mode
+     * view total.
+     */
+    mergedCount?: number;
 }
+
+// Pluralize a singular node-kind label for a group header ("import" -> "imports",
+// "class" -> "classes"). Keeps the wording sourced from nodeKindLabels, not re-listed here.
+function pluralizeKindLabel(label: string): string {
+    return /(s|x|z|ch|sh)$/.test(label) ? `${label}es` : `${label}s`;
+}
+
+// Non-diagram construct kinds each get their own collapsible group, in this fixed display order,
+// so a bulk add/delete reads as "imports (12)" instead of 12 loose cards. Labels derive from the
+// shared nodeKindLabels table; only the header icon is ReviewBar-specific.
+const DECLARATION_KINDS: { nodeKind: number; icon: string }[] = [
+    { nodeKind: NodeKindEnum.LISTENER, icon: "codicon-broadcast" },
+    { nodeKind: NodeKindEnum.CLASS_DEFINITION, icon: "codicon-symbol-class" },
+    { nodeKind: NodeKindEnum.ENUM_DECLARATION, icon: "codicon-symbol-enum" },
+    { nodeKind: NodeKindEnum.CONSTANT, icon: "codicon-symbol-constant" },
+    { nodeKind: NodeKindEnum.MODULE_VARIABLE, icon: "codicon-symbol-variable" },
+    { nodeKind: NodeKindEnum.IMPORT_DECLARATION, icon: "codicon-symbol-namespace" },
+];
 
 type ViewMode = "diagram" | "code";
 
@@ -378,15 +409,21 @@ function getChangeTypeLabel(changeType: number): string {
     }
 }
 
+// The Design Diagram is a single navigable view at `viewIndex`, pushed ahead of a package's
+// construct groups. `viewIndex` is 0 for the whole project, or the package's ordinal in workspaces.
+function makeDesignGroup(viewIndex: number): DiffGroup {
+    return {
+        kind: "design",
+        displayLabel: "Design Diagram",
+        entries: [{ symbol: "", changeType: ChangeTypeEnum.MODIFICATION, label: "Design Diagram", kindLabel: "design", nodeKind: -1, viewIndex }],
+    };
+}
+
 function buildGroups(semanticDiffs: SemanticDiff[], loadDesignDiagrams?: boolean): DiffGroup[] {
     const designCount = loadDesignDiagrams ? 1 : 0;
     const { groups } = buildGroupsWithOffset(semanticDiffs, designCount);
     if (!loadDesignDiagrams) return groups;
-    const designGroup: DiffGroup = {
-        groupLabel: "design",
-        entries: [{ symbol: "", changeType: ChangeTypeEnum.MODIFICATION, label: "Design Diagram", kindLabel: "design", nodeKind: -1, viewIndex: 0 }],
-    };
-    return [designGroup, ...groups];
+    return [makeDesignGroup(0), ...groups];
 }
 
 const PackageContent = styled.div`
@@ -430,11 +467,7 @@ function buildPackageGroups(
 
         let finalGroups = groups;
         if (loadDesignDiagrams) {
-            const designGroup: DiffGroup = {
-                groupLabel: "design",
-                entries: [{ symbol: "", changeType: ChangeTypeEnum.MODIFICATION, label: "Design Diagram", kindLabel: "design", nodeKind: -1, viewIndex: pi }],
-            };
-            finalGroups = [designGroup, ...groups];
+            finalGroups = [makeDesignGroup(pi), ...groups];
         }
 
         result.push({ packageName: pkgName, groups: finalGroups });
@@ -448,15 +481,20 @@ function buildGroupsWithOffset(semanticDiffs: SemanticDiff[], startIndex: number
 
     const serviceGroups: Record<string, DiffEntry[]> = {};
     const functionEntries: DiffEntry[] = [];
-    const typeEntries: DiffEntry[] = [];
-    // Non-diagram construct kinds (constants, module vars, listeners, classes, enums, imports)
-    const declarationEntries: DiffEntry[] = [];
-    let hasTypeView = false;
+    // Non-diagram construct kinds bucketed per kind (listeners, classes, enums, constants,
+    // module vars, imports) — see DECLARATION_KINDS.
+    const declarationBuckets: Record<number, DiffEntry[]> = {};
+    // All TYPE_DEFINITION diffs collapse into ONE navigable "Types" view (mirrors review mode),
+    // so only the first consumes a view index; typeCount tracks the merged total for the badge.
+    let typeEntry: DiffEntry | undefined;
+    let typeCount = 0;
 
     for (const diff of semanticDiffs) {
         const isType = diff.nodeKind === NODE_KIND_TYPE;
-        if (isType && hasTypeView) continue;
-        if (isType) hasTypeView = true;
+        if (isType) {
+            typeCount++;
+            if (typeEntry) continue; // subsequent types fold into the first — no extra view index
+        }
 
         // OBJECT_FUNCTION covers both service members and plain class methods; only the
         // former carry a servicePath, and only they belong under a service group.
@@ -477,33 +515,47 @@ function buildGroupsWithOffset(semanticDiffs: SemanticDiff[], startIndex: number
         };
         viewIndex++;
 
-        if (servicePath !== undefined) {
+        if (isType) {
+            typeEntry = entry;
+        } else if (servicePath !== undefined) {
             const svcPath = servicePath || "/";
             if (!serviceGroups[svcPath]) serviceGroups[svcPath] = [];
             serviceGroups[svcPath].push(entry);
         } else if (diff.nodeKind === NODE_KIND_FUNCTION || diff.nodeKind === NODE_KIND_RESOURCE) {
             // Plain functions, and class methods (OBJECT_FUNCTION without a service path)
             functionEntries.push(entry);
-        } else if (isType) {
-            typeEntries.push(entry);
         } else {
-            declarationEntries.push(entry);
+            if (!declarationBuckets[diff.nodeKind]) declarationBuckets[diff.nodeKind] = [];
+            declarationBuckets[diff.nodeKind].push(entry);
         }
     }
 
     const groups: DiffGroup[] = [];
 
     for (const [svcPath, entries] of Object.entries(serviceGroups)) {
-        groups.push({ groupLabel: `service ${svcPath}`, entries });
+        groups.push({ kind: "service", displayLabel: svcPath, entries });
     }
     if (functionEntries.length > 0) {
-        groups.push({ groupLabel: "functions", entries: functionEntries });
+        groups.push({ kind: "functions", displayLabel: "functions", entries: functionEntries });
     }
-    if (typeEntries.length > 0) {
-        groups.push({ groupLabel: "types", entries: typeEntries });
+    if (typeEntry) {
+        groups.push({ kind: "types", displayLabel: "Types", entries: [typeEntry], mergedCount: typeCount });
     }
-    if (declarationEntries.length > 0) {
-        groups.push({ groupLabel: "declarations", entries: declarationEntries });
+    const emittedKinds = new Set<number>();
+    for (const { nodeKind, icon } of DECLARATION_KINDS) {
+        const entries = declarationBuckets[nodeKind];
+        if (!entries || entries.length === 0) continue;
+        emittedKinds.add(nodeKind);
+        groups.push({ kind: "declaration", displayLabel: pluralizeKindLabel(getNodeKindLabel(nodeKind)), icon, entries });
+    }
+    // Catch-all: any non-diagram kind not in DECLARATION_KINDS (e.g. DATA_MAPPING_FUNCTION) still
+    // gets a group, so a construct is never silently dropped from the summary.
+    for (const key of Object.keys(declarationBuckets)) {
+        const nodeKind = Number(key);
+        if (emittedKinds.has(nodeKind)) continue;
+        const entries = declarationBuckets[nodeKind];
+        if (entries.length === 0) continue;
+        groups.push({ kind: "declaration", displayLabel: pluralizeKindLabel(getNodeKindLabel(nodeKind)), entries });
     }
 
     return { groups, viewCount: viewIndex - startIndex };
@@ -630,74 +682,100 @@ function renderCard(entry: DiffEntry, i: number, onClickEntry?: (viewIndex: numb
     );
 }
 
+// The single change type shared by every entry, or undefined when they differ — lets a group
+// header carry one "- Deleted" pill when the whole group moved the same way.
+function uniformChangeType(entries: DiffEntry[]): number | undefined {
+    if (entries.length === 0) return undefined;
+    const first = entries[0].changeType;
+    return entries.every((e) => e.changeType === first) ? first : undefined;
+}
+
+// Declaration groups larger than this start collapsed, so a bulk add/delete (e.g. wiping a
+// project's imports and module vars) doesn't bury the chat under a wall of cards.
+const DECLARATION_COLLAPSE_THRESHOLD = 4;
+
+// Design + Types are single merged rows: one click jumps to the one view they stand for, so
+// they render without a collapse toggle. Only Types carries a count badge + change pill.
+const MERGED_ROW_ICON: Record<string, string> = {
+    design: "codicon-type-hierarchy",
+    types: "codicon-symbol-class",
+};
+
+function renderMergedRow(group: DiffGroup, key: number, onClickEntry?: (viewIndex: number) => void) {
+    const count = group.mergedCount ?? group.entries.length;
+    return (
+        <TypesRow
+            key={key}
+            onClick={onClickEntry ? () => onClickEntry(group.entries[0].viewIndex) : undefined}
+            disabled={!onClickEntry}
+        >
+            <CardLeft>
+                <span className={`codicon ${MERGED_ROW_ICON[group.kind]}`} style={{ fontSize: "11px", color: "var(--vscode-descriptionForeground)" }} />
+                <span>{group.displayLabel}</span>
+                {count > 1 && <CountBadge>{count}</CountBadge>}
+            </CardLeft>
+            {group.kind === "types" && (
+                <TypePill changeType={group.entries[0].changeType}>
+                    {getChangeTypeLabel(group.entries[0].changeType)}
+                </TypePill>
+            )}
+        </TypesRow>
+    );
+}
+
 const CollapsibleGroupList: React.FC<{
     groups: DiffGroup[];
     onClickEntry?: (viewIndex: number) => void;
 }> = ({ groups, onClickEntry }) => {
-    const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
-
-    const toggle = (gi: number) =>
-        setCollapsed(prev => ({ ...prev, [gi]: !prev[gi] }));
+    // Store only the user's explicit toggles, keyed by stable group identity (not array index).
+    // The size-based default is recomputed from the current group each render, so replacing the
+    // groups in place can't strand a collapse flag on the wrong group.
+    const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+    const groupKey = (g: DiffGroup) => `${g.kind}:${g.displayLabel}`;
+    const defaultCollapsed = (g: DiffGroup) =>
+        g.kind === "declaration" && g.entries.length > DECLARATION_COLLAPSE_THRESHOLD;
+    const toggle = (g: DiffGroup) =>
+        setOverrides(prev => ({ ...prev, [groupKey(g)]: !(prev[groupKey(g)] ?? defaultCollapsed(g)) }));
 
     return (
         <ChangeList>
             {groups.map((group, gi) => {
-                const isService = group.groupLabel.startsWith("service ");
-                const isFunctions = group.groupLabel === "functions";
-                const isTypes = group.groupLabel === "types";
-                const isDesign = group.groupLabel === "design";
-                const isCollapsible = isService || isFunctions;
-                const isCollapsed = !!collapsed[gi];
+                if (group.kind === "design" || group.kind === "types") {
+                    return renderMergedRow(group, gi, onClickEntry);
+                }
 
-                const displayLabel = isService
-                    ? group.groupLabel.slice("service ".length)
-                    : "functions";
+                // Collapsible groups: service, functions, and per-kind declarations.
+                const isService = group.kind === "service";
+                const isCollapsed = overrides[groupKey(group)] ?? defaultCollapsed(group);
+                const headerIcon = isService
+                    ? "codicon-plug"
+                    : group.kind === "functions"
+                    ? "codicon-symbol-method"
+                    : group.icon;
+                // Declaration groups summarise a homogeneous change on the header pill; service
+                // and function groups can mix change types, so they get no aggregate pill.
+                const headerPill = group.kind === "declaration" ? uniformChangeType(group.entries) : undefined;
 
                 return (
                     <React.Fragment key={gi}>
-                        {isCollapsible && (
-                            <CollapsibleHeader onClick={() => toggle(gi)}>
-                                <span
-                                    className={`codicon ${isCollapsed ? "codicon-chevron-right" : "codicon-chevron-down"}`}
-                                    style={{ fontSize: "10px" }}
-                                />
-                                {isService && (
-                                    <span className="codicon codicon-plug" style={{ fontSize: "11px", color: "var(--vscode-descriptionForeground)" }} />
-                                )}
-                                {isFunctions && (
-                                    <span className="codicon codicon-symbol-method" style={{ fontSize: "11px", color: "var(--vscode-descriptionForeground)" }} />
-                                )}
-                                {isService && <span style={{ color: "var(--vscode-descriptionForeground)", fontWeight: 400 }}>service</span>}
-                                <span>{displayLabel}</span>
-                                <CountBadge>{group.entries.length}</CountBadge>
-                            </CollapsibleHeader>
-                        )}
-                        {!isCollapsed && (
-                            isDesign ? (
-                                <TypesRow
-                                    onClick={onClickEntry ? () => onClickEntry(group.entries[0].viewIndex) : undefined}
-                                    disabled={!onClickEntry}
-                                >
-                                    <CardLeft>
-                                        <span className="codicon codicon-type-hierarchy" style={{ fontSize: "11px", color: "var(--vscode-descriptionForeground)" }} />
-                                        <span>Design Diagram</span>
-                                    </CardLeft>
-                                </TypesRow>
-                            ) : isTypes ? (
-                                <TypesRow
-                                    onClick={onClickEntry ? () => onClickEntry(group.entries[0].viewIndex) : undefined}
-                                    disabled={!onClickEntry}
-                                >
-                                    <CardLeft>
-                                        <span className="codicon codicon-symbol-class" style={{ fontSize: "11px", color: "var(--vscode-descriptionForeground)" }} />
-                                        <span>Types</span>
-                                    </CardLeft>
-                                    <TypePill changeType={group.entries[0].changeType}>
-                                        {getChangeTypeLabel(group.entries[0].changeType)}
-                                    </TypePill>
-                                </TypesRow>
-                            ) : group.entries.map((entry, i) => renderCard(entry, i, onClickEntry))
-                        )}
+                        <CollapsibleHeader onClick={() => toggle(group)}>
+                            <span
+                                className={`codicon ${isCollapsed ? "codicon-chevron-right" : "codicon-chevron-down"}`}
+                                style={{ fontSize: "10px" }}
+                            />
+                            {headerIcon && (
+                                <span className={`codicon ${headerIcon}`} style={{ fontSize: "11px", color: "var(--vscode-descriptionForeground)" }} />
+                            )}
+                            {isService && <span style={{ color: "var(--vscode-descriptionForeground)", fontWeight: 400 }}>service</span>}
+                            <span>{group.displayLabel}</span>
+                            <CountBadge>{group.entries.length}</CountBadge>
+                            {headerPill !== undefined && (
+                                <TypePill changeType={headerPill} style={{ marginLeft: "auto" }}>
+                                    {getChangeTypeLabel(headerPill)}
+                                </TypePill>
+                            )}
+                        </CollapsibleHeader>
+                        {!isCollapsed && group.entries.map((entry, i) => renderCard(entry, i, onClickEntry))}
                     </React.Fragment>
                 );
             })}

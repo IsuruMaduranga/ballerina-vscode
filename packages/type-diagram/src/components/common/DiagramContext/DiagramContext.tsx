@@ -19,6 +19,9 @@
 import React, { createContext, ReactNode } from 'react';
 import { Type } from '@wso2/ballerina-core';
 
+/** How a type node changed, for the review-diff badge on its header. */
+export type EntityChangeStatus = "added" | "modified" | "deleted";
+
 interface DiagramContextProps {
     children?: ReactNode;
     hasDiagnostics: boolean;
@@ -31,6 +34,8 @@ interface DiagramContextProps {
     goToSource?: (node: Type) => void,
     onNodeDelete?: (typeId: string) => void;
     verifyTypeDelete?: (typeId: string) => Promise<boolean>;
+    /** Per-type-name change status; when set, each node header shows a review-diff badge. */
+    changeStatusByType?: Record<string, EntityChangeStatus>;
 }
 
 interface IDiagramContext {
@@ -44,6 +49,7 @@ interface IDiagramContext {
     goToSource?: (node: Type) => void
     onNodeDelete?: (typeId: string) => void;
     verifyTypeDelete?: (typeId: string) => Promise<boolean>;
+    changeStatusByType?: Record<string, EntityChangeStatus>;
 }
 
 const defaultState: any = {};
@@ -61,7 +67,8 @@ export function DesignDiagramContext(props: DiagramContextProps) {
         onEditNode,
         goToSource,
         onNodeDelete,
-        verifyTypeDelete
+        verifyTypeDelete,
+        changeStatusByType
     } = props;
 
     let context: IDiagramContext = {
@@ -74,7 +81,8 @@ export function DesignDiagramContext(props: DiagramContextProps) {
         onEditNode,
         goToSource,
         onNodeDelete,
-        verifyTypeDelete
+        verifyTypeDelete,
+        changeStatusByType
     }
 
     return (

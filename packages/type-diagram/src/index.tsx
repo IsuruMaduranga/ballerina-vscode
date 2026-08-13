@@ -17,3 +17,4 @@
  */
 
 export { TypeDiagram } from "./Diagram";
+export type { EntityChangeStatus } from "./components/common/DiagramContext/DiagramContext";
