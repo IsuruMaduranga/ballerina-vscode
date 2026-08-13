@@ -233,6 +233,7 @@ import * as toml from "@iarna/toml";
 import { readOrWriteReadmeContent } from "./utils";
 import { registerFormOpen, registerFormClose, setFormDirtyState } from "./form-state";
 import { isAiSourceParseable } from "../diagram-validity";
+import { describeFlowRequest, logReviewDiagnostic, withReviewTimeout } from "../../features/ai/utils/reviewDiagnostics";
 import { getRepoRoot } from "../platform-ext/platform-utils";
 import { WI_EXTENSION_ID } from "../../utils";
 import { notifyOnIdentifierUpdated } from "../../RPCLayer";
@@ -284,6 +285,10 @@ function setTomlSectionField(filePath: string, section: string, field: string, v
     fs.writeFileSync(filePath, toml.stringify(doc), "utf-8");
 }
 
+// Upper bound for a review-diff flow-model fetch. Warm fetches are ~tens of ms and cold ones a
+// couple of seconds, so this only trips on a genuinely hung/pathological LS request.
+const REVIEW_FLOW_MODEL_TIMEOUT_MS = 20000;
+
 export class BiDiagramRpcManager implements BIDiagramAPI {
     OpenConfigTomlRequest: (params: OpenConfigTomlRequest) => Promise<void>;
 
@@ -298,67 +303,86 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
 
     async getFlowModel(params: BIFlowModelRequest): Promise<BIFlowModelResponse> {
         console.log(">>> requesting bi flow model from ls", params);
-        return new Promise((resolve) => {
-            let request: BIFlowModelRequest;
+        let request: BIFlowModelRequest;
 
-            // If params has all required fields, use them directly
-            if (params?.filePath && params?.startLine && params?.endLine) {
-                console.log(">>> using params to create request");
-                let filePath = params.filePath;
-                // filePath defaults to ai:// (the frozen baseline, used for "old"); convert
-                // to file:// (live) unless the caller explicitly wants the old view.
-                if (!params.useFileSchema) {
-                    filePath = this.convertAiToFileScheme(filePath);
-                }
-                request = {
-                    filePath,
-                    startLine: params.startLine,
-                    endLine: params.endLine,
-                    forceAssign: params.forceAssign ?? true,
-                };
-            } else {
-                // Fall back to context if params are not complete
-                console.log(">>> params incomplete, falling back to context");
-                const context = StateMachine.context();
+        // If params has all required fields, use them directly
+        if (params?.filePath && params?.startLine && params?.endLine) {
+            console.log(">>> using params to create request");
+            let filePath = params.filePath;
+            // filePath defaults to ai:// (the frozen baseline, used for "old"); convert
+            // to file:// (live) unless the caller explicitly wants the old view.
+            if (!params.useFileSchema) {
+                filePath = this.convertAiToFileScheme(filePath);
+            }
+            request = {
+                filePath,
+                startLine: params.startLine,
+                endLine: params.endLine,
+                forceAssign: params.forceAssign ?? true,
+            };
+        } else {
+            // Fall back to context if params are not complete
+            console.log(">>> params incomplete, falling back to context");
+            const context = StateMachine.context();
 
-                if (!context.position) {
-                    // TODO: check why this hits when we are in review mode
-                    console.log(">>> position not found in context, cannot create request");
-                    resolve(undefined);
-                    return;
-                }
-
-                request = {
-                    filePath: params?.filePath || context.documentUri,
-                    startLine: params?.startLine || {
-                        line: context.position.startLine ?? 0,
-                        offset: context.position.startColumn ?? 0,
-                    },
-                    endLine: params?.endLine || {
-                        line: context.position.endLine ?? 0,
-                        offset: context.position.endColumn ?? 0,
-                    },
-                    forceAssign: params?.forceAssign ?? true,
-                };
+            if (!context.position) {
+                // TODO: check why this hits when we are in review mode
+                console.log(">>> position not found in context, cannot create request");
+                return undefined;
             }
 
-            console.log(">>> final request:", request);
+            request = {
+                filePath: params?.filePath || context.documentUri,
+                startLine: params?.startLine || {
+                    line: context.position.startLine ?? 0,
+                    offset: context.position.startColumn ?? 0,
+                },
+                endLine: params?.endLine || {
+                    line: context.position.endLine ?? 0,
+                    offset: context.position.endColumn ?? 0,
+                },
+                forceAssign: params?.forceAssign ?? true,
+            };
+        }
 
+        console.log(">>> final request:", request);
+
+        const fetchModel = (): Promise<BIFlowModelResponse> =>
             StateMachine.langClient()
                 .getFlowModel(request)
                 .then(async (model) => {
                     console.log(">>> bi flow model received from ls");
                     if (model?.flowModel && !(await isAiSourceParseable([request.filePath]))) {
-                        resolve(undefined);
-                        return;
+                        return undefined;
                     }
-                    resolve(model);
-                })
-                .catch((error) => {
-                    console.log(">>> error fetching bi flow model from ls", error);
-                    resolve(undefined);
+                    return model;
                 });
-        });
+
+        // Non-review calls keep the original fire-and-forget behaviour (errors → undefined).
+        if (!params?.reviewDiagnostics) {
+            return fetchModel().catch((error) => {
+                console.log(">>> error fetching bi flow model from ls", error);
+                return undefined;
+            });
+        }
+
+        // Review-diff path: bound the LS call so a hung/slow model can't freeze the review, and
+        // log to the "WSO2 Integrator Copilot" channel exactly why the diagram did or did not load.
+        const label = describeFlowRequest(
+            request.filePath, request.startLine, request.endLine, params.reviewDiagnostics.construct);
+        logReviewDiagnostic(`→ requesting flow model: ${label}`);
+        const start = Date.now();
+        const model = await withReviewTimeout(label, REVIEW_FLOW_MODEL_TIMEOUT_MS, fetchModel);
+        const elapsed = Date.now() - start;
+        if (model?.flowModel) {
+            logReviewDiagnostic(`✓ flow model returned in ${elapsed}ms: ${label}`);
+        } else if (model) {
+            logReviewDiagnostic(
+                `✗ language server returned a response with NO flowModel in ${elapsed}ms ` +
+                `(the construct could not be rendered as a flow — e.g. an LS generation failure): ${label}`);
+        }
+        // Timeout / thrown errors are already logged inside withReviewTimeout.
+        return model;
     }
 
     async getSourceCode(params: BISourceCodeRequest): Promise<UpdatedArtifactsResponse> {

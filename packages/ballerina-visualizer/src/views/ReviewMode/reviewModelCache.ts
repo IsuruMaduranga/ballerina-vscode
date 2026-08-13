@@ -72,6 +72,8 @@ export interface FlowVersionParams {
     oldPosition?: NodePosition;
     /** true reads the frozen original (ai://); false reads the live edits (file://). */
     useFileSchema: boolean;
+    /** Human-readable construct label, forwarded to the review-diff diagnostics log. */
+    label?: string;
 }
 
 function positionKey(position?: NodePosition): string {
@@ -90,7 +92,7 @@ export function fetchFlowModelVersion(
     cache: ReviewModelCache,
     params: FlowVersionParams
 ): Promise<Flow | null> {
-    const { filePath, position, oldPosition, useFileSchema } = params;
+    const { filePath, position, oldPosition, useFileSchema, label } = params;
     const key = `flow:${filePath}:${positionKey(position)}:${positionKey(oldPosition)}:${useFileSchema}`;
     return getOrFetch(cache, key, async () => {
         const lookupPosition = getFlowLookupPosition(position, oldPosition, useFileSchema);
@@ -116,6 +118,9 @@ export function fetchFlowModelVersion(
             startLine,
             endLine,
             useFileSchema,
+            // Review-only: bounds the LS call with a timeout and logs why the diagram loaded or
+            // not to the "WSO2 Integrator Copilot" output channel.
+            reviewDiagnostics: { construct: label },
         });
         return response?.flowModel ?? null;
     });
@@ -158,6 +163,8 @@ export interface PrefetchableReviewView {
     oldPosition?: NodePosition;
     projectPath: string;
     changeType: number;
+    /** Construct label, forwarded to the review-diff diagnostics log. */
+    label?: string;
 }
 
 /**
@@ -183,7 +190,7 @@ export function prefetchReviewView(
     switch (view.type) {
         case "flow": {
             const versions = getVersionsForChangeType(view.changeType);
-            const params = { filePath: view.filePath, position: view.position, oldPosition: view.oldPosition };
+            const params = { filePath: view.filePath, position: view.position, oldPosition: view.oldPosition, label: view.label };
             if (versions.new) {
                 fetches.push(fetchFlowModelVersion(rpcClient, cache, { ...params, useFileSchema: false }));
             }

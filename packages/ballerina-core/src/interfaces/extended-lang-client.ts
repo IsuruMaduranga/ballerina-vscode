@@ -885,6 +885,13 @@ export interface BIFlowModelRequest {
     endLine?: LinePosition;
     forceAssign?: boolean;
     useFileSchema?: boolean;
+    /**
+     * Set only on review-diff fetches. When present the extension bounds the LS call with a
+     * timeout (so a hung/slow model can't freeze the review) and logs why the diagram did or
+     * did not load to the "WSO2 Integrator Copilot" output channel. `construct` is a
+     * human-readable label for the log line.
+     */
+    reviewDiagnostics?: { construct?: string };
 }
 
 export interface BISuggestedFlowModelRequest extends BIFlowModelRequest {
