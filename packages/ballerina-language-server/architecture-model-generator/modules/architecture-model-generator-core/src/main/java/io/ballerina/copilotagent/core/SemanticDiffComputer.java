@@ -307,6 +307,7 @@ public class SemanticDiffComputer {
                 FunctionDefinitionNode originalMethod = methodEntry.getValue();
                 Map<String, String> metadata = buildFunctionMetadata(className + "." + methodKey);
                 if (!modifiedMethods.containsKey(methodKey)) {
+                    addFunctionSource(metadata, originalMethod, null);
                     addDeletionDiff(NodeKind.OBJECT_FUNCTION, originalMethod.lineRange(), metadata);
                     continue;
                 }
@@ -314,8 +315,9 @@ public class SemanticDiffComputer {
                         NodeKind.OBJECT_FUNCTION, metadata);
             }
             for (Map.Entry<String, FunctionDefinitionNode> methodEntry : modifiedMethods.entrySet()) {
-                addAdditionDiff(NodeKind.OBJECT_FUNCTION, methodEntry.getValue().lineRange(),
-                        buildFunctionMetadata(className + "." + methodEntry.getKey()));
+                Map<String, String> metadata = buildFunctionMetadata(className + "." + methodEntry.getKey());
+                addFunctionSource(metadata, null, methodEntry.getValue());
+                addAdditionDiff(NodeKind.OBJECT_FUNCTION, methodEntry.getValue().lineRange(), metadata);
             }
 
             if (!nonMethodMembersSource(originalClass).equals(nonMethodMembersSource(modifiedClass))) {
@@ -406,6 +408,7 @@ public class SemanticDiffComputer {
                 FunctionDefinitionNode originalFunction = entry.getValue();
                 LineRange lineRange = originalFunction.lineRange();
                 Map<String, String> metadata = buildFunctionMetadata(functionName);
+                addFunctionSource(metadata, originalFunction, null);
                 SemanticDiff diff = new SemanticDiff(ChangeType.DELETION, NodeKind.MODULE_FUNCTION,
                         resolveUri(lineRange.fileName()), lineRange, metadata);
                 this.semanticDiffs.add(diff);
@@ -421,6 +424,7 @@ public class SemanticDiffComputer {
             FunctionDefinitionNode functionDefinitionNode = entry.getValue();
             LineRange lineRange = functionDefinitionNode.lineRange();
             Map<String, String> metadata = buildFunctionMetadata(entry.getKey());
+            addFunctionSource(metadata, null, functionDefinitionNode);
             SemanticDiff diff = new SemanticDiff(ChangeType.ADDITION, NodeKind.MODULE_FUNCTION,
                     resolveUri(lineRange.fileName()), lineRange, metadata);
             this.semanticDiffs.add(diff);
@@ -441,6 +445,7 @@ public class SemanticDiffComputer {
                                        NodeKind kind, Map<String, String> metadata) {
 
         if (!functionHeaderKey(originalFunction).equals(functionHeaderKey(modifiedFunction))) {
+            addFunctionSource(metadata, originalFunction, modifiedFunction);
             addModificationDiff(kind, modifiedFunction.lineRange(), originalFunction.lineRange(), metadata);
             return;
         }
@@ -513,6 +518,11 @@ public class SemanticDiffComputer {
         if (originalFunctionBody.toSourceCode().equals(modifiedFunctionBody.toSourceCode())) {
             return;
         }
+
+        // The body text differs, so a modification diff is (almost always) emitted below — attach
+        // the construct's before/after source once here for the source-diff fallback. Unchanged
+        // functions returned above, so the common case never pays for this stringification.
+        addFunctionSource(metadata, originalFunction, modifiedFunction);
 
         if (originalFunctionBody instanceof ExpressionFunctionBodyNode &&
                 modifiedFunctionBody instanceof ExpressionFunctionBodyNode) {
@@ -605,13 +615,22 @@ public class SemanticDiffComputer {
     private static Map<String, String> buildSourceMetadata(String name, String oldSource, String newSource) {
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("name", name);
+        putSourceMetadata(metadata, oldSource, newSource);
+        return metadata;
+    }
+
+    /**
+     * Stores a construct's before/after source under the {@code oldSource}/{@code newSource} keys,
+     * stripping each and skipping a null side (pure addition/deletion). The single place either
+     * key is written, shared by source-kind diffs and the function-kind source fallback.
+     */
+    private static void putSourceMetadata(Map<String, String> metadata, String oldSource, String newSource) {
         if (oldSource != null) {
             metadata.put("oldSource", oldSource.strip());
         }
         if (newSource != null) {
             metadata.put("newSource", newSource.strip());
         }
-        return metadata;
     }
 
     private void extractStatementNodes(Node statementNode, List<Node> nodes) {
@@ -769,6 +788,7 @@ public class SemanticDiffComputer {
                 originalServiceMemberMap.getObjectMethods().forEach((key, originalMethod) -> {
                     LineRange lineRange = originalMethod.lineRange();
                     Map<String, String> metadata = buildResourceFunctionMetadata(originalMethod, servicePath);
+                    addFunctionSource(metadata, originalMethod, null);
                     SemanticDiff diff = new SemanticDiff(ChangeType.DELETION, NodeKind.OBJECT_FUNCTION,
                             resolveUri(lineRange.fileName()), lineRange, metadata);
                     this.semanticDiffs.add(diff);
@@ -791,6 +811,7 @@ public class SemanticDiffComputer {
             modifiedServiceMemberMap.getObjectMethods().forEach((key, modifiedMethod) -> {
                 LineRange lineRange = modifiedMethod.lineRange();
                 Map<String, String> metadata = buildResourceFunctionMetadata(modifiedMethod, servicePath);
+                addFunctionSource(metadata, null, modifiedMethod);
                 SemanticDiff diff = new SemanticDiff(ChangeType.ADDITION, NodeKind.OBJECT_FUNCTION,
                         resolveUri(lineRange.fileName()), lineRange, metadata);
                 this.semanticDiffs.add(diff);
@@ -846,6 +867,7 @@ public class SemanticDiffComputer {
             if (!modifiedMethods.containsKey(key)) {
                 LineRange lineRange = originalMethod.lineRange();
                 Map<String, String> metadata = buildResourceFunctionMetadata(originalMethod, servicePath);
+                addFunctionSource(metadata, originalMethod, null);
                 SemanticDiff diff = new SemanticDiff(ChangeType.DELETION, NodeKind.OBJECT_FUNCTION,
                         resolveUri(lineRange.fileName()), lineRange, metadata);
                 this.semanticDiffs.add(diff);
@@ -860,6 +882,7 @@ public class SemanticDiffComputer {
             } else {
                 // New method added
                 LineRange lineRange = modifiedMethod.lineRange();
+                addFunctionSource(metadata, null, modifiedMethod);
                 SemanticDiff diff = new SemanticDiff(ChangeType.ADDITION, NodeKind.OBJECT_FUNCTION,
                         resolveUri(lineRange.fileName()), lineRange, metadata);
                 this.semanticDiffs.add(diff);
@@ -1081,8 +1104,22 @@ public class SemanticDiffComputer {
     }
 
     private static Map<String, String> buildFunctionMetadata(String functionName) {
+        // Mutable so callers can attach before/after source (see addFunctionSource).
+        Map<String, String> metadata = new LinkedHashMap<>();
+        metadata.put("name", functionName);
+        return metadata;
+    }
 
-        return Map.of("name", functionName);
+    /**
+     * Attaches a flow-kind construct's (function / resource / method) before/after source to its
+     * diff metadata, using the same {@code oldSource}/{@code newSource} keys as source-kind diffs.
+     * This lets the review UI fall back to a source diff when the language server cannot generate
+     * the flow model for the construct. Either node may be null (a pure addition or deletion).
+     */
+    private static void addFunctionSource(Map<String, String> metadata, Node originalNode, Node modifiedNode) {
+        putSourceMetadata(metadata,
+                originalNode == null ? null : originalNode.toSourceCode(),
+                modifiedNode == null ? null : modifiedNode.toSourceCode());
     }
 
     private static Map<String, String> buildResourceFunctionMetadata(FunctionDefinitionNode functionNode,
