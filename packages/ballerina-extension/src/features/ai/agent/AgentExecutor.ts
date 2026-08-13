@@ -1119,9 +1119,10 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                     continue;
                 }
                 if (res) {
+                    const diffs = res.semanticDiffs ?? [];
                     diffedPackageCount++;
-                    diffPackageMap.push(...Array(res.semanticDiffs.length).fill(pkgName));
-                    semanticDiffs.push(...res.semanticDiffs);
+                    diffPackageMap.push(...Array(diffs.length).fill(pkgName));
+                    semanticDiffs.push(...diffs);
                     loadDesignDiagrams = loadDesignDiagrams || res.loadDesignDiagrams;
                     // Partial success: diffs are valid but the package failed to compile,
                     // so flow diagrams will likely be unavailable. Keep the diffs and

@@ -485,7 +485,8 @@ export interface SemanticDiff {
 
 export interface SemanticDiffResponse {
     loadDesignDiagrams: boolean;
-    semanticDiffs: SemanticDiff[];
+    /** Absent when diff computation failed entirely; see errorMsg. */
+    semanticDiffs?: SemanticDiff[];
     /** Set when diff computation failed entirely; semanticDiffs is absent in that case. */
     errorMsg?: string;
     /**

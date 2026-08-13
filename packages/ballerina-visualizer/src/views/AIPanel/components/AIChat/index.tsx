@@ -1756,6 +1756,8 @@ const AIChat: React.FC = () => {
         attachments: Attachment[];
         metadata?: Record<string, any>;
     }) {
+        // A later send bumps runEpochRef, which is how this run's error handling knows it is stale.
+        const sendEpoch = runEpochRef.current;
         // Clear previous generation refs
         currentDiagnosticsRef.current = [];
         functionsRef.current = [];
@@ -1765,6 +1767,11 @@ const AIChat: React.FC = () => {
         try {
             await processContent(content);
         } catch (error: any) {
+            // An aborted request can reject after the user has started another run. Clearing state or
+            // reporting the error here would apply both to that newer run.
+            if (runEpochRef.current !== sendEpoch) {
+                return;
+            }
             setIsCompacting(false);
             setIsLoading(false);
             setIsCodeLoading(false);
@@ -1862,6 +1869,7 @@ const AIChat: React.FC = () => {
         activeRunScopeRef.current = undefined;
         runEpochRef.current += 1;
         runAcknowledgedRef.current = false;
+        abortHandledRef.current = false;
         // Clear until onCheckpointCaptured repopulates with the new set
         setAvailableCheckpointIds(new Set());
         rpcClient.getAiPanelRpcClient().clearInitialPrompt();

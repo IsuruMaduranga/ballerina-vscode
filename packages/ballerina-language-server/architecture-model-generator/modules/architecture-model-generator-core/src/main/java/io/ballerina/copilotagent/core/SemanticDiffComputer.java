@@ -318,7 +318,8 @@ public class SemanticDiffComputer {
                         buildFunctionMetadata(className + "." + methodEntry.getKey()));
             }
 
-            if (!nonMethodMembersSource(originalClass).equals(nonMethodMembersSource(modifiedClass))) {
+            if (!classHeaderKey(originalClass).equals(classHeaderKey(modifiedClass))
+                    || !nonMethodMembersSource(originalClass).equals(nonMethodMembersSource(modifiedClass))) {
                 addModificationDiff(NodeKind.CLASS_DEFINITION, modifiedClass.lineRange(),
                         originalClass.lineRange(),
                         buildSourceMetadata(className, originalClassSource, modifiedClassSource));
@@ -343,6 +344,20 @@ public class SemanticDiffComputer {
             }
         });
         return methods;
+    }
+
+    /**
+     * Builds a trivia-insensitive key for the class header: qualifiers, the class keyword and the name.
+     * Without it, a qualifier-only edit such as adding {@code isolated} or {@code distinct} leaves both
+     * the methods and the non-method members equal, so no diff is emitted for the class at all.
+     */
+    private String classHeaderKey(ClassDefinitionNode classNode) {
+        StringBuilder header = new StringBuilder();
+        classNode.visibilityQualifier().ifPresent(qualifier -> header.append(qualifier.toSourceCode()));
+        classNode.classTypeQualifiers().forEach(qualifier -> header.append(qualifier.toSourceCode()));
+        header.append(classNode.classKeyword().toSourceCode());
+        header.append(classNode.className().toSourceCode());
+        return normalizeTriviaOutsideLiterals(header.toString());
     }
 
     private static String nonMethodMembersSource(ClassDefinitionNode classNode) {
