@@ -202,7 +202,7 @@ public final class BallerinaWorkspaceManagerProxyImpl implements BallerinaWorksp
                 if (path == null || path.isEmpty()) {
                     path = uri.substring(uri.indexOf(':') + 1);
                 }
-                return java.nio.file.Paths.get(path);
+                return java.nio.file.Paths.get(stripWindowsDriveRootSlash(path));
             }
         } catch (RuntimeException e) {
             // Fallback: strip scheme prefix and treat remainder as path
@@ -213,9 +213,25 @@ public final class BallerinaWorkspaceManagerProxyImpl implements BallerinaWorksp
                 if (afterScheme.startsWith("//")) {
                     afterScheme = afterScheme.substring(2);
                 }
-                return java.nio.file.Paths.get(afterScheme);
+                return java.nio.file.Paths.get(stripWindowsDriveRootSlash(afterScheme));
             }
-            return java.nio.file.Paths.get(uri);
+            return java.nio.file.Paths.get(stripWindowsDriveRootSlash(uri));
         }
+    }
+
+    /**
+     * Strips the leading {@code /} that a decoded URI path carries before a Windows drive
+     * letter (e.g. {@code /D:/workspace} from {@code expr:///D:/workspace}), which
+     * {@link java.nio.file.Paths#get(String, String...)} cannot parse on Windows.
+     */
+    private static String stripWindowsDriveRootSlash(String path) {
+        if (path.length() >= 4
+                && path.charAt(0) == '/'
+                && Character.isLetter(path.charAt(1))
+                && path.charAt(2) == ':'
+                && path.charAt(3) == '/') {
+            return path.substring(1);
+        }
+        return path;
     }
 }

@@ -41,6 +41,7 @@ import org.ballerinalang.langserver.workspace.execution.WorkspaceRunService;
 import org.ballerinalang.langserver.workspace.executionmanager.ExecutionService;
 import org.ballerinalang.langserver.workspace.workspacemanager.ProjectService;
 import org.ballerinalang.langserver.workspace.workspacemanager.uri.DocumentUri;
+import org.ballerinalang.langserver.workspace.workspacemanager.uri.UriResolver;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidChangeWatchedFilesParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
@@ -379,7 +380,7 @@ public final class WorkspaceManagerFacadeImpl
         try {
             Project project = projectService.loadOrCreate(uri, cancelChecker);
             Module module = projectService.module(uri, cancelChecker);
-            return semanticModel(project, module.moduleId(), Path.of(uri.uri().getPath()), cancelChecker);
+            return semanticModel(project, module.moduleId(), Path.of(UriResolver.pathOf(uri.uri())), cancelChecker);
         } catch (RuntimeException e) {
             return Optional.empty();
         }
@@ -442,7 +443,8 @@ public final class WorkspaceManagerFacadeImpl
             this.uri = uri;
             this.routeAllPaths = !(uri instanceof DocumentUri.FileUri)
                     && (uri.uri().getPath() == null || uri.uri().getPath().isBlank());
-            this.requestPath = routeAllPaths ? null : Path.of(uri.uri().getPath()).toAbsolutePath().normalize();
+            this.requestPath = routeAllPaths ? null
+                    : Path.of(UriResolver.pathOf(uri.uri())).toAbsolutePath().normalize();
             this.routeDescendants = !(uri instanceof DocumentUri.FileUri) && requestPath != null
                     && !isBallerinaSource(requestPath);
         }

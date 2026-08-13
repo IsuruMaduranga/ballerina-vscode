@@ -470,7 +470,7 @@ public final class UriResolver {
      * @param newConfig the new config instance
      */
     public void onConfigUpdate(@Nonnull DocumentUri uri, @Nonnull String scheme, @Nonnull TomlDocument newConfig) {
-        Path projectRootPath = Path.of(uri.uri().getPath()).toAbsolutePath().normalize().getParent();
+        Path projectRootPath = pathFromUriPath(uri.uri().getPath()).toAbsolutePath().normalize().getParent();
         Project project = resolveProjectForConfig(newConfig, scheme, projectRootPath)
                 .orElseThrow(() -> new IllegalArgumentException("Cannot determine project for config URI: "
                         + uri.uri()));
@@ -516,7 +516,7 @@ public final class UriResolver {
      */
     private Optional<Document> deriveDocument(DocumentUri uri, Project project) {
         try {
-            Path filePath = Path.of(uri.uri().getPath());
+            Path filePath = pathFromUriPath(uri.uri().getPath());
             DocumentId docId = project.documentId(filePath);
             Module module = project.currentPackage().module(docId.moduleId());
             return Optional.of(module.document(docId));
@@ -539,7 +539,7 @@ public final class UriResolver {
      */
     private Optional<Module> deriveModule(DocumentUri uri, Project project) {
         try {
-            Path filePath = Path.of(uri.uri().getPath());
+            Path filePath = pathFromUriPath(uri.uri().getPath());
             DocumentId docId = project.documentId(filePath);
             return Optional.of(project.currentPackage().module(docId.moduleId()));
         } catch (RuntimeException e) {
@@ -584,7 +584,7 @@ public final class UriResolver {
 
     private static Path modulePath(DocumentUri documentUri, Project project) {
         Path sourceRoot = projectRootPath(documentUri, project);
-        Path documentPath = Path.of(documentUri.uri().getPath()).toAbsolutePath().normalize();
+        Path documentPath = pathFromUriPath(documentUri.uri().getPath()).toAbsolutePath().normalize();
         if (sourceRoot.equals(documentPath)) {
             return sourceRoot;
         }
@@ -600,7 +600,7 @@ public final class UriResolver {
 
     private static Path projectRootPath(DocumentUri documentUri, Project project) {
         if (project.kind() == io.ballerina.projects.ProjectKind.SINGLE_FILE_PROJECT) {
-            return Path.of(documentUri.uri().getPath()).toAbsolutePath().normalize();
+            return pathFromUriPath(documentUri.uri().getPath()).toAbsolutePath().normalize();
         }
         return project.sourceRoot().toAbsolutePath().normalize();
     }
@@ -627,14 +627,42 @@ public final class UriResolver {
      * @return the path string with no trailing slash, as produced by {@link Path#toString()}
      */
     public static @Nonnull String pathOf(@Nonnull URI uri) {
-        return Path.of(uri.getPath()).toString();
+        return pathFromUriPath(uri.getPath()).toString();
     }
 
     /**
      * Decomposes a URI's path into trie segments using {@link Path} for segment splitting.
      */
     private static String[] toSegments(URI uri) {
-        return toSegments(Path.of(uri.getPath()));
+        return toSegments(pathFromUriPath(uri.getPath()));
+    }
+
+    /**
+     * Converts a URI path component (always {@code /}-separated, per RFC 3986) into a native
+     * {@link Path}, regardless of the URI's scheme.
+     *
+     * <p>On Windows, {@code URI.getPath()} for a {@code file:} URI such as
+     * {@code file:///D:/workspace} yields {@code /D:/workspace} — a leading slash before the
+     * drive letter that {@link Path#of(String, String...)} cannot parse. The {@code expr:} and
+     * {@code ai:} schemes mirror the same encoding (see {@code sourceRootLike}), so the leading
+     * slash is stripped whenever it precedes a drive letter, for every scheme.
+     *
+     * @param rawUriPath the decoded path component of a {@link DocumentUri}
+     * @return the corresponding native path
+     */
+    private static Path pathFromUriPath(String rawUriPath) {
+        if (isWindowsDriveRoot(rawUriPath)) {
+            return Path.of(rawUriPath.substring(1));
+        }
+        return Path.of(rawUriPath);
+    }
+
+    private static boolean isWindowsDriveRoot(String uriPath) {
+        return uriPath.length() >= 4
+                && uriPath.charAt(0) == '/'
+                && Character.isLetter(uriPath.charAt(1))
+                && uriPath.charAt(2) == ':'
+                && uriPath.charAt(3) == '/';
     }
 
     /**

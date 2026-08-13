@@ -954,7 +954,7 @@ public final class ProjectServiceImpl implements ProjectService {
      * @return BUILD if Ballerina.toml exists, SINGLE_FILE otherwise
      */
     private ProjectKind detectKind(DocumentUri root) {
-        Path rootPath = Path.of(root.uri().getPath());
+        Path rootPath = pathOf(root);
         // A file-as-root means it's a standalone .bal file (single-file project).
         if (rootPath.toFile().isFile()) {
             return ProjectKind.SINGLE_FILE;
@@ -1341,7 +1341,7 @@ public final class ProjectServiceImpl implements ProjectService {
     }
 
     private Path pathOf(DocumentUri uri) {
-        return Path.of(uri.uri().getPath()).toAbsolutePath().normalize();
+        return Path.of(UriResolver.pathOf(uri.uri())).toAbsolutePath().normalize();
     }
 
     /**

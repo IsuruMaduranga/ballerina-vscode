@@ -195,7 +195,7 @@ public class ChangeApplier {
             return containsWatcherMarker(changes);
         }
 
-        Path path = Path.of(uri.uri().getPath());
+        Path path = Path.of(UriResolver.pathOf(uri.uri()));
         Path fileName = path.getFileName();
         if (fileName == null) {
             return false;

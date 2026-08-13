@@ -787,7 +787,8 @@ public class UriResolverTest {
 
     private DocumentUri exprUri(String path) {
         Path normalized = Path.of(path).toAbsolutePath().normalize();
-        return new DocumentUri.ExprUri(URI.create(EXPR_SCHEME + "://" + normalized));
+        URI fileUri = normalized.toUri();
+        return new DocumentUri.ExprUri(URI.create(EXPR_SCHEME + ":" + fileUri.getRawSchemeSpecificPart()));
     }
 
     private Project projectAt(String sourceRoot) {
