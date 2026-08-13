@@ -34,7 +34,7 @@ import {
     NODE_WIDTH,
     NodeTypes,
 } from "../../../resources/constants";
-import { Button, Icon, Item, Menu, MenuItem, Popover, ThemeColors, getAIModuleIcon, DefaultLlmIcon } from "@wso2/ui-toolkit";
+import { Button, Icon, Item, Menu, MenuItem, Popover, ThemeColors, Tooltip, getAIModuleIcon, DefaultLlmIcon } from "@wso2/ui-toolkit";
 import { MoreVertIcon } from "../../../resources/icons";
 import { FlowNode, ToolData } from "../../../utils/types";
 import NodeIcon from "../../NodeIcon";
@@ -1157,6 +1157,36 @@ export function AgentNodeWidget(props: AgentNodeWidgetProps) {
                                         </NodeStyles.MenuButton>
                                     </foreignObject>
                                 </>
+                            )}
+
+                            {/* Approval-required badge: a shield on the tool's top-right corner when the
+                                tool's @ai:AgentTool annotation gates it for human-in-the-loop approval.
+                                Rendered after the hover-detection overlay above (it spans the same corner
+                                with pointer-events: all) so the badge paints on top and still gets hover. */}
+                            {tool.requiresApproval && (
+                                <foreignObject x="88.5" y="-0.5" width="17" height="17" style={{ overflow: "visible" }}>
+                                    <Tooltip content="Requires approval" containerSx={{ display: "flex" }}>
+                                        <div
+                                            style={{
+                                                width: 17,
+                                                height: 17,
+                                                borderRadius: "50%",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                background: ThemeColors.SURFACE_DIM,
+                                                border: `1.5px solid ${ThemeColors.SECONDARY}`,
+                                                boxSizing: "border-box",
+                                                fontFamily: "wso2-vscode",
+                                                fontSize: "10px",
+                                                color: ThemeColors.SECONDARY,
+                                            }}
+                                        >
+                                            {/* bi-shield glyph (wso2-vscode font, U+F18A) */}
+                                            {String.fromCharCode(0xf18a)}
+                                        </div>
+                                    </Tooltip>
+                                </foreignObject>
                             )}
 
                             <line
