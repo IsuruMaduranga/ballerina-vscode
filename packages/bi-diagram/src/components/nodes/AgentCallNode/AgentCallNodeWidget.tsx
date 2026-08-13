@@ -877,33 +877,31 @@ export function AgentCallNodeWidget(props: AgentCallNodeWidgetProps) {
                             </foreignObject>
 
                             {/* Approval-required badge: a shield on the tool's top-right corner when the
-                                tool's @ai:AgentTool annotation gates it for human-in-the-loop approval.
-                                The glyph is drawn as centered SVG text (text-anchor/dominant-baseline)
-                                so it sits exactly in the middle of the ring at small sizes. */}
+                                tool's @ai:AgentTool annotation gates it for human-in-the-loop approval. */}
                             {tool.requiresApproval && (
-                                <g>
-                                    <title>Requires approval</title>
-                                    <circle
-                                        cx="97"
-                                        cy="8"
-                                        r="8.5"
-                                        fill={NODE_BG_COLOR}
-                                        stroke={ThemeColors.SECONDARY}
-                                        strokeWidth={1.5}
-                                    />
-                                    <text
-                                        x="97"
-                                        y="8"
-                                        textAnchor="middle"
-                                        dominantBaseline="central"
-                                        fontFamily="wso2-vscode"
-                                        fontSize="10px"
-                                        fill={ThemeColors.SECONDARY}
-                                    >
-                                        {/* bi-shield glyph (wso2-vscode font, U+F18A) */}
-                                        {"\uf18a"}
-                                    </text>
-                                </g>
+                                <foreignObject x="88.5" y="-0.5" width="17" height="17" style={{ overflow: "visible" }}>
+                                    <Tooltip content="Requires Approval" containerSx={{ display: "flex" }}>
+                                        <div
+                                            style={{
+                                                width: 17,
+                                                height: 17,
+                                                borderRadius: "50%",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                background: NODE_BG_COLOR,
+                                                border: `1.5px solid ${ThemeColors.SECONDARY}`,
+                                                boxSizing: "border-box",
+                                                fontFamily: "wso2-vscode",
+                                                fontSize: "10px",
+                                                color: ThemeColors.SECONDARY,
+                                            }}
+                                        >
+                                            {/* bi-shield glyph (wso2-vscode font, U+F18A) */}
+                                            {"\uf18a"}
+                                        </div>
+                                    </Tooltip>
+                                </foreignObject>
                             )}
 
                             <text
