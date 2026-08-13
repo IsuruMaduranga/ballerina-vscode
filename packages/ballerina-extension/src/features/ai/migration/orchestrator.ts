@@ -360,10 +360,10 @@ export async function checkAndRunPendingEnhancement(): Promise<void> {
 
         const action = await window.showInformationMessage(
             "Migration AI enhancement was paused. You can resume it from 'WSO2 Integration Intelligence'.",
-            "Open Copilot"
+            "Open WSO2 Integration Intelligence"
         );
 
-        if (action === "Open Copilot") {
+        if (action === "Open WSO2 Integration Intelligence") {
             openAIPanelWithPrompt();
         }
     } else {
@@ -373,9 +373,9 @@ export async function checkAndRunPendingEnhancement(): Promise<void> {
         console.log("[MigrationEnhancement] AI not enabled at wizard – notification shown.");
         const action = await window.showInformationMessage(
             "Your migrated project is ready. Open 'WSO2 Integration Intelligence' to run AI enhancement — it can resolve TODOs, fix build errors, and refine tests.",
-            "Open Copilot"
+            "Open WSO2 Integration Intelligence"
         );
-        if (action === "Open Copilot") {
+        if (action === "Open WSO2 Integration Intelligence") {
             openAIPanelWithPrompt();
         }
     }

@@ -200,21 +200,21 @@ class AgentStatusManager {
                 this.statusBarItem.backgroundColor = undefined;
                 break;
             case 'awaiting-input':
-                this.statusBarItem.text = `$(bi-ai-chat) Copilot needs your input`;
+                this.statusBarItem.text = `$(bi-ai-chat) WSO2 Integration Intelligence needs your input`;
                 this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
                 break;
             case 'completed':
-                this.statusBarItem.text = `$(check) Copilot finished`;
+                this.statusBarItem.text = `$(check) WSO2 Integration Intelligence finished`;
                 this.statusBarItem.backgroundColor = undefined;
                 break;
             case 'error':
-                this.statusBarItem.text = `$(error) Copilot error`;
+                this.statusBarItem.text = `$(error) WSO2 Integration Intelligence error`;
                 this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
                 break;
         }
         const tooltip = new vscode.MarkdownString();
         tooltip.appendMarkdown(`**WSO2 Integration Intelligence**${this.status.label ? ` — ${this.status.label}` : ''}\n\n`);
-        tooltip.appendMarkdown('Click to open the Copilot chat.');
+        tooltip.appendMarkdown('Click to open the WSO2 Integration Intelligence chat.');
         this.statusBarItem.tooltip = tooltip;
         this.statusBarItem.show();
     }

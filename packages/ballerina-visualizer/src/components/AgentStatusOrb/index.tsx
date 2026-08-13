@@ -513,7 +513,7 @@ export function AgentStatusOrb() {
                         placeholder="How can I help?"
                         aria-label="Message WSO2 Integration Intelligence"
                     />
-                    <InviteDismiss title="Hide" aria-label="Hide the copilot prompt" onClick={() => setInviteDismissed(true)}>
+                    <InviteDismiss title="Hide" aria-label="Hide the WSO2 Integration Intelligence prompt" onClick={() => setInviteDismissed(true)}>
                         ✕
                     </InviteDismiss>
                 </InviteBox>
@@ -526,7 +526,7 @@ export function AgentStatusOrb() {
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 title={label ? `WSO2 Integration Intelligence — ${label}` : "WSO2 Integration Intelligence"}
-                aria-label={label ? `WSO2 Integration Intelligence: ${label}. Open the Copilot mini chat.` : "Open the WSO2 Integration Intelligence mini chat"}
+                aria-label={label ? `WSO2 Integration Intelligence: ${label}. Open the WSO2 Integration Intelligence mini chat.` : "Open the WSO2 Integration Intelligence mini chat"}
             >
                 {(state === "running" || state === "awaiting-input") && <Halo colors={colors} />}
                 <Aura colors={colors} state={state} />
