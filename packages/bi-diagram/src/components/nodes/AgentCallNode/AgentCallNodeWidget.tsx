@@ -882,23 +882,20 @@ export function AgentCallNodeWidget(props: AgentCallNodeWidgetProps) {
                                 <foreignObject x="88.5" y="-0.5" width="17" height="17" style={{ overflow: "visible" }}>
                                     <Tooltip content="Requires Approval" containerSx={{ display: "flex" }}>
                                         <div
-                                            style={{
-                                                width: 17,
-                                                height: 17,
-                                                borderRadius: "50%",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                background: NODE_BG_COLOR,
-                                                border: `1.5px solid ${ThemeColors.SECONDARY}`,
-                                                boxSizing: "border-box",
-                                                fontFamily: "wso2-vscode",
-                                                fontSize: "10px",
-                                                color: ThemeColors.SECONDARY,
-                                            }}
+                                            css={css`
+                                                display: flex;
+                                                align-items: center;
+                                                justify-content: center;
+                                                width: 17px;
+                                                height: 17px;
+                                                border-radius: 50%;
+                                                box-sizing: border-box;
+                                                background: ${NODE_BG_COLOR};
+                                                border: 1.5px solid ${ThemeColors.SECONDARY};
+                                                color: ${ThemeColors.SECONDARY};
+                                            `}
                                         >
-                                            {/* bi-shield glyph (wso2-vscode font, U+F18A) */}
-                                            {"\uf18a"}
+                                            <Icon name="bi-shield" sx={{ fontSize: 10, width: 10, height: 10 }} iconSx={{ fontSize: "10px" }} />
                                         </div>
                                     </Tooltip>
                                 </foreignObject>
