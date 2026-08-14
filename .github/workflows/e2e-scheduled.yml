@@ -165,7 +165,7 @@ jobs:
 
           pushed=false
           for attempt in 1 2 3; do
-            git fetch origin e2e-metrics || true
+            git fetch origin e2e-metrics:refs/remotes/origin/e2e-metrics || true
             if git show-ref --verify --quiet refs/remotes/origin/e2e-metrics; then
               git checkout -B e2e-metrics origin/e2e-metrics
             else
