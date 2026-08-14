@@ -74,8 +74,9 @@ export function AutoCompleteEditor(props: AutoCompleteEditorProps) {
                 })}
                 // Append "(Optional)" AFTER capitalize() — capitalize is lodash startCase, which strips
                 // parentheses and title-cases words, so a paren'd label can't be passed through directly.
-                // Symmetric with required fields showing "*".
-                label={field.optional ? `${capitalize(field.label)} (Optional)` : capitalize(field.label)}
+                // Opt-in via showOptionalSuffix, so this doesn't relabel every optional autocomplete.
+                label={field.optional && field.showOptionalSuffix
+                    ? `${capitalize(field.label)} (Optional)` : capitalize(field.label)}
                 items={field.items}
                 allowItemCreate={field.allowItemCreate ?? true}
                 required={!field.optional}

@@ -383,6 +383,7 @@ export function createRequiresApprovalField(
                             validations: [{ rule: "common.validate.identifier", message: "Invalid identifier" }],
                         }],
                         allowItemCreate: allowCreate,
+                        showOptionalSuffix: true,
                         value: existing?.functionName || "",
                         optional: true,
                         editable: true,
