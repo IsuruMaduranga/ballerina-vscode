@@ -305,6 +305,7 @@ export interface PropertyModel {
     advanced?: boolean;
     items?: string[];
     allowItemCreate?: boolean;
+    showOptionalSuffix?: boolean;
     choices?: PropertyModel[];
     properties?: ConfigProperties;
     addNewButton?: boolean;

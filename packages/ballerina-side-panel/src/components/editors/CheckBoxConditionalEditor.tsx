@@ -213,6 +213,7 @@ function mapPropertiesToFormFields(properties: { [key: string]: PropertyModel; }
             diagnostics: [],
             items,
             allowItemCreate: property.allowItemCreate,
+            showOptionalSuffix: property.showOptionalSuffix,
             choices: property.choices,
             placeholder: property.placeholder,
             addNewButton: property.addNewButton,
