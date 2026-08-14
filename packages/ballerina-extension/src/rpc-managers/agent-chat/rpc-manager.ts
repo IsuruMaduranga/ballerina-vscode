@@ -49,6 +49,9 @@ import { v4 as uuidv4 } from "uuid";
 import { updateChatSessionId } from "../../features/tryit/activator";
 
 export class AgentChatRpcManager implements AgentChatAPI {
+    // Shared by getChatMessage and submitDecision. Safe only because the UI serializes them -
+    // input stays disabled while an approval is pending, so the two never overlap. If that
+    // ever changes, give each operation its own controller.
     private currentAbortController: AbortController | null = null;
     // Store chat history per session ID
     private static chatHistoryMap: Map<string, ChatHistoryMessage[]> = new Map();
@@ -169,9 +172,26 @@ export class AgentChatRpcManager implements AgentChatAPI {
     // so a later getChatHistory()/switchChatAgent() replay renders resolved requests collapsed
     // rather than as if still pending.
     private resolvePendingApprovalInHistory(sessionId: string, decisions: Record<string, HumanResponse>): void {
+        const entry = this.findPendingApprovalEntry(sessionId, decisions);
+        if (entry) {
+            entry.decisions = { ...(entry.decisions || {}), ...decisions };
+        }
+    }
+
+    // Marks the matching 'approval' history entry as terminal when the service no longer
+    // recognizes the batch (expired, or the run restarted), so a replay renders it as
+    // dismissed instead of stuck pending forever.
+    private markPendingApprovalUnresolvable(sessionId: string, decisions: Record<string, HumanResponse>): void {
+        const entry = this.findPendingApprovalEntry(sessionId, decisions);
+        if (entry) {
+            entry.unresolvable = true;
+        }
+    }
+
+    private findPendingApprovalEntry(sessionId: string, decisions: Record<string, HumanResponse>): ChatHistoryMessage | undefined {
         const history = AgentChatRpcManager.chatHistoryMap.get(sessionId);
         if (!history) {
-            return;
+            return undefined;
         }
         const decidedIds = Object.keys(decisions);
         for (let i = history.length - 1; i >= 0; i--) {
@@ -179,18 +199,21 @@ export class AgentChatRpcManager implements AgentChatAPI {
             if (entry.type !== 'approval' || !entry.pendingApproval) {
                 continue;
             }
-            const belongsToThisBatch = entry.pendingApproval.requests.some(r => decidedIds.includes(r.id));
-            if (belongsToThisBatch) {
-                entry.decisions = { ...(entry.decisions || {}), ...decisions };
-                break;
+            if (entry.pendingApproval.requests.some(r => decidedIds.includes(r.id))) {
+                return entry;
             }
         }
+        return undefined;
     }
 
     // The dispatcher attaches `chat` and `decision` as sibling resources under the same
     // service base path (see ai:Listener's ChatDispatcherService), and `chatEp` is always
-    // built ending in `/chat` (see buildChatEndpoint in features/tryit/activator.ts).
+    // built ending in `/chat` (see buildChatEndpoint in features/tryit/activator.ts). Assert
+    // the invariant rather than silently posting to the wrong resource if it's ever violated.
     private toDecisionEndpoint(chatEp: string): string {
+        if (!chatEp.endsWith('/chat')) {
+            throw new Error(`Unexpected chat endpoint shape: ${chatEp}`);
+        }
         return chatEp.replace(/\/chat$/, '/decision');
     }
 
@@ -211,11 +234,11 @@ export class AgentChatRpcManager implements AgentChatAPI {
                 this.currentAbortController = new AbortController();
                 const response = await this.fetchTestData(decisionEp, payload, this.currentAbortController.signal);
 
-                this.resolvePendingApprovalInHistory(sessionId, params.decisions);
-
                 if (response && response.pendingApproval) {
                     // The run resumed only to pause again (e.g. a further gated call surfaced
                     // in the same turn), so this is a fresh batch, not a resolution of the last one.
+                    this.resolvePendingApprovalInHistory(sessionId, params.decisions);
+
                     const pendingApproval: PendingApprovalInfo = response.pendingApproval;
 
                     this.addMessageToHistory(sessionId, {
@@ -227,6 +250,8 @@ export class AgentChatRpcManager implements AgentChatAPI {
 
                     resolve({ message: '', pendingApproval } as ChatRespMessage);
                 } else if (response && response.message) {
+                    this.resolvePendingApprovalInHistory(sessionId, params.decisions);
+
                     const trace = this.findTraceForMessage(sessionId, '', response.message);
                     const executionSteps = trace ? this.extractExecutionSteps(trace) : undefined;
 
@@ -244,6 +269,8 @@ export class AgentChatRpcManager implements AgentChatAPI {
                         executionSteps
                     } as ChatRespMessage);
                 } else {
+                    // Response shape didn't match either known case - the batch was never
+                    // actually resolved, so history must keep showing it pending.
                     reject(new Error("Invalid response format from the decision endpoint."));
                 }
             } catch (error) {
@@ -251,7 +278,32 @@ export class AgentChatRpcManager implements AgentChatAPI {
                     error && typeof error === "object" && "message" in error
                         ? String(error.message)
                         : "An unknown error occurred";
-                reject(new Error(errorMessage));
+
+                const errorType = error && typeof error === "object" && "errorType" in error
+                    ? String((error as { errorType: unknown }).errorType)
+                    : undefined;
+                const unresolvable = errorType === 'ApprovalNotFoundError' || errorType === 'UnknownApprovalIdError';
+
+                const sessionId = extension.agentChatContext?.chatSessionId;
+                if (sessionId) {
+                    if (unresolvable) {
+                        this.markPendingApprovalUnresolvable(sessionId, params.decisions);
+                    }
+
+                    this.addMessageToHistory(sessionId, {
+                        type: 'error',
+                        text: errorMessage,
+                        isUser: false
+                    });
+                }
+
+                const errorWithTrace = new Error(JSON.stringify({
+                    message: errorMessage,
+                    traceInfo: {},
+                    unresolvable
+                }));
+
+                reject(errorWithTrace);
             } finally {
                 this.currentAbortController = null;
             }
@@ -298,8 +350,12 @@ export class AgentChatRpcManager implements AgentChatAPI {
 
                 // A `decision` resume naming a session/id with nothing pending maps to 404/400
                 // with a stable `errorType` discriminator (ApprovalNotFoundError/UnknownApprovalIdError).
+                // Attach it to the thrown error so callers can tell this apart from a transient
+                // failure and treat the batch as terminal instead of retryable.
                 if (errorData?.errorType === 'ApprovalNotFoundError' || errorData?.errorType === 'UnknownApprovalIdError') {
-                    throw new Error(errorData.message || 'The pending approval could not be resumed.');
+                    const notFoundError = new Error(errorData.message || 'The pending approval could not be resumed.');
+                    (notFoundError as Error & { errorType?: string }).errorType = errorData.errorType;
+                    throw notFoundError;
                 }
 
                 switch (response.status) {
@@ -337,7 +393,13 @@ export class AgentChatRpcManager implements AgentChatAPI {
             if (error instanceof Error) {
                 errorMessage = error.message;
             }
-            throw new Error(errorMessage);
+            const rewrapped = new Error(errorMessage);
+            // Preserve the errorType tagged above (e.g. ApprovalNotFoundError) so callers can
+            // still distinguish it after this rewrap.
+            if (error && typeof error === "object" && "errorType" in error) {
+                (rewrapped as Error & { errorType?: unknown }).errorType = (error as { errorType: unknown }).errorType;
+            }
+            throw rewrapped;
         }
     }
 
@@ -400,7 +462,10 @@ export class AgentChatRpcManager implements AgentChatAPI {
                     continue;
                 }
 
-                const inputMatches = inputMessages && inputMessages.includes(userMessage);
+                // Guard on a non-empty userMessage: String.prototype.includes('') is always
+                // true, which would otherwise match the first same-session span regardless
+                // of whether it's actually the one this response came from.
+                const inputMatches = userMessage && inputMessages && inputMessages.includes(userMessage);
                 const outputMatches = agentResponse && outputMessages && outputMessages.includes(agentResponse);
 
                 if (inputMatches || outputMatches) {

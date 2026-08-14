@@ -50,11 +50,15 @@ interface ChatMessage {
     pendingApproval?: PendingApprovalInfo;
     // Present once (some or all of) the pending approval above has been resolved.
     decisions?: Record<string, HumanResponse>;
+    // Set when the service no longer recognizes this batch (expired, or the run restarted),
+    // so it can never be resolved. Terminal even if some requests still lack a decision.
+    unresolvable?: boolean;
 }
 
 function isApprovalUnresolved(msg: ChatMessage): boolean {
     return msg.type === ChatMessageType.APPROVAL
         && !!msg.pendingApproval
+        && !msg.unresolvable
         && msg.pendingApproval.requests.some(r => !msg.decisions?.[r.id]);
 }
 
@@ -521,6 +525,7 @@ function toChatMessage(msg: ChatHistoryMessage): ChatMessage {
         executionSteps: msg.executionSteps,
         pendingApproval: msg.pendingApproval,
         decisions: msg.decisions,
+        unresolvable: msg.unresolvable,
     };
 }
 
@@ -716,10 +721,11 @@ const ChatInterface: React.FC = () => {
         }
     };
 
-    const parseAgentError = (error: unknown): { errorMessage: string; traceId?: string; executionSteps?: ExecutionStep[] } => {
+    const parseAgentError = (error: unknown): { errorMessage: string; traceId?: string; executionSteps?: ExecutionStep[]; unresolvable?: boolean } => {
         let errorMessage = "An unknown error occurred";
         let traceId: string | undefined;
         let executionSteps: ExecutionStep[] | undefined;
+        let unresolvable: boolean | undefined;
 
         // Try to parse structured error with trace information
         if (error && typeof error === "object" && "message" in error) {
@@ -729,6 +735,7 @@ const ChatInterface: React.FC = () => {
                     errorMessage = parsedError.message;
                     traceId = parsedError.traceInfo.traceId;
                     executionSteps = parsedError.traceInfo.executionSteps;
+                    unresolvable = parsedError.unresolvable;
                 } else {
                     // Fallback to regular error message
                     errorMessage = String(error.message);
@@ -739,7 +746,7 @@ const ChatInterface: React.FC = () => {
             }
         }
 
-        return { errorMessage, traceId, executionSteps };
+        return { errorMessage, traceId, executionSteps, unresolvable };
     };
 
     const appendAgentResponse = (response: {
@@ -770,13 +777,26 @@ const ChatInterface: React.FC = () => {
     const handleSendMessage = async (text: string) => {
         if (!text.trim()) return;
 
+        // Capture the session token so a reply that lands after the user switched agents (or
+        // cleared chat) gets dropped instead of appended to the new session's transcript.
+        const requestToken = sessionTokenRef.current;
+
         setMessages((prev) => [...prev, { type: ChatMessageType.MESSAGE, text, isUser: true }]);
         setIsLoading(true);
 
         try {
             const chatResponse = await rpcClient.getAgentChatRpcClient().getChatMessage({ message: text });
+
+            if (sessionTokenRef.current !== requestToken) {
+                return;
+            }
+
             appendAgentResponse(chatResponse);
         } catch (error) {
+            if (sessionTokenRef.current !== requestToken) {
+                return;
+            }
+
             const { errorMessage, traceId, executionSteps } = parseAgentError(error);
 
             console.error("Chat message error:", error);
@@ -793,7 +813,17 @@ const ChatInterface: React.FC = () => {
         }
     };
 
-    const handleApprovalDecision = async (msgIndex: number, decisions: Record<string, HumanResponse>) => {
+    // Finds the approval message a batch of decisions belongs to by matching request ids,
+    // rather than trusting a snapshotted array index that could point at the wrong message
+    // once anything reorders `messages` between the click and the response.
+    const findApprovalMessageIndex = (messages: ChatMessage[], decisions: Record<string, HumanResponse>): number => {
+        const ids = Object.keys(decisions);
+        return messages.findIndex(m =>
+            m.type === ChatMessageType.APPROVAL && m.pendingApproval?.requests.some(r => ids.includes(r.id))
+        );
+    };
+
+    const handleApprovalDecision = async (decisions: Record<string, HumanResponse>) => {
         // Lock session-changing actions (switch agent, clear chat) while a decision is in
         // flight, and capture the session token so a response that arrives after the user
         // switched/cleared sessions anyway is dropped instead of applied to the wrong chat.
@@ -808,9 +838,10 @@ const ChatInterface: React.FC = () => {
 
             setMessages((prev) => {
                 const updated = [...prev];
-                const target = updated[msgIndex];
-                if (target) {
-                    updated[msgIndex] = { ...target, decisions: { ...(target.decisions || {}), ...decisions } };
+                const targetIndex = findApprovalMessageIndex(updated, decisions);
+                if (targetIndex !== -1) {
+                    const target = updated[targetIndex];
+                    updated[targetIndex] = { ...target, decisions: { ...(target.decisions || {}), ...decisions } };
                 }
                 return updated;
             });
@@ -821,9 +852,23 @@ const ChatInterface: React.FC = () => {
                 return;
             }
 
-            const { errorMessage, traceId, executionSteps } = parseAgentError(error);
+            const { errorMessage, traceId, executionSteps, unresolvable } = parseAgentError(error);
 
             console.error("Submit decision error:", error);
+
+            if (unresolvable) {
+                // The service no longer recognizes this batch (expired, or the run restarted)
+                // and it can never be resolved - mark it terminal so the card stops blocking
+                // input instead of leaving the chat stuck with no way out but Clear Chat.
+                setMessages((prev) => {
+                    const updated = [...prev];
+                    const targetIndex = findApprovalMessageIndex(updated, decisions);
+                    if (targetIndex !== -1) {
+                        updated[targetIndex] = { ...updated[targetIndex], unresolvable: true };
+                    }
+                    return updated;
+                });
+            }
 
             setMessages((prev) => [...prev, {
                 type: ChatMessageType.ERROR,
@@ -1036,7 +1081,8 @@ const ChatInterface: React.FC = () => {
                                     <ApprovalCard
                                         requests={msg.pendingApproval.requests}
                                         decisions={msg.decisions}
-                                        onSubmit={(decisions) => handleApprovalDecision(idx, decisions)}
+                                        unresolvable={msg.unresolvable}
+                                        onSubmit={handleApprovalDecision}
                                     />
                                 </MessageContainer>
                             ) : (

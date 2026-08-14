@@ -24,6 +24,9 @@ import { ApprovalRequest, HumanResponse } from "@wso2/ballerina-core";
 interface ApprovalCardProps {
     requests: ApprovalRequest[];
     decisions?: Record<string, HumanResponse>;
+    // Set when the service no longer recognizes this batch and it can never be resolved;
+    // renders as terminal even if some requests still lack a decision.
+    unresolvable?: boolean;
     onSubmit: (decisions: Record<string, HumanResponse>) => Promise<void>;
 }
 
@@ -231,14 +234,14 @@ function formatArguments(args: Record<string, any>): string {
     }
 }
 
-export const ApprovalCard: React.FC<ApprovalCardProps> = ({ requests, decisions, onSubmit }) => {
+export const ApprovalCard: React.FC<ApprovalCardProps> = ({ requests, decisions, unresolvable, onSubmit }) => {
     const [expandedArgs, setExpandedArgs] = useState<Record<string, boolean>>({});
     const [rejectingId, setRejectingId] = useState<string | null>(null);
     const [reasonText, setReasonText] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
     const pendingRequests = requests.filter(r => !decisions?.[r.id]);
-    const isFullyResolved = pendingRequests.length === 0;
+    const isFullyResolved = requests.length > 0 && pendingRequests.length === 0;
 
     const toggleArgs = (id: string) => setExpandedArgs(prev => ({ ...prev, [id]: !prev[id] }));
 
@@ -279,6 +282,37 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({ requests, decisions,
         pendingRequests.forEach(r => { decisionsMap[r.id] = { decision: "REJECT" }; });
         submit(decisionsMap);
     };
+
+    if (unresolvable) {
+        return (
+            <Card>
+                <CollapsedSummary>
+                    {requests.map(req => {
+                        const decided = decisions?.[req.id];
+                        if (decided) {
+                            return (
+                                <SummaryItem key={req.id} decision={decided.decision}>
+                                    <Icon
+                                        name={decided.decision === "APPROVE" ? "bi-check" : "bi-close"}
+                                        sx={{ width: 14, height: 14 }}
+                                        iconSx={{ fontSize: "14px" }}
+                                    />
+                                    {req.toolName} {decided.decision === "APPROVE" ? "approved" : "rejected"}
+                                    {decided.reason ? ` — "${decided.reason}"` : ""}
+                                </SummaryItem>
+                            );
+                        }
+                        return (
+                            <SummaryItem key={req.id} decision="REJECT">
+                                <Icon name="bi-warning" sx={{ width: 14, height: 14 }} iconSx={{ fontSize: "14px" }} />
+                                {req.toolName} could not be resumed
+                            </SummaryItem>
+                        );
+                    })}
+                </CollapsedSummary>
+            </Card>
+        );
+    }
 
     if (isFullyResolved) {
         return (
