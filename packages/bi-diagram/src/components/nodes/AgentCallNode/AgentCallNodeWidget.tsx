@@ -58,6 +58,7 @@ import ReactMarkdown from "react-markdown";
 import { flowDashAnimation, sanitizeAgentData, sanitizeId } from "../agentNodeUtils";
 import { getAgentNodeContainerHeight } from "../AgentWidget/agentNodeLayout";
 import { useAgentNodeController } from "../AgentWidget/useAgentNodeController";
+import { ApprovalBadge } from "../AgentWidget/ApprovalBadge";
 
 export namespace NodeStyles {
     export const Node = styled.div<{ readOnly: boolean }>`
@@ -876,30 +877,7 @@ export function AgentCallNodeWidget(props: AgentCallNodeWidgetProps) {
                                 </div>
                             </foreignObject>
 
-                            {/* Approval-required badge: a shield on the tool's top-right corner when the
-                                tool's @ai:AgentTool annotation gates it for human-in-the-loop approval. */}
-                            {tool.requiresApproval && (
-                                <foreignObject x="88.5" y="-0.5" width="17" height="17" style={{ overflow: "visible" }}>
-                                    <Tooltip content="Requires Approval" containerSx={{ display: "flex" }}>
-                                        <div
-                                            css={css`
-                                                display: flex;
-                                                align-items: center;
-                                                justify-content: center;
-                                                width: 17px;
-                                                height: 17px;
-                                                border-radius: 50%;
-                                                box-sizing: border-box;
-                                                background: ${NODE_BG_COLOR};
-                                                border: 1.5px solid ${ThemeColors.SECONDARY};
-                                                color: ${ThemeColors.SECONDARY};
-                                            `}
-                                        >
-                                            <Icon name="bi-shield" sx={{ fontSize: 10, width: 10, height: 10 }} iconSx={{ fontSize: "10px" }} />
-                                        </div>
-                                    </Tooltip>
-                                </foreignObject>
-                            )}
+                            {tool.requiresApproval && <ApprovalBadge background={NODE_BG_COLOR} />}
 
                             <text
                                 x="110"
