@@ -1,5 +1,15 @@
 name: Set up Ballerina
 description: Install the Ballerina distribution required by the language-server build
+inputs:
+  gradlePropertiesRef:
+    description: >-
+      Git tag to read packages/ballerina-language-server/gradle.properties from,
+      instead of the checked-out working tree. Use this when the thing under test
+      (e.g. a VSIX built from that tag) may be older than the current checkout, so the
+      installed Ballerina distribution stays pinned to what was actually built rather
+      than drifting with the checkout. Leave blank to read from the working tree.
+    required: false
+    default: ''
 outputs:
   version:
     description: The Ballerina distribution version from the LS Gradle properties
@@ -12,10 +22,16 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        properties="${{ github.workspace }}/packages/ballerina-language-server/gradle.properties"
-        version=$(sed -n 's/^ballerinaLangVersion=//p' "${properties}")
+        if [ -n "${{ inputs.gradlePropertiesRef }}" ]; then
+          git fetch --quiet --depth 1 origin "refs/tags/${{ inputs.gradlePropertiesRef }}"
+          properties_content=$(git show FETCH_HEAD:packages/ballerina-language-server/gradle.properties)
+          version=$(sed -n 's/^ballerinaLangVersion=//p' <<< "${properties_content}")
+        else
+          properties="${{ github.workspace }}/packages/ballerina-language-server/gradle.properties"
+          version=$(sed -n 's/^ballerinaLangVersion=//p' "${properties}")
+        fi
         if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "::error::Invalid or missing ballerinaLangVersion in packages/ballerina-language-server/gradle.properties"
+          echo "::error::Invalid or missing ballerinaLangVersion in packages/ballerina-language-server/gradle.properties${{ inputs.gradlePropertiesRef && format(' at tag {0}', inputs.gradlePropertiesRef) || '' }}"
           exit 1
         fi
         echo "version=${version}" >> "$GITHUB_OUTPUT"

@@ -65,7 +65,11 @@ function firstErrorLine(result) {
 }
 
 // Merges every report file belonging to one matrix group into a single per-test view,
-// keyed by (file, title). Files are merged in filename order — 'e2e-results-first.json'
+// keyed by spec.id (falling back to file::title only if a report predates that field)
+// plus the test's project name. spec.id is unique per spec location, unlike spec.title
+// alone, which collides when two describe blocks reuse the same inner test title;
+// the project name further distinguishes the same spec run under more than one
+// Playwright project. Files are merged in filename order — 'e2e-results-first.json'
 // before 'e2e-results-rerun.json' — so a test's results carry the first attempt's
 // history followed by the re-run's, giving a true attempt count and final outcome even
 // when the group needed a re-run.
@@ -84,7 +88,8 @@ function mergeGroupReports(files, onUnreadable) {
 
     for (const spec of specs) {
       for (const test of spec.tests || []) {
-        const key = `${spec.file}::${spec.title}`;
+        const specKey = spec.id || `${spec.file}::${spec.title}`;
+        const key = `${specKey}::${test.projectName || ''}`;
         const results = test.results || [];
         const existing = merged.get(key);
         if (existing) {
@@ -98,7 +103,7 @@ function mergeGroupReports(files, onUnreadable) {
   return [...merged.values()];
 }
 
-function aggregate(rootDir) {
+function aggregate(rootDir, expectedGroups) {
   const files = findResultFiles(rootDir);
   const byGroup = new Map();
   for (const file of files) {
@@ -107,11 +112,17 @@ function aggregate(rootDir) {
     byGroup.get(group).push(file);
   }
 
+  // A group killed outright (e.g. the 60-minute job timeout) never uploads any report
+  // file, so it never gets a byGroup entry at all — groupCount === 0 only catches total
+  // loss across every group, not one group silently vanishing while the rest look clean.
+  const missingGroups = (expectedGroups || []).filter((g) => !byGroup.has(g));
+
   const rows = [];
   const allTests = [];
   let total = 0;
   let passed = 0;
   let failed = 0;
+  let skipped = 0;
   let flaky = 0;
   let unreadableCount = 0;
 
@@ -130,7 +141,8 @@ function aggregate(rootDir) {
       const isSkipped = attempts === 0 || finalStatus === 'skipped';
 
       if (isPassed) passed += 1;
-      else if (!isSkipped) failed += 1;
+      else if (isSkipped) skipped += 1;
+      else failed += 1;
       // Flakiness is derived from the merged attempt history rather than either report
       // file's own test.status: a test re-run via --last-failed spans two separate
       // Playwright invocations, so no single file's status reflects the merged outcome.
@@ -158,7 +170,7 @@ function aggregate(rootDir) {
     }
   }
 
-  return { rows, allTests, total, passed, failed, flaky, unreadableCount, groupCount: byGroup.size };
+  return { rows, allTests, total, passed, failed, skipped, flaky, unreadableCount, missingGroups, groupCount: byGroup.size };
 }
 
 function toNdjson(allTests) {
@@ -189,19 +201,25 @@ function cell(value) {
   return String(value ?? '').replace(ANSI_PATTERN, '').replace(/\|/g, '\\|');
 }
 
-function toMarkdown({ rows, total, passed, failed, flaky, unreadableCount, groupCount }) {
+function toMarkdown({ rows, total, passed, failed, skipped, flaky, unreadableCount, missingGroups, groupCount }) {
   const lines = [];
   lines.push('## E2E flakiness report');
   lines.push('');
   lines.push(
-    `Groups reported: ${groupCount} · Total: ${total} · Passed: ${passed} · Failed: ${failed} · Flaky (passed after retry): ${flaky}`
+    `Groups reported: ${groupCount} · Total: ${total} · Passed: ${passed} · Failed: ${failed} · Skipped: ${skipped} · Flaky (passed after retry): ${flaky}`
   );
   if (unreadableCount > 0) {
     lines.push(`⚠️ ${unreadableCount} report file(s) could not be parsed — this run is marked failed.`);
   }
+  if (missingGroups && missingGroups.length > 0) {
+    lines.push(
+      `⚠️ No report at all from: ${missingGroups.join(', ')} (killed before uploading, e.g. by the job timeout) — this run is marked failed.`
+    );
+  }
   lines.push('');
 
-  if (rows.length === 0 && unreadableCount === 0) {
+  const clean = rows.length === 0 && unreadableCount === 0 && (!missingGroups || missingGroups.length === 0);
+  if (clean) {
     lines.push('No retries or failures — every test passed on the first attempt.');
     return lines.join('\n');
   }
@@ -228,7 +246,21 @@ function main() {
     process.exit(2);
   }
 
-  const summary = aggregate(rootDir);
+  let expectedGroups = [];
+  if (process.env.EXPECTED_GROUPS_JSON) {
+    try {
+      const parsed = JSON.parse(process.env.EXPECTED_GROUPS_JSON);
+      if (Array.isArray(parsed)) {
+        expectedGroups = parsed;
+      } else {
+        console.error('EXPECTED_GROUPS_JSON is not an array; ignoring.');
+      }
+    } catch (err) {
+      console.error(`Failed to parse EXPECTED_GROUPS_JSON: ${err.message}; ignoring.`);
+    }
+  }
+
+  const summary = aggregate(rootDir, expectedGroups);
   console.log(toMarkdown(summary));
 
   if (ndjsonOutPath && summary.allTests.length > 0) {
@@ -240,7 +272,7 @@ function main() {
     process.exit(1);
   }
 
-  if (summary.failed > 0 || summary.unreadableCount > 0) process.exit(1);
+  if (summary.failed > 0 || summary.unreadableCount > 0 || summary.missingGroups.length > 0) process.exit(1);
 }
 
 main();

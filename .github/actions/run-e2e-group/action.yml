@@ -32,6 +32,16 @@ runs:
         # upload step below now spans two path roots (test-results/ and e2e-reports/), so
         # upload-artifact roots the artifact at their common ancestor instead of flattening
         # test-results/'s own contents to the artifact root.
+        # e2e-reports/ from a restored previous attempt is kept, deliberately, not
+        # discarded: a GitHub-level "re-run failed jobs" is a continuation of the same
+        # logical test run, so a test's full attempt history across that continuation
+        # (attempt N-1's failures plus attempt N's retry) is the correct thing to
+        # record — the same principle the first-attempt/re-run merge within one
+        # attempt already relies on. Discarding it instead (tried once, reverted) means
+        # the Report job — which only downloads the highest-numbered artifact per
+        # group — sees *only* the small --last-failed subset from the latest attempt,
+        # silently losing every test that already passed earlier and erasing the
+        # failed-then-passed history for exactly the flaky tests this exists to catch.
         path: packages/ballerina-extension
 
     - name: Install packages
