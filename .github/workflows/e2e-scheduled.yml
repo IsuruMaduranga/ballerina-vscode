@@ -15,6 +15,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Single source of truth for the matrix group list — consumed by both the E2E job's
+  # own matrix and the Report job's per-group downloads, so the two can't drift out of
+  # sync the way 4 hand-written "Download groupN" steps did.
+  Prepare:
+    name: Resolve matrix groups
+    runs-on: ubuntu-latest
+    outputs:
+      groups: ${{ steps.groups.outputs.groups }}
+    steps:
+      - id: groups
+        run: echo 'groups=["group1","group2","group3","group4"]' >> "$GITHUB_OUTPUT"
+
   # Tests the VSIX schedule.yml already built and published, rather than rebuilding —
   # this workflow exists for flakiness signal, not fresh-code feedback (PR builds cover
   # that), so testing the same nightly build across all 4 daily runs is fine, and holds
@@ -37,11 +49,12 @@ jobs:
   # risk against a guaranteed-broken workflow.
   E2E:
     name: Run Ballerina e2e Test (${{ matrix.group }})
+    needs: Prepare
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        group: [group1, group2, group3, group4]
+        group: ${{ fromJson(needs.Prepare.outputs.groups) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -82,57 +95,57 @@ jobs:
 
   Report:
     name: Aggregate flakiness report
-    needs: E2E
+    needs:
+      - Prepare
+      - E2E
     if: always()
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
-      # Downloaded per group into an explicit subfolder rather than one pattern-based
-      # call across all 4: download-artifact only nests results under a per-artifact
-      # subfolder when more than one artifact matches — if 3 of 4 groups never
-      # uploaded (e.g. cancelled before their `if: always()` upload step), the lone
-      # survivor would land flattened at the root with no group name to key off of.
-      - name: Download group1 test results
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        continue-on-error: true
-        with:
-          name: Ballerina-e2e-test-results-linux-group1-${{ github.run_attempt }}
-          path: e2e-results/group1
-
-      - name: Download group2 test results
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        continue-on-error: true
-        with:
-          name: Ballerina-e2e-test-results-linux-group2-${{ github.run_attempt }}
-          path: e2e-results/group2
-
-      - name: Download group3 test results
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        continue-on-error: true
-        with:
-          name: Ballerina-e2e-test-results-linux-group3-${{ github.run_attempt }}
-          path: e2e-results/group3
-
-      - name: Download group4 test results
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        continue-on-error: true
-        with:
-          name: Ballerina-e2e-test-results-linux-group4-${{ github.run_attempt }}
-          path: e2e-results/group4
+      # Per group, download whichever attempt actually has an artifact — not just
+      # github.run_attempt. "Re-run failed jobs" only advances the attempt number of
+      # the groups that failed; a passing group's artifact stays at its original,
+      # lower attempt number. Downloading strictly by the *run's* current attempt
+      # would silently miss every group that never needed a re-run. run-e2e-group
+      # already handles this per-group look-back for resuming --last-failed; this
+      # does the equivalent for the Report job's cross-group aggregation.
+      - name: Download latest available test results per group
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GROUPS_JSON: ${{ needs.Prepare.outputs.groups }}
+        run: |
+          set -euo pipefail
+          for group in $(echo "$GROUPS_JSON" | jq -r '.[]'); do
+            name=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
+              --paginate --jq '.artifacts[].name' \
+              | grep -E "^Ballerina-e2e-test-results-linux-${group}-[0-9]+$" \
+              | sort -V | tail -n1) || true
+            if [ -z "${name:-}" ]; then
+              echo "No artifact found for ${group}; skipping."
+              continue
+            fi
+            echo "Downloading ${name} for ${group}"
+            mkdir -p "e2e-results/${group}"
+            gh run download "${{ github.run_id }}" --repo "${{ github.repository }}" \
+              -n "${name}" -D "e2e-results/${group}"
+          done
 
       - name: Aggregate results
         id: aggregate
         shell: bash
         env:
-          # Every run tests the same 'nightly' tag/release now, not a freshly resolved
-          # branch — this labels the history data accordingly.
-          E2E_SOURCE_BRANCH: builds/nightly
+          # Every run tests the VSIX from the 'nightly' GitHub Release/tag now, not a
+          # freshly resolved branch — this labels the history data accordingly. (Not
+          # 'builds/nightly' — that's schedule.yml's own internal build branch, a
+          # different thing from the 'nightly' release tag this workflow reads.)
+          E2E_SOURCE_TAG: nightly
         run: |
           set -o pipefail
           node .github/scripts/aggregate-e2e-results.js e2e-results e2e-run-stats.jsonl \

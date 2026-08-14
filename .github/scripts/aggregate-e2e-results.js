@@ -166,7 +166,7 @@ function toNdjson(allTests) {
   const timestamp = new Date().toISOString();
   const runId = process.env.GITHUB_RUN_ID || '';
   const runAttempt = process.env.GITHUB_RUN_ATTEMPT || '';
-  const sourceBranch = process.env.E2E_SOURCE_BRANCH || '';
+  const sourceTag = process.env.E2E_SOURCE_TAG || '';
 
   return allTests
     .map((t) =>
@@ -174,7 +174,7 @@ function toNdjson(allTests) {
         timestamp,
         runId,
         runAttempt,
-        sourceBranch,
+        sourceTag,
         ...t,
       })
     )
