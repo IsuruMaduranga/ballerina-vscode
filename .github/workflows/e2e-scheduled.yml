@@ -124,7 +124,6 @@ jobs:
           # work in an isolated throwaway clone (see "Persist run stats"), so this
           # checkout never pushes and doesn't need full history or persisted credentials.
           persist-credentials: false
-          persist-credentials: false
 
       # Per group, download whichever attempt actually has an artifact — not just
       # github.run_attempt. "Re-run failed jobs" only advances the attempt number of
