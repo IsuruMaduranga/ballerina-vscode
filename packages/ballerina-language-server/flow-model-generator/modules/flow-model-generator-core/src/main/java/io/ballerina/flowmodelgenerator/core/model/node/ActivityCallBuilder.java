@@ -105,11 +105,9 @@ public class ActivityCallBuilder extends CallBuilder {
     public static final String RETRY_DELAY_KEY = "retryDelay";
     public static final String RETRY_BACKOFF_KEY = "retryBackoff";
     public static final String MAX_RETRY_DELAY_KEY = "maxRetryDelay";
-    // The workflow module's AutoRetry record defaults (types.bal); pre-filled in the form so
-    // choosing Auto Retry shows the values that would apply. maxRetryDelay has no default.
-    public static final String DEFAULT_MAX_RETRIES = "3";
-    public static final String DEFAULT_RETRY_DELAY = "1.0";
-    public static final String DEFAULT_RETRY_BACKOFF = "2.0";
+    // The AutoRetry branch's collapsible group; it holds the tuning fields, not a value of its own.
+    public static final String AUTO_RETRY_OPTIONS_KEY = "autoRetryOptions";
+    public static final String ADVANCED_RETRY_CONFIGURATIONS = "Advanced Configurations";
     // retryPolicy is excluded from ADVANCE_PARAM_LIST; it is added at root level as a DROPDOWN_CHOICE.
     public static final Set<String> EXCLUDED_CALL_ACTIVITY_PARAMS = Set.of("activityFunction", "args", "T",
             CHECK_ERROR_KEY, Property.CONNECTION_KEY, RETRY_POLICY_PARAM);
@@ -367,7 +365,9 @@ public class ActivityCallBuilder extends CallBuilder {
      * <p>Sub-properties inside {@code dynamicFormFields.AutoRetry} intentionally carry empty values.
      * The UI reads the actual value from the matching root hidden property (by key name) and writes
      * edits back there, exactly like the {@code method}/{@code message} pattern in
-     * {@link io.ballerina.flowmodelgenerator.core.model.node.builtin.RestActivityStrategy}.
+     * {@link io.ballerina.flowmodelgenerator.core.model.node.builtin.RestActivityStrategy}. The AutoRetry
+     * branch nests those sub-properties in a {@code GROUP_SECTION} ({@link #AUTO_RETRY_OPTIONS_KEY}) so they
+     * render as optional fields behind an Expand toggle rather than as required inputs.
      */
     public static void addRetryPolicyFormProperties(NodeBuilder nodeBuilder, String retryPolicyValue,
                                                     String maxRetries, String retryDelay,
@@ -382,18 +382,6 @@ public class ActivityCallBuilder extends CallBuilder {
                                                     String retryUserRoles) {
         String selectedValue = retryPolicyValue == null || retryPolicyValue.isBlank()
                 ? NO_RETRY_VALUE : retryPolicyValue;
-        // Blank Auto Retry sub-fields fall back to the module's AutoRetry record defaults, so
-        // selecting Auto Retry presents the values that would apply rather than an empty form.
-        // An entry saved with them emits the same behavior the record defaults give.
-        if (maxRetries == null || maxRetries.isBlank()) {
-            maxRetries = DEFAULT_MAX_RETRIES;
-        }
-        if (retryDelay == null || retryDelay.isBlank()) {
-            retryDelay = DEFAULT_RETRY_DELAY;
-        }
-        if (retryBackoff == null || retryBackoff.isBlank()) {
-            retryBackoff = DEFAULT_RETRY_BACKOFF;
-        }
         List<Option> options = new ArrayList<>(List.of(
                 new Option("No Automatic Retry", NO_RETRY_VALUE),
                 new Option("Auto Retry", AUTO_RETRY_VALUE),
@@ -406,15 +394,17 @@ public class ActivityCallBuilder extends CallBuilder {
         }
 
         // Sub-property definitions for the AutoRetry option. Empty values are intentional:
-        // the UI reads real values from the root hidden properties with matching keys.
+        // the UI reads real values from the root hidden properties with matching keys. Every
+        // sub-field is optional — a field left empty is omitted from the AutoRetry record, so
+        // the module's own record default applies.
         Property maxRetriesSubProp = buildRetrySubProperty("Max Retries",
-                "Maximum number of retry attempts", "int");
+                "Maximum number of retry attempts", "int", true);
         Property retryDelaySubProp = buildRetrySubProperty("Retry Delay",
-                "Initial delay between retries in seconds", "decimal");
+                "Initial delay between retries in seconds", "decimal", true);
         Property retryBackoffSubProp = buildRetrySubProperty("Retry Backoff",
-                "Exponential backoff multiplier (e.g. 2.0 doubles each delay)", "decimal");
+                "Exponential backoff multiplier (e.g. 2.0 doubles each delay)", "decimal", true);
         Property maxRetryDelaySubProp = buildRetrySubProperty("Max Retry Delay",
-                "Maximum delay cap in seconds", "decimal");
+                "Maximum delay cap in seconds", "decimal", true);
 
         // Insertion-ordered so the AutoRetry sub-fields always render in this sequence (Map.of does
         // not guarantee iteration order).
@@ -426,11 +416,15 @@ public class ActivityCallBuilder extends CallBuilder {
 
         Map<String, Map<String, Property>> dynamicFields = new LinkedHashMap<>();
         dynamicFields.put(NO_RETRY_VALUE, Map.of());
-        dynamicFields.put(AUTO_RETRY_VALUE, autoRetryFields);
+        // The tuning fields sit behind the AutoRetry branch's collapsible group instead of being
+        // presented up front: none of them has to be filled in, and every one left empty falls back
+        // to the AutoRetry record's own default.
+        dynamicFields.put(AUTO_RETRY_VALUE, Map.of(AUTO_RETRY_OPTIONS_KEY,
+                buildAutoRetryOptionsGroup(autoRetryFields)));
         Map<String, Property> manualRetryFields = new LinkedHashMap<>();
         manualRetryFields.put(RETRY_USER_ROLES_KEY, buildRetrySubProperty("Reviewer Roles",
                 "Role(s) permitted to decide the human review, e.g. \"manager\" or "
-                        + "[\"finance\", \"manager\"]. Leave empty to allow any role.", "string|string[]"));
+                        + "[\"finance\", \"manager\"]. Leave empty to allow any role.", "string|string[]", false));
         dynamicFields.put(MANUAL_RETRY_VALUE, manualRetryFields);
         if (opaquePolicy) {
             dynamicFields.put(selectedValue, Map.of());
@@ -468,7 +462,8 @@ public class ActivityCallBuilder extends CallBuilder {
                 "Max Retry Delay", "Maximum delay cap in seconds", "decimal", maxRetryDelay);
     }
 
-    private static Property buildRetrySubProperty(String label, String description, String ballerinaType) {
+    private static Property buildRetrySubProperty(String label, String description, String ballerinaType,
+                                                  boolean optional) {
         return new Property.Builder<Void>(null)
                 .metadata()
                     .label(label)
@@ -478,6 +473,29 @@ public class ActivityCallBuilder extends CallBuilder {
                     .ballerinaType(ballerinaType).selected(true).stepOut()
                 .value("")
                 .editable(true)
+                .optional(optional)
+                .build();
+    }
+
+    /**
+     * The collapsible group that holds the AutoRetry tuning fields. A DROPDOWN_CHOICE branch renders its
+     * plain fields inline but hides everything optional, so the fields are carried as the group's
+     * {@code advanceProperties} — the UI shows them behind the group's Expand toggle, where being optional
+     * only means they carry no required marker.
+     */
+    private static Property buildAutoRetryOptionsGroup(Map<String, Property> autoRetryFields) {
+        return new Property.Builder<Void>(null)
+                .metadata()
+                    .label(ADVANCED_RETRY_CONFIGURATIONS)
+                    .description("Optional tuning for the automatic retries. A field left empty uses the "
+                            + "engine default: 3 attempts, a 1.0 second initial delay doubling on each "
+                            + "retry, and no cap on the delay.")
+                    .stepOut()
+                .type().fieldType(Property.ValueType.GROUP_SECTION).selected(true).stepOut()
+                .value("")
+                .editable(true)
+                .optional(true)
+                .advanceProperties(autoRetryFields)
                 .build();
     }
 
