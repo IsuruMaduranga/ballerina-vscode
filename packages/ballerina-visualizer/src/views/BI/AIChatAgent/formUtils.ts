@@ -394,11 +394,26 @@ export function createRequiresApprovalField(
 // Rebuild the static "Requires Approval" field with the runtime-fetched picker candidates injected
 // into its "On" branch. `items` populate the AUTOCOMPLETE dropdown; the label, description and
 // placeholder are preserved from the static definition.
-export function buildRequiresApprovalField(baseField: FormField, candidates: string[]): FormField {
+// `candidates` is `null` when the fetch itself failed (as opposed to a project with no eligible
+// functions, which is `[]`) — an empty list can't be told apart from a failure by buildApprovalToolData,
+// which treats any name absent from the list as new. Surfacing a picker over an empty-by-failure list
+// would let a user re-pick their existing `isHighValue`, have it read as new, and silently regenerate
+// a duplicate/broken predicate. So on failure the "On" branch drops the picker entirely and falls back
+// to the plain unconditional-approval checkbox until the candidate list is actually known.
+export function buildRequiresApprovalField(baseField: FormField, candidates: string[] | null): FormField {
     const onChoice = baseField.choices?.[0];
     const approvalProp = onChoice?.properties?.approvalFunction;
     if (!approvalProp) {
         return baseField;
+    }
+    if (candidates === null) {
+        return {
+            ...baseField,
+            choices: [
+                { ...onChoice, properties: {} },
+                ...baseField.choices.slice(1),
+            ],
+        };
     }
     return {
         ...baseField,

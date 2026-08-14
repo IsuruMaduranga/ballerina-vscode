@@ -778,7 +778,11 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
     // module's functions; stdlib/imported/agent-tool categories are filtered out by the collector.
     // Shared by both the "Use Function" and "Use Connection" tool-creation paths. Return-type/
     // signature compatibility is verified by the compiler after generation.
-    const fetchCompatibleApprovalFunctions = async (toolFunctionSymbol?: string): Promise<string[]> => {
+    // Returns `null` (rather than `[]`) when the fetch itself fails, so callers can tell "search
+    // failed" apart from "this project has no eligible functions" and fall back to the plain
+    // checkbox instead of silently offering a picker backed by an empty list. See
+    // formUtils.buildRequiresApprovalField for why that distinction matters.
+    const fetchCompatibleApprovalFunctions = async (toolFunctionSymbol?: string): Promise<string[] | null> => {
         try {
             const request: BISearchRequest = {
                 position: {
@@ -798,7 +802,7 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
             return Array.from(names);
         } catch (error) {
             console.error(">>> Error fetching compatible approval functions", error);
-            return [];
+            return null;
         }
     };
 
@@ -877,7 +881,7 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
             // the boolean-returning ones as candidates. Injected into the "Requires Approval" control's
             // "On" branch so the picker sits under the checkbox; free-typed names drive the create path.
             const approvalCandidates = await fetchCompatibleApprovalFunctions(node.codedata?.symbol);
-            compatibleApprovalFunctionsRef.current = approvalCandidates;
+            compatibleApprovalFunctionsRef.current = approvalCandidates ?? [];
 
             setFields((prevFields) => [
                 ...prevFields.map((field) => {
@@ -947,7 +951,7 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
             // Same approval-predicate picker as the function-call path: fetch the project's
             // module-level functions and inject them into the "Requires Approval" control.
             const approvalCandidates = await fetchCompatibleApprovalFunctions();
-            compatibleApprovalFunctionsRef.current = approvalCandidates;
+            compatibleApprovalFunctionsRef.current = approvalCandidates ?? [];
 
             setFields((prevFields) => [
                 ...prevFields.map((field) => {

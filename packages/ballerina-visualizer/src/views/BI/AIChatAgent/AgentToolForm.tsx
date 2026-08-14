@@ -188,7 +188,7 @@ function toAuthSource(key: string, value: unknown, isExpression: boolean): strin
 // annotation, to prefill the "Requires Approval" control when editing a custom tool that already
 // has the gate set.
 function parseRequiresApproval(annotationValue: string): ExistingApprovalConfig | undefined {
-    const match = /requiresApproval\s*:\s*([^,}]+)/.exec(annotationValue);
+    const match = /\brequiresApproval\b\s*:\s*([^,}]+)/.exec(annotationValue);
     if (!match) return undefined;
     const raw = match[1].trim();
     return raw === "true" ? {} : { functionName: raw };
@@ -207,7 +207,7 @@ function withExistingCandidate(candidates: string[], existing?: ExistingApproval
 // upsert in spirit, but auth's value is itself a `{ ... }` record while requiresApproval's value is
 // a bare boolean or identifier, so a brace-unaware match up to the next comma/close-brace suffices.
 function upsertScalarAnnotationField(annotationStr: string, key: string, source: string | undefined): string {
-    const match = new RegExp(`${key}\\s*:\\s*[^,}]+`).exec(annotationStr);
+    const match = new RegExp(`\\b${key}\\b\\s*:\\s*[^,}]+`).exec(annotationStr);
     if (match) {
         let s = match.index;
         let e = match.index + match[0].length;
@@ -215,7 +215,9 @@ function upsertScalarAnnotationField(annotationStr: string, key: string, source:
             return annotationStr.slice(0, s) + `${key}: ${source}` + annotationStr.slice(e);
         }
         const lead = annotationStr.slice(0, s).match(/,\s*$/);
-        const trail = annotationStr.slice(e).match(/^\s*,/);
+        // `\s*` after the comma also swallows the removed field's now-blank line (its trailing
+        // newline + the next field's leading indentation), so removal doesn't leave an empty line.
+        const trail = annotationStr.slice(e).match(/^\s*,\s*/);
         if (lead) s -= lead[0].length;
         else if (trail) e += trail[0].length;
         return (annotationStr.slice(0, s) + annotationStr.slice(e))
@@ -273,9 +275,14 @@ export function AgentToolForm(props: AgentToolFormProps): JSX.Element {
     // Fetch the project's own module-level functions (excluding the tool's own function, when
     // editing one) as approval-predicate candidates. Shared shape with the function/connection
     // tool-creation forms; see formUtils.collectLocalFunctionNames for the filtering rules.
+    // Returns `null` (rather than `[]`) when the fetch itself fails, distinguishing "search failed"
+    // from "no eligible functions" — see formUtils.buildRequiresApprovalField for why the create
+    // flow (below) needs that distinction. The edit flows fold `null` back to `[]` immediately since
+    // their strict pick-list (allowCreate=false) plus prefilled existing value is already safe either
+    // way: there's no free-typed "create a new predicate" path for a fetch failure to corrupt.
     const fetchCompatibleApprovalFunctions = async (
         position: LinePosition, excludeName?: string
-    ): Promise<string[]> => {
+    ): Promise<string[] | null> => {
         try {
             const request: BISearchRequest = {
                 position: { startLine: position, endLine: position },
@@ -292,7 +299,7 @@ export function AgentToolForm(props: AgentToolFormProps): JSX.Element {
             return Array.from(names);
         } catch (error) {
             console.error(">>> Error fetching compatible approval functions", error);
-            return [];
+            return null;
         }
     };
 
@@ -452,7 +459,10 @@ export function AgentToolForm(props: AgentToolFormProps): JSX.Element {
 
                     oauthPropertiesRef.current = oauthProperties;
                     const existingApproval = parseRequiresApproval(annotationValue);
-                    const approvalItems = withExistingCandidate(approvalCandidates, existingApproval);
+                    // A failed fetch folds to [] here (not the create flow's hide-the-picker
+                    // fallback): allowCreate=false plus the prefilled existing value below already
+                    // keep this safe — there's no free-typed "create a new predicate" path to corrupt.
+                    const approvalItems = withExistingCandidate(approvalCandidates ?? [], existingApproval);
                     compatibleApprovalFunctionsRef.current = approvalItems;
                     const existingConfig = parseAuth(annotationValue, oauthProperties.map(({ key }) => key));
                     const { oauthFields, oauthRecordFields } = buildOAuthFields(oauthProperties, existingConfig);
@@ -485,8 +495,9 @@ export function AgentToolForm(props: AgentToolFormProps): JSX.Element {
                     oauthPropertiesRef.current = oauthProperties;
                     const annotationValue = findAgentToolAnnotation(model)?.value ?? "";
                     const existingApproval = parseRequiresApproval(annotationValue);
+                    // Same fold-to-[] rationale as the top-level edit branch above.
                     const approvalItems = withExistingCandidate(
-                        approvalCandidates.filter((name) => name !== String(model.name.value)),
+                        (approvalCandidates ?? []).filter((name) => name !== String(model.name.value)),
                         existingApproval
                     );
                     compatibleApprovalFunctionsRef.current = approvalItems;
@@ -541,8 +552,11 @@ export function AgentToolForm(props: AgentToolFormProps): JSX.Element {
                 baseFields.forEach(applyToolFieldDocs);
 
                 oauthPropertiesRef.current = oauthProperties;
-                compatibleApprovalFunctionsRef.current = approvalCandidates;
+                compatibleApprovalFunctionsRef.current = approvalCandidates ?? [];
                 const { oauthFields, oauthRecordFields } = buildOAuthFields(oauthProperties, {});
+                // Unlike the edit branches above, this is a create flow (allowCreate=true): on a
+                // failed fetch, propagate null through so buildRequiresApprovalField falls back to
+                // the plain checkbox rather than offering a free-typed picker over an empty list.
                 const requiresApprovalField = buildRequiresApprovalField(createRequiresApprovalField(), approvalCandidates);
 
                 setToolNode(node);

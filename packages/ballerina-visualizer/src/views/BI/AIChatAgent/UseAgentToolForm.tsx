@@ -81,7 +81,13 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
 
     // Fetch the project's own module-level functions as approval-predicate candidates. Same shape as
     // the other tool-creation forms; see formUtils.collectLocalFunctionNames for the filtering rules.
-    const fetchCompatibleApprovalFunctions = async (filePath: string, position: LinePosition): Promise<string[]> => {
+    // Returns `null` (not `[]`) on fetch failure, so it can be told apart from a project with no
+    // eligible functions — see formUtils.buildRequiresApprovalField for why the create flow below
+    // needs that distinction (an empty-by-failure list plus allowCreate=true risks a re-picked
+    // existing function silently generating a duplicate/broken predicate).
+    const fetchCompatibleApprovalFunctions = async (
+        filePath: string, position: LinePosition
+    ): Promise<string[] | null> => {
         try {
             const request: BISearchRequest = {
                 position: { startLine: position, endLine: position },
@@ -95,20 +101,23 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
             return Array.from(names);
         } catch (error) {
             console.error(">>> Error fetching compatible approval functions", error);
-            return [];
+            return null;
         }
     };
 
     useEffect(() => {
+        let cancelled = false;
         (async () => {
             const filePath = hostClass
                 ? hostClass.filePath
                 : (await rpcClient.getVisualizerRpcClient().joinProjectPath({
                     segments: [agentNode?.codedata?.lineRange?.fileName ?? "agents.bal"],
                 })).filePath;
+            if (cancelled) return;
             const position = agentNode?.codedata?.lineRange?.startLine ?? { line: 0, offset: 0 };
             const approvalCandidates = await fetchCompatibleApprovalFunctions(filePath, position);
-            compatibleApprovalFunctionsRef.current = approvalCandidates;
+            if (cancelled) return;
+            compatibleApprovalFunctionsRef.current = approvalCandidates ?? [];
 
             setAgentFilePath(filePath);
             setFields([
@@ -120,7 +129,10 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
             ]);
             setReady(true);
         })();
-    }, [agentNode]);
+        return () => {
+            cancelled = true;
+        };
+    }, [agentNode, hostClass, agentVarName, agentLabel]);
 
     const handleSubmit = async (data: FormValues) => {
         if (saving) {

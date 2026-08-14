@@ -288,27 +288,35 @@ public class AgentToolBuilder extends NodeBuilder {
         }
     }
 
-    private static void emitAnnotation(ToolGenContext ctx) {
-        // CUSTOM tools (and AGENT_CALL) have no wrapped node — auth/requiresApproval live directly
-        // on the tool's own data (ctx.data) instead. Checking both keys (not just "auth") keeps a
-        // custom tool's requiresApproval from being dropped when auth was never set.
-        boolean useTopLevelData = ctx.data != null
-                && (ctx.data.containsKey("auth") || ctx.data.containsKey("requiresApproval"));
-        Map<String, Object> data = useTopLevelData
-                ? ctx.data
-                : ctx.wrappedNode != null ? ctx.wrappedNode.codedata().data() : null;
-        if (data == null) {
-            ctx.sb.token().name("@ai:AgentTool").name(System.lineSeparator());
-            return;
+    // Looks up a single annotation-data key across both places it can live: the tool's own data
+    // (ctx.data — authoritative for CUSTOM/AGENT_CALL, which have no wrapped node) and the wrapped
+    // node's data (where the form originally writes auth/requiresApproval for FUNCTION/REMOTE/
+    // RESOURCE tools). ctx.data wins when both have the key. Resolving key-by-key — instead of
+    // picking one map wholesale for every field — means a key present in only one of the two maps
+    // is never silently dropped, and emitAnnotation/appendApprovalPredicate can't disagree about
+    // where a given field lives.
+    private static Object resolveToolData(ToolGenContext ctx, String key) {
+        if (ctx.data != null && ctx.data.containsKey(key)) {
+            return ctx.data.get(key);
         }
+        if (ctx.wrappedNode != null) {
+            Map<String, Object> wrappedData = ctx.wrappedNode.codedata().data();
+            if (wrappedData != null && wrappedData.containsKey(key)) {
+                return wrappedData.get(key);
+            }
+        }
+        return null;
+    }
 
+    private static void emitAnnotation(ToolGenContext ctx) {
         // Each entry is a fully-rendered mapping field (already indented) to place inside the
         // `@ai:AgentTool { ... }` record. When empty, a bare `@ai:AgentTool` is emitted instead.
         List<String> annotationFields = new ArrayList<>();
 
         // auth: { ... } — OAuth client configuration block.
-        if (data.containsKey("auth")) {
-            String authStr = data.get("auth").toString();
+        Object authValue = resolveToolData(ctx, "auth");
+        if (authValue != null) {
+            String authStr = authValue.toString();
             JsonObject authConfig = gson.fromJson(authStr, JsonObject.class);
 
             List<String> fields = new ArrayList<>();
@@ -352,9 +360,9 @@ public class AgentToolBuilder extends NodeBuilder {
 
         // requiresApproval: <boolean|isolated function> — human-in-the-loop gate. The value is
         // emitted verbatim: "true" for the toggle, or an identifier for a predicate function pointer.
-        if (data.containsKey("requiresApproval")) {
-            Object approvalValue = data.get("requiresApproval");
-            String approval = approvalValue == null ? "" : approvalValue.toString().trim();
+        Object approvalValue = resolveToolData(ctx, "requiresApproval");
+        if (approvalValue != null) {
+            String approval = approvalValue.toString().trim();
             if (!approval.isEmpty()) {
                 annotationFields.add("    requiresApproval: " + approval);
             }
@@ -644,13 +652,12 @@ public class AgentToolBuilder extends NodeBuilder {
     // (buildFunctionBody, buildRemoteActionBody, buildResourceActionBody, CUSTOM's buildBody, and
     // buildAgentCallBody) — every path whose form exposes the "Requires Approval" gate.
     private static void appendApprovalPredicate(ToolGenContext ctx) {
-        // CUSTOM and AGENT_CALL tools have no wrapped node — generateApprovalFunction/requiresApproval
-        // live directly on the tool's own data (ctx.data) instead, mirroring emitAnnotation's fallback.
-        Map<String, Object> data = ctx.wrappedNode != null ? ctx.wrappedNode.codedata().data() : ctx.data;
-        if (data == null || !"true".equals(String.valueOf(data.get("generateApprovalFunction")))) {
+        // Same per-key resolution as emitAnnotation, so the two can't disagree about whether the
+        // gate is set or which name it uses.
+        if (!"true".equals(String.valueOf(resolveToolData(ctx, "generateApprovalFunction")))) {
             return;
         }
-        Object approvalValue = data.get("requiresApproval");
+        Object approvalValue = resolveToolData(ctx, "requiresApproval");
         String predicateName = approvalValue == null ? "" : approvalValue.toString().trim();
         if (predicateName.isEmpty()) {
             return;
