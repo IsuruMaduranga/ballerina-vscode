@@ -604,12 +604,16 @@ export interface AgentToolHostClass {
 export function buildAgentToolNode(wrappedNode: FlowNode, toolName: string, description: string, connection: string,
     toolParameters?: ToolParameters, hostClass?: AgentToolHostClass, includeContext = false): FlowNode {
     const auth = wrappedNode.codedata.data?.auth;
+    const requiresApproval = wrappedNode.codedata.data?.requiresApproval;
+    const generateApprovalFunction = wrappedNode.codedata.data?.generateApprovalFunction;
     const data: AgentToolData = {
         node: wrappedNode,
         connection,
         description,
         includeContext,
         ...(typeof auth === "string" ? { auth } : {}),
+        ...(requiresApproval !== undefined ? { requiresApproval } : {}),
+        ...(generateApprovalFunction !== undefined ? { generateApprovalFunction } : {}),
         ...(hostClass ? { hostClassName: hostClass.className, filePath: hostClass.filePath } : {}),
     };
     return createAgentToolNode(toolName, data, toolParameters ? { parameters: toolParameters } : {});

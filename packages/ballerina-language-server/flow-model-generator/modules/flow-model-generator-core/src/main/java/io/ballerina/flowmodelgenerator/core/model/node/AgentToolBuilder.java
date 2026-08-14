@@ -655,10 +655,13 @@ public class AgentToolBuilder extends NodeBuilder {
         if (predicateName.isEmpty()) {
             return;
         }
-        // Mirror the tool's own signature exactly, using the same param list generate() built it
-        // from (stashed on ctx) — each ToolKind resolves params differently, so this must not
-        // recompute with a fixed kind.
+        // Mirror the tool's own signature, using the same param list generate() built it from
+        // (stashed on ctx) — each ToolKind resolves params differently, so this must not recompute
+        // with a fixed kind. The leading `ai:Context ctx` param is excluded: the `ai` compiler
+        // plugin strips it from the tool's own signature before comparing against the predicate's,
+        // so including it here would make the predicate's signature look mismatched.
         String paramDecls = ctx.resolvedParams.stream()
+                .filter(param -> !(ctx.includeContext && "ctx".equals(param.name())))
                 .map(ToolParam::decl)
                 .collect(Collectors.joining(", "));
         ctx.sb.token()

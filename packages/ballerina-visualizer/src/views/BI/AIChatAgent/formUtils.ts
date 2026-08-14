@@ -372,7 +372,13 @@ export function createRequiresApprovalField(
                         // candidate list is fetched. When allowCreate is true, free-typed names are accepted
                         // (drive the "create a new predicate" path); when false, the picker is a strict
                         // pick-list of existing functions.
-                        types: [{ fieldType: "AUTOCOMPLETE", selected: true }],
+                        // The identifier rule guards the free-typed path: without it, a value like
+                        // "my predicate" goes straight into both `requiresApproval: <name>` and the
+                        // generated `isolated function <name>(...)`, producing invalid Ballerina source.
+                        types: [{
+                            fieldType: "AUTOCOMPLETE", selected: true,
+                            validations: [{ rule: "common.validate.identifier", message: "Invalid identifier" }],
+                        }],
                         allowItemCreate: allowCreate,
                         value: existing?.functionName || "",
                         optional: true,
