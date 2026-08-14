@@ -172,38 +172,21 @@ export class AgentChatRpcManager implements AgentChatAPI {
     // so a later getChatHistory()/switchChatAgent() replay renders resolved requests collapsed
     // rather than as if still pending.
     private resolvePendingApprovalInHistory(sessionId: string, decisions: Record<string, HumanResponse>): void {
-        const entry = this.findPendingApprovalEntry(sessionId, decisions);
-        if (entry) {
-            entry.decisions = { ...(entry.decisions || {}), ...decisions };
-        }
-    }
-
-    // Marks the matching 'approval' history entry as terminal when the service no longer
-    // recognizes the batch (expired, or the run restarted), so a replay renders it as
-    // dismissed instead of stuck pending forever.
-    private markPendingApprovalUnresolvable(sessionId: string, decisions: Record<string, HumanResponse>): void {
-        const entry = this.findPendingApprovalEntry(sessionId, decisions);
-        if (entry) {
-            entry.unresolvable = true;
-        }
-    }
-
-    private findPendingApprovalEntry(sessionId: string, decisions: Record<string, HumanResponse>): ChatHistoryMessage | undefined {
+        const decidedIds = Object.keys(decisions);
         const history = AgentChatRpcManager.chatHistoryMap.get(sessionId);
         if (!history) {
-            return undefined;
+            return;
         }
-        const decidedIds = Object.keys(decisions);
         for (let i = history.length - 1; i >= 0; i--) {
             const entry = history[i];
             if (entry.type !== 'approval' || !entry.pendingApproval) {
                 continue;
             }
             if (entry.pendingApproval.requests.some(r => decidedIds.includes(r.id))) {
-                return entry;
+                entry.decisions = { ...(entry.decisions || {}), ...decisions };
+                break;
             }
         }
-        return undefined;
     }
 
     // The dispatcher attaches `chat` and `decision` as sibling resources under the same
@@ -279,17 +262,8 @@ export class AgentChatRpcManager implements AgentChatAPI {
                         ? String(error.message)
                         : "An unknown error occurred";
 
-                const errorType = error && typeof error === "object" && "errorType" in error
-                    ? String((error as { errorType: unknown }).errorType)
-                    : undefined;
-                const unresolvable = errorType === 'ApprovalNotFoundError' || errorType === 'UnknownApprovalIdError';
-
                 const sessionId = extension.agentChatContext?.chatSessionId;
                 if (sessionId) {
-                    if (unresolvable) {
-                        this.markPendingApprovalUnresolvable(sessionId, params.decisions);
-                    }
-
                     this.addMessageToHistory(sessionId, {
                         type: 'error',
                         text: errorMessage,
@@ -297,10 +271,12 @@ export class AgentChatRpcManager implements AgentChatAPI {
                     });
                 }
 
+                // A failed decision leaves the batch exactly as it was (see the comment on
+                // the `else` branch above) - the card stays interactive so the user can retry,
+                // possibly with a fuller decision set, rather than being forced to Clear Chat.
                 const errorWithTrace = new Error(JSON.stringify({
                     message: errorMessage,
-                    traceInfo: {},
-                    unresolvable
+                    traceInfo: {}
                 }));
 
                 reject(errorWithTrace);
@@ -350,12 +326,8 @@ export class AgentChatRpcManager implements AgentChatAPI {
 
                 // A `decision` resume naming a session/id with nothing pending maps to 404/400
                 // with a stable `errorType` discriminator (ApprovalNotFoundError/UnknownApprovalIdError).
-                // Attach it to the thrown error so callers can tell this apart from a transient
-                // failure and treat the batch as terminal instead of retryable.
                 if (errorData?.errorType === 'ApprovalNotFoundError' || errorData?.errorType === 'UnknownApprovalIdError') {
-                    const notFoundError = new Error(errorData.message || 'The pending approval could not be resumed.');
-                    (notFoundError as Error & { errorType?: string }).errorType = errorData.errorType;
-                    throw notFoundError;
+                    throw new Error(errorData.message || 'The pending approval could not be resumed.');
                 }
 
                 switch (response.status) {
@@ -393,13 +365,7 @@ export class AgentChatRpcManager implements AgentChatAPI {
             if (error instanceof Error) {
                 errorMessage = error.message;
             }
-            const rewrapped = new Error(errorMessage);
-            // Preserve the errorType tagged above (e.g. ApprovalNotFoundError) so callers can
-            // still distinguish it after this rewrap.
-            if (error && typeof error === "object" && "errorType" in error) {
-                (rewrapped as Error & { errorType?: unknown }).errorType = (error as { errorType: unknown }).errorType;
-            }
-            throw rewrapped;
+            throw new Error(errorMessage);
         }
     }
 

@@ -97,9 +97,9 @@ export interface ChatHistoryMessage {
     pendingApproval?: PendingApprovalInfo;
     // Present once the pending approval above has been resolved by the user.
     decisions?: Record<string, HumanResponse>;
-    // Set when the service no longer recognizes this batch (e.g. it expired or the run
-    // restarted) and a decision can never be applied, so the card is terminal even though
-    // some requests may still lack a decision.
+    // Set when the user gives up on this batch via the card's Dismiss action (typically after
+    // repeated failed submissions), so the card is terminal even though some requests may
+    // still lack a decision. This is a client-side choice, not something the service reports.
     unresolvable?: boolean;
 }
 

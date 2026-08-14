@@ -24,10 +24,13 @@ import { ApprovalRequest, HumanResponse } from "@wso2/ballerina-core";
 interface ApprovalCardProps {
     requests: ApprovalRequest[];
     decisions?: Record<string, HumanResponse>;
-    // Set when the service no longer recognizes this batch and it can never be resolved;
-    // renders as terminal even if some requests still lack a decision.
+    // Set once the user has dismissed this batch; renders as terminal even if some requests
+    // still lack a decision.
     unresolvable?: boolean;
     onSubmit: (decisions: Record<string, HumanResponse>) => Promise<void>;
+    // Lets the user give up on a batch that keeps failing instead of being stuck with a
+    // disabled chat input. Optional since a fully/terminally rendered card has no use for it.
+    onDismiss?: () => void;
 }
 
 const Card = styled.div`
@@ -37,6 +40,10 @@ const Card = styled.div`
     border: 1px solid var(--vscode-panel-border);
     border-radius: 4px;
     overflow: hidden;
+`;
+
+const HeaderSpacer = styled.div`
+    flex: 1;
 `;
 
 const CardHeader = styled.div`
@@ -234,11 +241,15 @@ function formatArguments(args: Record<string, any>): string {
     }
 }
 
-export const ApprovalCard: React.FC<ApprovalCardProps> = ({ requests, decisions, unresolvable, onSubmit }) => {
+export const ApprovalCard: React.FC<ApprovalCardProps> = ({ requests, decisions, unresolvable, onSubmit, onDismiss }) => {
     const [expandedArgs, setExpandedArgs] = useState<Record<string, boolean>>({});
     const [rejectingId, setRejectingId] = useState<string | null>(null);
     const [reasonText, setReasonText] = useState("");
     const [submitting, setSubmitting] = useState(false);
+    // Surfaces a Dismiss option once a submission has failed at least once - most batches
+    // resolve fine on a retry (e.g. a partial decision followed by a fuller one), so this
+    // only appears once the card has actually given the user a reason to give up on it.
+    const [hasFailed, setHasFailed] = useState(false);
 
     const pendingRequests = requests.filter(r => !decisions?.[r.id]);
     const isFullyResolved = requests.length > 0 && pendingRequests.length === 0;
@@ -254,6 +265,7 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({ requests, decisions,
         } catch {
             // Failure is already surfaced as a chat message by the caller; keep the card
             // interactive (and any open reason box open) so the user can retry.
+            setHasFailed(true);
         } finally {
             setSubmitting(false);
         }
@@ -344,6 +356,12 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({ requests, decisions,
                     <Icon name="bi-shield-lock" sx={{ width: 14, height: 14 }} iconSx={{ fontSize: "14px" }} />
                 </WarnIconWrapper>
                 Approval required &middot; {pendingRequests.length} pending
+                <HeaderSpacer />
+                {hasFailed && onDismiss && (
+                    <TextLinkButton onClick={onDismiss} disabled={submitting}>
+                        Dismiss
+                    </TextLinkButton>
+                )}
             </CardHeader>
             {requests.map((req, idx) => {
                 const decided = decisions?.[req.id];

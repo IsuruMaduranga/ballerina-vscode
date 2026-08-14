@@ -50,8 +50,8 @@ interface ChatMessage {
     pendingApproval?: PendingApprovalInfo;
     // Present once (some or all of) the pending approval above has been resolved.
     decisions?: Record<string, HumanResponse>;
-    // Set when the service no longer recognizes this batch (expired, or the run restarted),
-    // so it can never be resolved. Terminal even if some requests still lack a decision.
+    // Set when the user dismisses this batch after it keeps failing to submit. Terminal even
+    // if some requests still lack a decision.
     unresolvable?: boolean;
 }
 
@@ -721,11 +721,10 @@ const ChatInterface: React.FC = () => {
         }
     };
 
-    const parseAgentError = (error: unknown): { errorMessage: string; traceId?: string; executionSteps?: ExecutionStep[]; unresolvable?: boolean } => {
+    const parseAgentError = (error: unknown): { errorMessage: string; traceId?: string; executionSteps?: ExecutionStep[] } => {
         let errorMessage = "An unknown error occurred";
         let traceId: string | undefined;
         let executionSteps: ExecutionStep[] | undefined;
-        let unresolvable: boolean | undefined;
 
         // Try to parse structured error with trace information
         if (error && typeof error === "object" && "message" in error) {
@@ -735,7 +734,6 @@ const ChatInterface: React.FC = () => {
                     errorMessage = parsedError.message;
                     traceId = parsedError.traceInfo.traceId;
                     executionSteps = parsedError.traceInfo.executionSteps;
-                    unresolvable = parsedError.unresolvable;
                 } else {
                     // Fallback to regular error message
                     errorMessage = String(error.message);
@@ -746,7 +744,7 @@ const ChatInterface: React.FC = () => {
             }
         }
 
-        return { errorMessage, traceId, executionSteps, unresolvable };
+        return { errorMessage, traceId, executionSteps };
     };
 
     const appendAgentResponse = (response: {
@@ -816,10 +814,9 @@ const ChatInterface: React.FC = () => {
     // Finds the approval message a batch of decisions belongs to by matching request ids,
     // rather than trusting a snapshotted array index that could point at the wrong message
     // once anything reorders `messages` between the click and the response.
-    const findApprovalMessageIndex = (messages: ChatMessage[], decisions: Record<string, HumanResponse>): number => {
-        const ids = Object.keys(decisions);
+    const findApprovalMessageIndex = (messages: ChatMessage[], requestIds: string[]): number => {
         return messages.findIndex(m =>
-            m.type === ChatMessageType.APPROVAL && m.pendingApproval?.requests.some(r => ids.includes(r.id))
+            m.type === ChatMessageType.APPROVAL && m.pendingApproval?.requests.some(r => requestIds.includes(r.id))
         );
     };
 
@@ -838,7 +835,7 @@ const ChatInterface: React.FC = () => {
 
             setMessages((prev) => {
                 const updated = [...prev];
-                const targetIndex = findApprovalMessageIndex(updated, decisions);
+                const targetIndex = findApprovalMessageIndex(updated, Object.keys(decisions));
                 if (targetIndex !== -1) {
                     const target = updated[targetIndex];
                     updated[targetIndex] = { ...target, decisions: { ...(target.decisions || {}), ...decisions } };
@@ -852,24 +849,13 @@ const ChatInterface: React.FC = () => {
                 return;
             }
 
-            const { errorMessage, traceId, executionSteps, unresolvable } = parseAgentError(error);
+            const { errorMessage, traceId, executionSteps } = parseAgentError(error);
 
             console.error("Submit decision error:", error);
 
-            if (unresolvable) {
-                // The service no longer recognizes this batch (expired, or the run restarted)
-                // and it can never be resolved - mark it terminal so the card stops blocking
-                // input instead of leaving the chat stuck with no way out but Clear Chat.
-                setMessages((prev) => {
-                    const updated = [...prev];
-                    const targetIndex = findApprovalMessageIndex(updated, decisions);
-                    if (targetIndex !== -1) {
-                        updated[targetIndex] = { ...updated[targetIndex], unresolvable: true };
-                    }
-                    return updated;
-                });
-            }
-
+            // Leave the approval card as-is (a failed submitDecision doesn't change what's
+            // pending) so the user can retry, e.g. with a fuller set of decisions - only the
+            // explicit Dismiss action below gives up on it.
             setMessages((prev) => [...prev, {
                 type: ChatMessageType.ERROR,
                 text: errorMessage,
@@ -882,6 +868,20 @@ const ChatInterface: React.FC = () => {
             // otherwise nothing would ever reset isLoading for the session now on screen.
             setIsLoading(false);
         }
+    };
+
+    // Lets the user give up on a batch that keeps failing (e.g. the service genuinely lost
+    // track of it) instead of being stuck forever with a disabled chat input and no way out
+    // but Clear Chat. This is a local, session-only decision - it doesn't call the service.
+    const handleDismissApproval = (requestIds: string[]) => {
+        setMessages((prev) => {
+            const updated = [...prev];
+            const targetIndex = findApprovalMessageIndex(updated, requestIds);
+            if (targetIndex !== -1) {
+                updated[targetIndex] = { ...updated[targetIndex], unresolvable: true };
+            }
+            return updated;
+        });
     };
 
     const handleStop = () => {
@@ -1083,6 +1083,7 @@ const ChatInterface: React.FC = () => {
                                         decisions={msg.decisions}
                                         unresolvable={msg.unresolvable}
                                         onSubmit={handleApprovalDecision}
+                                        onDismiss={() => handleDismissApproval(msg.pendingApproval.requests.map(r => r.id))}
                                     />
                                 </MessageContainer>
                             ) : (
