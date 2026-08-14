@@ -38,18 +38,6 @@
         "editable": true,
         "advanced": false,
         "hidden": false
-      },
-      "checkError": {
-        "metadata": {
-          "label": "Check Error",
-          "description": "Add 'check' to propagate errors. Uncheck to handle errors manually."
-        },
-        "valueType": "FLAG",
-        "value": "true",
-        "optional": true,
-        "editable": true,
-        "advanced": false,
-        "hidden": false
       }
     },
     "flags": 1

@@ -1763,7 +1763,6 @@ public class CodeAnalyzer extends NodeVisitor {
         }
 
         if (activityParamSymbols.isEmpty()) {
-            ActivityCallBuilder.addCheckErrorProperty(nodeBuilder, isCheckedCall(remoteMethodCallActionNode));
             addNormalizedRetryPolicyProperties(rawRetryPolicyValue);
             return;
         }
@@ -1843,54 +1842,25 @@ public class CodeAnalyzer extends NodeVisitor {
                     customPropBuilder, diagnosticHandler);
             nodeBuilderFormBuilder.addProperty(FlowNodeUtil.getPropertyKey(paramName), valueNode);
         }
-        // The Check Error flag mirrors the creation template so an existing statement round-trips: an
-        // unchecked call comes back with the box cleared instead of being silently rewritten with `check`.
-        // handleCheckFlag's property is not reused here — it is dropped by the EXCLUDED_CALL_ACTIVITY_PARAMS
-        // sweep above, and it only records `false` for unchecked calls inside a do-clause.
-        ActivityCallBuilder.addCheckErrorProperty(nodeBuilder, isCheckedCall(remoteMethodCallActionNode));
         // After activity input params, add retryPolicy at root level (outside ADVANCE_PARAM_LIST).
         addNormalizedRetryPolicyProperties(rawRetryPolicyValue);
     }
 
     /**
-     * Whether the statement being analysed binds a result that carries no value of its own — the shape
-     * {@code error? r = ctx->callActivity(...)} takes when the activity only reports failure.
+     * Whether the statement being analysed binds nothing the user named — a wildcard, or a result whose
+     * type carries no value of its own, as an activity that only reports failure produces.
      *
      * <p>The type is read from the semantic model rather than the written text: a node's source includes
      * its leading minutiae, so a statement with a comment above it would carry that comment into the
      * comparison.
      */
-    private boolean bindsNilResult() {
+    private boolean bindsNothingNamed() {
         return this.typedBindingPatternNode != null
-                && isNilResultTypeDescriptor(this.typedBindingPatternNode.typeDescriptor());
+                && (this.typedBindingPatternNode.bindingPattern().kind() == SyntaxKind.WILDCARD_BINDING_PATTERN
+                        || ActivityCallBuilder.isNilResultType(this.typedBindingPatternNode.typeDescriptor()));
     }
 
-    /**
-     * Whether the written type has no member that carries a value — every member is nil or an error.
-     * Read from the tree's shape rather than its text, since a node's source carries its leading
-     * minutiae and a comment above the statement would end up in the comparison.
-     */
-    private static boolean isNilResultTypeDescriptor(Node typeDescriptor) {
-        return switch (typeDescriptor.kind()) {
-            case NIL_TYPE_DESC, ERROR_TYPE_DESC -> true;
-            case OPTIONAL_TYPE_DESC ->
-                    isNilResultTypeDescriptor(((OptionalTypeDescriptorNode) typeDescriptor).typeDescriptor());
-            case UNION_TYPE_DESC -> {
-                UnionTypeDescriptorNode union = (UnionTypeDescriptorNode) typeDescriptor;
-                yield isNilResultTypeDescriptor(union.leftTypeDesc())
-                        && isNilResultTypeDescriptor(union.rightTypeDesc());
-            }
-            default -> false;
-        };
-    }
 
-    /**
-     * Whether the given call is wrapped in a {@code check} expression/action in the source.
-     */
-    private static boolean isCheckedCall(NonTerminalNode callNode) {
-        SyntaxKind parentKind = callNode.parent().kind();
-        return parentKind == SyntaxKind.CHECK_ACTION || parentKind == SyntaxKind.CHECK_EXPRESSION;
-    }
 
     /**
      * Populates form properties for a {@code ctx->awaitHumanTask(...)} node from the existing source.
@@ -2202,10 +2172,6 @@ public class CodeAnalyzer extends NodeVisitor {
                             .advanced(false)
                             .build());
         }
-        // Restore checkError in the same editable shape the creation template uses, taken straight from
-        // the source: an unchecked call comes back with the box cleared so toSourceBuiltin() does not
-        // fall back to its default of adding `check`.
-        ActivityCallBuilder.addCheckErrorProperty(nodeBuilder, isCheckedCall(callNode));
 
         // Restore advanced callActivity params (retryOnError, timeout, etc.) as ADVANCED_PARAM_KEY
         // so toSourceBuiltin() / populateAdvancedArgs() can emit them as named arguments.
@@ -3934,22 +3900,11 @@ public class CodeAnalyzer extends NodeVisitor {
                             Property.VARIABLE_DOC, true, new HashSet<>(), true);
         } else if (nodeBuilder instanceof WaitDataBuilder) {
             // Variable/type info is embedded in the dataWaits property — skip generic handling
-        } else if (nodeBuilder instanceof ActivityCallBuilder && this.typedBindingPatternNode != null
-                && this.typedBindingPatternNode.bindingPattern().kind() == SyntaxKind.WILDCARD_BINDING_PATTERN) {
-            // `() _ = check ctx->callActivity(...)` is how an activity that returns nothing is written:
-            // the wildcard only supplies the contextually expected type for the dependently typed
+        } else if (nodeBuilder instanceof ActivityCallBuilder && bindsNothingNamed()) {
+            // An activity that returns nothing is written `() _ = check ctx->callActivity(...)`: the
+            // binding only supplies the contextually expected type for the dependently typed
             // callActivity, it is not a result the user named. Keep the form free of it, matching the
             // creation template, so the statement round-trips unchanged.
-        } else if (nodeBuilder instanceof ActivityCallBuilder && bindsNilResult()) {
-            // `error? r = ctx->callActivity(...)`: the activity produces no value, so what the statement
-            // names is the error. The creation template presents that through the Check Error branch and
-            // keeps the name in a root property the branch's Result field reads from, so the analysed
-            // node is given the same shape - a plain result variable here would be shadowed by the
-            // branch's own (empty) field, leaving the form blank.
-            ActivityCallBuilder.addNilResultVariableProperty(nodeBuilder,
-                    this.typedBindingPatternNode.bindingPattern().toSourceCode().strip());
-            ActivityCallBuilder.addCheckErrorProperty(nodeBuilder, false,
-                    ActivityCallBuilder.nilResultCheckErrorFields());
         } else if (nodeBuilder.properties().build().containsKey(Property.VARIABLE_KEY)
                 && !(nodeBuilder instanceof AgentCallBuilder)) {
             // VARIABLE_KEY already set (e.g. by populateBuiltinActivityProperties) — skip.
