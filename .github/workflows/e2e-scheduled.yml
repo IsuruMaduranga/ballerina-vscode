@@ -18,10 +18,23 @@ jobs:
   # Tests the VSIX schedule.yml already built and published, rather than rebuilding —
   # this workflow exists for flakiness signal, not fresh-code feedback (PR builds cover
   # that), so testing the same nightly build across all 4 daily runs is fine, and holds
-  # code constant so variance is attributable to test flakiness rather than code churn.
-  # The 'nightly' tag/release only moves once schedule.yml's build + LS tests succeed
-  # (see schedule.yml's Tag job), so it always points at the last known-good build —
-  # no separate handling is needed here for "what if last night's build failed".
+  # product code constant so variance is attributable to test flakiness rather than
+  # code churn. The 'nightly' tag/release only moves once schedule.yml's build + LS
+  # tests succeed (see schedule.yml's Tag job), so it always points at the last
+  # known-good build — no separate handling is needed here for "what if last night's
+  # build failed".
+  #
+  # Only the VSIX binary is pulled from that release, not the source tree: this job's
+  # own checkout stays on the default ref (whatever normally triggers this workflow),
+  # because every 'uses: ./.github/actions/...' step below resolves against whatever
+  # is actually checked out. Checking out the 'nightly' tag's commit here would make
+  # those local action references resolve against that older tree instead of this
+  # repo's current commits — breaking (permanently, not just once) whenever an action
+  # under .github/actions is added or changed, until a future nightly build happens to
+  # advance the tag past that change. The trade-off: test source and the installed
+  # VSIX are no longer commit-matched, so a test added/changed today could reference
+  # product behavior the last-built VSIX doesn't have yet — accepted as the smaller
+  # risk against a guaranteed-broken workflow.
   E2E:
     name: Run Ballerina e2e Test (${{ matrix.group }})
     timeout-minutes: 60
@@ -31,10 +44,9 @@ jobs:
         group: [group1, group2, group3, group4]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout nightly commit
+      - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: refs/tags/nightly
           persist-credentials: false
 
       - name: Download nightly VSIX
@@ -81,12 +93,38 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download E2E test results
+      # Downloaded per group into an explicit subfolder rather than one pattern-based
+      # call across all 4: download-artifact only nests results under a per-artifact
+      # subfolder when more than one artifact matches — if 3 of 4 groups never
+      # uploaded (e.g. cancelled before their `if: always()` upload step), the lone
+      # survivor would land flattened at the root with no group name to key off of.
+      - name: Download group1 test results
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         continue-on-error: true
         with:
-          pattern: Ballerina-e2e-test-results-linux-*-${{ github.run_attempt }}
-          path: e2e-results
+          name: Ballerina-e2e-test-results-linux-group1-${{ github.run_attempt }}
+          path: e2e-results/group1
+
+      - name: Download group2 test results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        continue-on-error: true
+        with:
+          name: Ballerina-e2e-test-results-linux-group2-${{ github.run_attempt }}
+          path: e2e-results/group2
+
+      - name: Download group3 test results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        continue-on-error: true
+        with:
+          name: Ballerina-e2e-test-results-linux-group3-${{ github.run_attempt }}
+          path: e2e-results/group3
+
+      - name: Download group4 test results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        continue-on-error: true
+        with:
+          name: Ballerina-e2e-test-results-linux-group4-${{ github.run_attempt }}
+          path: e2e-results/group4
 
       - name: Aggregate results
         id: aggregate

@@ -33,12 +33,16 @@ function findResultFiles(rootDir) {
   return found;
 }
 
-// A group name is derived from the artifact subfolder Playwright's JSON landed in,
-// e.g. Ballerina-e2e-test-results-linux-group2-1/test-results/e2e-results.json -> group2.
+// The caller downloads each matrix group's artifact into its own explicitly-named
+// subfolder (e2e-results/group1, e2e-results/group2, ...) rather than one pattern-based
+// download across all groups — so the group name is simply the first path segment
+// under rootDir. (A pattern-based download only nests per-artifact when more than one
+// artifact matches; with exactly one surviving group it flattens to the root, which a
+// folder-name regex here couldn't recover from — controlling the download layout
+// avoids that ambiguity entirely instead of guessing around it.)
 function groupNameFromPath(filePath, rootDir) {
   const rel = path.relative(rootDir, filePath);
-  const match = rel.match(/-(group\d+)-\d+[\\/]/);
-  return match ? match[1] : rel.split(path.sep)[0];
+  return rel.split(path.sep)[0];
 }
 
 function collectSpecs(suite, out) {
