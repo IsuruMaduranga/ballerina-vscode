@@ -716,6 +716,57 @@ const ChatInterface: React.FC = () => {
         }
     };
 
+    const parseAgentError = (error: unknown): { errorMessage: string; traceId?: string; executionSteps?: ExecutionStep[] } => {
+        let errorMessage = "An unknown error occurred";
+        let traceId: string | undefined;
+        let executionSteps: ExecutionStep[] | undefined;
+
+        // Try to parse structured error with trace information
+        if (error && typeof error === "object" && "message" in error) {
+            try {
+                const parsedError = JSON.parse(String(error.message));
+                if (parsedError.message && parsedError.traceInfo) {
+                    errorMessage = parsedError.message;
+                    traceId = parsedError.traceInfo.traceId;
+                    executionSteps = parsedError.traceInfo.executionSteps;
+                } else {
+                    // Fallback to regular error message
+                    errorMessage = String(error.message);
+                }
+            } catch (parseError) {
+                // If JSON parsing fails, use the original error message
+                errorMessage = String(error.message);
+            }
+        }
+
+        return { errorMessage, traceId, executionSteps };
+    };
+
+    const appendAgentResponse = (response: {
+        pendingApproval?: PendingApprovalInfo;
+        message: string;
+        traceId?: string;
+        executionSteps?: ExecutionStep[];
+    }) => {
+        if (response.pendingApproval) {
+            setMessages((prev) => [
+                ...prev,
+                { type: ChatMessageType.APPROVAL, text: "", isUser: false, pendingApproval: response.pendingApproval },
+            ]);
+        } else {
+            setMessages((prev) => [
+                ...prev,
+                {
+                    type: ChatMessageType.MESSAGE,
+                    text: response.message,
+                    isUser: false,
+                    traceId: response.traceId,
+                    executionSteps: response.executionSteps
+                },
+            ]);
+        }
+    };
+
     const handleSendMessage = async (text: string) => {
         if (!text.trim()) return;
 
@@ -724,46 +775,9 @@ const ChatInterface: React.FC = () => {
 
         try {
             const chatResponse = await rpcClient.getAgentChatRpcClient().getChatMessage({ message: text });
-
-            if (chatResponse.pendingApproval) {
-                setMessages((prev) => [
-                    ...prev,
-                    { type: ChatMessageType.APPROVAL, text: "", isUser: false, pendingApproval: chatResponse.pendingApproval },
-                ]);
-            } else {
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        type: ChatMessageType.MESSAGE,
-                        text: chatResponse.message,
-                        isUser: false,
-                        traceId: chatResponse.traceId,
-                        executionSteps: chatResponse.executionSteps
-                    },
-                ]);
-            }
+            appendAgentResponse(chatResponse);
         } catch (error) {
-            let errorMessage = "An unknown error occurred";
-            let traceId: string | undefined;
-            let executionSteps: ExecutionStep[] | undefined;
-
-            // Try to parse structured error with trace information
-            if (error && typeof error === "object" && "message" in error) {
-                try {
-                    const parsedError = JSON.parse(String(error.message));
-                    if (parsedError.message && parsedError.traceInfo) {
-                        errorMessage = parsedError.message;
-                        traceId = parsedError.traceInfo.traceId;
-                        executionSteps = parsedError.traceInfo.executionSteps;
-                    } else {
-                        // Fallback to regular error message
-                        errorMessage = String(error.message);
-                    }
-                } catch (parseError) {
-                    // If JSON parsing fails, use the original error message
-                    errorMessage = String(error.message);
-                }
-            }
+            const { errorMessage, traceId, executionSteps } = parseAgentError(error);
 
             console.error("Chat message error:", error);
 
@@ -801,46 +815,13 @@ const ChatInterface: React.FC = () => {
                 return updated;
             });
 
-            if (response.pendingApproval) {
-                setMessages((prev) => [
-                    ...prev,
-                    { type: ChatMessageType.APPROVAL, text: "", isUser: false, pendingApproval: response.pendingApproval },
-                ]);
-            } else if (response.message) {
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        type: ChatMessageType.MESSAGE,
-                        text: response.message,
-                        isUser: false,
-                        traceId: response.traceId,
-                        executionSteps: response.executionSteps
-                    },
-                ]);
-            }
+            appendAgentResponse(response);
         } catch (error) {
             if (sessionTokenRef.current !== requestToken) {
                 return;
             }
 
-            let errorMessage = "An unknown error occurred";
-            let traceId: string | undefined;
-            let executionSteps: ExecutionStep[] | undefined;
-
-            if (error && typeof error === "object" && "message" in error) {
-                try {
-                    const parsedError = JSON.parse(String(error.message));
-                    if (parsedError.message && parsedError.traceInfo) {
-                        errorMessage = parsedError.message;
-                        traceId = parsedError.traceInfo.traceId;
-                        executionSteps = parsedError.traceInfo.executionSteps;
-                    } else {
-                        errorMessage = String(error.message);
-                    }
-                } catch (parseError) {
-                    errorMessage = String(error.message);
-                }
-            }
+            const { errorMessage, traceId, executionSteps } = parseAgentError(error);
 
             console.error("Submit decision error:", error);
 
