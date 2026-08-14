@@ -125,6 +125,7 @@ import io.ballerina.compiler.syntax.tree.Token;
 import io.ballerina.compiler.syntax.tree.TransactionStatementNode;
 import io.ballerina.compiler.syntax.tree.TupleTypeDescriptorNode;
 import io.ballerina.compiler.syntax.tree.TypedBindingPatternNode;
+import io.ballerina.compiler.syntax.tree.UnionTypeDescriptorNode;
 import io.ballerina.compiler.syntax.tree.VariableDeclarationNode;
 import io.ballerina.compiler.syntax.tree.WaitActionNode;
 import io.ballerina.compiler.syntax.tree.WaitFieldsListNode;
@@ -1849,6 +1850,38 @@ public class CodeAnalyzer extends NodeVisitor {
         ActivityCallBuilder.addCheckErrorProperty(nodeBuilder, isCheckedCall(remoteMethodCallActionNode));
         // After activity input params, add retryPolicy at root level (outside ADVANCE_PARAM_LIST).
         addNormalizedRetryPolicyProperties(rawRetryPolicyValue);
+    }
+
+    /**
+     * Whether the statement being analysed binds a result that carries no value of its own — the shape
+     * {@code error? r = ctx->callActivity(...)} takes when the activity only reports failure.
+     *
+     * <p>The type is read from the semantic model rather than the written text: a node's source includes
+     * its leading minutiae, so a statement with a comment above it would carry that comment into the
+     * comparison.
+     */
+    private boolean bindsNilResult() {
+        return this.typedBindingPatternNode != null
+                && isNilResultTypeDescriptor(this.typedBindingPatternNode.typeDescriptor());
+    }
+
+    /**
+     * Whether the written type has no member that carries a value — every member is nil or an error.
+     * Read from the tree's shape rather than its text, since a node's source carries its leading
+     * minutiae and a comment above the statement would end up in the comparison.
+     */
+    private static boolean isNilResultTypeDescriptor(Node typeDescriptor) {
+        return switch (typeDescriptor.kind()) {
+            case NIL_TYPE_DESC, ERROR_TYPE_DESC -> true;
+            case OPTIONAL_TYPE_DESC ->
+                    isNilResultTypeDescriptor(((OptionalTypeDescriptorNode) typeDescriptor).typeDescriptor());
+            case UNION_TYPE_DESC -> {
+                UnionTypeDescriptorNode union = (UnionTypeDescriptorNode) typeDescriptor;
+                yield isNilResultTypeDescriptor(union.leftTypeDesc())
+                        && isNilResultTypeDescriptor(union.rightTypeDesc());
+            }
+            default -> false;
+        };
     }
 
     /**
@@ -3907,6 +3940,16 @@ public class CodeAnalyzer extends NodeVisitor {
             // the wildcard only supplies the contextually expected type for the dependently typed
             // callActivity, it is not a result the user named. Keep the form free of it, matching the
             // creation template, so the statement round-trips unchanged.
+        } else if (nodeBuilder instanceof ActivityCallBuilder && bindsNilResult()) {
+            // `error? r = ctx->callActivity(...)`: the activity produces no value, so what the statement
+            // names is the error. The creation template presents that through the Check Error branch and
+            // keeps the name in a root property the branch's Result field reads from, so the analysed
+            // node is given the same shape - a plain result variable here would be shadowed by the
+            // branch's own (empty) field, leaving the form blank.
+            ActivityCallBuilder.addNilResultVariableProperty(nodeBuilder,
+                    this.typedBindingPatternNode.bindingPattern().toSourceCode().strip());
+            ActivityCallBuilder.addCheckErrorProperty(nodeBuilder, false,
+                    ActivityCallBuilder.nilResultCheckErrorFields());
         } else if (nodeBuilder.properties().build().containsKey(Property.VARIABLE_KEY)
                 && !(nodeBuilder instanceof AgentCallBuilder)) {
             // VARIABLE_KEY already set (e.g. by populateBuiltinActivityProperties) — skip.

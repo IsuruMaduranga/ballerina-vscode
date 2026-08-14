@@ -14,6 +14,10 @@ function eventWorkflow(workflow:Context ctx, string message) returns error? {
     // Unchecked call: the error is part of the result value
     int|error count = ctx->callActivity(countEvents, {});
     io:println(count);
+
+    // Unchecked call to an activity with no return value: the error itself is the named result
+    error? r = ctx->callActivity(logEvent, {message: message});
+    io:println(r);
 }
 
 # Activity with no return value

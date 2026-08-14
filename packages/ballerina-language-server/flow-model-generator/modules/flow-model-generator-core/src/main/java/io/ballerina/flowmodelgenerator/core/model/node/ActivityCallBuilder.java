@@ -123,9 +123,6 @@ public class ActivityCallBuilder extends CallBuilder {
     public static final String RETRY_DELAY_KEY = "retryDelay";
     public static final String RETRY_BACKOFF_KEY = "retryBackoff";
     public static final String MAX_RETRY_DELAY_KEY = "maxRetryDelay";
-    // The AutoRetry branch's collapsible group; it holds the tuning fields, not a value of its own.
-    public static final String AUTO_RETRY_OPTIONS_KEY = "autoRetryOptions";
-    public static final String ADVANCED_RETRY_CONFIGURATIONS = "Advanced Configurations";
     // retryPolicy is excluded from ADVANCE_PARAM_LIST; it is added at root level as a DROPDOWN_CHOICE.
     public static final Set<String> EXCLUDED_CALL_ACTIVITY_PARAMS = Set.of("activityFunction", "args", "T",
             CHECK_ERROR_KEY, Property.CONNECTION_KEY, RETRY_POLICY_PARAM);
@@ -343,7 +340,7 @@ public class ActivityCallBuilder extends CallBuilder {
      * The Check Error branches for an activity that produces no value: unticking the box reveals the
      * Result field that names the {@code error?} the call yields.
      */
-    private static Map<String, Map<String, Property>> nilResultCheckErrorFields() {
+    public static Map<String, Map<String, Property>> nilResultCheckErrorFields() {
         Property resultField = new Property.Builder<Void>(null)
                 .metadata()
                     .label(Property.RESULT_NAME)
@@ -367,8 +364,17 @@ public class ActivityCallBuilder extends CallBuilder {
      * the same activity do not collide when both are unchecked.
      */
     private static void addNilResultVariableProperty(NodeBuilder nodeBuilder, TemplateContext context) {
-        String variableName = NameUtil.generateTypeName(DEFAULT_NIL_RESULT_VARIABLE,
-                context.getAllVisibleSymbolNames());
+        addNilResultVariableProperty(nodeBuilder, NameUtil.generateTypeName(DEFAULT_NIL_RESULT_VARIABLE,
+                context.getAllVisibleSymbolNames()));
+    }
+
+    /**
+     * Adds the root property carrying the result name for an activity that produces no value, with the
+     * name the form (or the existing statement) gave it. The source analysis path uses this so a
+     * statement read back carries its name where the Check Error branch's Result field reads from,
+     * rather than as a result variable of its own that the branch field would then shadow.
+     */
+    public static void addNilResultVariableProperty(NodeBuilder nodeBuilder, String variableName) {
         nodeBuilder.properties().custom()
                 .metadata()
                     .label(Property.RESULT_NAME)
@@ -420,7 +426,7 @@ public class ActivityCallBuilder extends CallBuilder {
      * Whether the given result type carries no value of its own — the activity's outcome is only whether
      * it failed. Such a call has nothing to bind when its errors are checked.
      */
-    private static boolean isNilResultType(String resultType) {
+    public static boolean isNilResultType(String resultType) {
         String type = resultType.strip();
         return type.equals(NIL_RESULT_TYPE) || type.equals("error") || type.equals(NIL_UNCHECKED_RESULT_TYPE);
     }
@@ -572,9 +578,9 @@ public class ActivityCallBuilder extends CallBuilder {
      * <p>Sub-properties inside {@code dynamicFormFields.AutoRetry} intentionally carry empty values.
      * The UI reads the actual value from the matching root hidden property (by key name) and writes
      * edits back there, exactly like the {@code method}/{@code message} pattern in
-     * {@link io.ballerina.flowmodelgenerator.core.model.node.builtin.RestActivityStrategy}. The AutoRetry
-     * branch nests those sub-properties in a {@code GROUP_SECTION} ({@link #AUTO_RETRY_OPTIONS_KEY}) so they
-     * render as optional fields behind an Expand toggle rather than as required inputs.
+     * {@link io.ballerina.flowmodelgenerator.core.model.node.builtin.RestActivityStrategy}. The dropdown is
+     * advanced, so it and the fields of the selected branch render in the form's advanced configurations
+     * alongside the Check Error flag — one heading for the whole set of call options.
      */
     public static void addRetryPolicyFormProperties(NodeBuilder nodeBuilder, String retryPolicyValue,
                                                     String maxRetries, String retryDelay,
@@ -623,11 +629,10 @@ public class ActivityCallBuilder extends CallBuilder {
 
         Map<String, Map<String, Property>> dynamicFields = new LinkedHashMap<>();
         dynamicFields.put(NO_RETRY_VALUE, Map.of());
-        // The tuning fields sit behind the AutoRetry branch's collapsible group instead of being
-        // presented up front: none of them has to be filled in, and every one left empty falls back
-        // to the AutoRetry record's own default.
-        dynamicFields.put(AUTO_RETRY_VALUE, Map.of(AUTO_RETRY_OPTIONS_KEY,
-                buildAutoRetryOptionsGroup(autoRetryFields)));
+        // The tuning fields render with the dropdown inside the form's advanced configurations: none
+        // of them has to be filled in, and every one left empty falls back to the AutoRetry record's
+        // own default.
+        dynamicFields.put(AUTO_RETRY_VALUE, autoRetryFields);
         Map<String, Property> manualRetryFields = new LinkedHashMap<>();
         manualRetryFields.put(RETRY_USER_ROLES_KEY, buildRetrySubProperty("Reviewer Roles",
                 "Role(s) permitted to decide the human review, e.g. \"manager\" or "
@@ -650,6 +655,9 @@ public class ActivityCallBuilder extends CallBuilder {
                     .stepOut()
                 .value(selectedValue)
                 .editable(true)
+                // Renders in the form's advanced configurations with the Check Error flag: the policy
+                // and its tuning are one set of call options, under one heading.
+                .advanced(true)
                 .itemOptions(ItemOption.from(options))
                 .dynamicFormFields(dynamicFields)
                 .stepOut()
@@ -684,27 +692,6 @@ public class ActivityCallBuilder extends CallBuilder {
                 .build();
     }
 
-    /**
-     * The collapsible group that holds the AutoRetry tuning fields. A DROPDOWN_CHOICE branch renders its
-     * plain fields inline but hides everything optional, so the fields are carried as the group's
-     * {@code advanceProperties} — the UI shows them behind the group's Expand toggle, where being optional
-     * only means they carry no required marker.
-     */
-    private static Property buildAutoRetryOptionsGroup(Map<String, Property> autoRetryFields) {
-        return new Property.Builder<Void>(null)
-                .metadata()
-                    .label(ADVANCED_RETRY_CONFIGURATIONS)
-                    .description("Optional tuning for the automatic retries. A field left empty uses the "
-                            + "engine default: 3 attempts, a 1.0 second initial delay doubling on each "
-                            + "retry, and no cap on the delay.")
-                    .stepOut()
-                .type().fieldType(Property.ValueType.GROUP_SECTION).selected(true).stepOut()
-                .value("")
-                .editable(true)
-                .optional(true)
-                .advanceProperties(autoRetryFields)
-                .build();
-    }
 
     private static void addHiddenRetrySubFieldProperty(NodeBuilder nodeBuilder, String key,
                                                        String label, String description,
