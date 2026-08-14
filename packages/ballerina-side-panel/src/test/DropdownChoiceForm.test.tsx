@@ -58,3 +58,61 @@ describe("DropdownChoiceForm", () => {
         expect(getForm().getValues("kind")).toBe("TCP");
     });
 });
+
+// A branch's fields belong to the branch whether or not they must be filled in: optional there means
+// the field carries no required marker. Filtering them out once left the Auto Retry policy with an
+// empty branch, so the distinction is pinned here.
+const fieldWithBranch = (branchField: Partial<FormField>): FormField =>
+    ({
+        key: "retryPolicy",
+        label: "Retry Policy",
+        type: "SINGLE_SELECT",
+        items: ["NoRetry", "AutoRetry"],
+        value: "AutoRetry",
+        optional: false,
+        editable: true,
+        enabled: true,
+        documentation: "",
+        dynamicFormFields: {
+            NoRetry: [],
+            AutoRetry: [
+                {
+                    key: "maxRetries",
+                    label: "Max Retries",
+                    type: "STRING",
+                    types: [{ fieldType: "STRING", selected: true }],
+                    value: "",
+                    editable: true,
+                    enabled: true,
+                    documentation: "Maximum retry attempts (default: 3)",
+                    ...branchField,
+                } as unknown as FormField,
+            ],
+        },
+    } as unknown as FormField);
+
+describe("DropdownChoiceForm branch fields", () => {
+    it("renders an optional field of the selected branch", () => {
+        const { container } = renderWithForm(
+            <DropdownChoiceForm field={fieldWithBranch({ optional: true })} />,
+            { defaultValues: { retryPolicy: "AutoRetry" } }
+        );
+        expect(container.textContent ?? "").toContain("Max Retries");
+    });
+
+    it("renders a required field of the selected branch", () => {
+        const { container } = renderWithForm(
+            <DropdownChoiceForm field={fieldWithBranch({ optional: false })} />,
+            { defaultValues: { retryPolicy: "AutoRetry" } }
+        );
+        expect(container.textContent ?? "").toContain("Max Retries");
+    });
+
+    it("leaves a hidden branch field out", () => {
+        const { container } = renderWithForm(
+            <DropdownChoiceForm field={fieldWithBranch({ optional: true, hidden: true })} />,
+            { defaultValues: { retryPolicy: "AutoRetry" } }
+        );
+        expect(container.textContent ?? "").not.toContain("Max Retries");
+    });
+});
