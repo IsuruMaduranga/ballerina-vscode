@@ -31,6 +31,8 @@ import {
 import { openView, StateMachine } from "../../stateMachine";
 import { ServiceDesignerRpcManager } from "../../rpc-managers/service-designer/rpc-manager";
 import { BiDiagramRpcManager } from "../../rpc-managers/bi-diagram/rpc-manager";
+import { extension } from "../../BalExtensionContext";
+import { addConfigFile, getConfigFilePath } from "../ai/utils";
 import {
     clearPendingIntegrationPointer,
     isPendingPointerFresh,
@@ -309,6 +311,9 @@ async function generatePendingArtifact(
                 flowNode: payload.flowNode,
                 isFunctionNodeUpdate: true,
             });
+            if (payload.flowNode.codedata?.node === "DURABLE_AGENT") {
+                await configureDurableAgentModelProvider(projectRoot);
+            }
             if (landOnPackageOverview) {
                 openPackageOverview(projectRoot);
             }
@@ -326,6 +331,25 @@ async function generatePendingArtifact(
         }
         default:
             throw new Error(`Unsupported artifact kind: ${(payload as PendingIntegrationArtifactPayload).kind}`);
+    }
+}
+
+/**
+ * Writes the WSO2 default model provider's Config.toml entry for a durable agent generated
+ * into a fresh package. The generation itself declares the `wso2ModelProvider` variable, but
+ * without the `[ballerina.ai.wso2ProviderConfig]` values the agent fails at startup. The
+ * package root is already known here, so the config file is targeted directly (no project
+ * quick-pick). Failures are non-fatal: the agent exists and the provider can be configured
+ * from the agent's model circle.
+ */
+async function configureDurableAgentModelProvider(projectRoot: string): Promise<void> {
+    try {
+        const configPath = await getConfigFilePath(extension.ballerinaExtInstance, projectRoot);
+        if (configPath) {
+            await addConfigFile(configPath, "model");
+        }
+    } catch (error) {
+        console.error("[IntegrationWizard] Failed to configure the default model provider:", error);
     }
 }
 
