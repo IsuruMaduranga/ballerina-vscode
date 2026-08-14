@@ -2,6 +2,8 @@ name: 'Resolve source branch'
 description: >-
   Resolve the branch a nightly-style pipeline should run against: an explicit
   override if given, otherwise the latest staging/* branch if one exists, else main.
+  Runs 'git ls-remote --heads origin', so the calling job must check out the
+  repository (any ref) before this step, to have the 'origin' remote configured.
 inputs:
   sourceBranch:
     description: 'Explicit branch to use. Leave blank to auto-select.'

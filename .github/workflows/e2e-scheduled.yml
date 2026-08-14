@@ -4,14 +4,6 @@ on:
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
-    inputs:
-      sourceBranch:
-        description: >-
-          Branch to run the E2E suite against. Leave blank to auto-select: the
-          latest staging/* branch if one exists, otherwise main.
-        required: false
-        type: string
-        default: ''
 
 permissions:
   contents: read
@@ -23,45 +15,138 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  resolve-branch:
-    name: Resolve source branch
-    runs-on: ubuntu-latest
-    outputs:
-      branch: ${{ steps.resolve.outputs.branch }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Resolve source branch
-        id: resolve
-        uses: ./.github/actions/resolve-source-branch
-        with:
-          sourceBranch: ${{ inputs.sourceBranch }}
-
+  # Tests the VSIX schedule.yml already built and published, rather than rebuilding —
+  # this workflow exists for flakiness signal, not fresh-code feedback (PR builds cover
+  # that), so testing the same nightly build across all 4 daily runs is fine, and holds
+  # code constant so variance is attributable to test flakiness rather than code churn.
+  # The 'nightly' tag/release only moves once schedule.yml's build + LS tests succeed
+  # (see schedule.yml's Tag job), so it always points at the last known-good build —
+  # no separate handling is needed here for "what if last night's build failed".
   E2E:
-    name: Run E2E suite
-    needs: resolve-branch
-    uses: ./.github/workflows/reusable-build.yml
-    secrets:
-      COPILOT_ROOT_URL: ${{ secrets.COPILOT_ROOT_URL }}
-      COPILOT_DEV_ROOT_URL: ${{ secrets.COPILOT_DEV_ROOT_URL }}
-      APPINSIGHTS_INSTRUMENTATION_KEY: ${{ secrets.APPINSIGHTS_INSTRUMENTATION_KEY }}
-    with:
-      ref: ${{ needs.resolve-branch.outputs.branch }}
-      runOnAWS: false
-      isPreRelease: true
-      nightly: false
-      ballerina: false
-      isReleaseBuild: false
-      runFastTests: false
-      runBalE2ETests: true
-      runLSTests: false
+    name: Run Ballerina e2e Test (${{ matrix.group }})
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [group1, group2, group3, group4]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout nightly commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: refs/tags/nightly
+
+      - name: Download nightly VSIX
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p packages/ballerina-extension/vsix
+          gh release download nightly --repo "${{ github.repository }}" \
+            --pattern 'ballerina-*.vsix' --dir packages/ballerina-extension/vsix --clobber
+
+      - name: Setup Rush
+        uses: gigara/setup-rush@7ba3446572d15f5eacc85de383ad9679dfb7223c # v1.2.0
+        with:
+          pnpm: 10.10.0
+          node: 22.x
+          rush-install: true
+
+      - name: Build playwright-vscode-tester
+        # The only in-repo build dependency the e2e harness has once the ballerina VSIX
+        # is supplied externally: its compiled lib/ is gitignored, and rush install only
+        # links dependencies, it doesn't build them. Targeted so it doesn't pull in the
+        # full ballerina extension build.
+        run: rush build -t @wso2/playwright-vscode-tester
+
+      - name: Install Ballerina distribution
+        uses: ./.github/actions/setup-ballerina
+
+      - name: Check for previous test results
+        shell: bash
+        if: github.run_attempt > 1
+        run: |
+          PREVIOUS_ATTEMPT=$((${{ github.run_attempt }} - 1))
+          echo "PREVIOUS_ATTEMPT=$PREVIOUS_ATTEMPT" >> $GITHUB_ENV
+
+      - name: Download previous test results
+        id: check-results
+        if: github.run_attempt > 1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        continue-on-error: true
+        with:
+          name: Ballerina-e2e-test-results-linux-${{ matrix.group }}-${{ env.PREVIOUS_ATTEMPT }}
+          path: packages/ballerina-extension/test-results
+
+      - name: Install packages
+        shell: bash
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y xvfb ffmpeg gnome-keyring libsecret-1.0 dbus-x11
+          cd packages/ballerina-extension && npx playwright install
+
+      - name: Run Ballerina e2e Test (First Attempt)
+        shell: bash
+        id: run-tests-first
+        if: github.run_attempt == 1 || steps.check-results.outcome == 'failure'
+        continue-on-error: true
+        env:
+          # A distinct filename from the re-run's report below: both are full Playwright
+          # JSON reports written by separate CLI invocations, so a shared name would let
+          # the re-run silently overwrite the first attempt's results instead of adding
+          # to them — aggregate-e2e-results.js merges both by matching this prefix.
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/e2e-results-first.json
+        run: |
+          export $(dbus-launch)
+          export DISPLAY=:98.0
+          cd packages/ballerina-extension
+          xvfb-run --server-num 98.0 -s "-ac -screen 0 1920x1080x24" bash -c "ffmpeg -y -nostdin -f x11grab -r 30 -s 1920x1080 -i :98.0 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -movflags +faststart -hide_banner -loglevel error record.mp4 & pnpm exec playwright test -c e2e-test/playwright.config.js --grep ${{ matrix.group }}"
+
+      - name: Run Failed Ballerina e2e Test (Re-run)
+        shell: bash
+        if: steps.run-tests-first.outcome == 'failure' || steps.check-results.outcome == 'success'
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/e2e-results-rerun.json
+        run: |
+          rm -rf packages/ballerina-extension/e2e-test/data/new-project
+          export $(dbus-launch)
+          export DISPLAY=:98.0
+          cd packages/ballerina-extension
+          xvfb-run --server-num 98.0 -s "-ac -screen 0 1920x1080x24" bash -c "ffmpeg -y -nostdin -f x11grab -r 30 -s 1920x1080 -i :98.0 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -movflags +faststart -hide_banner -loglevel error record.mp4 & pnpm exec playwright test -c e2e-test/playwright.config.js --grep ${{ matrix.group }} --last-failed"
+
+      - name: Upload Ballerina e2e Test results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: Ballerina-e2e-test-results-linux-${{ matrix.group }}-${{ github.run_attempt }}
+          path: packages/ballerina-extension/test-results/**
+          retention-days: 5
+          include-hidden-files: true
+
+      - name: Upload Ballerina e2e Test recordings
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: Ballerina-e2e-test-recording-linux-${{ matrix.group }}-${{ github.run_attempt }}
+          path: |
+            packages/ballerina-extension/e2e-test/test-resources/videos/**
+            packages/ballerina-extension/e2e-test/test-resources/screenshots/**
+            packages/ballerina-extension/e2e-test/test-resources/snapshots/**
+            packages/ballerina-extension/record.mp4
+          retention-days: 5
+
+      - name: Upload Ballerina e2e Test project data
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: Ballerina-e2e-test-project-linux-${{ matrix.group }}-${{ github.run_attempt }}
+          path: |
+            packages/ballerina-extension/e2e-test/data/new-project/**
+          retention-days: 5
 
   Report:
     name: Aggregate flakiness report
-    needs:
-      - resolve-branch
-      - E2E
+    needs: E2E
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -81,9 +166,15 @@ jobs:
 
       - name: Aggregate results
         id: aggregate
+        shell: bash
         env:
-          E2E_SOURCE_BRANCH: ${{ needs.resolve-branch.outputs.branch }}
-        run: node .github/scripts/aggregate-e2e-results.js e2e-results e2e-run-stats.jsonl | tee -a "$GITHUB_STEP_SUMMARY"
+          # Every run tests the same 'nightly' tag/release now, not a freshly resolved
+          # branch — this labels the history data accordingly.
+          E2E_SOURCE_BRANCH: builds/nightly
+        run: |
+          set -o pipefail
+          node .github/scripts/aggregate-e2e-results.js e2e-results e2e-run-stats.jsonl \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Persist run stats
         if: ${{ always() && github.repository == 'ballerina-platform/ballerina-vscode' }}
@@ -95,21 +186,29 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin e2e-metrics || true
-          if git show-ref --verify --quiet refs/remotes/origin/e2e-metrics; then
-            git checkout -B e2e-metrics origin/e2e-metrics
-          else
-            git checkout --orphan e2e-metrics
-            git rm -rf --quiet . || true
-          fi
-          mkdir -p history
-          cat e2e-run-stats.jsonl >> history/e2e-history.jsonl
-          git add history/e2e-history.jsonl
-          git commit -m "E2E stats: run ${{ github.run_id }} attempt ${{ github.run_attempt }}"
-          git push origin e2e-metrics
+
+          for attempt in 1 2 3; do
+            git fetch origin e2e-metrics || true
+            if git show-ref --verify --quiet refs/remotes/origin/e2e-metrics; then
+              git checkout -B e2e-metrics origin/e2e-metrics
+            else
+              git checkout --orphan e2e-metrics
+              git rm -rf --quiet . || true
+            fi
+            mkdir -p history
+            cat e2e-run-stats.jsonl >> history/e2e-history.jsonl
+            git add history/e2e-history.jsonl
+            git commit -m "E2E stats: run ${{ github.run_id }} attempt ${{ github.run_attempt }}"
+            if git push origin e2e-metrics; then
+              break
+            fi
+            echo "Push to e2e-metrics rejected (non-fast-forward?), retrying ($attempt/3)..."
+            git reset --hard HEAD^
+            sleep $((attempt * 5))
+          done
 
       - name: Notify on failure
-        if: ${{ always() && (steps.aggregate.outcome == 'failure' || contains(needs.*.result, 'failure')) && github.repository == 'ballerina-platform/ballerina-vscode' }}
+        if: ${{ always() && (steps.aggregate.outcome == 'failure' || needs.E2E.result != 'success') && github.repository == 'ballerina-platform/ballerina-vscode' }}
         uses: ./.github/actions/failure-notification
         with:
           title: "Scheduled E2E Tests Failed"
