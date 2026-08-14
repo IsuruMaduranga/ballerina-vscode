@@ -80,16 +80,13 @@ import java.util.Set;
  * @param dynamicFormFields maps dropdown option values to their conditional sub-fields keyed by property name
  *                          (for DropdownChoiceForm)
  * @param itemOptions       dropdown item options for DROPDOWN_CHOICE fields (id, content, value)
- * @param advanceProperties the child properties of a GROUP_SECTION property, keyed by property name; the UI
- *                          renders them behind the group's Expand/Collapse toggle
  * @since 1.0.0
  */
 public record Property(Metadata metadata, List<PropertyType> types, Object value, Object oldValue,
                        String placeholder, boolean optional, boolean editable, boolean advanced, boolean hidden,
                        Boolean modified, Diagnostics diagnostics, PropertyCodedata codedata, Object advancedValue,
                        Map<String, String> imports, String defaultValue, CommentProperty comment,
-                       Map<String, Map<String, Property>> dynamicFormFields, List<ItemOption> itemOptions,
-                       Map<String, Property> advanceProperties) {
+                       Map<String, Map<String, Property>> dynamicFormFields, List<ItemOption> itemOptions) {
 
     private static final Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
@@ -377,11 +374,6 @@ public record Property(Metadata metadata, List<PropertyType> types, Object value
         ADVANCE_PARAM_LIST,
         DROPDOWN_CHOICE,
         /**
-         * A property type that renders a labelled group with an Expand/Collapse toggle. The group's child
-         * properties are carried in {@link Property#advanceProperties()} and render behind that toggle.
-         */
-        GROUP_SECTION,
-        /**
          * A property type that renders a connection picker in the UI. The compatible
          * connection kinds are advertised through {@link PropertyCodedata#searchNodesKind()}.
          * The property value carries the picked connection variable name, or
@@ -419,7 +411,6 @@ public record Property(Metadata metadata, List<PropertyType> types, Object value
         private CommentProperty commentProperty;
         private Map<String, Map<String, Property>> dynamicFormFields;
         private List<ItemOption> itemOptions;
-        private Map<String, Property> advanceProperties;
 
         /**
          * Creates a builder pre-populated with all fields from an existing property.
@@ -462,8 +453,6 @@ public record Property(Metadata metadata, List<PropertyType> types, Object value
             }
             builder.itemOptions = original.itemOptions() != null
                     ? new ArrayList<>(original.itemOptions()) : null;
-            builder.advanceProperties = original.advanceProperties() != null
-                    ? new LinkedHashMap<>(original.advanceProperties()) : null;
             if (original.metadata() != null) {
                 builder.metadataBuilder = new Metadata.Builder<>(builder);
                 builder.metadataBuilder.label(original.metadata().label())
@@ -621,11 +610,6 @@ public record Property(Metadata metadata, List<PropertyType> types, Object value
 
         public Builder<T> itemOptions(List<ItemOption> itemOptions) {
             this.itemOptions = itemOptions;
-            return this;
-        }
-
-        public Builder<T> advanceProperties(Map<String, Property> advanceProperties) {
-            this.advanceProperties = advanceProperties;
             return this;
         }
 
@@ -1428,7 +1412,7 @@ public record Property(Metadata metadata, List<PropertyType> types, Object value
                     diagnosticsBuilder == null ? null : diagnosticsBuilder.build(),
                     codedataBuilder == null ? null : codedataBuilder.build(), advancedValue,
                     imports == null ? null : imports, defaultValue, commentProperty, dynamicFormFields,
-                    itemOptions, advanceProperties);
+                    itemOptions);
             this.metadataBuilder = null;
             this.types = new ArrayList<>();
             this.value = null;
@@ -1446,7 +1430,6 @@ public record Property(Metadata metadata, List<PropertyType> types, Object value
             this.imports = null;
             this.dynamicFormFields = null;
             this.itemOptions = null;
-            this.advanceProperties = null;
             return property;
         }
     }

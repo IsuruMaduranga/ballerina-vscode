@@ -316,8 +316,7 @@ public class AiUtils {
                 originalProperty.defaultValue(),
                 originalProperty.comment(),
                 originalProperty.dynamicFormFields(),
-                originalProperty.itemOptions(),
-                originalProperty.advanceProperties()
+                originalProperty.itemOptions()
         );
     }
 
@@ -350,8 +349,7 @@ public class AiUtils {
                 original.defaultValue(),
                 original.comment(),
                 original.dynamicFormFields(),
-                original.itemOptions(),
-                original.advanceProperties()
+                original.itemOptions()
         );
     }
 
@@ -399,8 +397,7 @@ public class AiUtils {
                 original.defaultValue(),
                 original.comment(),
                 original.dynamicFormFields(),
-                original.itemOptions(),
-                original.advanceProperties()
+                original.itemOptions()
         );
     }
 
@@ -435,8 +432,7 @@ public class AiUtils {
                 original.defaultValue(),
                 original.comment(),
                 original.dynamicFormFields(),
-                original.itemOptions(),
-                original.advanceProperties()
+                original.itemOptions()
         );
     }
 
@@ -486,8 +482,7 @@ public class AiUtils {
                 property.defaultValue(),
                 property.comment(),
                 property.dynamicFormFields(),
-                property.itemOptions(),
-                property.advanceProperties()
+                property.itemOptions()
         );
         nodeBuilder.properties().build().put(key, copied);
     }
@@ -1983,8 +1978,7 @@ public class AiUtils {
                 property.defaultValue(),
                 property.comment(),
                 property.dynamicFormFields(),
-                property.itemOptions(),
-                property.advanceProperties()
+                property.itemOptions()
         );
     }
 
