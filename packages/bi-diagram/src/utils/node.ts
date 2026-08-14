@@ -107,6 +107,32 @@ export function getAgentDataEventName(node?: FlowNode) {
     return (node?.metadata?.data as { dataName?: string } | undefined)?.dataName;
 }
 
+/**
+ * A property value as it should be read: a string value arrives quoted when the statement carried a
+ * string literal, and the quotes are not part of what the node names.
+ */
+export function normalizeNodePropertyValue(value?: string): string {
+    if (typeof value !== "string") {
+        return "";
+    }
+
+    return value.trim().replace(/^["']|["']$/g, "");
+}
+
+/**
+ * The bare function name of a workflow a node targets. The value reaches the widget in whatever
+ * shape the statement wrote it — quoted, module-qualified (`orders:orderWorkflow`), or as a call
+ * (`orderWorkflow(...)`) — and only the name resolves to a location.
+ */
+export function getWorkflowFunctionName(value?: string): string {
+    const normalizedValue = normalizeNodePropertyValue(value);
+    if (!normalizedValue) {
+        return "";
+    }
+
+    return normalizedValue.split(":").pop()?.split("(")[0]?.trim() ?? normalizedValue;
+}
+
 export interface DiffStatePresentation {
     symbol: "+" | "−" | "~";
     label: "Added" | "Removed" | "Modified";

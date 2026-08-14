@@ -32,6 +32,7 @@ import {
     getDiffContainerStyles,
     getDiffTitleStyles,
     nodeHasError,
+    normalizeNodePropertyValue,
 } from "../../../utils/node";
 import { WaitDataNodeModel } from "./WaitDataNodeModel";
 import {
@@ -177,14 +178,6 @@ interface WaitDataNodeWidgetProps {
     model: WaitDataNodeModel;
     engine: DiagramEngine;
     onClick?: (node: FlowNode) => void;
-}
-
-function normalizeNodePropertyValue(value?: string): string {
-    if (typeof value !== "string") {
-        return "";
-    }
-
-    return value.trim().replace(/^["']|["']$/g, "");
 }
 
 function getWaitDataInfo(node: FlowNode): { title: string; subtitle: string } {
