@@ -56,11 +56,14 @@ import io.ballerina.compiler.syntax.tree.MappingConstructorExpressionNode;
 import io.ballerina.compiler.syntax.tree.MappingFieldNode;
 import io.ballerina.compiler.syntax.tree.ModulePartNode;
 import io.ballerina.compiler.syntax.tree.NamedArgumentNode;
+import io.ballerina.compiler.syntax.tree.Node;
 import io.ballerina.compiler.syntax.tree.NonTerminalNode;
 import io.ballerina.compiler.syntax.tree.PositionalArgumentNode;
+import io.ballerina.compiler.syntax.tree.QualifiedNameReferenceNode;
 import io.ballerina.compiler.syntax.tree.SeparatedNodeList;
 import io.ballerina.compiler.syntax.tree.SpecificFieldNode;
 import io.ballerina.compiler.syntax.tree.StatementNode;
+import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.flowmodelgenerator.core.model.AvailableNode;
 import io.ballerina.flowmodelgenerator.core.model.Category;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
@@ -1732,8 +1735,10 @@ public class AiUtils {
      * Reports whether a tool function is gated for human-in-the-loop approval, by reading its
      * {@code @ai:AgentTool} annotation from the syntax tree. The tool is gated when a
      * {@code requiresApproval} field is present with any value other than the literal {@code false}
-     * (i.e. {@code true} or a predicate-function reference). A bare {@code @ai:AgentTool}, an explicit
-     * {@code requiresApproval: false}, or a missing field are all not gated.
+     * (i.e. {@code true}, a predicate-function reference, or any other non-literal-{@code false}
+     * expression such as a {@code boolean}-typed reference that itself evaluates to false). A bare
+     * {@code @ai:AgentTool}, an explicit {@code requiresApproval: false}, or a missing field are all
+     * not gated.
      * <p>
      * The annotation value is read syntactically rather than via
      * {@code AnnotationAttachmentSymbol.attachmentValue()} because the AgentTool config record has a
@@ -1741,41 +1746,63 @@ public class AiUtils {
      * compiler's constant-value construction throw for every AgentTool annotation.
      */
     public static boolean readRequiresApproval(Symbol toolSymbol, Project project) {
+        if (!(toolSymbol instanceof FunctionSymbol functionSymbol)
+                || !hasAiAnnotation(functionSymbol.annotAttachments(), AGENT_TOOL_ANNOT)) {
+            return false;
+        }
         try {
-            Optional<Location> location = toolSymbol.getLocation();
+            Optional<Location> location = functionSymbol.getLocation();
             if (location.isEmpty()) {
                 return false;
             }
-            Document document = CommonUtils.getDocument(project, location.get());
-            NonTerminalNode node = CommonUtil.findNode(toolSymbol, document.syntaxTree()).orElse(null);
-            while (node != null && !(node instanceof FunctionDefinitionNode)) {
-                node = node.parent();
-            }
-            if (node == null) {
-                return false;
-            }
-            FunctionDefinitionNode functionDefinition = (FunctionDefinitionNode) node;
-            if (functionDefinition.metadata().isEmpty()) {
-                return false;
-            }
-            for (AnnotationNode annotation : functionDefinition.metadata().get().annotations()) {
-                if (!annotation.annotReference().toSourceCode().trim().endsWith(AGENT_TOOL_ANNOT)) {
+            Optional<ModuleID> module = functionSymbol.getModule().map(ModuleSymbol::id);
+            String org = module.map(ModuleID::orgName).orElse(null);
+            String packageName = module.map(ModuleID::packageName).orElse(null);
+            for (Project owner : getProjectsForModule(org, packageName, project)) {
+                Document document = CommonUtils.getDocument(owner, location.get());
+                if (document == null) {
                     continue;
                 }
-                return annotation.annotValue()
-                        .flatMap(mapping -> mapping.fields().stream()
-                                .filter(field -> field instanceof SpecificFieldNode specificField
-                                        && REQUIRES_APPROVAL.equals(specificField.fieldName().toSourceCode().trim()))
-                                .map(field -> (SpecificFieldNode) field)
-                                .findFirst())
-                        // Gated unless the value is the literal `false`; absent field -> not gated.
-                        .map(specificField -> !"false".equals(
-                                specificField.valueExpr().map(expr -> expr.toSourceCode().trim()).orElse("")))
-                        .orElse(false);
+                NonTerminalNode node = CommonUtil.findNode(functionSymbol, document.syntaxTree()).orElse(null);
+                while (node != null && !(node instanceof FunctionDefinitionNode)) {
+                    node = node.parent();
+                }
+                if (node == null) {
+                    continue;
+                }
+                FunctionDefinitionNode functionDefinition = (FunctionDefinitionNode) node;
+                if (functionDefinition.metadata().isEmpty()) {
+                    continue;
+                }
+                for (AnnotationNode annotation : functionDefinition.metadata().get().annotations()) {
+                    Node annotRef = annotation.annotReference();
+                    if (annotRef.kind() != SyntaxKind.QUALIFIED_NAME_REFERENCE) {
+                        continue;
+                    }
+
+                    QualifiedNameReferenceNode qualifiedNameRef = (QualifiedNameReferenceNode) annotRef;
+                    if (!AGENT_TOOL_ANNOT.equals(qualifiedNameRef.identifier().text())) {
+                        continue;
+                    }
+
+                    return annotation.annotValue()
+                            .flatMap(mapping -> mapping.fields().stream()
+                                    .filter(field -> field instanceof SpecificFieldNode specificField
+                                            && REQUIRES_APPROVAL.equals(
+                                                    specificField.fieldName().toSourceCode().trim()))
+                                    .map(field -> (SpecificFieldNode) field)
+                                    .findFirst())
+                            // Gated unless the value is the literal `false`; absent field -> not gated.
+                            .map(specificField -> !"false".equals(
+                                    specificField.valueExpr().map(expr -> expr.toSourceCode().trim()).orElse("")))
+                            .orElse(false);
+                }
             }
             return false;
         } catch (RuntimeException e) {
             // Never let annotation reading break flow-model generation.
+            LOGGER.log(Level.FINE, "Failed to read requiresApproval for tool "
+                    + functionSymbol.getName().orElse(""), e);
             return false;
         }
     }
@@ -1865,7 +1892,8 @@ public class AiUtils {
         boolean isMcp = "MCP_TOOLKIT".equals(constantString(toolMap.get("kind")));
         // Prebuilt/published agents carry tool metadata in the compiled @display{agentMetadata}. The
         // requiresApproval flag is read here defensively so it works once the generation side emits it;
-        // absent → false.
+        // absent → false. As of now the generation side does not emit this field, so this always
+        // evaluates to false and prebuilt/published agents show no approval badge.
         boolean requiresApproval = "true".equals(constantString(toolMap.get(REQUIRES_APPROVAL)));
         return new AgentToolData(name, constantString(toolMap.get("icon")), null,
                 isMcp ? "MCP Server" : null, requiresApproval);
