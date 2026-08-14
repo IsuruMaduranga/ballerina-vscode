@@ -131,7 +131,8 @@ public final class UriResolver {
                                 .or(() -> Optional.of(documentEntry.document()));
                 case ResolvedEntry.ProjectEntry projectEntry ->
                         deriveDocument(uri, projectEntry.project());
-                case ResolvedEntry.ModuleEntry ignored -> Optional.empty();
+                case ResolvedEntry.ModuleEntry moduleEntry ->
+                        deriveDocument(uri, moduleEntry.module().project());
                 case ResolvedEntry.ConfigEntry ignored -> Optional.empty();
             });
         }
@@ -139,6 +140,8 @@ public final class UriResolver {
                 .flatMap(entry -> switch (entry) {
                     case ResolvedEntry.ProjectEntry projectEntry ->
                             deriveDocument(uri, projectEntry.project());
+                    case ResolvedEntry.ModuleEntry moduleEntry ->
+                            deriveDocument(uri, moduleEntry.module().project());
                     default -> Optional.empty();
                 });
     }
@@ -181,6 +184,8 @@ public final class UriResolver {
                 .flatMap(entry -> switch (entry) {
                     case ResolvedEntry.ProjectEntry projectEntry ->
                             deriveModule(uri, projectEntry.project());
+                    case ResolvedEntry.ModuleEntry moduleEntry ->
+                            deriveModule(uri, moduleEntry.module().project());
                     default -> Optional.empty();
                 });
     }

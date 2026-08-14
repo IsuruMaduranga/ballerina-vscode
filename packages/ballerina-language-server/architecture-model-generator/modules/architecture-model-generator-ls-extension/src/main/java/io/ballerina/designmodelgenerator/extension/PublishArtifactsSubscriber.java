@@ -93,9 +93,6 @@ public class PublishArtifactsSubscriber implements EventSubscriber {
         }
 
         // Handle regular file changes
-        if (!isBallerinaSource(context.filePath())) {
-            return;
-        }
         Optional<SyntaxTree> syntaxTree = context.currentSyntaxTree();
         Optional<SemanticModel> semanticModel = context.currentSemanticModel();
         if (syntaxTree.isEmpty() || semanticModel.isEmpty()) {
@@ -121,10 +118,5 @@ public class PublishArtifactsSubscriber implements EventSubscriber {
     @Override
     public String getName() {
         return NAME;
-    }
-
-    private boolean isBallerinaSource(Path path) {
-        Path fileName = path.getFileName();
-        return fileName != null && fileName.toString().endsWith(".bal");
     }
 }

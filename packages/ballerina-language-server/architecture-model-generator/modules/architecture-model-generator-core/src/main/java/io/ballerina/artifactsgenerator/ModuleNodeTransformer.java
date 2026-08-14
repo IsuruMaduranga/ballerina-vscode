@@ -49,8 +49,6 @@ import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
 import io.ballerina.modelgenerator.commons.CommonUtils;
 import org.ballerinalang.langserver.commons.BallerinaCompilerApi;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -80,7 +78,6 @@ public class ModuleNodeTransformer extends NodeTransformer<Optional<Artifact>> {
 
     private final SemanticModel semanticModel;
     private final String projectPath;
-    private final Map<String, TypeSymbol> listenerTypes = new HashMap<>();
 
     private static final String AUTOMATION_FUNCTION_NAME = "automation";
     private static final String MAIN_FUNCTION_NAME = "main";
@@ -153,9 +150,7 @@ public class ModuleNodeTransformer extends NodeTransformer<Optional<Artifact>> {
         ExpressionNode firstExpression;
         if (!expressions.isEmpty()) {
             firstExpression = expressions.get(0);
-            if (!setIcon(serviceBuilder, firstExpression)) {
-                setIconFromKnownListener(serviceBuilder, firstExpression);
-            }
+            setIcon(serviceBuilder, firstExpression);
         } else {
             firstExpression = null;
         }
@@ -198,19 +193,7 @@ public class ModuleNodeTransformer extends NodeTransformer<Optional<Artifact>> {
         // TODO: This does not work for declarations that does not have a type descriptor node such as
         //  `listener httpListener = new http:Listener(9090);`
         //  Need to fix the semantic model APIs to support listener nodes, as they currently return empty values
-        Optional<TypeDescriptorNode> typeDescriptor = listenerDeclarationNode.typeDescriptor();
-        Optional<TypeSymbol> listenerType = typeDescriptor.flatMap(semanticModel::typeOf);
-        if (listenerType.isPresent() && isUsableType(listenerType.get())) {
-            listenerTypes.put(listenerDeclarationNode.variableName().text(), listenerType.get());
-            setIcon(listenerBuilder, listenerType.get());
-        } else {
-            typeDescriptor.flatMap(semanticModel::symbol).ifPresent(symbol -> {
-                if (symbol instanceof TypeSymbol typeSymbol && isUsableType(typeSymbol)) {
-                    listenerTypes.put(listenerDeclarationNode.variableName().text(), typeSymbol);
-                }
-                setIcon(listenerBuilder, symbol);
-            });
-        }
+        listenerDeclarationNode.typeDescriptor().flatMap(semanticModel::symbol).ifPresent(listenerBuilder::icon);
         return Optional.of(listenerBuilder.build());
     }
 
@@ -321,40 +304,20 @@ public class ModuleNodeTransformer extends NodeTransformer<Optional<Artifact>> {
         return Optional.empty();
     }
 
-    private boolean setIcon(Artifact.Builder builder, Node node) {
+    private void setIcon(Artifact.Builder builder, Node node) {
         Optional<TypeSymbol> typeSymbol = semanticModel.typeOf(node);
-        if (typeSymbol.isEmpty() || !isUsableType(typeSymbol.get())) {
-            return false;
+        if (typeSymbol.isEmpty()) {
+            return;
         }
         if (typeSymbol.get().typeKind() == TypeDescKind.UNION) {
             UnionTypeSymbol unionTypeSymbol = (UnionTypeSymbol) typeSymbol.get();
             Optional<TypeSymbol> listenerSymbol = unionTypeSymbol.memberTypeDescriptors().stream()
                     .filter(member -> !member.subtypeOf(semanticModel.types().ERROR))
                     .findFirst();
-            listenerSymbol.ifPresent(symbol -> setIcon(builder, symbol));
-            return listenerSymbol.isPresent();
-        }
-        setIcon(builder, typeSymbol.get());
-        return true;
-    }
-
-    private void setIconFromKnownListener(Artifact.Builder builder, Node node) {
-        TypeSymbol listenerType = listenerTypes.get(node.toSourceCode().strip());
-        if (listenerType != null) {
-            setIcon(builder, listenerType);
-        }
-    }
-
-    private void setIcon(Artifact.Builder builder, Symbol symbol) {
-        if (symbol instanceof TypeSymbol typeSymbol) {
-            builder.icon(CommonUtils.getRawType(typeSymbol));
+            listenerSymbol.ifPresent(builder::icon);
             return;
         }
-        builder.icon(symbol);
-    }
-
-    private boolean isUsableType(TypeSymbol typeSymbol) {
-        return typeSymbol.typeKind() != TypeDescKind.COMPILATION_ERROR;
+        builder.icon(typeSymbol.get());
     }
 
     private Optional<ClassSymbol> getConnection(Node node) {
