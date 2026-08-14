@@ -2,14 +2,17 @@
 // Aggregates Playwright JSON-reporter output (one or more files per matrix group,
 // downloaded into per-artifact subfolders) into a Markdown summary: attempt counts per
 // test and the error line for any failed attempt. Exits non-zero if any test's final
-// status is not 'passed'/'skipped', or if no readable report was found at all, so
-// callers can gate a failure notification on it.
+// status is not 'passed'/'skipped', if a report file couldn't be parsed, or if no
+// readable report was found at all, so callers can gate a failure notification on it.
+// A malformed report is tracked separately (unreadableCount) rather than folded into
+// the test-level 'failed' count, since it isn't a test outcome and a report full of
+// unreadable files would otherwise produce nonsensical totals like "Total: 0 · Failed: 2".
 //
-// A group can produce more than one report file: reusable-build.yml runs a first
-// attempt, then re-runs just the failed subset (`--last-failed`) into a second file
-// (see PLAYWRIGHT_JSON_OUTPUT_FILE in reusable-build.yml). Both are full Playwright JSON
-// reports, so per-test results across the group's files are merged here rather than
-// letting the later file silently replace the earlier one.
+// A group can produce more than one report file: run-e2e-group runs a first attempt,
+// then re-runs just the failed subset (`--last-failed`) into a second file (see
+// PLAYWRIGHT_JSON_OUTPUT_FILE in .github/actions/run-e2e-group/action.yml). Both are
+// full Playwright JSON reports, so per-test results across the group's files are merged
+// here rather than letting the later file silently replace the earlier one.
 //
 // When given a second argument, also writes one NDJSON line per test (including
 // clean single-attempt passes) so a caller can append it to a cross-run history file.
@@ -155,10 +158,6 @@ function aggregate(rootDir) {
     }
   }
 
-  // A malformed report is a lost test, not a passed one — count it toward 'failed' so
-  // it isn't reported as a clean run, and note it separately so the cause is visible.
-  failed += unreadableCount;
-
   return { rows, allTests, total, passed, failed, flaky, unreadableCount, groupCount: byGroup.size };
 }
 
@@ -198,12 +197,15 @@ function toMarkdown({ rows, total, passed, failed, flaky, unreadableCount, group
     `Groups reported: ${groupCount} · Total: ${total} · Passed: ${passed} · Failed: ${failed} · Flaky (passed after retry): ${flaky}`
   );
   if (unreadableCount > 0) {
-    lines.push(`⚠️ ${unreadableCount} report file(s) could not be parsed and were counted as failed.`);
+    lines.push(`⚠️ ${unreadableCount} report file(s) could not be parsed — this run is marked failed.`);
   }
   lines.push('');
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && unreadableCount === 0) {
     lines.push('No retries or failures — every test passed on the first attempt.');
+    return lines.join('\n');
+  }
+  if (rows.length === 0) {
     return lines.join('\n');
   }
 
@@ -238,7 +240,7 @@ function main() {
     process.exit(1);
   }
 
-  if (summary.failed > 0) process.exit(1);
+  if (summary.failed > 0 || summary.unreadableCount > 0) process.exit(1);
 }
 
 main();
