@@ -824,6 +824,24 @@ const MainPanel = () => {
                             );
                             break;
                         }
+                        case MACHINE_VIEW.BIActivityForm: {
+                            const { FunctionForm } = await import("./views/BI/FunctionForm");
+                            // Editing resolves the activity from the file that declares it
+                            // (`value.documentUri`); creating one falls back to the default
+                            // functions file, same as the workflow and function forms.
+                            const defaultFunctionsFile = await getDefaultFunctionsFile();
+                            if (isStaleNavigation()) return;
+                            setViewComponent(
+                                <FunctionForm
+                                    key={remountKey}
+                                    projectPath={value.projectPath}
+                                    filePath={defaultFunctionsFile}
+                                    functionName={value?.identifier}
+                                    isActivity={true}
+                                />
+                            );
+                            break;
+                        }
                         case MACHINE_VIEW.BITestFunctionForm: {
                             const { TestFunctionForm } = await import("./views/BI/TestFunctionForm");
                             if (isStaleNavigation()) return;
