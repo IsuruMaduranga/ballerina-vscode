@@ -1,149 +1,43 @@
 {
-  "source": "builtin_activity/functions.bal",
+  "source": "workflow_function/functions.bal",
   "position": {
-    "line": 5,
+    "line": 15,
     "offset": 0
   },
-  "description": "Builtin activity - Call SOAP API node template",
+  "description": "Activity call node template for an activity with no return value",
   "codedata": {
-    "node": "BUILTIN_ACTIVITY",
-    "org": "ballerina",
-    "module": "workflow.activity",
-    "symbol": "callSoapAPI"
+    "node": "ACTIVITY_CALL",
+    "org": "test",
+    "module": "workflow_function",
+    "symbol": "logEvent",
+    "version": "0.1.0"
   },
   "output": {
     "id": "31",
     "metadata": {
-      "label": "Call SOAP API",
-      "description": "Call a SOAP web service as a workflow activity using a configured soap11:Client or soap12:Client connection."
+      "label": "logEvent",
+      "description": "Activity with no return value",
+      "icon": "https://bcentral-packageicons.azureedge.net/images/test_workflow_function_0.1.0.png"
     },
     "codedata": {
-      "node": "CONNECTION_ACTIVITY_CALL",
-      "org": "ballerina",
-      "module": "workflow.activity",
-      "symbol": "callSoapAPI",
+      "node": "ACTIVITY_CALL",
+      "org": "test",
+      "module": "workflow_function",
+      "symbol": "logEvent",
+      "version": "0.1.0",
       "isNew": true
     },
     "returning": false,
     "properties": {
-      "connection": {
+      "message": {
         "metadata": {
-          "label": "Connection",
-          "description": "Connection to use",
-          "connectors": [
-            {
-              "codedata": {
-                "node": "NEW_CONNECTION",
-                "org": "ballerina",
-                "module": "soap.soap11",
-                "packageName": "soap",
-                "object": "Client",
-                "symbol": "init"
-              },
-              "addNewConnectionLabel": "Add new SOAP 1.1 connection"
-            },
-            {
-              "codedata": {
-                "node": "NEW_CONNECTION",
-                "org": "ballerina",
-                "module": "soap.soap12",
-                "packageName": "soap",
-                "object": "Client",
-                "symbol": "init"
-              },
-              "addNewConnectionLabel": "Add new SOAP 1.2 connection"
-            }
-          ]
-        },
-        "types": [
-          {
-            "fieldType": "CONNECTION",
-            "selected": true
-          }
-        ],
-        "value": "NEW_CONNECTION",
-        "placeholder": "NEW_CONNECTION",
-        "optional": false,
-        "editable": true,
-        "advanced": false,
-        "hidden": false,
-        "codedata": {
-          "searchNodesKind": "SOAP"
-        }
-      },
-      "body": {
-        "metadata": {
-          "label": "Body",
-          "description": "SOAP envelope as xml"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "xml",
-            "selected": true
-          }
-        ],
-        "value": "",
-        "optional": false,
-        "editable": true,
-        "advanced": false,
-        "hidden": false,
-        "codedata": {
-          "kind": "REQUIRED"
-        }
-      },
-      "action": {
-        "metadata": {
-          "label": "Action",
-          "description": "SOAPAction header. Required for SOAP 1.1 endpoints; optional for SOAP 1.2."
+          "label": "Message"
         },
         "types": [
           {
             "fieldType": "TEXT",
             "ballerinaType": "string",
-            "selected": true
-          },
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string?",
             "selected": false
-          }
-        ],
-        "value": "",
-        "placeholder": "http://tempuri.org/Add",
-        "optional": true,
-        "editable": true,
-        "advanced": false,
-        "hidden": false
-      },
-      "headers": {
-        "metadata": {
-          "label": "Headers",
-          "description": "Additional HTTP headers"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "map<string|string[]>",
-            "selected": true
-          }
-        ],
-        "value": "",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": false
-      },
-      "path": {
-        "metadata": {
-          "label": "Path",
-          "description": "Optional resource path appended to the connection's base URL"
-        },
-        "types": [
-          {
-            "fieldType": "TEXT",
-            "ballerinaType": "string",
-            "selected": true
           },
           {
             "fieldType": "EXPRESSION",
@@ -151,28 +45,15 @@
             "selected": false
           }
         ],
-        "value": "",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": false
-      },
-      "variable": {
-        "metadata": {
-          "label": "Result",
-          "description": "Name of the result variable"
-        },
-        "types": [
-          {
-            "fieldType": "IDENTIFIER",
-            "selected": true
-          }
-        ],
-        "value": "result",
+        "placeholder": "\"\"",
         "optional": false,
         "editable": true,
         "advanced": false,
-        "hidden": false
+        "hidden": false,
+        "codedata": {
+          "kind": "REQUIRED",
+          "originalName": "message"
+        }
       },
       "checkError": {
         "metadata": {
@@ -190,7 +71,46 @@
         "optional": true,
         "editable": true,
         "advanced": true,
-        "hidden": false
+        "hidden": false,
+        "dynamicFormFields": {
+          "true": {},
+          "false": {
+            "variable": {
+              "metadata": {
+                "label": "Result",
+                "description": "Name of the variable that receives the error the activity failed with, or nil when it succeeded"
+              },
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
+              "value": "",
+              "optional": false,
+              "editable": true,
+              "advanced": false,
+              "hidden": false
+            }
+          }
+        }
+      },
+      "variable": {
+        "metadata": {
+          "label": "Result",
+          "description": "Name of the result variable"
+        },
+        "types": [
+          {
+            "fieldType": "IDENTIFIER",
+            "selected": true
+          }
+        ],
+        "value": "activityResult",
+        "optional": true,
+        "editable": true,
+        "advanced": false,
+        "hidden": true
       },
       "retryPolicy": {
         "metadata": {

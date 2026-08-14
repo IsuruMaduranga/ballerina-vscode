@@ -1762,6 +1762,7 @@ public class CodeAnalyzer extends NodeVisitor {
         }
 
         if (activityParamSymbols.isEmpty()) {
+            ActivityCallBuilder.addCheckErrorProperty(nodeBuilder, isCheckedCall(remoteMethodCallActionNode));
             addNormalizedRetryPolicyProperties(rawRetryPolicyValue);
             return;
         }
@@ -1841,8 +1842,21 @@ public class CodeAnalyzer extends NodeVisitor {
                     customPropBuilder, diagnosticHandler);
             nodeBuilderFormBuilder.addProperty(FlowNodeUtil.getPropertyKey(paramName), valueNode);
         }
+        // The Check Error flag mirrors the creation template so an existing statement round-trips: an
+        // unchecked call comes back with the box cleared instead of being silently rewritten with `check`.
+        // handleCheckFlag's property is not reused here — it is dropped by the EXCLUDED_CALL_ACTIVITY_PARAMS
+        // sweep above, and it only records `false` for unchecked calls inside a do-clause.
+        ActivityCallBuilder.addCheckErrorProperty(nodeBuilder, isCheckedCall(remoteMethodCallActionNode));
         // After activity input params, add retryPolicy at root level (outside ADVANCE_PARAM_LIST).
         addNormalizedRetryPolicyProperties(rawRetryPolicyValue);
+    }
+
+    /**
+     * Whether the given call is wrapped in a {@code check} expression/action in the source.
+     */
+    private static boolean isCheckedCall(NonTerminalNode callNode) {
+        SyntaxKind parentKind = callNode.parent().kind();
+        return parentKind == SyntaxKind.CHECK_ACTION || parentKind == SyntaxKind.CHECK_EXPRESSION;
     }
 
     /**
@@ -2045,10 +2059,6 @@ public class CodeAnalyzer extends NodeVisitor {
         // the clear below discards them.  Without this, builtin activities lose their advanced options
         // on every reload/regeneration, causing toSourceBuiltin() to omit them.
         Map<String, Property> currentProps = nodeBuilder.properties().build();
-        Property savedCheckError = currentProps.get(Property.CHECK_ERROR_KEY);
-        boolean uncheckedBuiltinInDoClause = callNode.parent().kind() != SyntaxKind.CHECK_ACTION
-                && callNode.parent().kind() != SyntaxKind.CHECK_EXPRESSION
-                && CommonUtils.withinDoClause(callNode);
         Property savedInferredType = currentProps.values().stream()
                 .filter(property -> property.codedata() != null && property.codedata().kind() != null
                         && property.codedata().kind().equals(ParameterData.Kind.PARAM_FOR_TYPE_INFER.name()))
@@ -2159,16 +2169,10 @@ public class CodeAnalyzer extends NodeVisitor {
                             .advanced(false)
                             .build());
         }
-        // Restore checkError. If the original call was unchecked inside a do-clause and no explicit
-        // checkError property was captured, persist false explicitly so toSourceBuiltin() doesn't
-        // fall back to its default true.
-        if (savedCheckError != null) {
-            boolean checkError = savedCheckError.value() != null
-                    && Boolean.parseBoolean(savedCheckError.value().toString());
-            nodeBuilder.properties().checkError(checkError);
-        } else if (uncheckedBuiltinInDoClause) {
-            nodeBuilder.properties().checkError(false);
-        }
+        // Restore checkError in the same editable shape the creation template uses, taken straight from
+        // the source: an unchecked call comes back with the box cleared so toSourceBuiltin() does not
+        // fall back to its default of adding `check`.
+        ActivityCallBuilder.addCheckErrorProperty(nodeBuilder, isCheckedCall(callNode));
 
         // Restore advanced callActivity params (retryOnError, timeout, etc.) as ADVANCED_PARAM_KEY
         // so toSourceBuiltin() / populateAdvancedArgs() can emit them as named arguments.
@@ -3897,6 +3901,12 @@ public class CodeAnalyzer extends NodeVisitor {
                             Property.VARIABLE_DOC, true, new HashSet<>(), true);
         } else if (nodeBuilder instanceof WaitDataBuilder) {
             // Variable/type info is embedded in the dataWaits property — skip generic handling
+        } else if (nodeBuilder instanceof ActivityCallBuilder && this.typedBindingPatternNode != null
+                && this.typedBindingPatternNode.bindingPattern().kind() == SyntaxKind.WILDCARD_BINDING_PATTERN) {
+            // `() _ = check ctx->callActivity(...)` is how an activity that returns nothing is written:
+            // the wildcard only supplies the contextually expected type for the dependently typed
+            // callActivity, it is not a result the user named. Keep the form free of it, matching the
+            // creation template, so the statement round-trips unchanged.
         } else if (nodeBuilder.properties().build().containsKey(Property.VARIABLE_KEY)
                 && !(nodeBuilder instanceof AgentCallBuilder)) {
             // VARIABLE_KEY already set (e.g. by populateBuiltinActivityProperties) — skip.

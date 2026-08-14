@@ -1,29 +1,28 @@
 {
   "start": {
-    "line": 26,
+    "line": 9,
     "offset": 0
   },
   "end": {
-    "line": 34,
+    "line": 16,
     "offset": 1
   },
-  "source": "workflow_operations.bal",
-  "description": "Test workflow process function with ctx->callActivity returns ACTIVITY_CALL and wait events returns WAIT_DATA",
+  "source": "workflow_activity_check_error.bal",
+  "description": "Activity calls read back from source carry the Check Error flag: set for a checked call, cleared for an unchecked one",
   "diagram": {
-    "fileName": "workflow_operations.bal",
+    "fileName": "workflow_activity_check_error.bal",
     "nodes": [
       {
-        "id": "61071",
+        "id": "43246",
         "metadata": {
           "label": "Start",
           "data": {
             "kind": "Workflow",
-            "label": "orderWorkflow",
+            "label": "eventWorkflow",
             "isServiceFunction": false,
             "parameters": [
               "workflow:Context ctx",
-              "OrderInput input",
-              "OrderWorkflowEvents events"
+              "string message"
             ],
             "return": "error?"
           }
@@ -31,44 +30,41 @@
         "codedata": {
           "node": "EVENT_START",
           "lineRange": {
-            "fileName": "workflow_operations.bal",
+            "fileName": "workflow_activity_check_error.bal",
             "startLine": {
-              "line": 26,
-              "offset": 106
+              "line": 9,
+              "offset": 76
             },
             "endLine": {
-              "line": 34,
+              "line": 16,
               "offset": 1
             }
           },
-          "sourceCode": "# Process an order workflow with events\n@workflow:Workflow\nfunction orderWorkflow(workflow:Context ctx, OrderInput input, OrderWorkflowEvents events) returns error? {\n    // Activity call - should be ACTIVITY_CALL\n    int intResult = check ctx->callActivity(calculateDiscount, {amount: 100.0});\n    io:println(\"Discount calculated: \" + intResult.toString());\n\n    // Wait for data - should be WAIT_DATA\n    ApprovalData approval = check wait events.approve;\n    io:println(\"Approved by: \" + approval.approverName);\n}"
+          "sourceCode": "# Workflow with a checked no-result activity call and an unchecked one\n#\n# + ctx - Workflow context\n# + message - Message to log\n# + return - An error on failure\n@workflow:Workflow\nfunction eventWorkflow(workflow:Context ctx, string message) returns error? {\n    // Activity with no return value: a wildcard binding, so no named result variable is declared\n    () _ = check ctx->callActivity(logEvent, {message: message});\n\n    // Unchecked call: the error is part of the result value\n    int|error count = ctx->callActivity(countEvents, {});\n    io:println(count);\n}"
         },
         "returning": false,
-        "diagnostics": {
-          "hasDiagnostics": true
-        },
         "flags": 0
       },
       {
-        "id": "58574",
+        "id": "41761",
         "metadata": {
           "label": "Comment",
-          "description": "Activity call - should be ACTIVITY_CALL"
+          "description": "Activity with no return value: a wildcard binding, so no named result variable is declared"
         },
         "codedata": {
           "node": "COMMENT",
           "lineRange": {
-            "fileName": "workflow_operations.bal",
+            "fileName": "workflow_activity_check_error.bal",
             "startLine": {
-              "line": 27,
+              "line": 10,
               "offset": 0
             },
             "endLine": {
-              "line": 27,
-              "offset": 46
+              "line": 10,
+              "offset": 97
             }
           },
-          "sourceCode": "Activity call - should be ACTIVITY_CALL"
+          "sourceCode": "Activity with no return value: a wildcard binding, so no named result variable is declared"
         },
         "returning": false,
         "properties": {
@@ -83,7 +79,7 @@
                 "selected": true
               }
             ],
-            "value": "Activity call - should be ACTIVITY_CALL",
+            "value": "Activity with no return value: a wildcard binding, so no named result variable is declared",
             "optional": false,
             "editable": true,
             "advanced": false,
@@ -93,10 +89,10 @@
         "flags": 0
       },
       {
-        "id": "59724",
+        "id": "42845",
         "metadata": {
-          "label": "calculateDiscount",
-          "description": "Activity function for calculating discount",
+          "label": "logEvent",
+          "description": "Activity with no return value\n",
           "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_workflow_0.8.3.png"
         },
         "codedata": {
@@ -105,20 +101,20 @@
           "module": ".",
           "packageName": ".",
           "object": "Context",
-          "symbol": "calculateDiscount",
+          "symbol": "logEvent",
           "version": "0.0.0",
           "lineRange": {
-            "fileName": "workflow_operations.bal",
+            "fileName": "workflow_activity_check_error.bal",
             "startLine": {
-              "line": 28,
+              "line": 11,
               "offset": 4
             },
             "endLine": {
-              "line": 28,
-              "offset": 80
+              "line": 11,
+              "offset": 65
             }
           },
-          "sourceCode": "// Activity call - should be ACTIVITY_CALL\n    int intResult = check ctx->callActivity(calculateDiscount, {amount: 100.0});",
+          "sourceCode": "// Activity with no return value: a wildcard binding, so no named result variable is declared\n    () _ = check ctx->callActivity(logEvent, {message: message});",
           "inferredReturnType": "T"
         },
         "returning": false,
@@ -140,26 +136,32 @@
             "advanced": false,
             "hidden": false
           },
-          "input": {
+          "message": {
             "metadata": {
-              "label": "input",
+              "label": "message",
               "description": ""
             },
             "types": [
               {
-                "fieldType": "EXPRESSION",
-                "ballerinaType": "record {|decimal amount; anydata...;|}",
+                "fieldType": "TEXT",
+                "ballerinaType": "string",
                 "selected": false
+              },
+              {
+                "fieldType": "EXPRESSION",
+                "ballerinaType": "string",
+                "selected": true
               }
             ],
-            "placeholder": "record {|decimal amount; anydata...;|}",
+            "value": "message",
+            "placeholder": "string",
             "optional": false,
             "editable": true,
             "advanced": false,
             "hidden": false,
             "codedata": {
               "kind": "REQUIRED",
-              "originalName": "input"
+              "originalName": "message"
             }
           },
           "checkError": {
@@ -433,6 +435,372 @@
             "editable": true,
             "advanced": false,
             "hidden": true
+          }
+        },
+        "flags": 1
+      },
+      {
+        "id": "43739",
+        "metadata": {
+          "label": "Comment",
+          "description": "Unchecked call: the error is part of the result value"
+        },
+        "codedata": {
+          "node": "COMMENT",
+          "lineRange": {
+            "fileName": "workflow_activity_check_error.bal",
+            "startLine": {
+              "line": 12,
+              "offset": 0
+            },
+            "endLine": {
+              "line": 13,
+              "offset": 60
+            }
+          },
+          "sourceCode": "Unchecked call: the error is part of the result value"
+        },
+        "returning": false,
+        "properties": {
+          "comment": {
+            "metadata": {
+              "label": "Comment",
+              "description": "Comment to describe the flow"
+            },
+            "types": [
+              {
+                "fieldType": "TEXT",
+                "selected": true
+              }
+            ],
+            "value": "Unchecked call: the error is part of the result value",
+            "optional": false,
+            "editable": true,
+            "advanced": false,
+            "hidden": false
+          }
+        },
+        "flags": 0
+      },
+      {
+        "id": "45813",
+        "metadata": {
+          "label": "countEvents",
+          "description": "Activity returning a count\n",
+          "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_workflow_0.8.3.png"
+        },
+        "codedata": {
+          "node": "ACTIVITY_CALL",
+          "org": "$anon",
+          "module": ".",
+          "packageName": ".",
+          "object": "Context",
+          "symbol": "countEvents",
+          "version": "0.0.0",
+          "lineRange": {
+            "fileName": "workflow_activity_check_error.bal",
+            "startLine": {
+              "line": 14,
+              "offset": 4
+            },
+            "endLine": {
+              "line": 14,
+              "offset": 57
+            }
+          },
+          "sourceCode": "// Unchecked call: the error is part of the result value\n    int|error count = ctx->callActivity(countEvents, {});",
+          "inferredReturnType": "T"
+        },
+        "returning": false,
+        "properties": {
+          "advanced": {
+            "metadata": {
+              "label": "Activity call configurations",
+              "description": "Activity call configurations"
+            },
+            "types": [
+              {
+                "fieldType": "ADVANCE_PARAM_LIST",
+                "selected": false
+              }
+            ],
+            "value": {},
+            "optional": false,
+            "editable": false,
+            "advanced": false,
+            "hidden": false
+          },
+          "checkError": {
+            "metadata": {
+              "label": "Check Error",
+              "description": "Add 'check' to propagate errors. Uncheck to handle errors manually."
+            },
+            "types": [
+              {
+                "fieldType": "FLAG",
+                "ballerinaType": "boolean",
+                "selected": true
+              }
+            ],
+            "value": "false",
+            "optional": true,
+            "editable": true,
+            "advanced": true,
+            "hidden": false
+          },
+          "retryPolicy": {
+            "metadata": {
+              "label": "Retry Policy",
+              "description": "Engine retry strategy when the activity fails: no automatic retry (an AI agent may still re-invoke it), automatic backoff retries, or a human review task"
+            },
+            "types": [
+              {
+                "fieldType": "DROPDOWN_CHOICE",
+                "options": [
+                  {
+                    "label": "No Automatic Retry",
+                    "value": "NoRetry"
+                  },
+                  {
+                    "label": "Auto Retry",
+                    "value": "AutoRetry"
+                  },
+                  {
+                    "label": "Human Review",
+                    "value": "ManualRetry"
+                  }
+                ],
+                "selected": true
+              }
+            ],
+            "value": "NoRetry",
+            "optional": false,
+            "editable": true,
+            "advanced": false,
+            "hidden": false,
+            "dynamicFormFields": {
+              "NoRetry": {},
+              "AutoRetry": {
+                "autoRetryOptions": {
+                  "metadata": {
+                    "label": "Advanced Configurations",
+                    "description": "Optional tuning for the automatic retries. A field left empty uses the engine default: 3 attempts, a 1.0 second initial delay doubling on each retry, and no cap on the delay."
+                  },
+                  "types": [
+                    {
+                      "fieldType": "GROUP_SECTION",
+                      "selected": true
+                    }
+                  ],
+                  "value": "",
+                  "optional": true,
+                  "editable": true,
+                  "advanced": false,
+                  "hidden": false,
+                  "advanceProperties": {
+                    "maxRetries": {
+                      "metadata": {
+                        "label": "Max Retries",
+                        "description": "Maximum number of retry attempts"
+                      },
+                      "types": [
+                        {
+                          "fieldType": "EXPRESSION",
+                          "ballerinaType": "int",
+                          "selected": true
+                        }
+                      ],
+                      "value": "",
+                      "optional": true,
+                      "editable": true,
+                      "advanced": false,
+                      "hidden": false
+                    },
+                    "retryDelay": {
+                      "metadata": {
+                        "label": "Retry Delay",
+                        "description": "Initial delay between retries in seconds"
+                      },
+                      "types": [
+                        {
+                          "fieldType": "EXPRESSION",
+                          "ballerinaType": "decimal",
+                          "selected": true
+                        }
+                      ],
+                      "value": "",
+                      "optional": true,
+                      "editable": true,
+                      "advanced": false,
+                      "hidden": false
+                    },
+                    "retryBackoff": {
+                      "metadata": {
+                        "label": "Retry Backoff",
+                        "description": "Exponential backoff multiplier (e.g. 2.0 doubles each delay)"
+                      },
+                      "types": [
+                        {
+                          "fieldType": "EXPRESSION",
+                          "ballerinaType": "decimal",
+                          "selected": true
+                        }
+                      ],
+                      "value": "",
+                      "optional": true,
+                      "editable": true,
+                      "advanced": false,
+                      "hidden": false
+                    },
+                    "maxRetryDelay": {
+                      "metadata": {
+                        "label": "Max Retry Delay",
+                        "description": "Maximum delay cap in seconds"
+                      },
+                      "types": [
+                        {
+                          "fieldType": "EXPRESSION",
+                          "ballerinaType": "decimal",
+                          "selected": true
+                        }
+                      ],
+                      "value": "",
+                      "optional": true,
+                      "editable": true,
+                      "advanced": false,
+                      "hidden": false
+                    }
+                  }
+                }
+              },
+              "ManualRetry": {
+                "retryUserRoles": {
+                  "metadata": {
+                    "label": "Reviewer Roles",
+                    "description": "Role(s) permitted to decide the human review, e.g. \"manager\" or [\"finance\", \"manager\"]. Leave empty to allow any role."
+                  },
+                  "types": [
+                    {
+                      "fieldType": "EXPRESSION",
+                      "ballerinaType": "string|string[]",
+                      "selected": true
+                    }
+                  ],
+                  "value": "",
+                  "optional": false,
+                  "editable": true,
+                  "advanced": false,
+                  "hidden": false
+                }
+              }
+            },
+            "itemOptions": [
+              {
+                "id": "NoRetry",
+                "content": "No Automatic Retry",
+                "value": "NoRetry"
+              },
+              {
+                "id": "AutoRetry",
+                "content": "Auto Retry",
+                "value": "AutoRetry"
+              },
+              {
+                "id": "ManualRetry",
+                "content": "Human Review",
+                "value": "ManualRetry"
+              }
+            ]
+          },
+          "maxRetries": {
+            "metadata": {
+              "label": "Max Retries",
+              "description": "Maximum number of retry attempts"
+            },
+            "types": [
+              {
+                "fieldType": "EXPRESSION",
+                "ballerinaType": "int",
+                "selected": true
+              }
+            ],
+            "value": "",
+            "optional": true,
+            "editable": true,
+            "advanced": false,
+            "hidden": true
+          },
+          "retryDelay": {
+            "metadata": {
+              "label": "Retry Delay",
+              "description": "Initial delay between retries in seconds"
+            },
+            "types": [
+              {
+                "fieldType": "EXPRESSION",
+                "ballerinaType": "decimal",
+                "selected": true
+              }
+            ],
+            "value": "",
+            "optional": true,
+            "editable": true,
+            "advanced": false,
+            "hidden": true
+          },
+          "retryUserRoles": {
+            "metadata": {
+              "label": "Reviewer Roles",
+              "description": "Role(s) permitted to decide the retry review"
+            },
+            "types": [
+              {
+                "fieldType": "EXPRESSION",
+                "ballerinaType": "string|string[]",
+                "selected": true
+              }
+            ],
+            "value": "",
+            "optional": true,
+            "editable": true,
+            "advanced": false,
+            "hidden": true
+          },
+          "retryBackoff": {
+            "metadata": {
+              "label": "Retry Backoff",
+              "description": "Exponential backoff multiplier"
+            },
+            "types": [
+              {
+                "fieldType": "EXPRESSION",
+                "ballerinaType": "decimal",
+                "selected": true
+              }
+            ],
+            "value": "",
+            "optional": true,
+            "editable": true,
+            "advanced": false,
+            "hidden": true
+          },
+          "maxRetryDelay": {
+            "metadata": {
+              "label": "Max Retry Delay",
+              "description": "Maximum delay cap in seconds"
+            },
+            "types": [
+              {
+                "fieldType": "EXPRESSION",
+                "ballerinaType": "decimal",
+                "selected": true
+              }
+            ],
+            "value": "",
+            "optional": true,
+            "editable": true,
+            "advanced": false,
+            "hidden": true
           },
           "variable": {
             "metadata": {
@@ -445,21 +813,21 @@
                 "selected": true
               }
             ],
-            "value": "intResult",
+            "value": "count",
             "optional": false,
             "editable": false,
             "advanced": false,
             "hidden": false,
             "codedata": {
               "lineRange": {
-                "fileName": "workflow_operations.bal",
+                "fileName": "workflow_activity_check_error.bal",
                 "startLine": {
-                  "line": 28,
-                  "offset": 8
+                  "line": 14,
+                  "offset": 14
                 },
                 "endLine": {
-                  "line": 28,
-                  "offset": 17
+                  "line": 14,
+                  "offset": 19
                 }
               }
             }
@@ -484,13 +852,10 @@
             "codedata": {}
           }
         },
-        "diagnostics": {
-          "hasDiagnostics": true
-        },
-        "flags": 1
+        "flags": 0
       },
       {
-        "id": "60699",
+        "id": "46770",
         "metadata": {
           "label": "println",
           "description": "Prints `any`, `error` or string templates value(s) to the standard output stream and terminates the line.\n```ballerina\nio:println(\"Start processing the CSV file from \", srcFileName);\n```\n",
@@ -504,17 +869,17 @@
           "symbol": "println",
           "version": "1.8.1",
           "lineRange": {
-            "fileName": "workflow_operations.bal",
+            "fileName": "workflow_activity_check_error.bal",
             "startLine": {
-              "line": 29,
+              "line": 15,
               "offset": 4
             },
             "endLine": {
-              "line": 29,
-              "offset": 63
+              "line": 15,
+              "offset": 22
             }
           },
-          "sourceCode": "io:println(\"Discount calculated: \" + intResult.toString());"
+          "sourceCode": "io:println(count);"
         },
         "returning": false,
         "properties": {
@@ -552,381 +917,7 @@
                     "selected": true
                   }
                 ],
-                "value": "\"Discount calculated: \" + intResult.toString()",
-                "optional": false,
-                "editable": false,
-                "advanced": false,
-                "hidden": false
-              }
-            ],
-            "placeholder": "()",
-            "optional": false,
-            "editable": true,
-            "advanced": false,
-            "hidden": false,
-            "codedata": {
-              "kind": "REST_PARAMETER",
-              "originalName": "values"
-            }
-          }
-        },
-        "flags": 0
-      },
-      {
-        "id": "61577",
-        "metadata": {
-          "label": "Comment",
-          "description": "Wait for data - should be WAIT_DATA"
-        },
-        "codedata": {
-          "node": "COMMENT",
-          "lineRange": {
-            "fileName": "workflow_operations.bal",
-            "startLine": {
-              "line": 30,
-              "offset": 0
-            },
-            "endLine": {
-              "line": 31,
-              "offset": 42
-            }
-          },
-          "sourceCode": "Wait for data - should be WAIT_DATA"
-        },
-        "returning": false,
-        "properties": {
-          "comment": {
-            "metadata": {
-              "label": "Comment",
-              "description": "Comment to describe the flow"
-            },
-            "types": [
-              {
-                "fieldType": "TEXT",
-                "selected": true
-              }
-            ],
-            "value": "Wait for data - should be WAIT_DATA",
-            "optional": false,
-            "editable": true,
-            "advanced": false,
-            "hidden": false
-          }
-        },
-        "flags": 0
-      },
-      {
-        "id": "63666",
-        "metadata": {
-          "label": "Await Data",
-          "description": "Wait for workflow data to be received"
-        },
-        "codedata": {
-          "node": "WAIT_DATA",
-          "lineRange": {
-            "fileName": "workflow_operations.bal",
-            "startLine": {
-              "line": 32,
-              "offset": 4
-            },
-            "endLine": {
-              "line": 32,
-              "offset": 54
-            }
-          },
-          "sourceCode": "// Wait for data - should be WAIT_DATA\n    ApprovalData approval = check wait events.approve;"
-        },
-        "returning": false,
-        "properties": {
-          "dataWaits": {
-            "metadata": {
-              "label": "Data Waits",
-              "description": "Data to wait for (one or more)"
-            },
-            "types": [
-              {
-                "fieldType": "REPEATABLE_PROPERTY",
-                "template": {
-                  "metadata": {
-                    "label": "Data Waits",
-                    "description": "Data to wait for (one or more)"
-                  },
-                  "types": [
-                    {
-                      "fieldType": "FIXED_PROPERTY",
-                      "selected": false
-                    }
-                  ],
-                  "value": {
-                    "variable": {
-                      "metadata": {
-                        "label": "Data Receive Variable Name",
-                        "description": "Variable name to receive the data"
-                      },
-                      "types": [
-                        {
-                          "fieldType": "IDENTIFIER",
-                          "scope": "Local",
-                          "selected": true
-                        }
-                      ],
-                      "value": "",
-                      "optional": false,
-                      "editable": true,
-                      "advanced": false,
-                      "hidden": false
-                    },
-                    "dataType": {
-                      "metadata": {
-                        "label": "Data Type",
-                        "description": "Type of the data to be received on successful wait"
-                      },
-                      "types": [
-                        {
-                          "fieldType": "TYPE",
-                          "ballerinaType": "anydata",
-                          "selected": true
-                        }
-                      ],
-                      "value": "",
-                      "optional": false,
-                      "editable": true,
-                      "advanced": false,
-                      "hidden": false
-                    },
-                    "dataName": {
-                      "metadata": {
-                        "label": "Data Name",
-                        "description": "Name of the data to reference when sending data to the workflow"
-                      },
-                      "types": [
-                        {
-                          "fieldType": "IDENTIFIER",
-                          "selected": true
-                        }
-                      ],
-                      "value": "",
-                      "optional": false,
-                      "editable": true,
-                      "advanced": false,
-                      "hidden": false
-                    }
-                  },
-                  "optional": false,
-                  "editable": false,
-                  "advanced": false,
-                  "hidden": false
-                },
-                "selected": false
-              }
-            ],
-            "value": {
-              "0": {
-                "metadata": {
-                  "label": "Data Waits",
-                  "description": "Data to wait for (one or more)"
-                },
-                "types": [
-                  {
-                    "fieldType": "FIXED_PROPERTY",
-                    "selected": false
-                  }
-                ],
-                "value": {
-                  "variable": {
-                    "metadata": {
-                      "label": "Data Receive Variable Name",
-                      "description": "Variable name to receive the data"
-                    },
-                    "value": "approval",
-                    "optional": false,
-                    "editable": true,
-                    "advanced": false,
-                    "hidden": false
-                  },
-                  "dataType": {
-                    "metadata": {
-                      "label": "Data Type",
-                      "description": "Type of the data to be received on successful wait"
-                    },
-                    "value": "// Wait for data - should be WAIT_DATA\n    ApprovalData",
-                    "optional": false,
-                    "editable": true,
-                    "advanced": false,
-                    "hidden": false
-                  },
-                  "dataName": {
-                    "metadata": {
-                      "label": "Data Name",
-                      "description": "Name of the data to reference when sending data to the workflow"
-                    },
-                    "value": "approve",
-                    "optional": false,
-                    "editable": true,
-                    "advanced": false,
-                    "hidden": false
-                  }
-                },
-                "optional": false,
-                "editable": false,
-                "advanced": false,
-                "hidden": false
-              }
-            },
-            "optional": false,
-            "editable": false,
-            "advanced": false,
-            "hidden": false
-          },
-          "optional": {
-            "metadata": {
-              "label": "Optional Data Types",
-              "description": "When `minCount` is less than the number of data waits, all data wait types should be marked optional"
-            },
-            "types": [
-              {
-                "fieldType": "FLAG",
-                "selected": false
-              }
-            ],
-            "value": false,
-            "optional": false,
-            "editable": true,
-            "advanced": true,
-            "hidden": false
-          },
-          "minCount": {
-            "metadata": {
-              "label": "Min Count",
-              "description": "Minimum completions required (default: all)"
-            },
-            "types": [
-              {
-                "fieldType": "NUMBER",
-                "ballerinaType": "int:Unsigned32",
-                "selected": false
-              },
-              {
-                "fieldType": "EXPRESSION",
-                "ballerinaType": "int:Unsigned32",
-                "selected": false
-              }
-            ],
-            "placeholder": "0",
-            "optional": true,
-            "editable": true,
-            "advanced": true,
-            "hidden": false,
-            "codedata": {
-              "kind": "DEFAULTABLE",
-              "originalName": "minCount"
-            },
-            "defaultValue": "<int:Unsigned32>futures.length()"
-          },
-          "timeout": {
-            "metadata": {
-              "label": "Timeout",
-              "description": "Maximum wait duration; returns an error on timeout"
-            },
-            "types": [
-              {
-                "fieldType": "RECORD_MAP_EXPRESSION",
-                "ballerinaType": "workflow:Duration",
-                "typeMembers": [
-                  {
-                    "type": "Duration",
-                    "packageInfo": "ballerina:workflow:0.8.3",
-                    "packageName": "workflow",
-                    "kind": "RECORD_TYPE",
-                    "selected": false
-                  }
-                ],
-                "selected": false
-              },
-              {
-                "fieldType": "EXPRESSION",
-                "ballerinaType": "workflow:Duration?",
-                "selected": false
-              }
-            ],
-            "placeholder": "()",
-            "optional": true,
-            "editable": true,
-            "advanced": true,
-            "hidden": false,
-            "codedata": {
-              "kind": "DEFAULTABLE",
-              "originalName": "timeout"
-            },
-            "defaultValue": "()"
-          }
-        },
-        "flags": 1
-      },
-      {
-        "id": "64660",
-        "metadata": {
-          "label": "println",
-          "description": "Prints `any`, `error` or string templates value(s) to the standard output stream and terminates the line.\n```ballerina\nio:println(\"Start processing the CSV file from \", srcFileName);\n```\n",
-          "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_io_1.8.1.png"
-        },
-        "codedata": {
-          "node": "FUNCTION_CALL",
-          "org": "ballerina",
-          "module": "io",
-          "packageName": "io",
-          "symbol": "println",
-          "version": "1.8.1",
-          "lineRange": {
-            "fileName": "workflow_operations.bal",
-            "startLine": {
-              "line": 33,
-              "offset": 4
-            },
-            "endLine": {
-              "line": 33,
-              "offset": 56
-            }
-          },
-          "sourceCode": "io:println(\"Approved by: \" + approval.approverName);"
-        },
-        "returning": false,
-        "properties": {
-          "values": {
-            "metadata": {
-              "label": "values",
-              "description": "The value(s) to be printed"
-            },
-            "types": [
-              {
-                "fieldType": "REPEATABLE_LIST",
-                "ballerinaType": "io:Printable",
-                "template": {
-                  "types": [
-                    {
-                      "fieldType": "EXPRESSION",
-                      "ballerinaType": "io:Printable",
-                      "selected": false
-                    }
-                  ],
-                  "optional": false,
-                  "editable": false,
-                  "advanced": false,
-                  "hidden": false
-                },
-                "selected": true
-              }
-            ],
-            "value": [
-              {
-                "types": [
-                  {
-                    "fieldType": "EXPRESSION",
-                    "ballerinaType": "io:Printable",
-                    "selected": true
-                  }
-                ],
-                "value": "\"Approved by: \" + approval.approverName",
+                "value": "count",
                 "optional": false,
                 "editable": false,
                 "advanced": false,

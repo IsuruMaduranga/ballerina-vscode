@@ -285,8 +285,47 @@
         "value": "true",
         "optional": true,
         "editable": true,
+        "advanced": true,
+        "hidden": false,
+        "dynamicFormFields": {
+          "true": {},
+          "false": {
+            "variable": {
+              "metadata": {
+                "label": "Result",
+                "description": "Name of the variable that receives the error the activity failed with, or nil when it succeeded"
+              },
+              "types": [
+                {
+                  "fieldType": "IDENTIFIER",
+                  "selected": true
+                }
+              ],
+              "value": "",
+              "optional": false,
+              "editable": true,
+              "advanced": false,
+              "hidden": false
+            }
+          }
+        }
+      },
+      "variable": {
+        "metadata": {
+          "label": "Result",
+          "description": "Name of the result variable"
+        },
+        "types": [
+          {
+            "fieldType": "IDENTIFIER",
+            "selected": true
+          }
+        ],
+        "value": "activityResult",
+        "optional": true,
+        "editable": true,
         "advanced": false,
-        "hidden": false
+        "hidden": true
       },
       "retryPolicy": {
         "metadata": {
