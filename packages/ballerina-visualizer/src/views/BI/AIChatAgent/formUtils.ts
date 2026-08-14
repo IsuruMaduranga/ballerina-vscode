@@ -297,6 +297,9 @@ export const stripCodeFencesInline = (text: string): string =>
 // Categories in the FUNCTION search response that are NOT the project's own functions: standard
 // library and imported/third-party modules (plus agent tools). Approval-predicate pickers offer
 // only the user's own module-level functions as candidates, so these are skipped.
+// Matched by label rather than a structural field because the category itself carries no org/module
+// info (only the leaf AvailableNode.codedata does, one level down) — this is a wording-fragile check,
+// not a considered choice. If the LS ever renames these labels, this filter silently stops working.
 const NON_LOCAL_FUNCTION_CATEGORIES = ["Standard Library", "Agent Tools"];
 function isLocalFunctionCategory(label: string | undefined): boolean {
     if (!label) return true;
