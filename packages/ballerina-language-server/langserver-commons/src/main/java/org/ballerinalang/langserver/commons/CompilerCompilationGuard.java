@@ -18,8 +18,10 @@
 
 package org.ballerinalang.langserver.commons;
 
+import io.ballerina.projects.CompilationOptions;
 import io.ballerina.projects.Package;
 import io.ballerina.projects.PackageCompilation;
+import io.ballerina.projects.PackageResolution;
 import org.eclipse.lsp4j.jsonrpc.CancelChecker;
 
 import java.nio.file.Path;
@@ -90,6 +92,47 @@ public final class CompilerCompilationGuard {
             PackageCompilation compilation = ballerinaPackage.getCompilation();
             checkCancellation(cancelChecker);
             return compilation;
+        } finally {
+            projectLock.unlock();
+        }
+    }
+
+    /**
+     * Returns the package resolution under the shared compiler compilation guard.
+     *
+     * <p>Resolution and compilation of the same package both drive the compiler's dependency
+     * resolution machinery, so a caller resolving a package outside of {@link #getCompilation}
+     * must still take this guard to avoid racing a concurrent guarded (or unguarded) compile of
+     * the same project.
+     *
+     * @param ballerinaPackage package to resolve
+     * @param compilationOptions options controlling the resolution
+     * @return guarded package resolution
+     */
+    public static @Nonnull PackageResolution getResolution(@Nonnull Package ballerinaPackage,
+                                                           @Nonnull CompilationOptions compilationOptions) {
+        return getResolution(ballerinaPackage, compilationOptions, null);
+    }
+
+    /**
+     * Returns the package resolution under the shared compiler compilation guard.
+     *
+     * @param ballerinaPackage package to resolve
+     * @param compilationOptions options controlling the resolution
+     * @param cancelChecker cancellation checker for request-scoped callers
+     * @return guarded package resolution
+     */
+    public static @Nonnull PackageResolution getResolution(@Nonnull Package ballerinaPackage,
+                                                           @Nonnull CompilationOptions compilationOptions,
+                                                           CancelChecker cancelChecker) {
+        checkCancellation(cancelChecker);
+        ReentrantLock projectLock = projectLock(ballerinaPackage);
+        lock(projectLock);
+        try {
+            checkCancellation(cancelChecker);
+            PackageResolution resolution = ballerinaPackage.getResolution(compilationOptions);
+            checkCancellation(cancelChecker);
+            return resolution;
         } finally {
             projectLock.unlock();
         }

@@ -72,7 +72,8 @@ public final class CompilationActionImpl implements CompilationPipeline.Compilat
         try {
             Project project = projectService.loadOrCreateFromIdentifier(sourceRootIdentifier, null);
             LockingMode lockingMode = projectService.getLockingMode(project);
-            PackageResolution resolution = project.currentPackage().getResolution(compilationOptions(lockingMode));
+            PackageResolution resolution = CompilerCompilationGuard.getResolution(project.currentPackage(),
+                    compilationOptions(lockingMode));
             List<ResolutionResult.ResolutionDiagnostic> diagnostics = BallerinaCompilerApi.getInstance()
                     .getDiagnostics(resolution.diagnosticResult()).stream()
                     .map(diagnostic -> new ResolutionResult.ResolutionDiagnostic(
@@ -135,7 +136,7 @@ public final class CompilationActionImpl implements CompilationPipeline.Compilat
             Project transientProject = BallerinaCompilerApi.getInstance()
                     .loadProject(projectService.resolvePathFromIdentifier(task.sourceRootIdentifier()),
                             buildOptions(mode));
-            transientProject.currentPackage().getResolution(compilationOptions(mode));
+            CompilerCompilationGuard.getResolution(transientProject.currentPackage(), compilationOptions(mode));
             CompilerCompilationGuard.getCompilation(transientProject.currentPackage());
             return true;
         } catch (RuntimeException ignored) {
