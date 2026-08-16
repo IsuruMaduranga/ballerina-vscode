@@ -223,7 +223,12 @@ public class ChangeBuffer {
             return Collections.emptyMap();
         }
         Map<DocumentUri, FileEvent> snapshot = new HashMap<>(closedDocChanges);
-        closedDocChanges.keySet().removeAll(snapshot.keySet());
+        // Per-entry conditional removal: only the value actually captured in the snapshot is
+        // removed. A put() racing between the snapshot copy and removal (for the same URI) leaves
+        // its newer value in place for the next drain instead of being silently dropped.
+        for (Map.Entry<DocumentUri, FileEvent> entry : snapshot.entrySet()) {
+            closedDocChanges.remove(entry.getKey(), entry.getValue());
+        }
         return snapshot;
     }
 
@@ -237,7 +242,10 @@ public class ChangeBuffer {
             return Collections.emptyMap();
         }
         Map<DocumentUri, FileEvent> snapshot = new HashMap<>(deferredWatcherEvents);
-        deferredWatcherEvents.keySet().removeAll(snapshot.keySet());
+        // Per-entry conditional removal — see drainClosedDocChanges for rationale.
+        for (Map.Entry<DocumentUri, FileEvent> entry : snapshot.entrySet()) {
+            deferredWatcherEvents.remove(entry.getKey(), entry.getValue());
+        }
         return snapshot;
     }
 

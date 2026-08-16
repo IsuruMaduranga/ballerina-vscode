@@ -35,9 +35,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 
 /**
@@ -485,5 +487,80 @@ public class ChangeBufferTest {
         executor.shutdown();
 
         Assert.assertTrue(errors.isEmpty(), "Concurrent drain+append must not throw: " + errors);
+    }
+
+    // -------------------------------------------------------------------------
+    // Regression: snapshot-then-removeAll race (PR #674 review)
+    //
+    // A routeWatcherEvent() put that lands between a drain's snapshot copy and its
+    // removeAll must NOT be deleted unless it was actually returned. The fix uses
+    // per-entry conditional remove(key, capturedValue). Each round forces the race
+    // between a drain and a put for the same URI; the racing put must be recovered
+    // by either the racing drain or the final drain. With the old removeAll pattern
+    // the put is silently lost on roughly half the rounds, so this fails reliably.
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void drainClosedDocChanges_racingPutForSameUriNotLost() throws Exception {
+        assertRacingPutSurvivesDrain(false);
+    }
+
+    @Test
+    public void drainDeferredWatcherEvents_racingPutForSameUriNotLost() throws Exception {
+        assertRacingPutSurvivesDrain(true);
+    }
+
+    private void assertRacingPutSurvivesDrain(boolean openDocument) throws Exception {
+        int rounds = 2000;
+        for (int round = 0; round < rounds; round++) {
+            ChangeBuffer b = new ChangeBuffer();
+            if (openDocument) {
+                // An EDITOR layer key makes isOpen() true, so routeWatcherEvent targets
+                // deferredWatcherEvents instead of closedDocChanges.
+                b.ensureLayer(mainUri, ChangeLayer.EDITOR);
+            }
+            FileEvent initial = new FileEvent("file:///workspace/main.bal", FileChangeType.Changed);
+            FileEvent racer = new FileEvent("file:///workspace/main.bal", FileChangeType.Created);
+            b.routeWatcherEvent(mainUri, initial);
+
+            CyclicBarrier barrier = new CyclicBarrier(2);
+            AtomicReference<Map<DocumentUri, FileEvent>> drainResult = new AtomicReference<>();
+            Thread drainer = new Thread(() -> {
+                try {
+                    barrier.await();
+                } catch (Exception e) {
+                    return;
+                }
+                drainResult.set(openDocument
+                        ? b.drainDeferredWatcherEvents()
+                        : b.drainClosedDocChanges());
+            });
+            Thread router = new Thread(() -> {
+                try {
+                    barrier.await();
+                } catch (Exception e) {
+                    return;
+                }
+                b.routeWatcherEvent(mainUri, racer);
+            });
+            drainer.start();
+            router.start();
+            drainer.join();
+            router.join();
+
+            Map<DocumentUri, FileEvent> drained = drainResult.get();
+            Map<DocumentUri, FileEvent> finalDrain = openDocument
+                    ? b.drainDeferredWatcherEvents()
+                    : b.drainClosedDocChanges();
+
+            // The racing put must be returned by the racing drain OR survive to the final drain.
+            // (When the racing drain captured the older `initial`, the fix leaves `racer` in place
+            // for the final drain; the old removeAll pattern deleted it silently.)
+            boolean racerReturnedByRacingDrain = drained.get(mainUri) == racer;
+            boolean racerReturnedByFinalDrain = finalDrain.get(mainUri) == racer;
+            Assert.assertTrue(racerReturnedByRacingDrain || racerReturnedByFinalDrain,
+                    "Racing routeWatcherEvent must survive drain (round " + round
+                            + ", open=" + openDocument + ")");
+        }
     }
 }
