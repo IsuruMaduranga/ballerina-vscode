@@ -26,6 +26,7 @@ import io.ballerina.projects.PackageCompilation;
 import io.ballerina.projects.PackageDescriptor;
 import io.ballerina.projects.PackageName;
 import io.ballerina.projects.Project;
+import org.ballerinalang.langserver.commons.CompilerCompilationGuard;
 import org.ballerinalang.langserver.workspace.compilerengine.recovery.ResolutionResult;
 import org.ballerinalang.langserver.workspace.compilerengine.snapshot.DualSnapshotStore;
 import org.ballerinalang.langserver.workspace.compilerengine.snapshot.InProgressSnapshot;
@@ -45,6 +46,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -106,6 +108,8 @@ public class CompilationServiceImplTest {
             eventBus.close();
             eventBus = null;
         }
+        // Clean up any entries this test inserted into the shared static compiler-guard lock map.
+        clearGuardLockMap();
     }
 
     // ---- Constructor Contracts ----
@@ -158,6 +162,49 @@ public class CompilationServiceImplTest {
         // Verify pipeline is evicted
         Assert.assertNull(snapshotStore.getStable(mockKey()),
                 "WM-E2 should evict pipeline and snapshot");
+    }
+
+    @Test
+    public void wme2_evictsCompilerCompilationGuardLockEvenWithoutPipeline() throws Exception {
+        // Regression (task 05): WM-E2 must evict the shared compiler-guard lock for the project's
+        // source root even when no compilation pipeline was ever registered for it. The guard may
+        // be used directly (WorkspaceRunService / WorkspaceManagerFacadeImpl) without a pipeline,
+        // so eviction must not be gated on pipeline existence.
+        service = new CompilationServiceImpl(snapshotStore, eventBus, actionWithDescribe(
+                task -> mockSnapshot), 50);
+
+        Path registered = workspaceDir;
+        putGuardLock(registered);
+        Assert.assertTrue(guardLockMap().containsKey(registered),
+                "precondition: guard lock should be registered for the project root");
+
+        publishWmE2(testRoot);
+        Thread.sleep(200);
+
+        Assert.assertFalse(guardLockMap().containsKey(registered),
+                "WM-E2 should evict the compiler-guard lock even with no pipeline");
+    }
+
+    @Test
+    public void wme2_evictsCompilerCompilationGuardLockWhenPipelineExists() throws Exception {
+        CountDownLatch compiled = new CountDownLatch(1);
+        service = new CompilationServiceImpl(snapshotStore, eventBus, actionWithDescribe(task -> {
+            compiled.countDown();
+            return mockSnapshot;
+        }), 50);
+
+        publishWmE1(testRoot);
+        Assert.assertTrue(compiled.await(3, TimeUnit.SECONDS), "Pipeline should be created");
+
+        Path registered = workspaceDir;
+        putGuardLock(registered);
+        Assert.assertTrue(guardLockMap().containsKey(registered));
+
+        publishWmE2(testRoot);
+        Thread.sleep(200);
+
+        Assert.assertFalse(guardLockMap().containsKey(registered),
+                "WM-E2 should evict the compiler-guard lock when a pipeline existed");
     }
 
     @Test
@@ -620,6 +667,44 @@ public class CompilationServiceImplTest {
 
     private void publishWmE4(DocumentUri sr) {
         eventBus.publish(new ProjectEvent(EventKind.WORKSPACE_PROJECT_UPDATED, sr.uri()));
+    }
+
+    /**
+     * Inserts a lock entry into the static {@code CompilerCompilationGuard.PROJECT_LOCKS} map for
+     * the given (already-normalized) source root, simulating a prior guarded compilation.
+     */
+    @SuppressWarnings("unchecked")
+    private static void putGuardLock(Path sourceRoot) throws Exception {
+        Field field = CompilerCompilationGuard.class.getDeclaredField("PROJECT_LOCKS");
+        field.setAccessible(true);
+        java.util.Map<Path, Object> locks =
+                (java.util.Map<Path, Object>) field.get(null);
+        locks.computeIfAbsent(sourceRoot.toAbsolutePath().normalize(),
+                root -> new java.util.concurrent.locks.ReentrantLock());
+    }
+
+    /**
+     * Reads the static {@code CompilerCompilationGuard.PROJECT_LOCKS} map for assertions.
+     */
+    @SuppressWarnings("unchecked")
+    private static java.util.Map<Path, Object> guardLockMap() throws Exception {
+        Field field = CompilerCompilationGuard.class.getDeclaredField("PROJECT_LOCKS");
+        field.setAccessible(true);
+        return (java.util.Map<Path, Object>) field.get(null);
+    }
+
+    /**
+     * Clears the static {@code CompilerCompilationGuard.PROJECT_LOCKS} map so tests do not leak
+     * entries into one another (the map is process-wide).
+     */
+    private static void clearGuardLockMap() {
+        try {
+            Field field = CompilerCompilationGuard.class.getDeclaredField("PROJECT_LOCKS");
+            field.setAccessible(true);
+            ((java.util.Map<?, ?>) field.get(null)).clear();
+        } catch (Exception e) {
+            // Best-effort cleanup; never fail a test on tearDown.
+        }
     }
 
     private StableSnapshot createStableSnapshot(SyntaxTree syntaxTree, SemanticModel semanticModel,

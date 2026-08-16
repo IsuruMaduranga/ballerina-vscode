@@ -20,6 +20,7 @@ package org.ballerinalang.langserver.workspace.compilerengine;
 
 import io.ballerina.projects.PackageDescriptor;
 import io.ballerina.projects.Project;
+import org.ballerinalang.langserver.commons.CompilerCompilationGuard;
 import org.ballerinalang.langserver.workspace.compilerengine.recovery.FailureClass;
 import org.ballerinalang.langserver.workspace.compilerengine.recovery.ResolutionResult;
 import org.ballerinalang.langserver.workspace.compilerengine.snapshot.DualSnapshotStore;
@@ -529,6 +530,11 @@ public class CompilationServiceImpl implements CompilationService, AutoCloseable
     }
 
     private void evictPipeline(String sourceRootIdentifier) {
+        // Evict the shared compiler-guard lock for this source root regardless of whether a
+        // pipeline was ever created: the guard may have been used directly (WorkspaceRunService,
+        // WorkspaceManagerFacadeImpl) without a pipeline being registered, and the lock map must
+        // not retain entries for closed/evicted projects (WM-E2).
+        CompilerCompilationGuard.evictProjectLock(Path.of(sourceRootIdentifier));
         Set<CompilationKey> keys = sourceRootIndex.remove(sourceRootIdentifier);
         if (keys == null) {
             return;
