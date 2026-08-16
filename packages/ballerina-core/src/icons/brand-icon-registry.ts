@@ -51,6 +51,7 @@ export const BRAND_ICON_REGISTRY: Record<string, BrandIcon> = {
     solace: { glyph: "bi-solace", color: "#00C895" },
     ftp: { glyph: "bi-ftp" },
     smb: { glyph: "bi-smb" },
+    "azure.storage.files": { glyph: "bi-azure-files", color: "#0078D4" },
     file: { glyph: "bi-file" },
     mssql: { glyph: "bi-mssql", color: "#b61d1c" },
     postgresql: { glyph: "bi-postgresql", color: "#336791" },
