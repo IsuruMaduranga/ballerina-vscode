@@ -565,13 +565,13 @@ public class DesignModelGenerator {
                         intermediateModel.connectionMap.put(
                                 String.valueOf(variableSymbol.getLocation().get().hashCode()), connection);
                         intermediateModel.uuidToConnectionMap.put(connection.getUuid(), connection);
-                    } else if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(String.format(
+                    } else if (LOG.isLoggable(Level.INFO)) {
+                        LOG.info(String.format(
                                 "Skipped object-typed module variable '%s': qualifiers=%s did not include CLIENT",
                                 variableSymbol.getName().orElse("<unknown>"), objectTypeSymbol.qualifiers()));
                     }
-                } else if (LOG.isLoggable(Level.FINE)) {
-                    LOG.fine(String.format(
+                } else if (LOG.isLoggable(Level.INFO)) {
+                    LOG.info(String.format(
                             "Skipped module variable '%s': raw type %s is not an ObjectTypeSymbol",
                             variableSymbol.getName().orElse("<unknown>"),
                             typeSymbol == null ? "null" : typeSymbol.getClass().getName()));
