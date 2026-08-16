@@ -30,6 +30,7 @@ import io.ballerina.projects.PackageDescriptor;
 import io.ballerina.projects.Project;
 import org.ballerinalang.langserver.commons.workspace.RunContext;
 import org.ballerinalang.langserver.commons.workspace.RunResult;
+import org.ballerinalang.langserver.commons.workspace.WorkspaceDocumentException;
 import org.ballerinalang.langserver.workspace.compilerengine.CompilationService;
 import org.ballerinalang.langserver.workspace.compilerengine.snapshot.StableSnapshot;
 import org.ballerinalang.langserver.workspace.executionmanager.ExecutionService;
@@ -55,11 +56,16 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 
 /**
@@ -565,6 +571,92 @@ public class WorkspaceManagerFacadeImplTest {
 
         Assert.assertEquals(projectMap.size(), 1);
         Assert.assertSame(projectMap.get(sourceRoot), baseProject);
+    }
+
+    @Test
+    public void testDidOpen_EvictsProject_OnFailure() {
+        // didOpen is the one lifecycle entry point that must reset project state on failure.
+        String uriString = "file:///test/project/main.bal";
+        DidOpenTextDocumentParams params = new DidOpenTextDocumentParams();
+        params.setTextDocument(new TextDocumentItem(uriString, "ballerina", 1, "content"));
+        Mockito.doThrow(new RuntimeException("open failed")).when(mockProjectService)
+                .didOpen(Mockito.any(DocumentUri.class), Mockito.anyString());
+
+        Assert.assertThrows(WorkspaceDocumentException.class, () -> facade.didOpen(testPath, params));
+        Mockito.verify(mockProjectService).evictProject(testPath);
+    }
+
+    @Test
+    public void testDidChange_DoesNotEvict_OnFailure() {
+        // Regression for task #07: didChange intentionally does NOT evict the project on failure (unlike
+        // didOpen), to avoid discarding the entire package's state because one edit failed to apply.
+        String uriString = "file:///test/project/main.bal";
+        DidChangeTextDocumentParams params = new DidChangeTextDocumentParams();
+        params.setTextDocument(new org.eclipse.lsp4j.VersionedTextDocumentIdentifier(uriString, 2));
+        params.setContentChanges(List.of(new TextDocumentContentChangeEvent("new content")));
+        Mockito.doThrow(new RuntimeException("change failed")).when(mockProjectService)
+                .didChange(Mockito.any(DocumentUri.class), Mockito.anyList());
+
+        Assert.assertThrows(RuntimeException.class, () -> facade.didChange(testPath, params));
+        Mockito.verify(mockProjectService, Mockito.never()).evictProject(Mockito.any(Path.class));
+    }
+
+    @Test
+    public void testDidClose_DoesNotEvict_OnFailure() {
+        // Regression for task #07: didClose intentionally does NOT evict the project on failure.
+        String uriString = "file:///test/project/main.bal";
+        DidCloseTextDocumentParams params = new DidCloseTextDocumentParams();
+        params.setTextDocument(new org.eclipse.lsp4j.TextDocumentIdentifier(uriString));
+        Mockito.doThrow(new RuntimeException("close failed")).when(mockProjectService)
+                .didClose(Mockito.any(DocumentUri.class));
+
+        Assert.assertThrows(RuntimeException.class, () -> facade.didClose(testPath, params));
+        Mockito.verify(mockProjectService, Mockito.never()).evictProject(Mockito.any(Path.class));
+    }
+
+    @Test
+    public void testSwallowedException_IsLoggedAtFine() {
+        // Representative JUL-handler test for task #06: a swallowed RuntimeException in a read facade
+        // method is emitted at FINE with the failing operation, subject, and thrown exception.
+        Logger logger = Logger.getLogger(WorkspaceManagerFacadeImpl.class.getName());
+        Level previousLevel = logger.getLevel();
+        List<LogRecord> records = new ArrayList<>();
+        Handler capturingHandler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                records.add(record);
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        capturingHandler.setLevel(Level.ALL);
+        logger.setLevel(Level.FINE);
+        logger.addHandler(capturingHandler);
+        try {
+            Mockito.when(mockProjectService.loadOrCreate(Mockito.any(Path.class), Mockito.any()))
+                    .thenThrow(new RuntimeException("engine bug"));
+
+            Optional<String> result = facade.relativePath(testPath);
+
+            Assert.assertFalse(result.isPresent());
+            LogRecord swallowed = records.stream()
+                    .filter(r -> r.getLevel() == Level.FINE)
+                    .filter(r -> r.getMessage() != null && r.getMessage().contains("relativePath"))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("No FINE log for swallowed relativePath exception"));
+            Assert.assertNotNull(swallowed.getThrown());
+            Assert.assertTrue(swallowed.getThrown() instanceof RuntimeException);
+            Assert.assertTrue(swallowed.getMessage().contains(testPath.toString()));
+        } finally {
+            logger.removeHandler(capturingHandler);
+            logger.setLevel(previousLevel);
+        }
     }
 
     private StableSnapshot createStableSnapshot(SyntaxTree syntaxTree, SemanticModel semanticModel,

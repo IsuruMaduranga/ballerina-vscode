@@ -59,6 +59,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import javax.annotation.Nonnull;
@@ -77,6 +79,8 @@ public final class WorkspaceManagerFacadeImpl
     private final ExecutionService executionService;
     private final WorkspaceRunService workspaceRunService;
     private final AutoCloseable closeAction;
+    private static final Logger LOG = Logger.getLogger(WorkspaceManagerFacadeImpl.class.getName());
+
     private final AtomicBoolean closed = new AtomicBoolean(false);
     /**
      * Creates a new facade with all required service dependencies.
@@ -141,6 +145,7 @@ public final class WorkspaceManagerFacadeImpl
             Path root = projectService.loadOrCreate(path, null).sourceRoot();
             return Optional.of(root.relativize(path).toString());
         } catch (RuntimeException e) {
+            logSwallowed("relativePath", path, e);
             return Optional.empty();
         }
     }
@@ -151,6 +156,7 @@ public final class WorkspaceManagerFacadeImpl
             Path root = projectService.loadOrCreate(path, cancelChecker).sourceRoot();
             return Optional.of(root.relativize(path).toString());
         } catch (RuntimeException e) {
+            logSwallowed("relativePath", path, e);
             return Optional.empty();
         }
     }
@@ -196,6 +202,7 @@ public final class WorkspaceManagerFacadeImpl
             DocumentId docId = project.documentId(filePath);
             return Optional.of(project.currentPackage().module(docId.moduleId()).document(docId));
         } catch (RuntimeException e) {
+            logSwallowed("document", filePath, e);
             return Optional.empty();
         }
     }
@@ -207,6 +214,7 @@ public final class WorkspaceManagerFacadeImpl
             DocumentId docId = project.documentId(filePath);
             return Optional.of(project.currentPackage().module(docId.moduleId()).document(docId));
         } catch (RuntimeException e) {
+            logSwallowed("document", filePath, e);
             return Optional.empty();
         }
     }
@@ -218,6 +226,7 @@ public final class WorkspaceManagerFacadeImpl
             DocumentId docId = project.documentId(filePath);
             return Optional.of(project.currentPackage().module(docId.moduleId()).document(docId).syntaxTree());
         } catch (RuntimeException e) {
+            logSwallowed("syntaxTree", filePath, e);
             return Optional.empty();
         }
     }
@@ -229,6 +238,7 @@ public final class WorkspaceManagerFacadeImpl
             DocumentId docId = project.documentId(filePath);
             return Optional.of(project.currentPackage().module(docId.moduleId()).document(docId).syntaxTree());
         } catch (RuntimeException e) {
+            logSwallowed("syntaxTree", filePath, e);
             return Optional.empty();
         }
     }
@@ -245,6 +255,7 @@ public final class WorkspaceManagerFacadeImpl
             Module module = projectService.module(filePath, cancelChecker);
             return semanticModel(project, module.moduleId(), filePath, cancelChecker);
         } catch (RuntimeException e) {
+            logSwallowed("semanticModel", filePath, e);
             return Optional.empty();
         }
     }
@@ -256,6 +267,9 @@ public final class WorkspaceManagerFacadeImpl
                     cancelChecker);
             return Optional.of(compilation.getSemanticModel(moduleId));
         } catch (Exception e) {
+            // Deliberate fallback: the stable compilation path may not be ready yet; retry via the buffered
+            // compilation snapshot below. Logged at FINE so a repeated fallback storm is still observable.
+            logSwallowed("semanticModel (stable compilation)", filePath, e);
             return semanticModelFromCompilation(filePath, moduleId, cancelChecker);
         }
     }
@@ -273,14 +287,17 @@ public final class WorkspaceManagerFacadeImpl
             StableSnapshot snapshot = null;
             try {
                 snapshot = compilationService.stableSnapshot(project, descriptor, cancelChecker);
-            } catch (RuntimeException ignored) {
-                // Fall back to the raw compiler result below for legacy diagnostics compatibility.
+            } catch (RuntimeException e) {
+                // Deliberate fallback to the raw compiler result below for legacy diagnostics compatibility.
+                // Logged at FINE so a repeatedly failing stable-snapshot path is observable.
+                logSwallowed("waitAndGetPackageCompilation (stable snapshot)", filePath, e);
             }
             if (snapshot != null) {
                 return Optional.of(snapshot.compilation());
             }
             return Optional.of(CompilerCompilationGuard.getCompilation(project.currentPackage(), cancelChecker));
         } catch (RuntimeException e) {
+            logSwallowed("waitAndGetPackageCompilation", filePath, e);
             return Optional.empty();
         }
     }
@@ -292,11 +309,30 @@ public final class WorkspaceManagerFacadeImpl
             String content = params.getTextDocument().getText();
             projectService.didOpen(toDocumentUri(uriString), content);
         } catch (RuntimeException e) {
+            // didOpen is the only lifecycle entry point that creates fresh project state, so a failure here
+            // leaves a half-constructed project that can never recover; evicting it is the safe reset.
+            logSwallowed("didOpen", filePath, e);
             projectService.evictProject(filePath);
             throw new WorkspaceDocumentException(e);
         }
     }
 
+    // Note on lifecycle error-handling asymmetry (deliberate, see task #07):
+    // didChange and didClose intentionally do NOT evict the project on failure the way didOpen does.
+    // Rationale:
+    //   1. By the time didChange/didClose run, the project already exists in a known-good state from a prior
+    //      successful didOpen. A RuntimeException here typically comes from applying a single content change
+    //      (didChange) or tearing down a document handle (didClose), not from corrupting the whole project.
+    //   2. Evicting on a didChange failure would discard the entire project — including every other open
+    //      document in that package — because one edit failed to apply. That is far more disruptive than
+    //      leaving the project at its last successfully applied content version, which the editor can retry
+    //      from on the next change.
+    //   3. didClose failing rarely implies project corruption; the document handle simply may not unregister.
+    //      Evicting would force a full reload on the next access for no benefit.
+    // The next read after a failed didChange will operate on the last good snapshot (via the stable
+    // snapshot / buffered-change layer in ProjectService), so the language server degrades gracefully
+    // instead of nuking the workspace. If a future failure mode is found that does corrupt project state,
+    // the fix is to make ProjectService.didChange/didClose internally atomic, not to evict at the facade.
     @Override
     public void didChange(Path filePath, DidChangeTextDocumentParams params) throws WorkspaceDocumentException {
         projectService.loadOrCreate(filePath, null);
@@ -342,6 +378,7 @@ public final class WorkspaceManagerFacadeImpl
             executionService.stop(new DocumentUri.FileUri(sourceRoot.toUri()));
             return stopped;
         } catch (Exception e) {
+            logSwallowed("stop", filePath, e);
             return false;
         }
     }
@@ -364,6 +401,7 @@ public final class WorkspaceManagerFacadeImpl
         try {
             return Optional.of(projectService.module(uri, cancelChecker));
         } catch (RuntimeException e) {
+            logSwallowed("module", uri, e);
             return Optional.empty();
         }
     }
@@ -382,6 +420,7 @@ public final class WorkspaceManagerFacadeImpl
             Module module = projectService.module(uri, cancelChecker);
             return semanticModel(project, module.moduleId(), Path.of(UriResolver.pathOf(uri.uri())), cancelChecker);
         } catch (RuntimeException e) {
+            logSwallowed("semanticModel", uri, e);
             return Optional.empty();
         }
     }
@@ -391,7 +430,10 @@ public final class WorkspaceManagerFacadeImpl
         try {
             return waitAndGetPackageCompilation(filePath, cancelChecker)
                     .map(compilation -> compilation.getSemanticModel(moduleId));
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            // Deliberate swallow: both the stable-snapshot and raw-compiler paths already failed above; there
+            // is no further fallback, so the only honest result is empty. Logged at FINE for observability.
+            logSwallowed("semanticModelFromCompilation", filePath, e);
             return Optional.empty();
         }
     }
@@ -407,14 +449,17 @@ public final class WorkspaceManagerFacadeImpl
             StableSnapshot snapshot = null;
             try {
                 snapshot = compilationService.stableSnapshot(project, descriptor, cancelChecker);
-            } catch (RuntimeException ignored) {
-                // Fall back to the raw compiler result below for legacy diagnostics compatibility.
+            } catch (RuntimeException e) {
+                // Deliberate fallback to the raw compiler result below for legacy diagnostics compatibility.
+                // Logged at FINE so a repeatedly failing stable-snapshot path is observable.
+                logSwallowed("waitAndGetPackageCompilation (stable snapshot)", uri, e);
             }
             if (snapshot != null) {
                 return Optional.of(snapshot.compilation());
             }
             return Optional.of(CompilerCompilationGuard.getCompilation(project.currentPackage(), cancelChecker));
         } catch (RuntimeException e) {
+            logSwallowed("waitAndGetPackageCompilation", uri, e);
             return Optional.empty();
         }
     }
@@ -477,6 +522,7 @@ public final class WorkspaceManagerFacadeImpl
             try {
                 return Optional.of(facade.loadProject(uriFor(filePath)));
             } catch (Exception e) {
+                logSwallowed("project (uri-scoped)", filePath, e);
                 return Optional.empty();
             }
         }
@@ -606,6 +652,23 @@ public final class WorkspaceManagerFacadeImpl
         private static boolean isBallerinaSource(Path path) {
             Path fileName = path.getFileName();
             return fileName != null && fileName.toString().endsWith(".bal");
+        }
+
+    }
+
+    /**
+     * Logs a swallowed exception at {@link Level#FINE} before a facade read method returns its empty/default
+     * value. String construction is guarded by {@link Logger#isLoggable} so the hot path pays nothing when
+     * fine logging is disabled. The return behavior of the caller is intentionally unchanged; this is purely
+     * an observability hook so a genuine engine bug is distinguishable from "no result".
+     *
+     * @param operation short name of the facade operation that failed (e.g. {@code "document"})
+     * @param subject   the path or URI involved, or {@code null} if none
+     * @param e         the swallowed exception
+     */
+    private static void logSwallowed(String operation, Object subject, Throwable e) {
+        if (LOG.isLoggable(Level.FINE)) {
+            LOG.log(Level.FINE, operation + " failed for " + subject + "; returning empty/default value", e);
         }
     }
 
