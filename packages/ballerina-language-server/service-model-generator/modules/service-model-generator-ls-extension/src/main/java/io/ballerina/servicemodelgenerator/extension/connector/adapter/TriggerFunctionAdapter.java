@@ -290,15 +290,19 @@ public final class TriggerFunctionAdapter {
         Value type = typeBuilder.build();
 
         Value name = identifierValue(paramNameText(model), label, description);
-        return new Parameter.Builder()
+        Parameter.Builder builder = new Parameter.Builder()
                 .metadata(new MetaData(label, description))
                 .kind(bindable ? DATA_BINDING : KIND_REQUIRED)
                 .type(type)
                 .name(name)
                 .optional(false)
                 .enabled(true)
-                .editable(model.editable() == null || model.editable())
-                .build();
+                .editable(model.editable() == null || model.editable());
+        String bindingGroup = model.codedata() == null ? null : model.codedata().bindingGroup();
+        if (notBlank(bindingGroup)) {
+            builder.bindingGroup(bindingGroup);
+        }
+        return builder.build();
     }
 
     /** The module prefix a payload's {@code defaultType} is qualified with (e.g. {@code "jms"} from

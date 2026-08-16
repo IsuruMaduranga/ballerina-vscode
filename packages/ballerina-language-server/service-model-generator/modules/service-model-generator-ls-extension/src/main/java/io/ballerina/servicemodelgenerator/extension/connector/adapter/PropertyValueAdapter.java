@@ -243,7 +243,7 @@ public final class PropertyValueAdapter {
                 cd.getDefaultType(), cd.getBoundType(), cd.getBindable(), null, null, cd.getTemplate(),
                 cd.getModifier(), null,
                 cd.getTargetParam(), null, cd.getField(), cd.getOptional(), cd.getValue(),
-                cd.getValueQualifier(), null, null, cd.getNameEditable());
+                cd.getValueQualifier(), null, null, cd.getNameEditable(), null);
     }
 
     /** String values collapse to their literal form; non-string values pass through raw. */
