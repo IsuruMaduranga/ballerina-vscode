@@ -663,9 +663,16 @@ public final class ProjectServiceImpl implements ProjectService {
     public void didClose(@Nonnull DocumentUri uri) {
         Optional<DocumentUri> overlayRoot = uri instanceof DocumentUri.FileUri ? Optional.empty()
                 : resolveProjectRoot(uri);
+        // Mirror didOpen's alreadyOpen guard: only adjust the shared open-document
+        // count when this URI actually had a tracked overlay layer before clearing.
+        // A duplicate or out-of-order didClose must not drive the count below the
+        // number of genuinely open documents in the project.
+        boolean wasOpen = changeBuffer.hasLayer(uri, layerOf(uri));
         changeBuffer.clear(uri);
         versionCounters.remove(uri);
-        decrementOpenDocumentCount(uri);
+        if (wasOpen) {
+            decrementOpenDocumentCount(uri);
+        }
         overlayRoot.ifPresent(this::removeCachedProject);
     }
 

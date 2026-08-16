@@ -27,6 +27,7 @@ import org.ballerinalang.langserver.workspace.workspacemanager.change.BufferedCh
 import org.ballerinalang.langserver.workspace.workspacemanager.change.ChangeApplier;
 import org.ballerinalang.langserver.workspace.workspacemanager.change.ChangeBuffer;
 import org.ballerinalang.langserver.workspace.workspacemanager.change.ChangeLayer;
+import org.ballerinalang.langserver.workspace.workspacemanager.project.ProjectTier;
 import org.ballerinalang.langserver.workspace.workspacemanager.uri.DocumentUri;
 import org.eclipse.lsp4j.FileChangeType;
 import org.eclipse.lsp4j.FileEvent;
@@ -128,6 +129,41 @@ public class ProjectServiceDocumentTest {
         service.didClose(uri);
 
         Assert.assertEquals(service.workspaceProject(root).orElseThrow().openDocumentCount().count(), 0);
+    }
+
+    @Test
+    public void didClose_duplicateClose_keepsProjectActiveForStillOpenDocument() throws Exception {
+        // Regression for PR #674 review: a duplicate/out-of-order didClose must not
+        // decrement the shared open-document count when the URI had no tracked layer,
+        // so a sibling document that is still open keeps the project ACTIVE.
+        Path fileA = tempDir.resolve("main.bal");
+        Path fileB = tempDir.resolve("other.bal");
+        Files.writeString(fileA, "function main() {}\n");
+        Files.writeString(fileB, "function other() {}\n");
+        DocumentUri root = new DocumentUri.FileUri(tempDir.toUri());
+        DocumentUri uriA = new DocumentUri.FileUri(fileA.toUri());
+        DocumentUri uriB = new DocumentUri.FileUri(fileB.toUri());
+
+        service.loadOrCreate(fileA, null);
+        service.loadOrCreate(fileB, null);
+        service.didOpen(uriA, "function main() {}\n");
+        service.didOpen(uriB, "function other() {}\n");
+
+        Assert.assertEquals(service.workspaceProject(root).orElseThrow().openDocumentCount().count(), 2);
+        Assert.assertEquals(service.workspaceProject(root).orElseThrow().openDocumentCount().tier(),
+                ProjectTier.ACTIVE);
+
+        // First close of B is genuine and decrements the count.
+        service.didClose(uriB);
+        Assert.assertEquals(service.workspaceProject(root).orElseThrow().openDocumentCount().count(), 1);
+        Assert.assertEquals(service.workspaceProject(root).orElseThrow().openDocumentCount().tier(),
+                ProjectTier.ACTIVE);
+
+        // Spurious duplicate close of B must be a no-op for the count: A is still open.
+        service.didClose(uriB);
+        Assert.assertEquals(service.workspaceProject(root).orElseThrow().openDocumentCount().count(), 1);
+        Assert.assertEquals(service.workspaceProject(root).orElseThrow().openDocumentCount().tier(),
+                ProjectTier.ACTIVE);
     }
 
     @Test
