@@ -38,7 +38,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -152,9 +154,17 @@ public class DesignModelGeneratorTest extends AbstractLSTest {
         if (actual.size() != expected.size()) {
             return false;
         }
-        for (int i = 0; i < actual.size(); i++) {
-            Service actualService = actual.get(i);
-            Service expectedService = expected.get(i);
+        // Services are generated from an unordered map, so match them by their absolute path
+        // rather than by list position.
+        Map<String, Service> expectedByPath = new HashMap<>();
+        for (Service expectedService : expected) {
+            expectedByPath.put(expectedService.getAbsolutePath(), expectedService);
+        }
+        for (Service actualService : actual) {
+            Service expectedService = expectedByPath.remove(actualService.getAbsolutePath());
+            if (expectedService == null) {
+                return false;
+            }
             if (actualService.hashCode() != expectedService.hashCode() && !actualService.equals(expectedService)) {
                 return false;
             }
