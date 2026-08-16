@@ -617,6 +617,7 @@ public record TriggerUISchemaModel(
      * @param addLabel    the label used when offering to add this node
      * @param groupName   the logical group this node is listed under
      * @param badge       a short badge tag shown on the node
+     * @param addDescription the description used when offering to add this node
      */
     public record Metadata(
             String label,
@@ -626,6 +627,7 @@ public record TriggerUISchemaModel(
             String subLabel,
             String addLabel,
             String groupName,
-            String badge) {
+            String badge,
+            String addDescription) {
     }
 }

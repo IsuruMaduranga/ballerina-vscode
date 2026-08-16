@@ -115,6 +115,7 @@ public final class TriggerFunctionAdapter {
         function.setGroup(notBlank(model.group()) ? model.group() : model.name());
         function.setVariantLabel(variantLabel);
         function.setAddLabel(model.metadata() == null ? null : model.metadata().addLabel());
+        function.setAddDescription(model.metadata() == null ? null : model.metadata().addDescription());
         function.setRepeatable(Repeatable.orDefault(model.repeatable()).effective(function.getGroup()));
         function.setNameEditable(model.nameEditable());
         function.setProperties(toWireProperties(model, variant));

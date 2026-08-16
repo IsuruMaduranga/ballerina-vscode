@@ -118,6 +118,7 @@ export interface FunctionModel {
     group?: string;
     variantLabel?: string;
     addLabel?: string;
+    addDescription?: string;
     repeatable?: RepeatBehavior;
     nameEditable?: boolean;
 

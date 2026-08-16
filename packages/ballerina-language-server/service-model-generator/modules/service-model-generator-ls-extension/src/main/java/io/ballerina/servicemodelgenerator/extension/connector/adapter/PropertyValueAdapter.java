@@ -105,7 +105,7 @@ public final class PropertyValueAdapter {
         }
         TriggerUISchemaModel.Metadata metadata = value.getMetadata() == null ? null
                 : new TriggerUISchemaModel.Metadata(value.getMetadata().label(), value.getMetadata().description(),
-                        null, null, null, null, null, null);
+                        null, null, null, null, null, null, null);
         List<TriggerUISchemaModel.PropertyType> types = null;
         if (value.getTypes() != null) {
             types = new ArrayList<>();

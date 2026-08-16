@@ -308,6 +308,10 @@ export function computeHandlerGroups(serviceModel: ServiceModel): HandlerGroup[]
         if (!group.needsForm) {
             group.quickAddFunction = members[0];
         }
+        const addDescription = members.find((member) => member.addDescription)?.addDescription;
+        if (addDescription) {
+            group.description = addDescription;
+        }
     }
     return Array.from(groups.values());
 }
