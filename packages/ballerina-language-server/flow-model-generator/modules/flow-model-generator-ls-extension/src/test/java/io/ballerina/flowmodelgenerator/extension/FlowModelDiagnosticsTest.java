@@ -84,12 +84,7 @@ public class FlowModelDiagnosticsTest extends AbstractLSTest {
     protected String[] skipList() {
         //This test cannot be run in the build due to user-specific paths in the test config.
         return new String[]{
-                "persist_query.json",
-                // TODO: Investigate — the DiagnosticRequest edit-apply-recompile flow does not
-                // propagate in-memory edits to secondary files (e.g. types.bal) to the project's
-                // compilation, causing BCE2069 (unknown type) which prevents WORKFLOW_123 plugin
-                // diagnostics from surfacing. See investigation in this session.
-                "wait_data.json"
+                "persist_query.json"
         };
     }
 
