@@ -66,6 +66,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static io.ballerina.modelgenerator.commons.CommonUtils.CONNECTOR_TYPE;
 import static io.ballerina.modelgenerator.commons.CommonUtils.PERSIST;
@@ -81,6 +83,7 @@ import static io.ballerina.modelgenerator.commons.CommonUtils.isPersistClient;
  */
 public class DesignModelGenerator {
 
+    private static final Logger LOG = Logger.getLogger(DesignModelGenerator.class.getName());
     private final SemanticModel semanticModel;
     private final Module defaultModule;
     private final Path rootPath;
@@ -562,7 +565,16 @@ public class DesignModelGenerator {
                         intermediateModel.connectionMap.put(
                                 String.valueOf(variableSymbol.getLocation().get().hashCode()), connection);
                         intermediateModel.uuidToConnectionMap.put(connection.getUuid(), connection);
+                    } else if (LOG.isLoggable(Level.FINE)) {
+                        LOG.fine(String.format(
+                                "Skipped object-typed module variable '%s': qualifiers=%s did not include CLIENT",
+                                variableSymbol.getName().orElse("<unknown>"), objectTypeSymbol.qualifiers()));
                     }
+                } else if (LOG.isLoggable(Level.FINE)) {
+                    LOG.fine(String.format(
+                            "Skipped module variable '%s': raw type %s is not an ObjectTypeSymbol",
+                            variableSymbol.getName().orElse("<unknown>"),
+                            typeSymbol == null ? "null" : typeSymbol.getClass().getName()));
                 }
             }
         }
