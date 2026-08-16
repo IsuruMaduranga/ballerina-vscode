@@ -77,6 +77,39 @@ final class SnapshotPair {
     }
 
     /**
+     * Publishes a stable snapshot only if the calling worker still owns the
+     * given in-progress snapshot. If the in-progress slot has been superseded
+     * by a newer {@link #startCompilation()} call (i.e., the currently stored
+     * in-progress snapshot is no longer {@code owner}), the stale publish is
+     * discarded entirely — the stable slot is not updated and no in-progress
+     * future is completed — so a newer compilation's awaiting callers are
+     * never silently resolved with an older, stale result.
+     *
+     * @param stableSnapshot the stable snapshot to publish
+     * @param owner the in-progress snapshot the calling worker started from
+     * @return {@code true} if the publish was applied; {@code false} if it was
+     *         discarded because {@code owner} no longer owns the slot
+     */
+    boolean publishStable(StableSnapshot stableSnapshot, InProgressSnapshot owner) {
+        while (true) {
+            State current = state.get();
+            DualSnapshotStore.StoreInProgressSnapshot currentInProgress = current.inProgressSnapshot();
+            if (currentInProgress != owner) {
+                // Slot was superseded by a newer startCompilation (or cleared);
+                // discard the stale publish entirely.
+                return false;
+            }
+            State updated = new State(stableSnapshot, null);
+            if (state.compareAndSet(current, updated)) {
+                lastAccessNanos.set(System.nanoTime());
+                currentInProgress.complete(stableSnapshot);
+                return true;
+            }
+            Thread.onSpinWait();
+        }
+    }
+
+    /**
      * Returns the last access time in nanoseconds (monotonic clock).
      *
      * @return last access nanos

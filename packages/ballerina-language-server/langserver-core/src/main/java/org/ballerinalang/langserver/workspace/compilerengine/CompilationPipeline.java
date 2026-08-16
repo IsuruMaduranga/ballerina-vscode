@@ -354,12 +354,11 @@ public class CompilationPipeline implements AutoCloseable {
 
             emitEvent(EventKind.CE_E5B_COMPILATION_DIAGNOSTICS_READY);
             // Final closed check — prevent orphaned snapshot publication after pipeline eviction.
-            // Without this, computeIfAbsent in publishStable re-creates removed store entries.
             if (closed.get()) {
                 emitEvent(EventKind.COMPILER_COMPILATION_CANCELLED);
                 return;
             }
-            snapshotStore.publishStable(key, snapshot);
+            snapshotStore.publishStable(key, snapshot, inProgressSnapshot);
             published = true;
             emitEvent(EventKind.COMPILER_SNAPSHOT_PUBLISHED);
         } catch (CancellationException e) {

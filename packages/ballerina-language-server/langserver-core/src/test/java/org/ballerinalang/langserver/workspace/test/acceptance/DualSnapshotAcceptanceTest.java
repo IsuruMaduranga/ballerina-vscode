@@ -455,6 +455,87 @@ public class DualSnapshotAcceptanceTest {
     }
 
     // ========================================================================
+    // Ownership-Aware publishStable (Stale-Worker Race) Tests
+    // ========================================================================
+
+    /**
+     * Verifies the ownership-aware publishStable completes the in-progress
+     * futures and updates the stable slot when the calling worker still owns
+     * the active in-progress snapshot. Positive control for the discard test.
+     */
+    @Test
+    public void publishStable_withOwnership_completesWhenOwnerStillCurrent() throws Exception {
+        store = new DualSnapshotStore();
+        StableSnapshot previousSnapshot = createSnapshot(new ContentVersion(1));
+        store.publishStable(TEST_ROOT, previousSnapshot);
+
+        InProgressSnapshot inProgress = store.startCompilation(TEST_ROOT);
+        CompletableFuture<PackageCompilation> future = inProgress.compilation(() -> { });
+        Assert.assertFalse(future.isDone(), "Compilation future must not be complete before publishStable");
+
+        StableSnapshot newSnapshot = createSnapshot(new ContentVersion(2));
+        store.publishStable(TEST_ROOT, newSnapshot, inProgress);
+
+        Assert.assertTrue(future.isDone(), "Compilation future must complete when owner is still current");
+        Assert.assertSame(future.get(3, TimeUnit.SECONDS), newSnapshot.compilation(),
+                "Compilation future must complete with the new snapshot's compilation");
+        Assert.assertSame(store.getStable(TEST_ROOT), newSnapshot,
+                "Stable slot must be updated when owner is still current");
+        Assert.assertNull(store.getInProgress(TEST_ROOT),
+                "In-progress slot must be cleared after ownership-aware publish");
+    }
+
+    /**
+     * Regression for the stale-worker-completes-newer-snapshot race
+     * (PR #674 review comment r3781526303).
+     * <p>
+     * A worker compiling for an older content version must not be able to
+     * complete the futures of an in-progress snapshot a newer compilation
+     * started. Starts compilation N, lets N+1 supersede it in the store, then
+     * completes N — asserts the store's current in-progress snapshot (started
+     * for N+1) is untouched by N's stale result: its compilation future is
+     * still incomplete, it is still the active in-progress snapshot, and the
+     * stable slot still holds the previous snapshot rather than N's discarded
+     * stale result.
+     */
+    @Test
+    public void publishStable_withOwnership_discardsStaleSupersededPublish() throws Exception {
+        store = new DualSnapshotStore();
+        StableSnapshot previousSnapshot = createSnapshot(new ContentVersion(1));
+        store.publishStable(TEST_ROOT, previousSnapshot);
+
+        // Worker N starts compilation from the previous stable snapshot
+        InProgressSnapshot inProgressN = store.startCompilation(TEST_ROOT);
+        CompletableFuture<PackageCompilation> futureN = inProgressN.compilation(() -> { });
+        Assert.assertFalse(futureN.isDone(), "N compilation future must not be complete before supersede");
+
+        // N+1 supersedes N in the store (e.g., a debounce-triggered startCompilation)
+        InProgressSnapshot inProgressN1 = store.startCompilation(TEST_ROOT);
+        Assert.assertNotSame(inProgressN1, inProgressN,
+                "N+1 must produce a distinct in-progress snapshot");
+        Assert.assertTrue(futureN.isCancelled(),
+                "Superseded N compilation future must be cancelled when N+1 starts");
+
+        // A waiter awaiting N+1's compilation result
+        CompletableFuture<PackageCompilation> futureN1 = inProgressN1.compilation(() -> { });
+        Assert.assertFalse(futureN1.isDone(), "N+1 compilation future must not be complete yet");
+
+        // N completes and attempts to publish its (now stale) result via the
+        // ownership-aware overload — must be discarded entirely.
+        StableSnapshot staleSnapshot = createSnapshot(new ContentVersion(2));
+        store.publishStable(TEST_ROOT, staleSnapshot, inProgressN);
+
+        // N+1's in-progress snapshot must be untouched by N's stale publish
+        Assert.assertFalse(futureN1.isDone(),
+                "N+1 compilation future must NOT be completed by N's stale publish");
+        Assert.assertSame(store.getInProgress(TEST_ROOT), inProgressN1,
+                "N+1 in-progress snapshot must still be the active one after N's stale publish");
+        // The stable slot must not be overwritten with N's discarded stale result
+        Assert.assertSame(store.getStable(TEST_ROOT), previousSnapshot,
+                "Stable slot must retain the previous snapshot, not N's discarded stale result");
+    }
+
+    // ========================================================================
     // Helper Methods
     // ========================================================================
 

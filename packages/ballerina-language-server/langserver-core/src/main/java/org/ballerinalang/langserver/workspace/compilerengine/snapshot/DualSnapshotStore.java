@@ -134,6 +134,13 @@ public class DualSnapshotStore {
 
     /**
      * Publishes the latest stable snapshot for the given compilation key.
+     * <p>
+     * This backward-compatible overload completes whatever in-progress snapshot
+     * is currently stored for the key, regardless of which worker started it.
+     * Prefer {@link #publishStable(CompilationKey, StableSnapshot, InProgressSnapshot)}
+     * from compilation workers that captured the specific in-progress snapshot
+     * they started from, to avoid a stale worker silently completing a newer
+     * snapshot's awaiting callers.
      *
      * @param key the compound compilation key (source root + package descriptor)
      * @param stableSnapshot the stable snapshot to publish
@@ -142,6 +149,31 @@ public class DualSnapshotStore {
         SnapshotPair snapshotPair = snapshots.computeIfAbsent(key, ignored -> new SnapshotPair());
         snapshotPair.publishStable(stableSnapshot);
         evictLeastRecentlyUsedIfNeeded(key);
+    }
+
+    /**
+     * Publishes the latest stable snapshot for the given compilation key, but
+     * only if the calling worker still owns {@code owner} as the active
+     * in-progress snapshot for the key. If the in-progress slot has been
+     * superseded by a newer {@link #startCompilation(CompilationKey)} call (or
+     * removed), the stale publish is discarded entirely — the stable slot is
+     * left untouched and no in-progress future is completed — preventing a
+     * stale worker from silently completing a newer snapshot's awaiting
+     * callers with an older result.
+     *
+     * @param key the compound compilation key (source root + package descriptor)
+     * @param stableSnapshot the stable snapshot to publish
+     * @param owner the in-progress snapshot the calling worker started from
+     */
+    public void publishStable(@Nonnull CompilationKey key, @Nonnull StableSnapshot stableSnapshot,
+                              @Nonnull InProgressSnapshot owner) {
+        SnapshotPair snapshotPair = snapshots.get(key);
+        if (snapshotPair == null) {
+            return;
+        }
+        if (snapshotPair.publishStable(stableSnapshot, owner)) {
+            evictLeastRecentlyUsedIfNeeded(key);
+        }
     }
 
     /**
