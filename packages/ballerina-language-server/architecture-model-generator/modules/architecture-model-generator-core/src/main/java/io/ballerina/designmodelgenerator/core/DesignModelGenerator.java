@@ -173,7 +173,15 @@ public class DesignModelGenerator {
             });
             List<Listener> allAttachedListeners = serviceModel.anonListeners;
             for (String listener : serviceModel.namedListeners) {
-                allAttachedListeners.add(intermediateModel.listeners.get(listener));
+                Listener resolvedListener = intermediateModel.listeners.get(listener);
+                if (resolvedListener == null) {
+                    throw new IllegalStateException(String.format(
+                            "Named listener '%s' referenced by service '%s' (%s) was not found among the "
+                                    + "resolved listeners %s",
+                            listener, serviceModel.displayName, serviceModel.absolutePath,
+                            intermediateModel.listeners.keySet()));
+                }
+                allAttachedListeners.add(resolvedListener);
             }
 
             Service service = new Service(serviceModel.displayName, serviceModel.absolutePath, serviceModel.location,
