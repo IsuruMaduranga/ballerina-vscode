@@ -882,7 +882,8 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
                                     {hasDefaultPayload(param) ? (
                                         <AddButtonWrapper>
                                             <Tooltip
-                                                content={`Define ${label} for easier access in the flow diagram`}
+                                                content={param.metadata?.description
+                                                    || `Define ${label} for easier access in the flow diagram`}
                                                 position="bottom"
                                             >
                                                 <LinkButton onClick={() => setTypeEditorParamName(param.name?.value ?? null)}>
