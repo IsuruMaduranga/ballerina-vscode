@@ -201,6 +201,34 @@ export function payloadParametersOf(fn: FunctionModel): ParameterModel[] {
     return fn.parameters?.filter(isPayloadParameter) ?? [];
 }
 
+export function bindingGroupOf(param: ParameterModel): string | undefined {
+    return param.bindingGroup;
+}
+
+export function groupedPayloadParametersOf(fn: FunctionModel): ParameterModel[] {
+    const seen = new Set<string>();
+    const result: ParameterModel[] = [];
+    for (const p of payloadParametersOf(fn)) {
+        const group = bindingGroupOf(p);
+        if (group) {
+            if (seen.has(group)) {
+                continue;
+            }
+            seen.add(group);
+        }
+        result.push(p);
+    }
+    return result;
+}
+
+export function bindingGroupSiblingsOf(fn: FunctionModel, param: ParameterModel): ParameterModel[] {
+    const group = bindingGroupOf(param);
+    if (!group) {
+        return [param];
+    }
+    return payloadParametersOf(fn).filter((p) => bindingGroupOf(p) === group);
+}
+
 /** Properties of a given codedata role, keyed as shipped. */
 export function propertiesOfRole(fn: FunctionModel, role: string): [string, PropertyModel][] {
     return Object.entries(fn.properties ?? {}).filter(

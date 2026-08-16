@@ -52,11 +52,14 @@ import {
     addableCatalogOf,
     addedParametersOf,
     applyTypeTemplate,
+    bindingGroupOf,
+    bindingGroupSiblingsOf,
     catalogFunctionsOf,
     composePayloadType,
     computeHandlerGroups,
     decomposePayloadType,
     functionSignatureKey,
+    groupedPayloadParametersOf,
     handlerGroupId,
     hasConfigurableFields,
     hasDefaultPayload,
@@ -162,7 +165,7 @@ function ftpStreamModifierProp(active: boolean): PropertyModel {
 }
 
 /** cdc's onUpdate before/after payloads — see get_sm_from_source/config/cdc_service_model.json. */
-function cdcPayloadParam(name: "before" | "after", boundType?: string): ParameterModel {
+function cdcPayloadParam(name: "before" | "after", boundType?: string, group?: string): ParameterModel {
     return param({
         kind: "DATA_BINDING",
         name: prop({ value: name, editable: false }),
@@ -177,6 +180,7 @@ function cdcPayloadParam(name: "before" | "after", boundType?: string): Paramete
                 nameEditable: false,
             } as any,
         }),
+        bindingGroup: group,
     });
 }
 
@@ -412,6 +416,48 @@ describe("isPayloadParameter / payloadParameterOf / payloadParametersOf", () => 
 
     it("returns an empty array for a handler with no payload parameters", () => {
         expect(payloadParametersOf(fn({ parameters: [param({ kind: "REQUIRED" })] }))).toEqual([]);
+    });
+});
+
+describe("bindingGroupOf / groupedPayloadParametersOf / bindingGroupSiblingsOf", () => {
+    it("bindingGroupOf reads the parameter-level bindingGroup, undefined when absent", () => {
+        expect(bindingGroupOf(cdcPayloadParam("before", undefined, "rowState"))).toBe("rowState");
+        expect(bindingGroupOf(kafkaPayloadParam())).toBeUndefined();
+    });
+
+    it("groupedPayloadParametersOf collapses cdc's before/after into one representative", () => {
+        const before = cdcPayloadParam("before", undefined, "rowState");
+        const after = cdcPayloadParam("after", undefined, "rowState");
+        const handler = fn({ parameters: [before, after] });
+        expect(groupedPayloadParametersOf(handler)).toEqual([before]);
+    });
+
+    it("groupedPayloadParametersOf leaves ungrouped payload params untouched", () => {
+        const kafka = kafkaPayloadParam();
+        const ftp = ftpPayloadParam();
+        const handler = fn({ parameters: [kafka, ftp] });
+        expect(groupedPayloadParametersOf(handler)).toEqual([kafka, ftp]);
+    });
+
+    it("groupedPayloadParametersOf only collapses params that actually share a group", () => {
+        const before = cdcPayloadParam("before", undefined, "rowState");
+        const kafka = kafkaPayloadParam();
+        const handler = fn({ parameters: [before, kafka] });
+        expect(groupedPayloadParametersOf(handler)).toEqual([before, kafka]);
+    });
+
+    it("bindingGroupSiblingsOf returns every param sharing the group, in declared order", () => {
+        const before = cdcPayloadParam("before", undefined, "rowState");
+        const after = cdcPayloadParam("after", undefined, "rowState");
+        const handler = fn({ parameters: [before, after] });
+        expect(bindingGroupSiblingsOf(handler, before)).toEqual([before, after]);
+        expect(bindingGroupSiblingsOf(handler, after)).toEqual([before, after]);
+    });
+
+    it("bindingGroupSiblingsOf returns just the param itself when ungrouped", () => {
+        const kafka = kafkaPayloadParam();
+        const handler = fn({ parameters: [kafka] });
+        expect(bindingGroupSiblingsOf(handler, kafka)).toEqual([kafka]);
     });
 });
 

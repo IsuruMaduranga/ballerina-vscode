@@ -65,9 +65,11 @@ import {
     CODEDATA_PAYLOAD_MODIFIER,
     CODEDATA_PAYLOAD_TYPE_INCLUDED_RECORD,
     addableCatalogOf,
+    bindingGroupSiblingsOf,
     composePayloadType,
     decomposePayloadType,
     functionSignatureKey,
+    groupedPayloadParametersOf,
     handlerGroupId,
     hasDefaultPayload,
     isModifierActive,
@@ -458,6 +460,7 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
     const payloadParams = functionModel ? payloadParametersOf(functionModel) : [];
     // The first payload param still drives shared UI bits (e.g. the variant dropdown's label).
     const payloadParam = payloadParams[0];
+    const groupedPayloadParams = functionModel ? groupedPayloadParametersOf(functionModel) : [];
 
     /** Recomposes every payload param's rendered type after a modifier/schema change. */
     const withRecomposedPayload = (fn: FunctionModel): FunctionModel => {
@@ -520,7 +523,7 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
     // which. A single-payload handler keeps the plain label.
     const displayLabelOf = (param?: ParameterModel) => {
         const base = labelOfPayload(param);
-        return payloadParams.length > 1 && param?.name?.value ? `${base} (${param.name.value})` : base;
+        return groupedPayloadParams.length > 1 && param?.name?.value ? `${base} (${param.name.value})` : base;
     };
     // The payload param the type-creator modal is currently open for (by name).
     const typeEditorParam = payloadParams.find((p) => p.name?.value === typeEditorParamName);
@@ -538,9 +541,13 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
             return;
         }
         const typeName = typeof type === "string" ? type : type.name;
+        const target = payloadParams.find((p) => p.name?.value === targetName);
         // The parameter keeps its schema-shipped name — only the bound shape changes.
+        const groupNames = new Set(
+            (target ? bindingGroupSiblingsOf(functionModel, target) : []).map((p) => p.name?.value)
+        );
         const parameters = functionModel.parameters.map((p) => {
-            if (!isPayloadParameter(p) || p.name?.value !== targetName) {
+            if (!isPayloadParameter(p) || !groupNames.has(p.name?.value)) {
                 return p;
             }
             const updatedType: PropertyModel = {
@@ -559,8 +566,9 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
         if (!functionModel) {
             return;
         }
+        const groupNames = new Set(bindingGroupSiblingsOf(functionModel, target).map((p) => p.name?.value));
         const parameters = functionModel.parameters.map((p) =>
-            isPayloadParameter(p) && p.name?.value === target.name?.value
+            isPayloadParameter(p) && groupNames.has(p.name?.value)
                 ? { ...p, type: { ...p.type, codedata: { ...p.type.codedata, boundType: undefined } } }
                 : p
         );
@@ -865,7 +873,7 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
 
                     {/* Payload schema — one section per bindable DATA_BINDING param (a handler such
                         as CDC onUpdate exposes both a before- and an after-image). */}
-                    {payloadParams
+                    {groupedPayloadParams
                         .filter((param) => param.type?.codedata?.bindable === true)
                         .map((param) => {
                             const label = displayLabelOf(param);
@@ -925,25 +933,31 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
                                                     const editedElement = decomposePayloadType(
                                                         functionModel, param, editedPayload.type?.value ?? "");
                                                     const editedName = editedPayload.name?.value;
-                                                    const parameters = functionModel.parameters.map((p) =>
-                                                        isPayloadParameter(p) && p.name?.value === param.name?.value
-                                                            ? {
-                                                                ...p,
-                                                                name: editedName !== undefined
-                                                                    ? { ...p.name, value: editedName }
-                                                                    : p.name,
-                                                                type: {
-                                                                    ...p.type,
-                                                                    imports: editedPayload.type?.imports ?? p.type?.imports,
-                                                                    codedata: {
-                                                                        ...p.type?.codedata,
-                                                                        boundType: editedElement,
-                                                                    },
-                                                                },
-                                                                enabled: true,
-                                                            }
-                                                            : p
+                                                    const groupNames = new Set(
+                                                        bindingGroupSiblingsOf(functionModel, param)
+                                                            .map((p) => p.name?.value)
                                                     );
+                                                    const parameters = functionModel.parameters.map((p) => {
+                                                        if (!isPayloadParameter(p) || !groupNames.has(p.name?.value)) {
+                                                            return p;
+                                                        }
+                                                        const isTarget = p.name?.value === param.name?.value;
+                                                        return {
+                                                            ...p,
+                                                            name: isTarget && editedName !== undefined
+                                                                ? { ...p.name, value: editedName }
+                                                                : p.name,
+                                                            type: {
+                                                                ...p.type,
+                                                                imports: editedPayload.type?.imports ?? p.type?.imports,
+                                                                codedata: {
+                                                                    ...p.type?.codedata,
+                                                                    boundType: editedElement,
+                                                                },
+                                                            },
+                                                            enabled: true,
+                                                        };
+                                                    });
                                                     setFunctionModel(
                                                         withRecomposedPayload({ ...functionModel, parameters }));
                                                 }}
