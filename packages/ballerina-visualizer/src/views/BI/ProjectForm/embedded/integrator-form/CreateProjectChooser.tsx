@@ -627,7 +627,6 @@ export function CreateProjectChooser({
 
             {isLibrary ? (
                 <Section>
-                    <SectionDivider />
                     <LibraryCreationView
                         embedded
                         projectContext={projectContext}
