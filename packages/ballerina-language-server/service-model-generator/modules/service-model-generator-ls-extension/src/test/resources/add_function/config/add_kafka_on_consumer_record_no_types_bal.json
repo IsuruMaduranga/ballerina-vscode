@@ -37,7 +37,70 @@
       "optional": false,
       "advanced": false
     },
+    "documentation": {
+      "types": [
+        {
+          "fieldType": "TEXT",
+          "selected": true
+        }
+      ],
+      "enabled": true,
+      "editable": true,
+      "optional": true,
+      "advanced": false
+    },
     "parameters": [
+      {
+        "metadata": {
+          "label": "Data Binding",
+          "description": "Data binding parameter"
+        },
+        "kind": "DATA_BINDING",
+        "type": {
+          "value": "string",
+          "types": [
+            {
+              "fieldType": "TYPE",
+              "selected": true
+            }
+          ],
+          "enabled": true,
+          "editable": false,
+          "optional": false,
+          "advanced": false
+        },
+        "name": {
+          "value": "payload",
+          "types": [
+            {
+              "fieldType": "IDENTIFIER",
+              "selected": true
+            }
+          ],
+          "enabled": true,
+          "editable": false,
+          "optional": false,
+          "advanced": false
+        },
+        "documentation": {
+          "types": [
+            {
+              "fieldType": "TEXT",
+              "selected": true
+            }
+          ],
+          "enabled": true,
+          "editable": true,
+          "optional": true,
+          "advanced": false
+        },
+        "enabled": true,
+        "editable": true,
+        "optional": false,
+        "advanced": false,
+        "hidden": false,
+        "isGraphqlId": false
+      },
       {
         "metadata": {
           "label": "messages",
@@ -90,6 +153,18 @@
           "types": [
             {
               "fieldType": "EXPRESSION",
+              "selected": true
+            }
+          ],
+          "enabled": true,
+          "editable": true,
+          "optional": true,
+          "advanced": false
+        },
+        "documentation": {
+          "types": [
+            {
+              "fieldType": "TEXT",
               "selected": true
             }
           ],
@@ -165,48 +240,21 @@
           "optional": true,
           "advanced": false
         },
+        "documentation": {
+          "types": [
+            {
+              "fieldType": "TEXT",
+              "selected": true
+            }
+          ],
+          "enabled": true,
+          "editable": true,
+          "optional": true,
+          "advanced": false
+        },
         "enabled": true,
         "editable": true,
         "optional": true,
-        "advanced": false,
-        "hidden": false,
-        "isGraphqlId": false
-      },
-      {
-        "metadata": {
-          "label": "Data Binding",
-          "description": "Data binding parameter"
-        },
-        "kind": "DATA_BINDING",
-        "type": {
-          "value": "string",
-          "types": [
-            {
-              "fieldType": "TYPE",
-              "selected": true
-            }
-          ],
-          "enabled": true,
-          "editable": false,
-          "optional": false,
-          "advanced": false
-        },
-        "name": {
-          "value": "payload",
-          "types": [
-            {
-              "fieldType": "IDENTIFIER",
-              "selected": true
-            }
-          ],
-          "enabled": true,
-          "editable": false,
-          "optional": false,
-          "advanced": false
-        },
-        "enabled": true,
-        "editable": true,
-        "optional": false,
         "advanced": false,
         "hidden": false,
         "isGraphqlId": false
@@ -215,6 +263,18 @@
     "returnType": {
       "hasError": true,
       "isGraphqlId": false,
+      "documentation": {
+        "types": [
+          {
+            "fieldType": "TEXT",
+            "selected": true
+          }
+        ],
+        "enabled": true,
+        "editable": true,
+        "optional": true,
+        "advanced": false
+      },
       "metadata": {
         "label": "Return Type",
         "description": "The return type of the function"
@@ -276,35 +336,7 @@
             "character": 40
           }
         },
-        "newText": "\n\tremote function onConsumerRecord(KafkaAnydataConsumer[] messages, kafka:Caller caller) returns error? {\n\t\tdo {\n\t\t} on fail error err {\n\t\t\t// handle error\n\t\t\treturn error(\"unhandled error\", err);\n\t\t}\n\t}"
-      }
-    ],
-    "sample2/types.bal": [
-      {
-        "range": {
-          "start": {
-            "line": 0,
-            "character": 0
-          },
-          "end": {
-            "line": 0,
-            "character": 0
-          }
-        },
-        "newText": "\nimport ballerinax/kafka;\n\n"
-      },
-      {
-        "range": {
-          "start": {
-            "line": 0,
-            "character": 0
-          },
-          "end": {
-            "line": 0,
-            "character": 0
-          }
-        },
-        "newText": "type KafkaAnydataConsumer record {|\n    *kafka:AnydataConsumerRecord;\n    string value;\n|};"
+        "newText": "\n\tremote function onConsumerRecord(string payload, kafka:AnydataConsumerRecord[] messages, kafka:Caller caller) returns error? {\n\t\tdo {\n\t\t} on fail error err {\n\t\t\t// handle error\n\t\t\treturn error(\"unhandled error\", err);\n\t\t}\n\t}"
       }
     ]
   }
