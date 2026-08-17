@@ -129,6 +129,23 @@ describe("Run Workflow node", () => {
         expect(mockProps.onNodeSelect).not.toHaveBeenCalled();
     });
 
+    it("falls back to selecting the node when there is nowhere to open the view", async () => {
+        const getFunctionLocation = jest.fn().mockResolvedValue(workflowLocation);
+        const { openView, ...withoutOpenView } = mockProps;
+
+        render(
+            <Diagram
+                model={flowWithWorkflowRun}
+                {...(withoutOpenView as typeof mockProps)}
+                project={{ org: "wso2", path: "/project", getFunctionLocation }}
+            />
+        );
+
+        await clickWorkflowIcon();
+
+        await waitFor(() => expect(mockProps.onNodeSelect).toHaveBeenCalled());
+    });
+
     it("falls back to selecting the node when the workflow cannot be located", async () => {
         const getFunctionLocation = jest.fn().mockResolvedValue(undefined);
 

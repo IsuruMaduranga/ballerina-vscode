@@ -348,14 +348,18 @@ export function ApiCallNodeWidget(props: ApiCallNodeWidgetProps) {
     // that cannot be located (one from a dependency, say) falls back to the connection behaviour
     // rather than swallowing the click.
     const onWorkflowClick = async (event?: React.MouseEvent<SVGElement>) => {
-        event?.stopPropagation();
+        // A read-only diagram handles the click no differently than it did before this handler existed,
+        // so the event is left to propagate as it used to.
         if (readOnly) {
             return;
         }
+        event?.stopPropagation();
         if (workflowTargetName) {
             const functionLocation = await project?.getFunctionLocation?.(workflowTargetName);
-            if (functionLocation) {
-                openView && openView(functionLocation);
+            // Both are needed to navigate: without either, the click falls through to the connection
+            // behaviour rather than being swallowed.
+            if (functionLocation && openView) {
+                openView(functionLocation);
                 setMenuPos(null);
                 return;
             }
