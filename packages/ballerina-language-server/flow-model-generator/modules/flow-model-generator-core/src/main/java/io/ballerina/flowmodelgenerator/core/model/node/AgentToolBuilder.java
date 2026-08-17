@@ -21,6 +21,7 @@ package io.ballerina.flowmodelgenerator.core.model.node;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.reflect.TypeToken;
 import io.ballerina.compiler.api.ModuleID;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.ClassFieldSymbol;
@@ -72,6 +73,7 @@ import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
 
+import java.lang.reflect.Type;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -101,11 +103,13 @@ public class AgentToolBuilder extends NodeBuilder {
     public static final String INCLUDE_CONTEXT_KEY = "includeContext";
     public static final String HOST_CLASS_NAME_KEY = "hostClassName";
     public static final String RETURN_TYPE_KEY = "returnType";
+    public static final String RETURN_TYPE_IMPORTS_KEY = "returnTypeImports";
 
     private static final String RUN = "run";
     private static final String RESPONSE_VAR = "response";
     private static final String CLASS_MEMBER_INDENT = "    ";
     private static final Gson gson = new Gson();
+    private static final Type IMPORTS_TYPE = new TypeToken<Map<String, String>>() { }.getType();
 
     @Override
     public void setConcreteConstData() {
@@ -456,6 +460,7 @@ public class AgentToolBuilder extends NodeBuilder {
             ReturnInfo resolveReturn(ToolGenContext ctx) {
                 String chosen = dataString(ctx.data, RETURN_TYPE_KEY, "").trim();
                 if (!chosen.isEmpty()) {
+                    acceptChosenTypeImports(ctx.data, ctx.sb);
                     return new ReturnInfo(chosen, true, "The response from the " + ctx.agentVarName + " agent.");
                 }
                 ModuleInfo hostModule = resolveHostModule(ctx.filePath, ctx.workspaceManager);
@@ -995,6 +1000,22 @@ public class AgentToolBuilder extends NodeBuilder {
         } catch (WorkspaceDocumentException | EventSyncException e) {
             return null;
         }
+    }
+
+    /**
+     * A chosen return type arrives as a bare string ({@code http:Response}), so its module comes
+     * from the client as a prefix to {@code org/module:version} map, like {@link Property#imports()}.
+     */
+    private static void acceptChosenTypeImports(Map<String, Object> data, SourceBuilder sourceBuilder) {
+        Object raw = data == null ? null : data.get(RETURN_TYPE_IMPORTS_KEY);
+        if (sourceBuilder == null || raw == null) {
+            return;
+        }
+        Map<String, String> imports = gson.fromJson(raw.toString(), IMPORTS_TYPE);
+        imports.values().stream()
+                .map(moduleId -> moduleId.split("[/:]"))
+                .filter(parts -> parts.length >= 2)
+                .forEach(parts -> sourceBuilder.acceptImport(parts[0], parts[1]));
     }
 
     private static void acceptTypeImports(TypeSymbol typeSymbol, ModuleInfo hostModule, SourceBuilder sourceBuilder) {
