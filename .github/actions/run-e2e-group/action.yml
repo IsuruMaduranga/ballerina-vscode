@@ -3,10 +3,9 @@ description: >-
   Runs one matrix group of the Ballerina e2e Playwright suite (first attempt, then a
   --last-failed re-run if needed) and uploads its results/recordings/project-data
   artifacts. Shared by reusable-build.yml's BalE2ETest job and e2e-scheduled.yml's E2E
-  job, which differ only in how they prepare the workspace beforehand (a full
-  ExtBuild restore vs installing the nightly VSIX) — this action starts from the
-  assumption that workspace is already prepared (deps installed, Ballerina
-  distribution installed) in the calling job.
+  job — see "Scheduled E2E testing" in .github/workflows/README.md for the design
+  rationale. Assumes the workspace is already prepared (deps installed, Ballerina
+  distribution installed) by the calling job.
 inputs:
   group:
     description: 'Matrix group name, e.g. group1'
@@ -28,20 +27,7 @@ runs:
       continue-on-error: true
       with:
         name: Ballerina-e2e-test-results-linux-${{ inputs.group }}-${{ env.PREVIOUS_ATTEMPT }}
-        # Extracts to packages/ballerina-extension, not straight into test-results/: the
-        # upload step below now spans two path roots (test-results/ and e2e-reports/), so
-        # upload-artifact roots the artifact at their common ancestor instead of flattening
-        # test-results/'s own contents to the artifact root.
-        # e2e-reports/ from a restored previous attempt is kept, deliberately, not
-        # discarded: a GitHub-level "re-run failed jobs" is a continuation of the same
-        # logical test run, so a test's full attempt history across that continuation
-        # (attempt N-1's failures plus attempt N's retry) is the correct thing to
-        # record — the same principle the first-attempt/re-run merge within one
-        # attempt already relies on. Discarding it instead (tried once, reverted) means
-        # the Report job — which only downloads the highest-numbered artifact per
-        # group — sees *only* the small --last-failed subset from the latest attempt,
-        # silently losing every test that already passed earlier and erasing the
-        # failed-then-passed history for exactly the flaky tests this exists to catch.
+        # Restored e2e-reports/ is deliberately kept, not discarded — see README.
         path: packages/ballerina-extension
 
     - name: Install packages
@@ -57,11 +43,7 @@ runs:
       if: github.run_attempt == 1 || steps.check-results.outcome == 'failure'
       continue-on-error: true
       env:
-        # Not under test-results/: that's Playwright's own outputDir, which the re-run
-        # below wipes at its own startup — a report placed there would be deleted before
-        # ever being read, regardless of filename (verified locally). e2e-reports/ is
-        # never touched by that cleanup. The distinct filename from the re-run's report
-        # lets aggregate-e2e-results.js merge both instead of one replacing the other.
+        # Not under test-results/ (Playwright's outputDir, wiped every invocation).
         PLAYWRIGHT_JSON_OUTPUT_FILE: e2e-reports/e2e-results-first.json
       run: |
         export $(dbus-launch)
@@ -73,7 +55,8 @@ runs:
       shell: bash
       if: steps.run-tests-first.outcome == 'failure' || steps.check-results.outcome == 'success'
       env:
-        PLAYWRIGHT_JSON_OUTPUT_FILE: e2e-reports/e2e-results-rerun.json
+        # run_attempt-suffixed so a second re-run doesn't overwrite the first's report.
+        PLAYWRIGHT_JSON_OUTPUT_FILE: e2e-reports/e2e-results-rerun-${{ github.run_attempt }}.json
       run: |
         rm -rf packages/ballerina-extension/e2e-test/data/new-project
         export $(dbus-launch)

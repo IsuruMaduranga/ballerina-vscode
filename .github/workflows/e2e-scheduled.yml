@@ -1,5 +1,8 @@
 name: Scheduled E2E Tests
 
+# See "Scheduled E2E testing" in .github/workflows/README.md for the full design
+# rationale — this file intentionally keeps comments to short pointers, not prose.
+
 on:
   schedule:
     - cron: '0 */6 * * *'
@@ -8,45 +11,52 @@ on:
 permissions:
   contents: read
 
-# Runs every 6 hours; a run should always finish well within that window, but
-# guard against overlap rather than assume it.
 concurrency:
   group: e2e-scheduled
   cancel-in-progress: false
 
 jobs:
-  # Single source of truth for the matrix group list — consumed by both the E2E job's
-  # own matrix and the Report job's per-group downloads, so the two can't drift out of
-  # sync the way 4 hand-written "Download groupN" steps did.
   Prepare:
     name: Resolve matrix groups
     runs-on: ubuntu-latest
     outputs:
       groups: ${{ steps.groups.outputs.groups }}
+      nightlySha: ${{ steps.nightly-commit.outputs.sha }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
       - id: groups
         run: echo 'groups=["group1","group2","group3","group4"]' >> "$GITHUB_OUTPUT"
 
-  # Tests the VSIX schedule.yml already built and published, rather than rebuilding —
-  # this workflow exists for flakiness signal, not fresh-code feedback (PR builds cover
-  # that), so testing the same nightly build across all 4 daily runs is fine, and holds
-  # product code constant so variance is attributable to test flakiness rather than
-  # code churn. The 'nightly' tag/release only moves once schedule.yml's build + LS
-  # tests succeed (see schedule.yml's Tag job), so it always points at the last
-  # known-good build — no separate handling is needed here for "what if last night's
-  # build failed".
-  #
-  # Only the VSIX binary is pulled from that release, not the source tree: this job's
-  # own checkout stays on the default ref (whatever normally triggers this workflow),
-  # because every 'uses: ./.github/actions/...' step below resolves against whatever
-  # is actually checked out. Checking out the 'nightly' tag's commit here would make
-  # those local action references resolve against that older tree instead of this
-  # repo's current commits — breaking (permanently, not just once) whenever an action
-  # under .github/actions is added or changed, until a future nightly build happens to
-  # advance the tag past that change. The trade-off: test source and the installed
-  # VSIX are no longer commit-matched, so a test added/changed today could reference
-  # product behavior the last-built VSIX doesn't have yet — accepted as the smaller
-  # risk against a guaranteed-broken workflow.
+      - name: Resolve nightly build commit
+        id: nightly-commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          source .github/scripts/retry.sh
+          # jq prints the literal string "null" for a JSON null targetCommitish, which
+          # isn't empty and would otherwise pass as if it were a real commit hash —
+          # folded into the retried command itself so a "null" result also retries.
+          resolve_nightly_sha() {
+            local out
+            # No stderr suppression: a real (non-race) failure's actual gh error should
+            # reach the log, not just retry.sh's generic "attempt N/3" line.
+            out=$(gh release view nightly --repo "${{ github.repository }}" --json targetCommitish --jq .targetCommitish) || return 1
+            [ "$out" != "null" ] || return 1
+            echo "$out"
+          }
+          # Retries: schedule.yml's Tag job briefly deletes then recreates this release.
+          if ! sha=$(retry 3 5 resolve_nightly_sha); then
+            sha=""
+            echo "::warning::Could not resolve the nightly release commit after 3 attempts; this run's history rows will have an empty sourceSha."
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
   E2E:
     name: Run Ballerina e2e Test (${{ matrix.group }})
     needs: Prepare
@@ -61,9 +71,6 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-          # @wso2/playwright-vscode-tester (built below) and other common-libs the e2e
-          # harness imports live in the wso2-vscode-extensions submodule — without this,
-          # its project folders don't exist and Setup Rush/the build step fail outright.
           submodules: recursive
 
       - name: Download nightly VSIX
@@ -71,9 +78,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          source .github/scripts/retry.sh
           mkdir -p packages/ballerina-extension/vsix
-          gh release download nightly --repo "${{ github.repository }}" \
-            --pattern 'ballerina-*.vsix' --dir packages/ballerina-extension/vsix --clobber
+          # Same brief delete+recreate race on the 'nightly' release as Prepare's commit
+          # lookup, but unlike that lookup (which degrades to an empty sourceSha),
+          # exhausting retries here fails this whole 60-minute job — more attempts and
+          # longer backoff than the metadata-only lookup is worth paying for.
+          if ! retry 6 10 gh release download nightly --repo "${{ github.repository }}" \
+            --pattern 'ballerina-*.vsix' --dir packages/ballerina-extension/vsix --clobber; then
+            echo "::error::Failed to download the nightly VSIX after 6 attempts."
+            exit 1
+          fi
 
       - name: Setup Rush
         uses: gigara/setup-rush@7ba3446572d15f5eacc85de383ad9679dfb7223c # v1.2.0
@@ -83,21 +98,11 @@ jobs:
           rush-install: true
 
       - name: Build playwright-vscode-tester
-        # The only in-repo build dependency the e2e harness has once the ballerina VSIX
-        # is supplied externally: its compiled lib/ is gitignored, and rush install only
-        # links dependencies, it doesn't build them. Targeted so it doesn't pull in the
-        # full ballerina extension build.
         run: rush build -t @wso2/playwright-vscode-tester
 
       - name: Install Ballerina distribution
         uses: ./.github/actions/setup-ballerina
         with:
-          # Pin to what the nightly-built LS actually shipped with, not to whatever
-          # ballerinaLangVersion is on the current checkout — the extension under test
-          # is the nightly tag's VSIX, and if that value gets bumped on the default
-          # branch between nightly builds, reading it from the checkout would install a
-          # distribution the tested LS was never packaged against, failing the whole
-          # suite in a way that would otherwise get logged as flakiness.
           gradlePropertiesRef: nightly
 
       - name: Run e2e test group
@@ -119,49 +124,47 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          # This job only needs .github/scripts/ and .github/actions/failure-notification
-          # from the current tree — no history. The e2e-metrics push below does its git
-          # work in an isolated throwaway clone (see "Persist run stats"), so this
-          # checkout never pushes and doesn't need full history or persisted credentials.
           persist-credentials: false
 
-      # Per group, download whichever attempt actually has an artifact — not just
-      # github.run_attempt. "Re-run failed jobs" only advances the attempt number of
-      # the groups that failed; a passing group's artifact stays at its original,
-      # lower attempt number. Downloading strictly by the *run's* current attempt
-      # would silently miss every group that never needed a re-run. run-e2e-group
-      # already handles this per-group look-back for resuming --last-failed; this
-      # does the equivalent for the Report job's cross-group aggregation.
       - name: Download latest available test results per group
         env:
           GH_TOKEN: ${{ github.token }}
           GROUPS_JSON: ${{ needs.Prepare.outputs.groups }}
         run: |
           set -euo pipefail
+          source .github/scripts/retry.sh
+          list_artifacts() {
+            gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
+              --paginate --jq '.artifacts[].name'
+          }
+          # Retried: one shared call for all 4 groups is more efficient than one per
+          # group, but a transient failure here would otherwise abort every group at
+          # once instead of degrading independently the way 4 separate calls would.
+          if ! artifacts=$(retry 3 5 list_artifacts); then
+            echo "::error::Failed to list this run's artifacts after 3 attempts."
+            exit 1
+          fi
           for group in $(echo "$GROUPS_JSON" | jq -r '.[]'); do
-            name=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
-              --paginate --jq '.artifacts[].name' \
-              | grep -E "^Ballerina-e2e-test-results-linux-${group}-[0-9]+$" \
-              | sort -V | tail -n1) || true
+            name=$(echo "$artifacts" | grep -E "^Ballerina-e2e-test-results-linux-${group}-[0-9]+$" | sort -V | tail -n1 || true)
             if [ -z "${name:-}" ]; then
               echo "No artifact found for ${group}; skipping."
               continue
             fi
             echo "Downloading ${name} for ${group}"
             mkdir -p "e2e-results/${group}"
-            gh run download "${{ github.run_id }}" --repo "${{ github.repository }}" \
-              -n "${name}" -D "e2e-results/${group}"
+            if ! retry 3 5 gh run download "${{ github.run_id }}" --repo "${{ github.repository }}" \
+              -n "${name}" -D "e2e-results/${group}"; then
+              echo "::error::Failed to download artifact ${name} for ${group} after 3 attempts."
+              exit 1
+            fi
           done
 
       - name: Aggregate results
         id: aggregate
         shell: bash
         env:
-          # Every run tests the VSIX from the 'nightly' GitHub Release/tag now, not a
-          # freshly resolved branch — this labels the history data accordingly. (Not
-          # 'builds/nightly' — that's schedule.yml's own internal build branch, a
-          # different thing from the 'nightly' release tag this workflow reads.)
           E2E_SOURCE_TAG: nightly
+          E2E_SOURCE_SHA: ${{ needs.Prepare.outputs.nightlySha }}
           EXPECTED_GROUPS_JSON: ${{ needs.Prepare.outputs.groups }}
         run: |
           set -o pipefail
@@ -183,18 +186,6 @@ jobs:
           STATS_FILE="$(pwd)/e2e-run-stats.jsonl"
           CLONE_DIR="$(mktemp -d)"
           REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
-          # Do the e2e-metrics branch work in a throwaway clone, not this job's own
-          # checkout: switching the working tree to e2e-metrics (which contains only
-          # history/) would delete every other tracked file from this workspace,
-          # including ./.github/actions/failure-notification — which the "Notify on
-          # failure" step right after this one needs to still be there.
-          #
-          # e2e-metrics is an orphan branch (disjoint history from main), so a plain
-          # 'git clone' here would still pull every packfile reachable from the repo's
-          # other refs — hundreds of MB, for a branch that only ever holds one small
-          # jsonl file. --depth 1 --single-branch fetches only e2e-metrics' own tiny
-          # tree. On the very first run ever, the branch doesn't exist yet, so this
-          # clone fails outright — fall back to an empty repo instead of a full clone.
           if ! git clone --quiet --depth 1 --single-branch --branch e2e-metrics "$REPO_URL" "$CLONE_DIR" 2>/dev/null; then
             mkdir -p "$CLONE_DIR"
             git -C "$CLONE_DIR" init --quiet
@@ -210,20 +201,25 @@ jobs:
             if git show-ref --verify --quiet refs/remotes/origin/e2e-metrics; then
               git checkout -B e2e-metrics origin/e2e-metrics
             else
-              # A prior failed iteration this run may have already left an orphan
-              # branch checked out here — detach and drop it first so re-orphaning
-              # can't collide with itself on retry.
               git checkout --detach 2>/dev/null || true
               git branch -D e2e-metrics-tmp 2>/dev/null || true
               git checkout --orphan e2e-metrics-tmp
               git rm -rf --quiet . || true
             fi
+            MONTH_FILE="history/$(date -u +%Y-%m).jsonl"
             mkdir -p history
-            cat "$STATS_FILE" >> history/e2e-history.jsonl
-            git add history/e2e-history.jsonl
+            # If this run/attempt's rows are already in the fetched history, a prior
+            # Persist run already succeeded and only a later step (e.g. Notify) failed —
+            # "Re-run failed jobs" re-executes this whole job regardless, and would
+            # otherwise duplicate every row on each such re-run.
+            if [ -f "$MONTH_FILE" ] && grep -q "\"runId\":\"${{ github.run_id }}\",\"runAttempt\":\"${{ github.run_attempt }}\"" "$MONTH_FILE"; then
+              echo "Stats for run ${{ github.run_id }} attempt ${{ github.run_attempt }} already persisted; skipping."
+              pushed=true
+              break
+            fi
+            cat "$STATS_FILE" >> "$MONTH_FILE"
+            git add "$MONTH_FILE"
             git commit -m "E2E stats: run ${{ github.run_id }} attempt ${{ github.run_attempt }}"
-            # Explicit refspec: the local branch name (e2e-metrics or the orphan
-            # scratch e2e-metrics-tmp above) doesn't matter, only HEAD's content does.
             if git push origin HEAD:e2e-metrics; then
               pushed=true
               break
@@ -238,10 +234,6 @@ jobs:
           fi
 
       - name: Notify on failure
-        # job.status catches steps that fail outright with no outcome to check (e.g. the
-        # artifact-download step above, which has no continue-on-error) — without it, a
-        # step failing there skips Aggregate/Persist entirely, so neither of their
-        # outcomes is ever 'failure' and this job goes red with no notification sent.
         if: ${{ always() && (steps.aggregate.outcome == 'failure' || steps.persist.outcome == 'failure' || needs.E2E.result != 'success' || job.status == 'failure') && github.repository == 'ballerina-platform/ballerina-vscode' }}
         uses: ./.github/actions/failure-notification
         with:
