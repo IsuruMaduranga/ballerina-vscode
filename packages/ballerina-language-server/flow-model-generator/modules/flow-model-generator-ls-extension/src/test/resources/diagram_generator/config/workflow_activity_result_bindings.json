@@ -114,8 +114,7 @@
               "offset": 65
             }
           },
-          "sourceCode": "// Activity with no return value: a wildcard binding, so no named result variable is declared\n    () _ = check ctx->callActivity(logEvent, {message: message});",
-          "inferredReturnType": "T"
+          "sourceCode": "// Activity with no return value: a wildcard binding, so no named result variable is declared\n    () _ = check ctx->callActivity(logEvent, {message: message});"
         },
         "returning": false,
         "properties": {
@@ -163,6 +162,24 @@
               "kind": "REQUIRED",
               "originalName": "message"
             }
+          },
+          "checkError": {
+            "metadata": {
+              "label": "Check Error",
+              "description": "Add 'check' to propagate errors. Uncheck to handle errors manually."
+            },
+            "types": [
+              {
+                "fieldType": "FLAG",
+                "ballerinaType": "boolean",
+                "selected": true
+              }
+            ],
+            "value": "true",
+            "optional": true,
+            "editable": true,
+            "advanced": true,
+            "hidden": false
           },
           "retryPolicy": {
             "metadata": {
@@ -471,8 +488,7 @@
               "offset": 57
             }
           },
-          "sourceCode": "// Unchecked call: the error is part of the result value\n    int|error count = ctx->callActivity(countEvents, {});",
-          "inferredReturnType": "T"
+          "sourceCode": "// Unchecked call: the error is part of the result value\n    int|error count = ctx->callActivity(countEvents, {});"
         },
         "returning": false,
         "properties": {
@@ -491,6 +507,24 @@
             "optional": false,
             "editable": false,
             "advanced": false,
+            "hidden": false
+          },
+          "checkError": {
+            "metadata": {
+              "label": "Check Error",
+              "description": "Add 'check' to propagate errors. Uncheck to handle errors manually."
+            },
+            "types": [
+              {
+                "fieldType": "FLAG",
+                "ballerinaType": "boolean",
+                "selected": true
+              }
+            ],
+            "value": "false",
+            "optional": true,
+            "editable": true,
+            "advanced": true,
             "hidden": false
           },
           "retryPolicy": {
@@ -932,8 +966,7 @@
               "offset": 63
             }
           },
-          "sourceCode": "// Unchecked call to an activity with no return value: the error itself is the named result\n    error? r = ctx->callActivity(logEvent, {message: message});",
-          "inferredReturnType": "T"
+          "sourceCode": "// Unchecked call to an activity with no return value: the error itself is the named result\n    error? r = ctx->callActivity(logEvent, {message: message});"
         },
         "returning": false,
         "properties": {
@@ -980,6 +1013,46 @@
             "codedata": {
               "kind": "REQUIRED",
               "originalName": "message"
+            }
+          },
+          "checkError": {
+            "metadata": {
+              "label": "Check Error",
+              "description": "Add 'check' to propagate errors. Uncheck to handle errors manually."
+            },
+            "types": [
+              {
+                "fieldType": "FLAG",
+                "ballerinaType": "boolean",
+                "selected": true
+              }
+            ],
+            "value": "false",
+            "optional": true,
+            "editable": true,
+            "advanced": true,
+            "hidden": false,
+            "dynamicFormFields": {
+              "true": {},
+              "false": {
+                "variable": {
+                  "metadata": {
+                    "label": "Result",
+                    "description": "Name of the variable that receives the error the activity failed with, or nil when it succeeded"
+                  },
+                  "types": [
+                    {
+                      "fieldType": "IDENTIFIER",
+                      "selected": true
+                    }
+                  ],
+                  "value": "",
+                  "optional": false,
+                  "editable": true,
+                  "advanced": false,
+                  "hidden": false
+                }
+              }
             }
           },
           "retryPolicy": {
@@ -1212,6 +1285,23 @@
               }
             ],
             "value": "",
+            "optional": true,
+            "editable": true,
+            "advanced": false,
+            "hidden": true
+          },
+          "variable": {
+            "metadata": {
+              "label": "Result",
+              "description": "Name of the result variable"
+            },
+            "types": [
+              {
+                "fieldType": "IDENTIFIER",
+                "selected": true
+              }
+            ],
+            "value": "r",
             "optional": true,
             "editable": true,
             "advanced": false,

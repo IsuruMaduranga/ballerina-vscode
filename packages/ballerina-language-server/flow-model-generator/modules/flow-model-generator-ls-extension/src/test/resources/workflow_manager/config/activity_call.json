@@ -129,19 +129,20 @@
       "checkError": {
         "metadata": {
           "label": "Check Error",
-          "description": "Trigger error flow"
+          "description": "Add 'check' to propagate errors. Uncheck to handle errors manually."
         },
         "types": [
           {
             "fieldType": "FLAG",
+            "ballerinaType": "boolean",
             "selected": true
           }
         ],
-        "value": true,
-        "optional": false,
+        "value": "true",
+        "optional": true,
         "editable": true,
         "advanced": true,
-        "hidden": true
+        "hidden": false
       },
       "retryPolicy": {
         "metadata": {

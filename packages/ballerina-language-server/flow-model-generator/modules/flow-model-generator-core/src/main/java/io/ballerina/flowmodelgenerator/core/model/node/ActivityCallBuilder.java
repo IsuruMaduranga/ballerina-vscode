@@ -57,6 +57,7 @@ import io.ballerina.modelgenerator.commons.ParameterData;
 import io.ballerina.projects.Module;
 import io.ballerina.projects.Project;
 import io.ballerina.tools.text.LineRange;
+import org.ballerinalang.langserver.common.utils.NameUtil;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
 
@@ -106,7 +107,15 @@ public class ActivityCallBuilder extends CallBuilder {
      */
     public static final String NIL_RESULT_TYPE = "()";
     public static final String WILDCARD_RESULT_VARIABLE = "_";
+    /**
+     * The binding type for an unchecked call to an activity that produces no value: the call's only
+     * outcome is whether it failed, so the result the user names holds the error (or nil).
+     */
+    public static final String NIL_UNCHECKED_RESULT_TYPE = "error?";
+    public static final String DEFAULT_NIL_RESULT_VARIABLE = "activityResult";
     public static final String ADVANCE_CONFIGURATIONS = "Activity call configurations";
+    public static final String CHECK_ERROR_DESCRIPTION =
+            "Add 'check' to propagate errors. Uncheck to handle errors manually.";
     public static final String RETRY_POLICY_PARAM = "retryPolicy";
     public static final String NO_RETRY_VALUE = "NoRetry";
     public static final String AUTO_RETRY_VALUE = "AutoRetry";
@@ -189,6 +198,14 @@ public class ActivityCallBuilder extends CallBuilder {
                 // Leading parameter is a connection client — render this call with a connection arrow.
                 codedata().node(NodeKind.CONNECTION_ACTIVITY_CALL);
             }
+            // callActivity is error-returning whatever the activity itself returns, so the choice always
+            // applies. An activity that produces a value already shows its Result field; one that does not
+            // shows it only when the box is cleared, and carries the name in a hidden root property.
+            if (producesResultValue()) {
+                addCheckErrorProperty(this, true);
+            } else {
+                addNilResultProperties(this, true, generatedNilResultName(context));
+            }
             addRetryPolicyFormProperties(this, NO_RETRY_VALUE, "", "", "", "");
             addAdvancedParameters(context, moduleInfo, this);
         }
@@ -224,6 +241,11 @@ public class ActivityCallBuilder extends CallBuilder {
         addBuiltinPostProperties(strategy, context);
         if (strategy instanceof RestActivityStrategy) {
             addRestInferredReturnTypeProperty(context, callActivityData, DEFAULT_REST_DATABINDING);
+        }
+        if (strategy instanceof RestActivityStrategy || strategy instanceof SoapActivityStrategy) {
+            addCheckErrorProperty(this, true);
+        } else {
+            addNilResultProperties(this, true, generatedNilResultName(context));
         }
         addRetryPolicyFormProperties(this, NO_RETRY_VALUE, "", "", "", "");
         addAdvancedParameters(context, this, callActivityData);
@@ -276,6 +298,155 @@ public class ActivityCallBuilder extends CallBuilder {
 
 
 
+
+    /**
+     * Adds the activity call's "Check Error" flag, which sits in the form's advanced configurations: it
+     * refines how the call behaves rather than saying what it does. The creation templates and the
+     * source-analysis path both use this, so the checkbox reads the same whether the node was just
+     * dropped on the canvas or read back from existing source.
+     *
+     * <p>The key is {@link Property#CHECK_ERROR_KEY}, so this replaces the hidden "Trigger error flow"
+     * flag {@link CallBuilder} adds for error-returning functions, keeping its position in the form.
+     *
+     * @param nodeBuilder the node builder to attach the property to
+     * @param checkError  whether the call propagates errors with {@code check}
+     */
+    public static void addCheckErrorProperty(NodeBuilder nodeBuilder, boolean checkError) {
+        addCheckErrorProperty(nodeBuilder, checkError, null);
+    }
+
+    /**
+     * Adds the flag together with the fields that belong to one state of the checkbox.
+     *
+     * <p>An activity that produces a value always shows its Result field, so the flag reveals nothing.
+     * One that produces none has nothing to name while the box is ticked — the call is a statement whose
+     * errors propagate — so its Result field lives in {@code dynamicFormFields."false"} and appears only
+     * when the box is cleared. The field there is a definition; the value is read from and written to the
+     * root property of the same key, which is also the field a value-returning activity shows.
+     *
+     * @param nodeBuilder   the node builder to attach the property to
+     * @param checkError    whether the call propagates errors with {@code check}
+     * @param dynamicFields fields keyed by the checkbox state ({@code "true"} / {@code "false"}) they
+     *                      belong to, or {@code null} when the flag reveals nothing
+     */
+    public static void addCheckErrorProperty(NodeBuilder nodeBuilder, boolean checkError,
+                                             Map<String, Map<String, Property>> dynamicFields) {
+        nodeBuilder.properties().custom()
+                .metadata()
+                    .label(Property.CHECK_ERROR_LABEL)
+                    .description(CHECK_ERROR_DESCRIPTION)
+                    .stepOut()
+                .type().fieldType(Property.ValueType.FLAG).ballerinaType("boolean").selected(true).stepOut()
+                .value(String.valueOf(checkError))
+                .editable(true)
+                .optional(true)
+                .advanced(true)
+                .dynamicFormFields(dynamicFields)
+                .stepOut()
+                .addProperty(Property.CHECK_ERROR_KEY);
+    }
+
+    /**
+     * The Check Error branches for an activity that produces no value: clearing the box reveals the same
+     * Result field a value-returning activity shows, naming the {@code error?} the call yields.
+     */
+    public static Map<String, Map<String, Property>> nilResultCheckErrorFields() {
+        Property resultField = new Property.Builder<Void>(null)
+                .metadata()
+                    .label(Property.RESULT_NAME)
+                    .description("Name of the variable that receives the error the activity failed with, "
+                            + "or nil when it succeeded")
+                    .stepOut()
+                .type().fieldType(Property.ValueType.IDENTIFIER).selected(true).stepOut()
+                // A definition, not a value: the edit form takes its branch fields from the freshly
+                // fetched template, so a name seeded here would override the one the edited statement
+                // carries. The value lives in the root property of the same key, and the renderer hands
+                // the field whatever the form currently holds for it.
+                .value("")
+                .editable(true)
+                .build();
+        Map<String, Map<String, Property>> dynamicFields = new LinkedHashMap<>();
+        dynamicFields.put(Boolean.TRUE.toString(), Map.of());
+        dynamicFields.put(Boolean.FALSE.toString(), Map.of(Property.VARIABLE_KEY, resultField));
+        return dynamicFields;
+    }
+
+    /**
+     * Adds the Check Error flag and the result name for an activity that produces no value: the flag's
+     * cleared branch presents the name, and the root property stores it. Both carry the same name, so the
+     * form shows it whichever of the two the field's editor reads first.
+     *
+     * @param nodeBuilder the node builder to attach the properties to
+     * @param checkError  whether the call propagates errors with {@code check}
+     * @param resultName  the name to present and store
+     */
+    public static void addNilResultProperties(NodeBuilder nodeBuilder, boolean checkError, String resultName) {
+        addCheckErrorProperty(nodeBuilder, checkError, nilResultCheckErrorFields());
+        addNilResultVariableProperty(nodeBuilder, resultName);
+    }
+
+    /**
+     * Adds the root property that holds the result name for an activity producing no value. It is hidden,
+     * because the field is presented inside the cleared Check Error branch, and optional, because while
+     * the box is ticked there is no result to name — a required field the form never shows would block
+     * saving. The seeded name is unique among the visible symbols, so two unchecked calls to the same
+     * activity do not collide.
+     */
+    private static String generatedNilResultName(TemplateContext context) {
+        return NameUtil.generateTypeName(DEFAULT_NIL_RESULT_VARIABLE, context.getAllVisibleSymbolNames());
+    }
+
+    /**
+     * Adds the carrier with the name the form (or an existing statement) gave it. The analysis path uses
+     * this so a statement read back carries its name where the branch's Result field reads from.
+     */
+    public static void addNilResultVariableProperty(NodeBuilder nodeBuilder, String variableName) {
+        nodeBuilder.properties().custom()
+                .metadata()
+                    .label(Property.RESULT_NAME)
+                    .description(Property.RESULT_DOC)
+                    .stepOut()
+                .type().fieldType(Property.ValueType.IDENTIFIER).selected(true).stepOut()
+                .value(variableName)
+                .editable(true)
+                .optional(true)
+                .hidden(true)
+                .stepOut()
+                .addProperty(Property.VARIABLE_KEY);
+    }
+
+    /**
+     * Whether the activity behind this form produces a value to bind. The result type property is only
+     * present when it does, so its absence marks a {@code returns error?} (or bare) activity.
+     */
+    private boolean producesResultValue() {
+        return properties().build().containsKey(Property.TYPE_KEY);
+    }
+
+    /**
+     * Whether the form asks for the call to be wrapped in {@code check}. Absent flag means checked, which
+     * is what every call did before the flag existed.
+     */
+    private static boolean isCheckError(SourceBuilder sourceBuilder) {
+        return sourceBuilder.getProperty(Property.CHECK_ERROR_KEY)
+                .map(p -> p.value() != null && "true".equals(p.value().toString()))
+                .orElse(true);
+    }
+
+    /**
+     * The declared type of an unchecked binding: {@code <T>} widened to {@code <T>|error}, since without
+     * {@code check} the error is part of the value. An already-widened type is returned as it is, so a
+     * reloaded statement does not accumulate {@code |error} suffixes.
+     */
+    private static String widenWithError(String resultType) {
+        String type = resultType.strip();
+        if (type.equals("error") || type.equals(NIL_UNCHECKED_RESULT_TYPE) || type.endsWith("|error")
+                || type.endsWith("|error?")) {
+            return type;
+        }
+        return type + "|error";
+    }
+
     /**
      * Whether the written type carries no value of its own — every member is nil or an error, as an
      * activity that only reports failure produces. Read from the tree's shape rather than its text: a
@@ -305,19 +476,24 @@ public class ActivityCallBuilder extends CallBuilder {
     }
 
     /**
-     * The left-hand side of a generated activity call: what it binds and under what type.
+     * The left-hand side of a generated activity call: what it binds, under what type, and whether the
+     * call is checked.
      *
      * @param resultType   the declared type of the binding
      * @param variableName the bound name
+     * @param useCheck     whether the call is wrapped in {@code check}
      */
-    private record ResultBinding(String resultType, String variableName) {
+    private record ResultBinding(String resultType, String variableName, boolean useCheck) {
     }
 
     /**
-     * Resolves the binding for an activity call from the form. The call always propagates its errors with
-     * {@code check}, so what it binds is decided by what the activity produces: a value binds under the
-     * result type, and an activity that produces none binds a wildcard — still required, because
-     * {@code callActivity} is dependently typed and a bare call statement cannot infer its {@code T}.
+     * Resolves the binding for an activity call from the form.
+     *
+     * <p>An activity that produces a value binds it under the result type, widened to {@code <T>|error}
+     * when the errors are not checked. One that produces none has nothing to name while checked, so it
+     * binds a wildcard — still required, because {@code callActivity} is dependently typed and a bare
+     * call statement cannot infer its {@code T}. Unchecked, the error itself is the result and takes the
+     * name the form carries.
      *
      * @param sourceBuilder    the source builder holding the submitted form
      * @param declaredType     the result type from the form, or {@code null} when the activity has none
@@ -325,11 +501,19 @@ public class ActivityCallBuilder extends CallBuilder {
      */
     private static ResultBinding resolveResultBinding(SourceBuilder sourceBuilder, String declaredType,
                                                       String fallbackVariable) {
-        if (declaredType == null || isNilResultType(declaredType)) {
-            return new ResultBinding(NIL_RESULT_TYPE, WILDCARD_RESULT_VARIABLE);
-        }
+        boolean checkError = isCheckError(sourceBuilder);
         String variableName = nonBlankValue(sourceBuilder.getProperty(Property.VARIABLE_KEY));
-        return new ResultBinding(declaredType, variableName == null ? fallbackVariable : variableName);
+
+        if (declaredType == null || isNilResultType(declaredType)) {
+            if (checkError) {
+                return new ResultBinding(NIL_RESULT_TYPE, WILDCARD_RESULT_VARIABLE, true);
+            }
+            return new ResultBinding(NIL_UNCHECKED_RESULT_TYPE,
+                    variableName == null ? fallbackVariable : variableName, false);
+        }
+
+        String boundName = variableName == null ? fallbackVariable : variableName;
+        return new ResultBinding(checkError ? declaredType : widenWithError(declaredType), boundName, checkError);
     }
 
     /**
@@ -609,9 +793,10 @@ public class ActivityCallBuilder extends CallBuilder {
         // `anydata result` here made every such call declare the same variable, which is a duplicate
         // symbol as soon as there are two of them.
         String declaredType = nonBlankValue(sourceBuilder.getProperty(Property.TYPE_KEY));
-        ResultBinding binding = resolveResultBinding(sourceBuilder, declaredType, "result");
+        ResultBinding binding = resolveResultBinding(sourceBuilder, declaredType, DEFAULT_NIL_RESULT_VARIABLE);
         String resultType = binding.resultType();
         String variableName = binding.variableName();
+        boolean useCheck = binding.useCheck();
 
         String ctxParamName = resolveContextParamName(sourceBuilder);
 
@@ -628,8 +813,12 @@ public class ActivityCallBuilder extends CallBuilder {
                 .whiteSpace()
                 .name(variableName)
                 .whiteSpace()
-                .keyword(SyntaxKind.EQUAL_TOKEN)
-                .keyword(SyntaxKind.CHECK_KEYWORD)
+                .keyword(SyntaxKind.EQUAL_TOKEN);
+        if (useCheck) {
+            sourceBuilder.token().keyword(SyntaxKind.CHECK_KEYWORD);
+        }
+
+        sourceBuilder.token()
                 .name(ctxParamName)
                 .keyword(SyntaxKind.RIGHT_ARROW_TOKEN)
                 .name(CALL_ACTIVITY_METHOD)
@@ -692,15 +881,20 @@ public class ActivityCallBuilder extends CallBuilder {
 
         // A builtin with no return value (Email) has nothing to name, so it binds a wildcard —
         // `callActivity` is dependently typed and a bare call statement cannot infer its `T`.
-        ResultBinding binding = resolveResultBinding(sourceBuilder, hasReturnValue ? lhsType : null, "result");
+        ResultBinding binding = resolveResultBinding(sourceBuilder, hasReturnValue ? lhsType : null,
+                hasReturnValue ? "result" : DEFAULT_NIL_RESULT_VARIABLE);
 
         sourceBuilder.token()
                 .name(binding.resultType())
                 .whiteSpace()
                 .name(binding.variableName())
                 .whiteSpace()
-                .keyword(SyntaxKind.EQUAL_TOKEN)
-                .keyword(SyntaxKind.CHECK_KEYWORD)
+                .keyword(SyntaxKind.EQUAL_TOKEN);
+        if (binding.useCheck()) {
+            sourceBuilder.token().keyword(SyntaxKind.CHECK_KEYWORD);
+        }
+
+        sourceBuilder.token()
                 .name(ctxParamName)
                 .keyword(SyntaxKind.RIGHT_ARROW_TOKEN)
                 .name(CALL_ACTIVITY_METHOD)

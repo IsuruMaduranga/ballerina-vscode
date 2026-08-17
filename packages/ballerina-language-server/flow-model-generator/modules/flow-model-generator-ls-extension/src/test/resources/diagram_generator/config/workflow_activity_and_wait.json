@@ -118,8 +118,7 @@
               "offset": 80
             }
           },
-          "sourceCode": "// Activity call - should be ACTIVITY_CALL\n    int intResult = check ctx->callActivity(calculateDiscount, {amount: 100.0});",
-          "inferredReturnType": "T"
+          "sourceCode": "// Activity call - should be ACTIVITY_CALL\n    int intResult = check ctx->callActivity(calculateDiscount, {amount: 100.0});"
         },
         "returning": false,
         "properties": {
@@ -161,6 +160,24 @@
               "kind": "REQUIRED",
               "originalName": "input"
             }
+          },
+          "checkError": {
+            "metadata": {
+              "label": "Check Error",
+              "description": "Add 'check' to propagate errors. Uncheck to handle errors manually."
+            },
+            "types": [
+              {
+                "fieldType": "FLAG",
+                "ballerinaType": "boolean",
+                "selected": true
+              }
+            ],
+            "value": "true",
+            "optional": true,
+            "editable": true,
+            "advanced": true,
+            "hidden": false
           },
           "retryPolicy": {
             "metadata": {

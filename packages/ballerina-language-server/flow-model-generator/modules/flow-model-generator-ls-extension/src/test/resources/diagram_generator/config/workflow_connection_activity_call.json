@@ -71,8 +71,7 @@
               "offset": 90
             }
           },
-          "sourceCode": "int orderData = check ctx->callActivity(fetchOrder, {connection: orderClient, id: 1});",
-          "inferredReturnType": "T"
+          "sourceCode": "int orderData = check ctx->callActivity(fetchOrder, {connection: orderClient, id: 1});"
         },
         "returning": false,
         "properties": {
@@ -155,6 +154,24 @@
               "kind": "REQUIRED",
               "originalName": "id"
             }
+          },
+          "checkError": {
+            "metadata": {
+              "label": "Check Error",
+              "description": "Add 'check' to propagate errors. Uncheck to handle errors manually."
+            },
+            "types": [
+              {
+                "fieldType": "FLAG",
+                "ballerinaType": "boolean",
+                "selected": true
+              }
+            ],
+            "value": "true",
+            "optional": true,
+            "editable": true,
+            "advanced": true,
+            "hidden": false
           },
           "retryPolicy": {
             "metadata": {
