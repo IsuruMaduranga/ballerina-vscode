@@ -174,6 +174,24 @@ describe('convertNodePropertiesToFormFields', () => {
             expect(fields.map((f) => f.key).sort()).toEqual(['options__retryOptions', 'variable'].sort());
         });
     });
+
+    describe('GROUP_SECTION children', () => {
+        it('becomes a form field under its own key, which is the key its value is stored under', () => {
+            const fields = convertNodePropertiesToFormFields({
+                autoRetryOptions: makeProperty({
+                    fieldType: 'GROUP_SECTION',
+                    metadata: { label: 'Advanced Configurations', description: '' },
+                    advanceProperties: {
+                        maxRetries: makeProperty({ fieldType: 'EXPRESSION', optional: true }),
+                        retryDelay: makeProperty({ fieldType: 'EXPRESSION', optional: true }),
+                    },
+                } as any),
+            } as NodeProperties);
+
+            const group = fields.find((f) => f.key === 'autoRetryOptions');
+            expect(group?.advanceProps?.map((f) => f.key)).toEqual(['maxRetries', 'retryDelay']);
+        });
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -181,6 +199,60 @@ describe('convertNodePropertiesToFormFields', () => {
 // ---------------------------------------------------------------------------
 
 describe('updateNodeProperties', () => {
+    // The Auto Retry tuning fields are declared inside the retry policy's AutoRetry branch, but their
+    // values live in root properties of the same key - which is what source generation reads. The form
+    // registers each field under its own key, so submitting carries the edit to the root property.
+    describe('retry policy group fields', () => {
+        const retryNodeProperties = (): NodeProperties => {
+            const child = (fieldType: string) => makeProperty({ fieldType, value: '', optional: true });
+            return {
+                retryPolicy: makeProperty({
+                    fieldType: 'DROPDOWN_CHOICE',
+                    value: 'NoRetry',
+                    dynamicFormFields: {
+                        NoRetry: {},
+                        AutoRetry: {
+                            autoRetryOptions: makeProperty({
+                                fieldType: 'GROUP_SECTION',
+                                value: '',
+                                optional: true,
+                                advanceProperties: {
+                                    maxRetries: child('EXPRESSION'),
+                                    retryDelay: child('EXPRESSION'),
+                                },
+                            } as any),
+                        },
+                    },
+                } as any),
+                maxRetries: makeProperty({ fieldType: 'EXPRESSION', value: '', hidden: true, optional: true }),
+                retryDelay: makeProperty({ fieldType: 'EXPRESSION', value: '', hidden: true, optional: true }),
+            } as NodeProperties;
+        };
+
+        it('carries an edited group field to the root property source generation reads', () => {
+            const updated = updateNodeProperties(
+                { retryPolicy: 'AutoRetry', maxRetries: '5', retryDelay: '2.5' },
+                retryNodeProperties(),
+                {}
+            );
+
+            expect(updated.retryPolicy!.value).toBe('AutoRetry');
+            expect((updated as any).maxRetries.value).toBe('5');
+            expect((updated as any).retryDelay.value).toBe('2.5');
+        });
+
+        it('leaves a root field untouched when its group field was not edited', () => {
+            const updated = updateNodeProperties(
+                { retryPolicy: 'AutoRetry', maxRetries: '5' },
+                retryNodeProperties(),
+                {}
+            );
+
+            expect((updated as any).maxRetries.value).toBe('5');
+            expect((updated as any).retryDelay.value).toBe('');
+        });
+    });
+
     describe('ADVANCE_PARAM_LIST re-nesting', () => {
         it('writes form values back into the correct sub-property', () => {
             const subOptionsProp = makeProperty({
