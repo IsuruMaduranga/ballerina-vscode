@@ -154,11 +154,17 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
      * client, typically. Their values are fixed at registration through {@code bindings}, and the
      * remaining data parameters stay model-controlled. Options are the module-level variables
      * assignable to the parameter, so a connection is picked rather than typed.
+     *
+     * <p>An entry declared with a module-qualified reference ({@code mod:validate}) arrives here as
+     * written, while symbols carry the bare name — so the qualifier is stripped before the lookup.
+     * Without that, no binding selector is built, the values the analysis hydrated for them have
+     * nowhere to land, and saving the edit drops the entry's {@code bindings} field.
      */
     private void addBindingProperties(TemplateContext context, String activityName) {
         if (activityName == null || activityName.isEmpty()) {
             return;
         }
+        String unqualifiedName = activityName.substring(activityName.indexOf(':') + 1);
         Package currentPackage = PackageUtil.loadProject(context.workspaceManager(), context.filePath())
                 .currentPackage();
         PackageUtil.getCompilation(currentPackage);
@@ -173,7 +179,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                     .filter(symbol -> symbol.kind() == SymbolKind.FUNCTION)
                     .map(symbol -> (FunctionSymbol) symbol)
                     .filter(WorkflowUtil::isActivityFunction)
-                    .filter(symbol -> activityName.equals(symbol.getName().orElse("")))
+                    .filter(symbol -> unqualifiedName.equals(symbol.getName().orElse("")))
                     .findFirst();
             if (activity.isEmpty()) {
                 continue;
