@@ -8,7 +8,7 @@
     "offset": 1
   },
   "source": "workflow_activity_result_bindings.bal",
-  "description": "Activity calls read back from source: a wildcard binding, an unchecked call binding a value, and a nil-typed binding - none of which name a result the form should carry",
+  "description": "Activity calls read back from source: a checked wildcard binding, an unchecked call binding a value, and an unchecked nil-typed binding - each given the Check Error flag and the result name carrier the creation template uses",
   "diagram": {
     "fileName": "workflow_activity_result_bindings.bal",
     "nodes": [
@@ -179,7 +179,29 @@
             "optional": true,
             "editable": true,
             "advanced": true,
-            "hidden": false
+            "hidden": false,
+            "dynamicFormFields": {
+              "true": {},
+              "false": {
+                "variable": {
+                  "metadata": {
+                    "label": "Result",
+                    "description": "Name of the variable that receives the error the activity failed with, or nil when it succeeded"
+                  },
+                  "types": [
+                    {
+                      "fieldType": "IDENTIFIER",
+                      "selected": true
+                    }
+                  ],
+                  "value": "",
+                  "optional": false,
+                  "editable": true,
+                  "advanced": false,
+                  "hidden": false
+                }
+              }
+            }
           },
           "retryPolicy": {
             "metadata": {
@@ -407,6 +429,23 @@
               {
                 "fieldType": "EXPRESSION",
                 "ballerinaType": "decimal",
+                "selected": true
+              }
+            ],
+            "value": "",
+            "optional": true,
+            "editable": true,
+            "advanced": false,
+            "hidden": true
+          },
+          "variable": {
+            "metadata": {
+              "label": "Result",
+              "description": "Name of the result variable"
+            },
+            "types": [
+              {
+                "fieldType": "IDENTIFIER",
                 "selected": true
               }
             ],

@@ -291,14 +291,6 @@ public class ActivityCallBuilder extends CallBuilder {
     }
 
 
-
-
-
-
-
-
-
-
     /**
      * Adds the activity call's "Check Error" flag, which sits in the form's advanced configurations: it
      * refines how the call behaves rather than saying what it does. The creation templates and the
@@ -358,10 +350,10 @@ public class ActivityCallBuilder extends CallBuilder {
                             + "or nil when it succeeded")
                     .stepOut()
                 .type().fieldType(Property.ValueType.IDENTIFIER).selected(true).stepOut()
-                // A definition, not a value: the edit form takes its branch fields from the freshly
-                // fetched template, so a name seeded here would override the one the edited statement
-                // carries. The value lives in the root property of the same key, and the renderer hands
-                // the field whatever the form currently holds for it.
+                // A definition, not a value: this field is the same for every node of this shape, so a
+                // name seeded here would override the one the edited statement carries. The value lives
+                // in the root property of the same key, and the renderer hands the field whatever the
+                // form currently holds for it.
                 .value("")
                 .editable(true)
                 .build();
@@ -729,7 +721,6 @@ public class ActivityCallBuilder extends CallBuilder {
                 .build();
     }
 
-
     private static void addHiddenRetrySubFieldProperty(NodeBuilder nodeBuilder, String key,
                                                        String label, String description,
                                                        String ballerinaType, String value) {
@@ -879,8 +870,9 @@ public class ActivityCallBuilder extends CallBuilder {
 
         String ctxParamName = resolveContextParamName(sourceBuilder);
 
-        // A builtin with no return value (Email) has nothing to name, so it binds a wildcard —
-        // `callActivity` is dependently typed and a bare call statement cannot infer its `T`.
+        // A builtin with no return value (Email) has nothing to name while its errors are checked, so it
+        // binds a wildcard — `callActivity` is dependently typed and a bare call statement cannot infer
+        // its `T`. Unchecked, the error itself is the result and takes the name the form carries.
         ResultBinding binding = resolveResultBinding(sourceBuilder, hasReturnValue ? lhsType : null,
                 hasReturnValue ? "result" : DEFAULT_NIL_RESULT_VARIABLE);
 
