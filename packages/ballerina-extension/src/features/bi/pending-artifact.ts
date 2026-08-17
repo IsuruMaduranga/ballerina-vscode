@@ -33,6 +33,7 @@ import { ServiceDesignerRpcManager } from "../../rpc-managers/service-designer/r
 import { BiDiagramRpcManager } from "../../rpc-managers/bi-diagram/rpc-manager";
 import { extension } from "../../BalExtensionContext";
 import { addConfigFile, getConfigFilePath } from "../ai/utils";
+import { isAIAuthenticated } from "../ai/migration/orchestrator";
 import {
     clearPendingIntegrationPointer,
     isPendingPointerFresh,
@@ -341,8 +342,15 @@ async function generatePendingArtifact(
  * package root is already known here, so the config file is targeted directly (no project
  * quick-pick). Failures are non-fatal: the agent exists and the provider can be configured
  * from the agent's model circle.
+ *
+ * Only attempted while the user is signed in to the AI features: fetching the default model's
+ * token signs them out when it fails, so running this for a signed-out user would end their
+ * session as a side effect of creating an agent.
  */
 async function configureDurableAgentModelProvider(projectRoot: string): Promise<void> {
+    if (!isAIAuthenticated()) {
+        return;
+    }
     try {
         const configPath = await getConfigFilePath(extension.ballerinaExtInstance, projectRoot);
         if (configPath) {
