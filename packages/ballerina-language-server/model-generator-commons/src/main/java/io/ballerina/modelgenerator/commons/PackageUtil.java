@@ -105,12 +105,14 @@ public class PackageUtil {
      * getFlowModel request. Before this cache, a single warm flow-model fetch took seconds of
      * pure network time.
      *
-     * A bala package is immutable per version, so positive entries never go stale. Negative
-     * entries (package absent — typically a generated/test package that will never exist on
-     * Central) are cached too: they are the hottest repeat offenders. The accepted trade-off is
-     * that a "latest version" lookup or a transient network failure sticks for the LS session.
+     * A bala package is immutable per version, so positive entries never go stale. The accepted
+     * trade-off is that a "latest version" lookup or a transient network failure sticks for the
+     * LS session.
+     *
+     * Caches the resolved bala path rather than the loaded package, which would retain that
+     * package's syntax trees and symbols for the session.
      */
-    private static final ConcurrentHashMap<String, Optional<Package>> SAMPLE_RESOLUTION_CACHE =
+    private static final ConcurrentHashMap<String, Optional<Path>> SAMPLE_RESOLUTION_CACHE =
             new ConcurrentHashMap<>();
 
     /**
@@ -122,6 +124,13 @@ public class PackageUtil {
     private static String sampleResolutionKey(String org, String name, String version, String repository) {
         return org + ":" + name + ":" + (version == null ? "<latest>" : version)
                 + ":" + (repository == null ? "" : repository);
+    }
+
+    private static Optional<Package> loadBalaPackage(Path balaPath) {
+        ProjectEnvironmentBuilder defaultBuilder = ProjectEnvironmentBuilder.getDefaultBuilder();
+        defaultBuilder.addCompilationCacheFactory(TempDirCompilationCache::from);
+        BalaProject balaProject = BalaProject.loadProject(defaultBuilder, balaPath, balaBuildOptions());
+        return Optional.ofNullable(balaProject.currentPackage());
     }
 
     /**
@@ -252,7 +261,7 @@ public class PackageUtil {
                     key -> {
                         synchronized (SAMPLE_RESOLUTION_LOCK) {
                             try {
-                                return resolveVersionedModulePackage(buildProject, org, name, version, repository);
+                                return resolveVersionedModuleBala(buildProject, org, name, version, repository);
                             } catch (RuntimeException e) {
                                 // Cache the miss: a package that fails to resolve (typically a
                                 // generated/test package that does not exist on Central) would
@@ -260,13 +269,14 @@ public class PackageUtil {
                                 return Optional.empty();
                             }
                         }
-                    });
+                    }).flatMap(PackageUtil::loadBalaPackage);
         }
-        return resolveVersionedModulePackage(buildProject, org, name, version, repository);
+        return resolveVersionedModuleBala(buildProject, org, name, version, repository)
+                .flatMap(PackageUtil::loadBalaPackage);
     }
 
-    private static Optional<Package> resolveVersionedModulePackage(BuildProject buildProject, String org, String name,
-                                                                   String version, String repository) {
+    private static Optional<Path> resolveVersionedModuleBala(BuildProject buildProject, String org, String name,
+                                                             String version, String repository) {
         PackageOrg packageOrg = PackageOrg.from(org);
         PackageName packageName = PackageName.from(name);
         PackageVersion packageVersion = PackageVersion.from(version);
@@ -287,12 +297,7 @@ public class PackageUtil {
         if (resolutionResponse.isEmpty()) {
             return Optional.empty();
         }
-
-        Path balaPath = resolutionResponse.get().resolvedPackage().project().sourceRoot();
-        ProjectEnvironmentBuilder defaultBuilder = ProjectEnvironmentBuilder.getDefaultBuilder();
-        defaultBuilder.addCompilationCacheFactory(TempDirCompilationCache::from);
-        BalaProject balaProject = BalaProject.loadProject(defaultBuilder, balaPath, balaBuildOptions());
-        return Optional.ofNullable(balaProject.currentPackage());
+        return Optional.of(resolutionResponse.get().resolvedPackage().project().sourceRoot());
     }
 
     /**
@@ -321,17 +326,17 @@ public class PackageUtil {
                     key -> {
                         synchronized (SAMPLE_RESOLUTION_LOCK) {
                             try {
-                                return resolveLatestModulePackage(buildProject, org, name);
+                                return resolveLatestModuleBala(buildProject, org, name);
                             } catch (RuntimeException e) {
                                 return Optional.empty();
                             }
                         }
-                    });
+                    }).flatMap(PackageUtil::loadBalaPackage);
         }
-        return resolveLatestModulePackage(buildProject, org, name);
+        return resolveLatestModuleBala(buildProject, org, name).flatMap(PackageUtil::loadBalaPackage);
     }
 
-    private static Optional<Package> resolveLatestModulePackage(BuildProject buildProject, String org, String name) {
+    private static Optional<Path> resolveLatestModuleBala(BuildProject buildProject, String org, String name) {
         ResolutionRequest resolutionRequest = ResolutionRequest.from(
                 PackageDescriptor.from(PackageOrg.from(org), PackageName.from(name)));
         PackageResolver packageResolver = buildProject.projectEnvironmentContext().getService(PackageResolver.class);
@@ -374,12 +379,7 @@ public class PackageUtil {
             // The package could not be resolved from the local repositories or Central.
             return Optional.empty();
         }
-
-        Path balaPath = resolutionResponse.get().resolvedPackage().project().sourceRoot();
-        ProjectEnvironmentBuilder defaultBuilder = ProjectEnvironmentBuilder.getDefaultBuilder();
-        defaultBuilder.addCompilationCacheFactory(TempDirCompilationCache::from);
-        BalaProject balaProject = BalaProject.loadProject(defaultBuilder, balaPath, balaBuildOptions());
-        return Optional.ofNullable(balaProject.currentPackage());
+        return Optional.of(resolutionResponse.get().resolvedPackage().project().sourceRoot());
     }
 
     /**
