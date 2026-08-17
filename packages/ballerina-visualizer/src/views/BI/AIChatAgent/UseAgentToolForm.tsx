@@ -16,40 +16,25 @@
  * under the License.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styled from "@emotion/styled";
-import { ArtifactData, FlowNode, NodePosition } from "@wso2/ballerina-core";
-import { FormField, FormValues } from "@wso2/ballerina-side-panel";
+import { ArtifactData, FlowNode, NodePosition, Property, RecordTypeField } from "@wso2/ballerina-core";
+import { FieldGroup, FormField, FormValues } from "@wso2/ballerina-side-panel";
 import { Icon } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import ArtifactForm from "../Forms/ArtifactForm";
 import { RelativeLoader } from "../../../components/RelativeLoader";
 import { ImplementationBadge } from "../../../components/ImplementationBadge";
-import { addToolToAgentNode, AgentToolHostClass, buildAgentCallToolNode, refreshAgentNodeLineRange, resolveAgentNodePosition } from "./utils";
-import { buildAgentToolFields, stripCodeFencesInline } from "./formUtils";
+import { INCLUDE_CONTEXT_KEY, RESULT_TYPE_GROUP, buildIncludeContextField, buildToolFormGroups } from "./toolForm";
+import { addToolToAgentNode, AgentToolHostClass, buildAgentCallToolNode, fetchAgentRunReturnType, fetchOAuthConfigProperties, refreshAgentNodeLineRange, resolveAgentNodePosition, ZERO_LINE_RANGE } from "./utils";
+import { buildAgentToolFields, buildOAuthFields, extractRecordTypeFieldsFromEntries, stripCodeFencesInline }
+    from "./formUtils";
 
 const LoaderContainer = styled.div`
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100%;
-`;
-
-const ContextOption = styled.label`
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    cursor: pointer;
-    font-size: var(--vscode-font-size);
-    color: var(--vscode-foreground);
-    margin-top: 4px;
-`;
-
-const ContextHint = styled.div`
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground);
-    margin-top: 2px;
-    line-height: 1.4;
 `;
 
 interface UseAgentToolFormProps {
@@ -73,26 +58,58 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
     const [agentFilePath, setAgentFilePath] = useState<string>("");
     const [ready, setReady] = useState<boolean>(false);
     const [saving, setSaving] = useState<boolean>(false);
-    const [includeContext, setIncludeContext] = useState<boolean>(false);
+    const [oauthProperties, setOauthProperties] = useState<{ key: string; property: Property }[]>([]);
+    const [defaultReturnType, setDefaultReturnType] = useState<string>("");
 
     useEffect(() => {
-        if (hostClass) {
-            setAgentFilePath(hostClass.filePath);
-            setReady(true);
-            return;
-        }
         (async () => {
-            const fileName = agentNode?.codedata?.lineRange?.fileName ?? "agents.bal";
-            const { filePath } = await rpcClient.getVisualizerRpcClient().joinProjectPath({ segments: [fileName] });
+            const filePath = hostClass
+                ? hostClass.filePath
+                : (await rpcClient.getVisualizerRpcClient().joinProjectPath({
+                    segments: [agentNode?.codedata?.lineRange?.fileName ?? "agents.bal"],
+                })).filePath;
             setAgentFilePath(filePath);
+            setOauthProperties(await fetchOAuthConfigProperties(rpcClient, filePath));
+            setDefaultReturnType(await fetchAgentRunReturnType(rpcClient, filePath, agentVarName,
+                hostClass?.className));
             setReady(true);
         })();
     }, [agentNode]);
 
-    const fields: FormField[] = buildAgentToolFields(
-        `${agentVarName}Tool`,
-        `Delegates a query to ${agentLabel === "Agent" ? "the generic agent" : agentLabel}.`
+    const oauthFields = useMemo<FormField[]>(() => buildOAuthFields(oauthProperties), [oauthProperties]);
+
+    const recordTypeFields = useMemo<RecordTypeField[]>(
+        () => extractRecordTypeFieldsFromEntries(oauthProperties),
+        [oauthProperties]
     );
+
+    const fields = useMemo<FormField[]>(() => [
+        ...buildAgentToolFields(
+            `${agentVarName}Tool`,
+            `Delegates a query to ${agentLabel === "Agent" ? "the generic agent" : agentLabel}.`
+        ),
+        buildIncludeContextField() as FormField,
+        ...oauthFields,
+        {
+            key: "returnType",
+            label: "Result Type",
+            type: "TYPE",
+            optional: true,
+            editable: true,
+            documentation: "The data type this tool will return to the agent.",
+            value: defaultReturnType,
+            placeholder: "string",
+            types: [{ fieldType: "TYPE", selected: true }],
+            group: RESULT_TYPE_GROUP,
+            advanced: false,
+            enabled: true,
+        },
+    ], [agentVarName, agentLabel, oauthFields, defaultReturnType]);
+
+    const groups = useMemo<FieldGroup[]>(() => buildToolFormGroups(fields), [fields]);
+
+    const overriddenReturnType = (submitted: string): string =>
+        submitted.trim() === defaultReturnType.trim() ? "" : submitted;
 
     const handleSubmit = async (data: FormValues) => {
         if (saving) {
@@ -104,10 +121,23 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
             const toolName = String(data["name"] ?? "").trim() || `${agentVarName}Tool`;
             const description = stripCodeFencesInline(String(data["description"] ?? ""));
             const toolFilePath = hostClass ? hostClass.filePath : agentFilePath;
+            const toolNode = buildAgentCallToolNode(toolName, agentVarName, data[INCLUDE_CONTEXT_KEY] === true,
+                description, hostClass, agentReceiver, overriddenReturnType(String(data["returnType"] ?? "")));
+
+            const authConfig: Record<string, string> = {};
+            for (const { key } of oauthProperties) {
+                const value = data[key];
+                if (value !== undefined && value !== "") {
+                    authConfig[key] = String(value);
+                }
+            }
+            if (Object.keys(authConfig).length > 0) {
+                toolNode.codedata.data = { ...toolNode.codedata.data, auth: JSON.stringify(authConfig) };
+            }
+
             const toolResponse = await rpcClient.getBIDiagramRpcClient().getSourceCode({
                 filePath: toolFilePath,
-                flowNode: buildAgentCallToolNode(toolName, agentVarName, includeContext, description,
-                    hostClass, agentReceiver),
+                flowNode: toolNode,
                 artifactData,
             });
             let agentPosition: NodePosition | undefined;
@@ -145,9 +175,11 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
         <ArtifactForm
             preserveFieldOrder={false}
             fileName={agentFilePath}
-            targetLineRange={{ startLine: { line: 0, offset: 0 }, endLine: { line: 0, offset: 0 } }}
+            targetLineRange={ZERO_LINE_RANGE}
             fields={fields}
-            recordTypeFields={[]}
+            groups={groups}
+            opensPrefilled
+            recordTypeFields={recordTypeFields}
             onSubmit={handleSubmit}
             submitText={submitText}
             isSaving={saving}
@@ -161,26 +193,6 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
                         </ImplementationBadge>
                     ),
                     index: 0,
-                },
-                {
-                    component: (
-                        <ContextOption>
-                            <input
-                                type="checkbox"
-                                checked={includeContext}
-                                onChange={(e) => setIncludeContext(e.target.checked)}
-                            />
-                            <div>
-                                Pass agent context
-                                <ContextHint>
-                                    Adds ai:Context ctx as the first parameter so this tool can access the invoking
-                                    agent's context.
-                                </ContextHint>
-                            </div>
-                        </ContextOption>
-                    ),
-                    index: 2,
-                    advanced: true,
                 },
             ]}
         />
