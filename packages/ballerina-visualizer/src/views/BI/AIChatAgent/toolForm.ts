@@ -98,8 +98,6 @@ export function resourceToolNameSeed(accessor: string, resourcePath: string): st
     return `${accessor}${last.charAt(0).toUpperCase()}${last.slice(1)}`;
 }
 
-const BALLERINA_RESERVED_TOOL_NAMES = new Set(["function", "type", "class", "service", "resource", "remote", "client"]);
-
 export function suggestToolName(symbol: string, taken: Iterable<string>): string {
     const existing = new Set(taken);
     const words = (symbol || "").split(/[^a-zA-Z0-9]+/).filter(Boolean);
@@ -114,9 +112,6 @@ export function suggestToolName(symbol: string, taken: Iterable<string>): string
         base = `tool${base}`;
     }
     if (!base.toLowerCase().endsWith("tool")) {
-        base = `${base}Tool`;
-    }
-    if (BALLERINA_RESERVED_TOOL_NAMES.has(base)) {
         base = `${base}Tool`;
     }
     if (!existing.has(base)) {
