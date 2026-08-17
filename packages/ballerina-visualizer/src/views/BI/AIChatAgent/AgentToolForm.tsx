@@ -191,7 +191,9 @@ function parseRequiresApproval(annotationValue: string): ExistingApprovalConfig 
     const match = /\brequiresApproval\b\s*:\s*([^,}]+)/.exec(annotationValue);
     if (!match) return undefined;
     const raw = match[1].trim();
-    return raw === "true" ? {} : { functionName: raw };
+    if (raw === "true") return {};
+    if (raw === "false") return undefined;
+    return { functionName: raw };
 }
 
 // Ensure the function the tool currently references is always a selectable candidate, even if the
