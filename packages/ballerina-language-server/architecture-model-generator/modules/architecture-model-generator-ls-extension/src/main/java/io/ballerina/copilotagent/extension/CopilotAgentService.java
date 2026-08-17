@@ -48,6 +48,7 @@ import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
 import org.eclipse.lsp4j.jsonrpc.services.JsonSegment;
 import org.eclipse.lsp4j.services.LanguageServer;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -100,6 +101,11 @@ public class CopilotAgentService implements ExtendedLanguageServerService {
                         request.files() == null ? List.of() : request.files();
                 for (EnsureAiBaselineRequest.BaselineFile file : files) {
                     Path filePath = projectRoot.resolve(file.filePath());
+                    // No baseline for a file with no pre-edit state: that absence is how an addition is seen.
+                    if (!Files.isRegularFile(filePath)) {
+                        failedFiles.add(file.filePath());
+                        continue;
+                    }
                     try {
                         // The first change rebuilds the package from disk and the rest update
                         // documents in place — the same batch technique the extension's
