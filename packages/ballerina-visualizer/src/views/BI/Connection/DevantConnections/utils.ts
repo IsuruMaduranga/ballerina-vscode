@@ -352,11 +352,11 @@ export const dbCredentialsToFieldValues = (
 }
 
 // Devant "service -> connection params" helpers, shared by the connection form and the KB flow.
-export const getPossibleVisibilities = (marketplaceItem: MarketplaceItem, project: Project) => {
+export const getPossibleVisibilities = (marketplaceItem: MarketplaceItem, project?: Project) => {
     const { connectionSchemas = [], visibility: visibilities = [] } = marketplaceItem ?? {};
     const filteredVisibilities = visibilities.filter((item) => {
         if (item === ServiceInfoVisibilityEnum.Project) {
-            return marketplaceItem.projectId === project.id;
+            return !!project?.id && marketplaceItem.projectId === project.id;
         }
         return item;
     });

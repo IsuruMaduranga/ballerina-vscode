@@ -44,8 +44,19 @@ export interface PrepareDevantKnowledgeBaseDeps {
 export async function prepareDevantKnowledgeBase(deps: PrepareDevantKnowledgeBaseDeps): Promise<FlowNode | null> {
     const { rpcClient, platformRpcClient, platformExtState, item, node, projectPath, target, fileName } = deps;
 
-    const schema = item.connectionSchemas?.[0];
-    const neededEntries = (schema?.entries || []).filter((e) => OAUTH2_ENTRY_NAMES.includes(e.name));
+    // Resolve the schema that matches the chosen visibility first, then derive the OAuth2 entries
+    // from that schema (the one we actually register with) so the configurables can't reference a
+    // different schema's entries.
+    const isProjectLevel = !platformExtState.selectedComponent?.metadata?.id;
+    const visibilities = getPossibleVisibilities(item, platformExtState?.selectedContext?.project);
+    const visibility = getInitialVisibility(item, visibilities);
+    const chosenSchema =
+        getPossibleSchemas(item, visibility, item.connectionSchemas)[0] || item.connectionSchemas?.[0];
+    const neededEntries = (chosenSchema?.entries || []).filter((e) => OAUTH2_ENTRY_NAMES.includes(e.name));
+    if (neededEntries.length !== OAUTH2_ENTRY_NAMES.length) {
+        console.error(">>> Devant KB service does not expose the expected OAuth2 entries", chosenSchema?.name);
+        return null;
+    }
 
     // Devant rejects a duplicate connection name in a project (409), so generate a unique one.
     let existingDevantConnNames: string[] = [];
@@ -76,12 +87,7 @@ export async function prepareDevantKnowledgeBase(deps: PrepareDevantKnowledgeBas
         });
     }
 
-    // Register the connection in Devant. The schema must match the chosen visibility, else
-    // Devant rejects it (mirrors the normal connection form).
-    const isProjectLevel = !platformExtState.selectedComponent?.metadata?.id;
-    const visibilities = getPossibleVisibilities(item, platformExtState?.selectedContext?.project);
-    const visibility = getInitialVisibility(item, visibilities);
-    const chosenSchema = getPossibleSchemas(item, visibility, item.connectionSchemas)[0] || schema;
+    // Register the connection in Devant (schema/visibility resolved above).
     const createdConnection = await platformRpcClient.createInternalConnection({
         componentId: isProjectLevel ? "" : platformExtState.selectedComponent?.metadata?.id,
         name: connName,

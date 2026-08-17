@@ -80,7 +80,7 @@ export function CloudKnowledgeBasePage(props: CloudKnowledgeBasePageProps) {
                     <ButtonCard
                         id="create-new-cloud-kb"
                         title="Manually Config WSO2 Cloud Knowledge Base"
-                        description="Create and configure a new knowledge base"
+                        description="Add configurations for the Knowledge Base connection."
                         icon={<Codicon name="add" />}
                         onClick={onCreateNew}
                     />
