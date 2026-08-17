@@ -1007,11 +1007,11 @@ public class AgentToolBuilder extends NodeBuilder {
      * from the client as a prefix to {@code org/module:version} map, like {@link Property#imports()}.
      */
     private static void acceptChosenTypeImports(Map<String, Object> data, SourceBuilder sourceBuilder) {
-        Object raw = data == null ? null : data.get(RETURN_TYPE_IMPORTS_KEY);
-        if (sourceBuilder == null || raw == null) {
+        String raw = dataString(data, RETURN_TYPE_IMPORTS_KEY, "");
+        if (sourceBuilder == null || raw.isBlank()) {
             return;
         }
-        Map<String, String> imports = gson.fromJson(raw.toString(), IMPORTS_TYPE);
+        Map<String, String> imports = gson.fromJson(raw, IMPORTS_TYPE);
         imports.values().stream()
                 .map(moduleId -> moduleId.split("[/:]"))
                 .filter(parts -> parts.length >= 2)
