@@ -18,9 +18,12 @@
 
 import { AgentToolData, AvailableNode, CodeData, ConfigVariable, DIRECTORY_MAP, ELineRange, EVENT_TYPE, FlowNode, GET_DEFAULT_MODEL_PROVIDER, isAgentDeclarationNode, LinePosition, LineRange, MACHINE_VIEW, NodeKind, NodePosition, ProjectStructureArtifactResponse, Property, SearchNodesQuery, ToolParameters, VisualizerLocation } from "@wso2/ballerina-core";
 import { BallerinaRpcClient } from "@wso2/ballerina-rpc-client";
+import { FormField } from "@wso2/ballerina-side-panel";
 import { cloneDeep } from "lodash";
 import { URI, Utils } from "vscode-uri";
 import { BALLERINA } from "../../../constants";
+import { convertNodePropertyToFormField } from "../../../utils/bi";
+import { OAUTH_GROUP } from "./toolForm";
 
 const KNOWN_AGENT_NAME_SUFFIXES = ["agent", "model"];
 
@@ -238,6 +241,14 @@ export const fetchOAuthConfigProperties = async (
         return [];
     }
 };
+
+export function buildOAuthFields(entries: { key: string; property: Property }[]): FormField[] {
+    return entries.map(({ key, property }) => ({
+        ...convertNodePropertyToFormField(key, property),
+        group: OAUTH_GROUP,
+        advanced: false,
+    }));
+}
 
 export const fetchAgentRunReturnType = async (
     rpcClient: BallerinaRpcClient,
@@ -645,12 +656,16 @@ export interface AgentToolHostClass {
 export function buildAgentToolNode(wrappedNode: FlowNode, toolName: string, description: string, connection: string,
     toolParameters?: ToolParameters, hostClass?: AgentToolHostClass, includeContext = false): FlowNode {
     const auth = wrappedNode.codedata.data?.auth;
+    const requiresApproval = wrappedNode.codedata.data?.requiresApproval;
+    const generateApprovalFunction = wrappedNode.codedata.data?.generateApprovalFunction;
     const data: AgentToolData = {
         node: wrappedNode,
         connection,
         description,
         includeContext,
         ...(typeof auth === "string" ? { auth } : {}),
+        ...(requiresApproval !== undefined ? { requiresApproval } : {}),
+        ...(generateApprovalFunction !== undefined ? { generateApprovalFunction } : {}),
         ...(hostClass ? { hostClassName: hostClass.className, filePath: hostClass.filePath } : {}),
     };
     return createAgentToolNode(toolName, data, toolParameters ? { parameters: toolParameters } : {});
@@ -658,7 +673,8 @@ export function buildAgentToolNode(wrappedNode: FlowNode, toolName: string, desc
 
 export function buildAgentCallToolNode(toolName: string, agentVarName: string, includeContext: boolean,
     description: string, hostClass?: AgentToolHostClass, agentReceiver?: string,
-    returnType?: string): FlowNode {
+    returnType?: string,
+    approvalData?: { requiresApproval?: string; generateApprovalFunction?: string }): FlowNode {
     const data: AgentToolData = {
         toolKind: "AGENT_CALL",
         agentVarName,
@@ -667,6 +683,7 @@ export function buildAgentCallToolNode(toolName: string, agentVarName: string, i
         ...(returnType?.trim() ? { returnType: returnType.trim() } : {}),
         ...(agentReceiver ? { agentReceiver } : {}),
         ...(hostClass ? { hostClassName: hostClass.className, filePath: hostClass.filePath } : {}),
+        ...(approvalData ?? {}),
     };
     return createAgentToolNode(toolName, data);
 }
