@@ -22,6 +22,7 @@ import { CheckBoxGroup, FormCheckBox } from "@wso2/ui-toolkit";
 import { useFormContext } from "../../context";
 import styled from "@emotion/styled";
 import { FieldFactory } from "./FieldFactory";
+import { withHeldValue } from "./utils";
 
 const Container = styled.div`
     display: grid;
@@ -87,14 +88,20 @@ export function CheckBoxEditor(props: TextEditorProps) {
     // while that state holds — the same per-branch model the dropdown choice uses, for a flag whose
     // states ask for different input.
     const checked = watch(field.key, getBooleanValue(field.value));
-    const formValues = watch();
-    // A state field is a definition; the value for its key lives in a property of its own, which the
-    // edit form fills in from the statement being edited. Hand the field that value, or the editor
-    // would mount with the definition's empty one and overwrite what was loaded.
-    const stateFields = (field.dynamicFormFields?.[String(Boolean(checked))] ?? []).map((stateField) => {
-        const held = formValues?.[stateField.key];
-        return held === undefined || held === "" ? stateField : { ...stateField, value: held };
+    // Watch the branch fields by name rather than the whole form, so a keystroke in an unrelated field
+    // does not re-render this editor and hand its children a fresh field object.
+    const branchFieldKeys = React.useMemo(
+        () => Object.values(field.dynamicFormFields ?? {}).flatMap((fields) => fields.map((f) => f.key)),
+        [field.dynamicFormFields]
+    );
+    const watchedBranchValues = watch(branchFieldKeys);
+    const heldValues: Record<string, any> = {};
+    branchFieldKeys.forEach((key, index) => {
+        heldValues[key] = watchedBranchValues?.[index];
     });
+    const stateFields = (field.dynamicFormFields?.[String(Boolean(checked))] ?? []).map((stateField) =>
+        withHeldValue(stateField, heldValues)
+    );
 
     return (
         <Container>

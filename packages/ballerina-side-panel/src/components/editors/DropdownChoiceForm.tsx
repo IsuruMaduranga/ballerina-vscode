@@ -22,7 +22,7 @@ import { Codicon, Dropdown, LinkButton, LocationSelector, RadioButtonGroup, Them
 import { FormRow, FormButtonContainer } from "../Form";
 
 import { FormField } from "../Form/types";
-import { buildRequiredRule, capitalize, getValueForDropdown } from "./utils";
+import { buildRequiredRule, capitalize, getValueForDropdown, withHeldValue } from "./utils";
 import { useFormContext } from "../../context";
 import styled from "@emotion/styled";
 import { FieldFactory } from "./FieldFactory";
@@ -63,20 +63,9 @@ export function DropdownChoiceForm(props: DropdownChoiceFormProps) {
     // Update dynamic fields when selection changes
     useEffect(() => {
         if (field.dynamicFormFields?.[selectedOption]) {
-            // Each field of a branch is a definition; the value for its key lives in a property of its
-            // own, which the edit form fills in from the statement being edited. Hand the field that
-            // value, or its editor would mount with the definition's empty one and overwrite it.
             const values = form.getValues();
-            const withHeldValue = (dynamicField: FormField): FormField => {
-                const held = values?.[dynamicField.key];
-                const withChildren = dynamicField.advanceProps
-                    ? { ...dynamicField, advanceProps: dynamicField.advanceProps.map(withHeldValue) }
-                    : dynamicField;
-                return held === undefined || held === ""
-                    ? withChildren
-                    : { ...withChildren, value: held };
-            };
-            setDynamicFields(field.dynamicFormFields[selectedOption].map(withHeldValue));
+            setDynamicFields(field.dynamicFormFields[selectedOption].map((dynamicField) =>
+                withHeldValue(dynamicField, values)));
         } else {
             setDynamicFields([]);
         }
