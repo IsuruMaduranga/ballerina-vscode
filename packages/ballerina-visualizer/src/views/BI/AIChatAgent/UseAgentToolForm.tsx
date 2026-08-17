@@ -20,12 +20,13 @@ import { useEffect, useMemo, useState } from "react";
 import styled from "@emotion/styled";
 import { ArtifactData, AvailableNode, BISearchRequest, Category, FlowNode, LinePosition, NodePosition, Property,
     RecordTypeField } from "@wso2/ballerina-core";
-import { FieldGroup, FormField, FormValues } from "@wso2/ballerina-side-panel";
+import { FieldGroup, FormField, FormImports, FormValues } from "@wso2/ballerina-side-panel";
 import { Icon } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import ArtifactForm from "../Forms/ArtifactForm";
 import { RelativeLoader } from "../../../components/RelativeLoader";
 import { ImplementationBadge } from "../../../components/ImplementationBadge";
+import { getImportsForProperty } from "../../../utils/bi";
 import { INCLUDE_CONTEXT_KEY, RESULT_TYPE_GROUP, buildIncludeContextField, buildToolFormGroups } from "./toolForm";
 import { addToolToAgentNode, AgentToolHostClass, buildAgentCallToolNode, buildOAuthFields, fetchAgentRunReturnType, fetchOAuthConfigProperties, refreshAgentNodeLineRange, resolveAgentNodePosition, ZERO_LINE_RANGE } from "./utils";
 import { buildAgentToolFields, buildApprovalToolData, buildRequiresApprovalField,
@@ -150,7 +151,7 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
     const overriddenReturnType = (submitted: string): string =>
         submitted.trim() === defaultReturnType.trim() ? "" : submitted;
 
-    const handleSubmit = async (data: FormValues) => {
+    const handleSubmit = async (data: FormValues, formImports?: FormImports) => {
         if (saving) {
             return;
         }
@@ -161,9 +162,18 @@ export function UseAgentToolForm(props: UseAgentToolFormProps): JSX.Element {
             const description = stripCodeFencesInline(String(data["description"] ?? ""));
             const toolFilePath = hostClass ? hostClass.filePath : agentFilePath;
             const approvalData = buildApprovalToolData(data, approvalCandidates ?? []);
+            const returnType = overriddenReturnType(String(data["returnType"] ?? ""));
             const toolNode = buildAgentCallToolNode(toolName, agentVarName, data[INCLUDE_CONTEXT_KEY] === true,
-                description, hostClass, agentReceiver, overriddenReturnType(String(data["returnType"] ?? "")),
-                approvalData);
+                description, hostClass, agentReceiver, returnType, approvalData);
+
+            // The LS only registers the import itself when it resolves the type itself.
+            const returnTypeImports = returnType ? getImportsForProperty("returnType", formImports) : undefined;
+            if (returnTypeImports && Object.keys(returnTypeImports).length > 0) {
+                toolNode.codedata.data = {
+                    ...toolNode.codedata.data,
+                    returnTypeImports: JSON.stringify(returnTypeImports),
+                };
+            }
 
             const authConfig: Record<string, string> = {};
             for (const { key } of oauthProperties) {
