@@ -66,6 +66,7 @@ import {
     CODEDATA_PAYLOAD_TYPE_INCLUDED_RECORD,
     addableCatalogOf,
     bindingGroupSiblingsOf,
+    boundRepresentativeOf,
     composePayloadType,
     decomposePayloadType,
     functionSignatureKey,
@@ -876,17 +877,18 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
                     {groupedPayloadParams
                         .filter((param) => param.type?.codedata?.bindable === true)
                         .map((param) => {
-                            const label = displayLabelOf(param);
+                            const displayParam = boundRepresentativeOf(functionModel, param);
+                            const label = displayLabelOf(displayParam);
                             return (
-                                <Fragment key={param.name?.value ?? label}>
-                                    {hasDefaultPayload(param) ? (
+                                <Fragment key={displayParam.name?.value ?? label}>
+                                    {hasDefaultPayload(displayParam) ? (
                                         <AddButtonWrapper>
                                             <Tooltip
-                                                content={param.metadata?.description
+                                                content={displayParam.metadata?.description
                                                     || `Define ${label} for easier access in the flow diagram`}
                                                 position="bottom"
                                             >
-                                                <LinkButton onClick={() => setTypeEditorParamName(param.name?.value ?? null)}>
+                                                <LinkButton onClick={() => setTypeEditorParamName(displayParam.name?.value ?? null)}>
                                                     <Codicon name="add" />
                                                     Define {label}
                                                 </LinkButton>
@@ -917,32 +919,32 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
                                                 name+type editor. */}
                                             <Parameters
                                                 parameters={[{
-                                                    ...param,
+                                                    ...displayParam,
                                                     editable: true,
                                                     type: {
-                                                        ...param.type,
-                                                        value: composePayloadType(functionModel, param),
+                                                        ...displayParam.type,
+                                                        value: composePayloadType(functionModel, displayParam),
                                                     },
                                                 }]}
-                                                hideName={param.type?.codedata?.nameEditable === false}
+                                                hideName={displayParam.type?.codedata?.nameEditable === false}
                                                 onChange={(edited) => {
                                                     if (edited.length === 0) {
-                                                        handleDeletePayloadSchema(param);
+                                                        handleDeletePayloadSchema(displayParam);
                                                         return;
                                                     }
                                                     const [editedPayload] = edited;
                                                     const editedElement = decomposePayloadType(
-                                                        functionModel, param, editedPayload.type?.value ?? "");
+                                                        functionModel, displayParam, editedPayload.type?.value ?? "");
                                                     const editedName = editedPayload.name?.value;
                                                     const groupNames = new Set(
-                                                        bindingGroupSiblingsOf(functionModel, param)
+                                                        bindingGroupSiblingsOf(functionModel, displayParam)
                                                             .map((p) => p.name?.value)
                                                     );
                                                     const parameters = functionModel.parameters.map((p) => {
                                                         if (!isPayloadParameter(p) || !groupNames.has(p.name?.value)) {
                                                             return p;
                                                         }
-                                                        const isTarget = p.name?.value === param.name?.value;
+                                                        const isTarget = p.name?.value === displayParam.name?.value;
                                                         return {
                                                             ...p,
                                                             name: isTarget && editedName !== undefined

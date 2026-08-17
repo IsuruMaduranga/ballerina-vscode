@@ -415,6 +415,13 @@ export function hasDefaultPayload(param: ParameterModel): boolean {
     return !param.type?.codedata?.boundType;
 }
 
+/** The group's already-bound sibling, if any, so an asymmetric pre-existing binding isn't hidden
+ * behind the always-first-listed, possibly-still-unbound representative (e.g. CDC's `before`). */
+export function boundRepresentativeOf(fn: FunctionModel, param: ParameterModel): ParameterModel {
+    const siblings = bindingGroupSiblingsOf(fn, param);
+    return siblings.find((p) => !hasDefaultPayload(p)) ?? param;
+}
+
 /**
  * Converts a bound type name to a parameter name — camelCased, pluralized when the base template
  * produces an array (e.g. CSV rows).
