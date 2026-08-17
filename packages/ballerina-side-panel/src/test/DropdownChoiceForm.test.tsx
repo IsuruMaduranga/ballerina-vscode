@@ -127,7 +127,13 @@ describe("DropdownChoiceForm group branch", () => {
         expandTargets.forEach((target) => fireEvent.click(target));
 
         expect(container.textContent ?? "").toContain("Max Retries");
-        getForm().setValue("maxRetries", "5");
+
+        // The control the group renders is registered under the leaf key, so typing into it is what
+        // puts the value where the root property - and therefore source generation - reads it.
+        const control = container.querySelector('[name="maxRetries"]');
+        expect(control).toBeTruthy();
+        fireEvent.input(control!, { target: { value: "5" } });
+
         expect(getForm().getValues("maxRetries")).toBe("5");
     });
 });

@@ -40,6 +40,11 @@ import { convertNodePropertiesToFormFields, updateNodeProperties } from './node-
 // Helpers
 // ---------------------------------------------------------------------------
 
+// NodePropertyKey does not list every key the product uses (options, retryPolicy, maxRetries, ...),
+// so property maps are read as a record of Property rather than through `any`.
+const rootProperty = (properties: NodeProperties, key: string): Property =>
+    (properties as Record<string, Property>)[key];
+
 function makeProperty(overrides: Partial<Property> & { fieldType: string }): Property {
     const { fieldType, metadata: metaOverride, ...rest } = overrides;
     return {
@@ -225,7 +230,7 @@ describe('updateNodeProperties', () => {
                     },
                 } as any),
                 maxRetries: makeProperty({ fieldType: 'EXPRESSION', value: '', hidden: true, optional: true }),
-                retryDelay: makeProperty({ fieldType: 'EXPRESSION', value: '', hidden: true, optional: true }),
+                retryDelay: makeProperty({ fieldType: 'EXPRESSION', value: '1.5', hidden: true, optional: true }),
             } as NodeProperties;
         };
 
@@ -236,20 +241,21 @@ describe('updateNodeProperties', () => {
                 {}
             );
 
-            expect(updated.retryPolicy!.value).toBe('AutoRetry');
-            expect((updated as any).maxRetries.value).toBe('5');
-            expect((updated as any).retryDelay.value).toBe('2.5');
+            expect(rootProperty(updated, 'retryPolicy').value).toBe('AutoRetry');
+            expect(rootProperty(updated, 'maxRetries').value).toBe('5');
+            expect(rootProperty(updated, 'retryDelay').value).toBe('2.5');
         });
 
-        it('leaves a root field untouched when its group field was not edited', () => {
+        it('keeps a root field that the submitted form did not carry', () => {
             const updated = updateNodeProperties(
                 { retryPolicy: 'AutoRetry', maxRetries: '5' },
                 retryNodeProperties(),
                 {}
             );
 
-            expect((updated as any).maxRetries.value).toBe('5');
-            expect((updated as any).retryDelay.value).toBe('');
+            expect(rootProperty(updated, 'maxRetries').value).toBe('5');
+            // Seeded with a value, so this asserts the field was preserved rather than merely empty.
+            expect(rootProperty(updated, 'retryDelay').value).toBe('1.5');
         });
     });
 
