@@ -37,11 +37,8 @@ import org.testng.annotations.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -61,275 +58,133 @@ public class DesignModelGeneratorTest extends AbstractLSTest {
         JsonObject jsonObject = getResponse(request);
         GetDesignModelResponse expectedResponse = gson.fromJson(testConfig.output, GetDesignModelResponse.class);
         GetDesignModelResponse actualResponse = gson.fromJson(jsonObject, GetDesignModelResponse.class);
-        List<String> failures = new ArrayList<>();
-        boolean asserted = assertDesignModel(actualResponse.getDesignModel(), expectedResponse.getDesignModel(),
-                failures);
+        boolean asserted = assertDesignModel(actualResponse.getDesignModel(), expectedResponse.getDesignModel());
         if (!asserted) {
             TestConfig updatedConfig = new TestConfig(testConfig.description(), testConfig.projectPath(), jsonObject);
 //            updateConfig(configJsonPath, updatedConfig);
-            Assert.fail(String.format("Failed test: '%s' (%s)%n%s", testConfig.description(), configJsonPath,
-                    String.join(System.lineSeparator(), failures)));
+            Assert.fail(String.format("Failed test: '%s' (%s)", testConfig.description(), configJsonPath));
         }
     }
 
-    private boolean assertDesignModel(DesignModel actual, DesignModel expected, List<String> failures) {
-        boolean automationOk = assertAutomation(actual.automation(), expected.automation(), failures);
-        boolean connectionsOk = assertConnections(actual.connections(), expected.connections(), failures);
-        boolean listenersOk = assertListeners(actual.listeners(), expected.listeners(), failures);
-        boolean servicesOk = assertServices(actual.services(), expected.services(), failures);
-        boolean workflowsOk = assertWorkflows(actual.workflows(), expected.workflows(), failures);
-        boolean activitiesOk = assertActivities(actual.activities(), expected.activities(), failures);
-        return automationOk && connectionsOk && listenersOk && servicesOk && workflowsOk && activitiesOk;
+    private boolean assertDesignModel(DesignModel actual, DesignModel expected) {
+        return assertAutomation(actual.automation(), expected.automation()) &&
+                assertConnections(actual.connections(), expected.connections()) &&
+                assertListeners(actual.listeners(), expected.listeners()) &&
+                assertServices(actual.services(), expected.services()) &&
+                assertWorkflows(actual.workflows(), expected.workflows()) &&
+                assertActivities(actual.activities(), expected.activities());
     }
 
-    private boolean assertActivities(List<Activity> actual, List<Activity> expected, List<String> failures) {
+    private boolean assertActivities(List<Activity> actual, List<Activity> expected) {
         int actualSize = actual == null ? 0 : actual.size();
         int expectedSize = expected == null ? 0 : expected.size();
         if (actualSize != expectedSize) {
-            failures.add(String.format("Activities: size mismatch, expected %d, actual %d", expectedSize,
-                    actualSize));
             return false;
         }
         if (actual == null || expected == null) {
             return true;
         }
-        boolean ok = true;
         for (int i = 0; i < actual.size(); i++) {
             Activity actualActivity = actual.get(i);
             Activity expectedActivity = expected.get(i);
-            if (!actualActivity.getSymbol().equals(expectedActivity.getSymbol())) {
-                failures.add(String.format("Activity[%d]: symbol mismatch, expected '%s', actual '%s'", i,
-                        expectedActivity.getSymbol(), actualActivity.getSymbol()));
-                ok = false;
-            }
-            if (!actualActivity.getLocation().equals(expectedActivity.getLocation())) {
-                failures.add(String.format("Activity[%d] ('%s'): location mismatch, expected %s, actual %s", i,
-                        actualActivity.getSymbol(), expectedActivity.getLocation(), actualActivity.getLocation()));
-                ok = false;
-            }
-            if (actualActivity.getConnections().size() != expectedActivity.getConnections().size()) {
-                failures.add(String.format(
-                        "Activity[%d] ('%s'): connections size mismatch, expected %d, actual %d", i,
-                        actualActivity.getSymbol(), expectedActivity.getConnections().size(),
-                        actualActivity.getConnections().size()));
-                ok = false;
-            }
-            if (actualActivity.getAttachedWorkflows().size() != expectedActivity.getAttachedWorkflows().size()) {
-                failures.add(String.format(
-                        "Activity[%d] ('%s'): attachedWorkflows size mismatch, expected %d, actual %d", i,
-                        actualActivity.getSymbol(), expectedActivity.getAttachedWorkflows().size(),
-                        actualActivity.getAttachedWorkflows().size()));
-                ok = false;
+            if (!actualActivity.getSymbol().equals(expectedActivity.getSymbol())
+                    || !actualActivity.getLocation().equals(expectedActivity.getLocation())
+                    || actualActivity.getConnections().size() != expectedActivity.getConnections().size()
+                    || actualActivity.getAttachedWorkflows().size()
+                            != expectedActivity.getAttachedWorkflows().size()) {
+                return false;
             }
         }
-        return ok;
+        return true;
     }
 
-    private boolean assertWorkflows(List<Workflow> actual, List<Workflow> expected, List<String> failures) {
+    private boolean assertWorkflows(List<Workflow> actual, List<Workflow> expected) {
         int actualSize = actual == null ? 0 : actual.size();
         int expectedSize = expected == null ? 0 : expected.size();
         if (actualSize != expectedSize) {
-            failures.add(String.format("Workflows: size mismatch, expected %d, actual %d", expectedSize,
-                    actualSize));
             return false;
         }
         if (actual == null || expected == null) {
             return true;
         }
-        boolean ok = true;
         for (int i = 0; i < actual.size(); i++) {
             Workflow actualWorkflow = actual.get(i);
             Workflow expectedWorkflow = expected.get(i);
-            String label = String.format("Workflow[%d] ('%s')", i, actualWorkflow.getSymbol());
-            if (!actualWorkflow.getSymbol().equals(expectedWorkflow.getSymbol())) {
-                failures.add(String.format("%s: symbol mismatch, expected '%s', actual '%s'", label,
-                        expectedWorkflow.getSymbol(), actualWorkflow.getSymbol()));
-                ok = false;
-            }
-            if (!actualWorkflow.getLocation().equals(expectedWorkflow.getLocation())) {
-                failures.add(String.format("%s: location mismatch, expected %s, actual %s", label,
-                        expectedWorkflow.getLocation(), actualWorkflow.getLocation()));
-                ok = false;
-            }
-            if (actualWorkflow.getAttachedServices().size() != expectedWorkflow.getAttachedServices().size()) {
-                failures.add(String.format("%s: attachedServices size mismatch, expected %d, actual %d", label,
-                        expectedWorkflow.getAttachedServices().size(), actualWorkflow.getAttachedServices().size()));
-                ok = false;
-            }
-            if (actualWorkflow.getAttachedFunctions().size() != expectedWorkflow.getAttachedFunctions().size()) {
-                failures.add(String.format("%s: attachedFunctions size mismatch, expected %d, actual %d", label,
-                        expectedWorkflow.getAttachedFunctions().size(),
-                        actualWorkflow.getAttachedFunctions().size()));
-                ok = false;
-            }
-            if (sizeOf(actualWorkflow.getHumanTasks()) != sizeOf(expectedWorkflow.getHumanTasks())) {
-                failures.add(String.format("%s: humanTasks size mismatch, expected %d, actual %d", label,
-                        sizeOf(expectedWorkflow.getHumanTasks()), sizeOf(actualWorkflow.getHumanTasks())));
-                ok = false;
-            }
-            if (sizeOf(actualWorkflow.getActivities()) != sizeOf(expectedWorkflow.getActivities())) {
-                failures.add(String.format("%s: activities size mismatch, expected %d, actual %d", label,
-                        sizeOf(expectedWorkflow.getActivities()), sizeOf(actualWorkflow.getActivities())));
-                ok = false;
-            }
-            if (!assertWorkflowEvents(actualWorkflow.getEvents(), expectedWorkflow.getEvents(), label, failures)) {
-                ok = false;
+            if (!actualWorkflow.getSymbol().equals(expectedWorkflow.getSymbol())
+                    || !actualWorkflow.getLocation().equals(expectedWorkflow.getLocation())
+                    || actualWorkflow.getAttachedServices().size() != expectedWorkflow.getAttachedServices().size()
+                    || actualWorkflow.getAttachedFunctions().size()
+                            != expectedWorkflow.getAttachedFunctions().size()
+                    || sizeOf(actualWorkflow.getHumanTasks()) != sizeOf(expectedWorkflow.getHumanTasks())
+                    || sizeOf(actualWorkflow.getActivities()) != sizeOf(expectedWorkflow.getActivities())
+                    || !assertWorkflowEvents(actualWorkflow.getEvents(), expectedWorkflow.getEvents())) {
+                return false;
             }
         }
-        return ok;
+        return true;
     }
 
-    private boolean assertWorkflowEvents(List<Workflow.Event> actual, List<Workflow.Event> expected, String label,
-                                         List<String> failures) {
+    private boolean assertWorkflowEvents(List<Workflow.Event> actual, List<Workflow.Event> expected) {
         if (sizeOf(actual) != sizeOf(expected)) {
-            failures.add(String.format("%s: events size mismatch, expected %d, actual %d", label, sizeOf(expected),
-                    sizeOf(actual)));
             return false;
         }
         if (actual == null || expected == null) {
             return true;
         }
-        boolean ok = true;
         for (int i = 0; i < actual.size(); i++) {
             Workflow.Event actualEvent = actual.get(i);
             Workflow.Event expectedEvent = expected.get(i);
-            String eventLabel = String.format("%s.events[%d] ('%s')", label, i, actualEvent.getName());
-            if (!actualEvent.getName().equals(expectedEvent.getName())) {
-                failures.add(String.format("%s: name mismatch, expected '%s', actual '%s'", eventLabel,
-                        expectedEvent.getName(), actualEvent.getName()));
-                ok = false;
-            }
-            if (!Objects.equals(actualEvent.getType(), expectedEvent.getType())) {
-                failures.add(String.format("%s: type mismatch, expected '%s', actual '%s'", eventLabel,
-                        expectedEvent.getType(), actualEvent.getType()));
-                ok = false;
-            }
-            if (actualEvent.getAttachedServices().size() != expectedEvent.getAttachedServices().size()) {
-                failures.add(String.format("%s: attachedServices size mismatch, expected %d, actual %d", eventLabel,
-                        expectedEvent.getAttachedServices().size(), actualEvent.getAttachedServices().size()));
-                ok = false;
-            }
-            if (actualEvent.getAttachedFunctions().size() != expectedEvent.getAttachedFunctions().size()) {
-                failures.add(String.format("%s: attachedFunctions size mismatch, expected %d, actual %d", eventLabel,
-                        expectedEvent.getAttachedFunctions().size(), actualEvent.getAttachedFunctions().size()));
-                ok = false;
+            if (!actualEvent.getName().equals(expectedEvent.getName())
+                    || !Objects.equals(actualEvent.getType(), expectedEvent.getType())
+                    || actualEvent.getAttachedServices().size() != expectedEvent.getAttachedServices().size()
+                    || actualEvent.getAttachedFunctions().size() != expectedEvent.getAttachedFunctions().size()) {
+                return false;
             }
         }
-        return ok;
+        return true;
     }
 
     private int sizeOf(Collection<?> collection) {
         return collection == null ? 0 : collection.size();
     }
 
-    private boolean assertServices(List<Service> actual, List<Service> expected, List<String> failures) {
+    private boolean assertServices(List<Service> actual, List<Service> expected) {
         if (actual.size() != expected.size()) {
-            failures.add(String.format(
-                    "Services: size mismatch, expected %d %s, actual %d %s", expected.size(),
-                    expected.stream().map(Service::getAbsolutePath).toList(), actual.size(),
-                    actual.stream().map(Service::getAbsolutePath).toList()));
             return false;
         }
-        // Services are generated from an unordered map, so match them by their absolute path
-        // rather than by list position.
-        Map<String, Service> expectedByPath = new HashMap<>();
-        for (Service expectedService : expected) {
-            expectedByPath.put(expectedService.getAbsolutePath(), expectedService);
-        }
-        boolean ok = true;
-        for (Service actualService : actual) {
-            Service expectedService = expectedByPath.remove(actualService.getAbsolutePath());
-            if (expectedService == null) {
-                failures.add(String.format(
-                        "Service: no expected service found for actual absolutePath '%s'; remaining expected "
-                                + "absolutePaths %s", actualService.getAbsolutePath(), expectedByPath.keySet()));
-                ok = false;
-                continue;
-            }
+        for (int i = 0; i < actual.size(); i++) {
+            Service actualService = actual.get(i);
+            Service expectedService = expected.get(i);
             if (actualService.hashCode() != expectedService.hashCode() && !actualService.equals(expectedService)) {
-                failures.add(String.format(
-                        "Service '%s': content mismatch, expected {type=%s, attachedListeners=%d, connections=%d, "
-                                + "workflows=%d, functions=%d, remoteFunctions=%d, resourceFunctions=%d}, "
-                                + "actual {type=%s, attachedListeners=%d, connections=%d, workflows=%d, "
-                                + "functions=%d, remoteFunctions=%d, resourceFunctions=%d}",
-                        actualService.getAbsolutePath(),
-                        expectedService.getType(), expectedService.getAttachedListeners().size(),
-                        expectedService.getConnections().size(), sizeOf(expectedService.getWorkflows()),
-                        expectedService.getFunctions().size(), expectedService.getRemoteFunctions().size(),
-                        expectedService.getResourceFunctions().size(),
-                        actualService.getType(), actualService.getAttachedListeners().size(),
-                        actualService.getConnections().size(), sizeOf(actualService.getWorkflows()),
-                        actualService.getFunctions().size(), actualService.getRemoteFunctions().size(),
-                        actualService.getResourceFunctions().size()));
-                ok = false;
+                return false;
             }
         }
-        return ok;
+        return true;
     }
 
-    private boolean assertConnections(List<Connection> actual, List<Connection> expected, List<String> failures) {
-        if (actual.size() == expected.size()) {
-            return true;
-        }
-        failures.add(String.format("Connections: size mismatch, expected %d %s, actual %d %s", expected.size(),
-                expected.stream().map(Connection::getSymbol).toList(), actual.size(),
-                actual.stream().map(Connection::getSymbol).toList()));
-        return false;
+    private boolean assertConnections(List<Connection> actual, List<Connection> expected) {
+        return actual.size() == expected.size();
     }
 
-    private boolean assertListeners(List<Listener> actual, List<Listener> expected, List<String> failures) {
-        if (actual.size() == expected.size()) {
-            return true;
-        }
-        failures.add(String.format("Listeners: size mismatch, expected %d %s, actual %d %s", expected.size(),
-                expected.stream().map(Listener::getSymbol).toList(), actual.size(),
-                actual.stream().map(Listener::getSymbol).toList()));
-        return false;
+    private boolean assertListeners(List<Listener> actual, List<Listener> expected) {
+        return actual.size() == expected.size();
     }
 
-    private boolean assertAutomation(Automation actual, Automation expected, List<String> failures) {
+    private boolean assertAutomation(Automation actual, Automation expected) {
         if (actual == null && expected == null) {
             return true;
         }
         if (actual == null || expected == null) {
-            failures.add(String.format("Automation: expected %s, actual %s", expected == null ? "null" : "present",
-                    actual == null ? "null" : "present"));
             return false;
         }
         int actualWorkflows = actual.getWorkflows() == null ? 0 : actual.getWorkflows().size();
         int expectedWorkflows = expected.getWorkflows() == null ? 0 : expected.getWorkflows().size();
-        boolean ok = true;
-        if (!actual.getType().equals(expected.getType())) {
-            failures.add(String.format("Automation: type mismatch, expected '%s', actual '%s'", expected.getType(),
-                    actual.getType()));
-            ok = false;
-        }
-        if (!actual.getName().equals(expected.getName())) {
-            failures.add(String.format("Automation: name mismatch, expected '%s', actual '%s'", expected.getName(),
-                    actual.getName()));
-            ok = false;
-        }
-        if (!Objects.equals(actual.getDisplayName(), expected.getDisplayName())) {
-            failures.add(String.format("Automation: displayName mismatch, expected '%s', actual '%s'",
-                    expected.getDisplayName(), actual.getDisplayName()));
-            ok = false;
-        }
-        if (!actual.getLocation().equals(expected.getLocation())) {
-            failures.add(String.format("Automation: location mismatch, expected %s, actual %s",
-                    expected.getLocation(), actual.getLocation()));
-            ok = false;
-        }
-        if (actual.getConnections().size() != expected.getConnections().size()) {
-            failures.add(String.format("Automation: connections size mismatch, expected %d, actual %d",
-                    expected.getConnections().size(), actual.getConnections().size()));
-            ok = false;
-        }
-        if (actualWorkflows != expectedWorkflows) {
-            failures.add(String.format("Automation: workflows size mismatch, expected %d, actual %d",
-                    expectedWorkflows, actualWorkflows));
-            ok = false;
-        }
-        return ok;
+        return actual.getType().equals(expected.getType()) &&
+                actual.getName().equals(expected.getName()) &&
+                Objects.equals(actual.getDisplayName(), expected.getDisplayName())
+                && actual.getLocation().equals(expected.getLocation())
+                && actual.getConnections().size() == expected.getConnections().size()
+                && actualWorkflows == expectedWorkflows;
     }
 
     @Override
