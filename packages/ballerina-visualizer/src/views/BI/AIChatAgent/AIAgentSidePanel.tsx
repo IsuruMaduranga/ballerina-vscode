@@ -981,8 +981,8 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
             const approvalCandidates = await fetchCompatibleApprovalFunctions();
             compatibleApprovalFunctionsRef.current = approvalCandidates ?? [];
 
-            setFields((prevFields) => [
-                ...prevFields.map((field) => {
+            setFields((prevFields) => {
+                const baseFields = prevFields.map((field) => {
                     if (field.key === "description") {
                         return { ...field, value: templateDescription };
                     }
@@ -993,11 +993,17 @@ export function AIAgentSidePanel(props: BIFlowDiagramProps) {
                         return buildRequiresApprovalField(field, approvalCandidates);
                     }
                     return field;
-                }),
-                ...(connectionField ? [connectionField] : []),
-                ...groupedInputFields,
-                ...oauthFields,
-            ]);
+                });
+                // The connection outranks the approval gate here, so it goes first.
+                const approvalField = baseFields.find((field) => field.key === "requiresApproval");
+                return [
+                    ...baseFields.filter((field) => field.key !== "requiresApproval"),
+                    ...(connectionField ? [connectionField] : []),
+                    ...(approvalField ? [approvalField] : []),
+                    ...groupedInputFields,
+                    ...oauthFields,
+                ];
+            });
         } catch (error) {
             console.error(">>> Error fetching node template", error);
         }
