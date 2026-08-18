@@ -202,7 +202,9 @@ export function ConnectorActionList(props: ConnectorActionListProps) {
         });
     }, [actions, searchText]);
 
-    const searchPlaceholder = actions.length > 0 ? `Search ${actions.length} actions` : "Search actions";
+    const searchPlaceholder = actions.length > 0
+        ? `Search ${actions.length} action${actions.length === 1 ? "" : "s"}`
+        : "Search actions";
 
     return (
         <Container>
@@ -238,7 +240,11 @@ export function ConnectorActionList(props: ConnectorActionListProps) {
             <ScrollArea>
                 {filteredActions.length === 0 ? (
                     <EmptyState>
-                        <Typography variant="body3">No actions match "{searchText.trim()}".</Typography>
+                        <Typography variant="body3">
+                            {searchText.trim()
+                                ? `No actions match "${searchText.trim()}".`
+                                : "No actions available."}
+                        </Typography>
                     </EmptyState>
                 ) : (
                     <RowList>

@@ -145,8 +145,8 @@ export function AddTool(props: AddToolProps): JSX.Element {
                         <OptionTitle>{TOOL_OPTION_LABELS.CONNECTION}</OptionTitle>
                     </OptionHeader>
                     <OptionDescription>
-                        Call an action on an HTTP client, database, or message broker. Pick the action
-                        first, then the connection it runs on.
+                        Call an action on an HTTP client, database, or message broker. Pick a connector,
+                        choose the action you want, then point it at a connection.
                     </OptionDescription>
                 </OptionCard>
 

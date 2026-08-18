@@ -21,6 +21,9 @@ import { ThemeColors } from "@wso2/ui-toolkit";
 
 export const CONTENT_HEIGHT = "calc(100vh - 56px)";
 
+const CONTENT_INSET = 16;
+const SCROLLBAR_WIDTH = 10;
+
 export const Container = styled.div`
     display: flex;
     flex-direction: column;
@@ -31,7 +34,7 @@ export const HeaderArea = styled.div`
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 16px 16px 12px;
+    padding: ${CONTENT_INSET}px ${CONTENT_INSET}px 12px;
     flex-shrink: 0;
 `;
 
@@ -39,9 +42,9 @@ export const ScrollArea = styled.div`
     flex: 1;
     overflow-y: auto;
     scrollbar-gutter: stable;
-    padding: 0 16px 16px;
+    padding: 0 ${CONTENT_INSET - SCROLLBAR_WIDTH}px ${CONTENT_INSET}px ${CONTENT_INSET}px;
     &::-webkit-scrollbar {
-        width: 10px;
+        width: ${SCROLLBAR_WIDTH}px;
     }
     &::-webkit-scrollbar-track {
         background: transparent;
