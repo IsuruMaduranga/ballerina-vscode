@@ -18,25 +18,34 @@
 
 package io.ballerina.modelgenerator.commons.trigger.models;
 
+import java.util.List;
+
 /**
- * A reference to a Ballerina type from within a {@link TriggerMetadataModel} document. A union
- * (e.g. a handler's {@code returns}) is modeled as {@code List<TypeRef>}; the first element is the
- * codegen default when nothing else disambiguates.
+ * A Ballerina type reference.
  *
- * @param name        the referenced type's name
- * @param packageInfo the originating module's coordinates; {@code null} for a same-module reference
+ * @param name           a plain type name; mutually exclusive with {@code shape}
+ * @param packageInfo    cross-module origin; {@code null} for same-module
+ * @param shape          {@link #SHAPE_ARRAY} or {@link #SHAPE_STREAM}; {@code null} for a named type
+ * @param elementType    the array element or stream value type
+ * @param completionType what a stream terminates with; stream-only, optional
  * @since 1.10.0
  */
-public record TypeRef(String name, PackageInfo packageInfo) {
+public record TypeRef(String name, PackageInfo packageInfo, String shape, List<TypeRef> elementType,
+                      List<TypeRef> completionType) {
 
-    /**
-     * The coordinates of the module a cross-module {@link TypeRef} originates from.
-     *
-     * @param org         the organization name
-     * @param packageName the package name
-     * @param moduleName  the module name
-     * @param version     the package version
-     */
+    /** {@code T[]}. */
+    public static final String SHAPE_ARRAY = "array";
+    /** {@code stream<T>} or {@code stream<T, C>}. */
+    public static final String SHAPE_STREAM = "stream";
+
+    public TypeRef(String name, PackageInfo packageInfo) {
+        this(name, packageInfo, null, null, null);
+    }
+
+    public boolean isNamed() {
+        return shape == null;
+    }
+
     public record PackageInfo(String org, String packageName, String moduleName, String version) {
     }
 }
