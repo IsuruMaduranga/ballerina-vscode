@@ -23,7 +23,8 @@ import java.util.List;
 /**
  * Requiredness plus legal shapes for a service type's {@code identifier} slot.
  *
- * @since 1.10.0
+ * @param presence required or optional
+ * @param form the legal shapes for the slot
  */
 public record IdentifierSpec(String presence, List<String> form) {
 

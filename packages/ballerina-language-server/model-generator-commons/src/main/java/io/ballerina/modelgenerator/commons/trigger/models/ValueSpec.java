@@ -21,10 +21,10 @@ package io.ballerina.modelgenerator.commons.trigger.models;
 import java.util.List;
 
 /**
- * Requiredness plus legal literal values for a resource handler's {@code accessor}/{@code path} slot.
- * A single {@code "*"} in {@code values} means any value the language accepts.
+ * Requiredness plus legal values for a resource handler's {@code accessor}/{@code path} slot.
  *
- * @since 1.10.0
+ * @param presence required or optional
+ * @param values legal literal values; a single {@code "*"} means any value the language accepts
  */
 public record ValueSpec(String presence, List<String> values) {
 
