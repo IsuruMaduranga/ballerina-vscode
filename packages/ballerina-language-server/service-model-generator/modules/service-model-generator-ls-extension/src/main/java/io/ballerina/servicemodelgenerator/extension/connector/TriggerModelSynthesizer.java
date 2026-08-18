@@ -24,6 +24,7 @@ import io.ballerina.modelgenerator.commons.trigger.models.TriggerLibraryFacts;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
 import io.ballerina.modelgenerator.commons.trigger.models.TypeRef;
+import io.ballerina.modelgenerator.commons.trigger.utils.TypeRefRenderer;
 import io.ballerina.servicemodelgenerator.extension.model.Listener;
 import io.ballerina.servicemodelgenerator.extension.model.Value;
 import io.ballerina.servicemodelgenerator.extension.util.ModuleAliasResolver;
@@ -36,7 +37,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.ARG_TYPE_SERVICE_TYPE_DESCRIPTOR;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ANNOTATION_ATTACHMENT;
@@ -580,11 +580,11 @@ public final class TriggerModelSynthesizer {
         TriggerMetadataModel.DataBindingRule bindingRule = param.dataBinding() == null ? null
                 : findDataBindingRule(param.dataBinding(), authoring);
 
+        String typeName = renderTypeRef(param.type(), moduleName);
         if (bindingRule == null && optional && !name.isEmpty()) {
-            return buildFlagParameter(name, typeRefName(param.type(), moduleName));
+            return buildFlagParameter(name, typeName);
         }
 
-        String typeName = typeRefName(param.type(), moduleName);
         TriggerUISchemaModel.Property typeProperty = bindingRule == null
                 ? plainTypeProperty(typeName)
                 : dataBindingTypeProperty(bindingRule, typeName, moduleName, name.isEmpty() ? "value" : name);
@@ -723,9 +723,8 @@ public final class TriggerModelSynthesizer {
         if (refs == null || refs.isEmpty()) {
             return buildReturnType(null, false);
         }
-        String joined = refs.stream().map(r -> qualifyTypeRef(r, moduleName)).collect(Collectors.joining("|"));
-        boolean hasError = joined.contains("error");
-        return buildReturnType(joined, hasError);
+        String rendered = renderTypeRef(refs, moduleName);
+        return buildReturnType(rendered, rendered.contains("error"));
     }
 
     /**
@@ -828,30 +827,17 @@ public final class TriggerModelSynthesizer {
                 cdAnnotation(codedataType, annotationName, pkgModule, pkgOrg, pkgName, optional), null);
     }
 
-    /** Joins a union of {@link TypeRef}s into one type-signature string, qualifying each member. */
-    private static String typeRefName(List<TypeRef> refs, String moduleName) {
-        if (refs == null || refs.isEmpty()) {
-            return "anydata";
-        }
-        return refs.stream().map(r -> qualifyTypeRef(r, moduleName))
-                .collect(Collectors.joining("|"));
+    /** A union as {@code A|B}, qualified per {@link #aliasOf}. */
+    private static String renderTypeRef(List<TypeRef> refs, String moduleName) {
+        return TypeRefRenderer.render(refs, moduleName, TriggerModelSynthesizer::aliasOf);
     }
 
-    /**
-     * Qualifies a {@link TypeRef} for emission into the user's file, since even a same-module reference
-     * needs a module prefix there. Relies on the convention that a user-defined type name starts
-     * uppercase, unlike a builtin/composite signature (e.g. {@code string}, {@code ()}).
-     */
-    private static String qualifyTypeRef(TypeRef ref, String moduleName) {
-        String name = ref.name();
-        if (name == null || name.isEmpty() || name.indexOf(':') >= 0 || !Character.isUpperCase(name.charAt(0))) {
-            return name;
-        }
-        String prefixModule = ref.packageInfo() != null ? ref.packageInfo().moduleName() : moduleName;
-        return aliasOf(prefixModule) + ":" + name;
+    /** One type, qualified per {@link #aliasOf}. */
+    private static String renderTypeRef(TypeRef ref, String moduleName) {
+        return TypeRefRenderer.render(ref, moduleName, TriggerModelSynthesizer::aliasOf);
     }
 
-    /** @see ModuleAliasResolver#selfPrefix(String) */
+    /** The import prefix a module's own model strings are authored with. */
     private static String aliasOf(String moduleName) {
         return ModuleAliasResolver.selfPrefix(moduleName);
     }
