@@ -21,12 +21,14 @@ package io.ballerina.flowmodelgenerator.core.model.node;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.reflect.TypeToken;
 import io.ballerina.compiler.api.ModuleID;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.ClassFieldSymbol;
 import io.ballerina.compiler.api.symbols.ClassSymbol;
 import io.ballerina.compiler.api.symbols.FunctionSymbol;
 import io.ballerina.compiler.api.symbols.MethodSymbol;
+import io.ballerina.compiler.api.symbols.ParameterSymbol;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
 import io.ballerina.compiler.api.symbols.TypeDescKind;
@@ -71,6 +73,7 @@ import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
 
+import java.lang.reflect.Type;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -99,11 +102,14 @@ public class AgentToolBuilder extends NodeBuilder {
     public static final String AGENT_RECEIVER_KEY = "agentReceiver";
     public static final String INCLUDE_CONTEXT_KEY = "includeContext";
     public static final String HOST_CLASS_NAME_KEY = "hostClassName";
+    public static final String RETURN_TYPE_KEY = "returnType";
+    public static final String RETURN_TYPE_IMPORTS_KEY = "returnTypeImports";
 
     private static final String RUN = "run";
     private static final String RESPONSE_VAR = "response";
     private static final String CLASS_MEMBER_INDENT = "    ";
     private static final Gson gson = new Gson();
+    private static final Type IMPORTS_TYPE = new TypeToken<Map<String, String>>() { }.getType();
 
     @Override
     public void setConcreteConstData() {
@@ -114,8 +120,34 @@ public class AgentToolBuilder extends NodeBuilder {
     @Override
     public void setConcreteTemplateData(TemplateContext context) {
         properties().functionNameTemplate("tool", context.getAllVisibleSymbolNames());
-        FunctionDefinitionBuilder.setMandatoryProperties(this, "", "", "");
+        FunctionDefinitionBuilder.setMandatoryProperties(this, resolveTemplateReturnType(context), "", "");
         FunctionDefinitionBuilder.setOptionalProperties(this);
+    }
+
+    /**
+     * The return type to prefill for an agent-call tool: the agent's own {@code run} return type,
+     * which is concrete for a fixed-typed agent and {@code string} for a dependently-typed one.
+     */
+    private static String resolveTemplateReturnType(TemplateContext context) {
+        Codedata codedata = context.codedata();
+        Map<String, Object> data = codedata != null ? codedata.data() : null;
+        if (data == null || !ToolKind.AGENT_CALL.name().equals(dataString(data, TOOL_KIND_KEY, ""))) {
+            return "";
+        }
+        String agentVarName = dataString(data, AGENT_VAR_NAME_KEY, "");
+        if (agentVarName.isBlank()) {
+            return "";
+        }
+        try {
+            context.workspaceManager().loadProject(context.filePath());
+            SemanticModel semanticModel = context.workspaceManager().semanticModel(context.filePath()).orElse(null);
+            ModuleInfo hostModule = resolveHostModule(context.filePath(), context.workspaceManager());
+            return resolveAgentRunReturnType(semanticModel, agentVarName, hostModule, null,
+                    context.workspaceManager(), context.filePath(),
+                    dataString(data, HOST_CLASS_NAME_KEY, null));
+        } catch (Throwable e) {
+            return "";
+        }
     }
 
     @Override
@@ -460,6 +492,11 @@ public class AgentToolBuilder extends NodeBuilder {
 
             @Override
             ReturnInfo resolveReturn(ToolGenContext ctx) {
+                String chosen = dataString(ctx.data, RETURN_TYPE_KEY, "").trim();
+                if (!chosen.isEmpty()) {
+                    acceptChosenTypeImports(ctx.data, ctx.sb);
+                    return new ReturnInfo(chosen, true, "The response from the " + ctx.agentVarName + " agent.");
+                }
                 ModuleInfo hostModule = resolveHostModule(ctx.filePath, ctx.workspaceManager);
                 String typeName = resolveAgentRunReturnType(ctx.semanticModel, ctx.agentVarName, hostModule, ctx.sb,
                         ctx.workspaceManager, ctx.filePath, ctx.hostClassName);
@@ -1005,11 +1042,13 @@ public class AgentToolBuilder extends NodeBuilder {
         if (optReturn.isEmpty() || hasInferredTypedescReturn(runMethod, optReturn.get())) {
             return "string";
         }
-        acceptTypeImports(optReturn.get(), hostModule, sourceBuilder);
         String signature = CommonUtils.getTypeSignature(semanticModel, optReturn.get(), true, hostModule);
-        if (signature.isBlank() || signature.equals("anydata") || signature.equals("()")) {
+        if (signature.isBlank() || signature.equals("anydata") || signature.equals("()")
+                || isInferredTypedescReturn(runMethod, signature)) {
             return "string";
         }
+        // Only a concrete type is worth importing; a dependent one is not emitted.
+        acceptTypeImports(optReturn.get(), hostModule, sourceBuilder);
         return signature;
     }
 
@@ -1029,6 +1068,23 @@ public class AgentToolBuilder extends NodeBuilder {
         return names.contains(type.getName().orElse(""));
     }
 
+    /**
+     * Whether {@code run} returns its own inferred {@code typedesc} parameter, as
+     * {@code ai:DependentlyTypedAgent} does with {@code typedesc<Trace|anydata> td = <>} returning
+     * {@code td|Error}. That name means nothing outside the method's signature, so emitting it
+     * produces a tool that does not compile.
+     */
+    private static boolean isInferredTypedescReturn(MethodSymbol runMethod, String returnSignature) {
+        Optional<List<ParameterSymbol>> params = runMethod.typeDescriptor().params();
+        if (params.isEmpty()) {
+            return false;
+        }
+        return params.get().stream()
+                .filter(param -> CommonUtils.getRawType(param.typeDescriptor()).typeKind() == TypeDescKind.TYPEDESC)
+                .map(param -> param.getName().orElse(""))
+                .anyMatch(name -> !name.isBlank() && name.equals(returnSignature));
+    }
+
     private static ModuleInfo resolveHostModule(Path filePath, WorkspaceManager workspaceManager) {
         try {
             workspaceManager.loadProject(filePath);
@@ -1038,7 +1094,27 @@ public class AgentToolBuilder extends NodeBuilder {
         }
     }
 
+    /**
+     * A chosen return type arrives as a bare string ({@code http:Response}), so its module comes
+     * from the client as a prefix to {@code org/module:version} map, like {@link Property#imports()}.
+     */
+    private static void acceptChosenTypeImports(Map<String, Object> data, SourceBuilder sourceBuilder) {
+        String raw = dataString(data, RETURN_TYPE_IMPORTS_KEY, "");
+        if (sourceBuilder == null || raw.isBlank()) {
+            return;
+        }
+        Map<String, String> imports = gson.fromJson(raw, IMPORTS_TYPE);
+        imports.values().stream()
+                .map(moduleId -> moduleId.split("[/:]"))
+                .filter(parts -> parts.length >= 2)
+                .forEach(parts -> sourceBuilder.acceptImport(parts[0], parts[1]));
+    }
+
     private static void acceptTypeImports(TypeSymbol typeSymbol, ModuleInfo hostModule, SourceBuilder sourceBuilder) {
+        if (sourceBuilder == null) {
+            // Resolving for a template preview; there is no source to add imports to.
+            return;
+        }
         if (typeSymbol instanceof UnionTypeSymbol union) {
             union.memberTypeDescriptors().forEach(member -> acceptTypeImports(member, hostModule, sourceBuilder));
             return;
