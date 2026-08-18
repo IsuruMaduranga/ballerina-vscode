@@ -1,0 +1,15 @@
+{
+  "version": "v2.0",
+  "listeners": [
+    { "type": { "name": "Listener" }, "services": ["$service"], "multipleServicesAllowed": false }
+  ],
+  "serviceTypes": [
+    {
+      "id": "$service",
+      "type": { "name": "Service" },
+      "concrete": false,
+      "multipleListenersAllowed": false,
+      "handlers": { "backedByConcreteType": true }
+    }
+  ]
+}

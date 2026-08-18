@@ -664,16 +664,15 @@ public final class TriggerModelSynthesizer {
                     ? "{{type}}[]" : "{{type}}";
         } else {
             cdType = CD_TYPE_PAYLOAD_TYPE;
-            template = "{{type}}";
             ShapeMatch declared = findDeclaredShape(variants);
             if (declared != null) {
                 defaultType = renderTypeRef(declared.variant().constraint(), moduleName);
-                if (TriggerMetadataModel.ServiceType.Shape.FORM_ARRAY.equals(declared.shape().form())) {
-                    defaultType += "[]";
-                }
+                template = TriggerMetadataModel.ServiceType.Shape.FORM_ARRAY.equals(declared.shape().form())
+                        ? "{{type}}[]" : "{{type}}";
                 typeConstraint = defaultType;
             } else {
                 defaultType = typeName;
+                template = "{{type}}";
             }
         }
 
