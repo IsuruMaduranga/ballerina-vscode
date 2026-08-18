@@ -82,9 +82,9 @@ describe("shiftLightness", () => {
 });
 
 describe("stateColorVar", () => {
-    it("maps idle/running to the primary accent and the transient states to semantic tokens", () => {
+    it("maps idle to the primary accent, running to the progress-bar token, and the transient states to semantic tokens", () => {
         expect(stateColorVar("idle")).toBe("var(--vscode-button-background)");
-        expect(stateColorVar("running")).toBe("var(--vscode-button-background)");
+        expect(stateColorVar("running")).toBe("var(--vscode-progressBar-background, var(--vscode-button-background))");
         expect(stateColorVar("awaiting-input")).toContain("--vscode-charts-yellow");
         expect(stateColorVar("completed")).toBe("var(--vscode-charts-green)");
         expect(stateColorVar("error")).toContain("--vscode-errorForeground");
