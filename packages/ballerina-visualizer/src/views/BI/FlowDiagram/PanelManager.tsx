@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, ReactNode } from "react";
 import { Button, ThemeColors, Typography } from "@wso2/ui-toolkit";
 import { PanelContainer, NodeList, CardList, ExpressionFormField } from "@wso2/ballerina-side-panel";
 import {
@@ -69,6 +69,9 @@ export enum SidePanelView {
     CHUNKER_LIST = "CHUNKER_LIST",
     KNOWLEDGE_BASES = "KNOWLEDGE_BASES",
     KNOWLEDGE_BASE_LIST = "KNOWLEDGE_BASE_LIST",
+    // Intermediate page reached by clicking the "WSO2 Cloud Knowledge Base" box: lists existing
+    // cloud knowledge bases and offers a "create new" action.
+    WSO2_CLOUD_KB_LIST = "WSO2_CLOUD_KB_LIST",
     NEW_AGENT = "NEW_AGENT",
     ADD_TOOL = "ADD_TOOL",
     NEW_TOOL_CUSTOM = "NEW_TOOL_CUSTOM",
@@ -167,6 +170,8 @@ interface PanelManagerProps {
     onImportDevantConn?: (devantConn: ConnectionListItem) => void
     onLinkDevantProject?: () => void;
     onRefreshDevantConnections?: () => void;
+    // Intermediate page rendered for the WSO2_CLOUD_KB_LIST view (existing cloud KBs + create new).
+    wso2CloudKbListSection?: ReactNode;
 }
 
 export function PanelManager(props: PanelManagerProps) {
@@ -239,6 +244,7 @@ export function PanelManager(props: PanelManagerProps) {
         onImportDevantConn,
         onLinkDevantProject,
         onRefreshDevantConnections,
+        wso2CloudKbListSection,
     } = props;
 
     const findSubPanelComponent = (subPanel: SubPanel) => {
@@ -496,6 +502,19 @@ export function PanelManager(props: PanelManagerProps) {
                         onBack={canGoBack ? onBack : undefined}
                         expandedGroupId={expandedGroupId}
                         onExpandedGroupChange={onExpandedGroupChange}
+                    />
+                );
+
+            case SidePanelView.WSO2_CLOUD_KB_LIST:
+                return (
+                    <CardList
+                        categories={[]}
+                        onSelect={onSelectNode}
+                        onClose={onClose}
+                        title={"WSO2 Cloud Knowledge Bases"}
+                        searchPlaceholder={"Search knowledge bases"}
+                        onBack={canGoBack ? onBack : undefined}
+                        extraSection={wso2CloudKbListSection}
                     />
                 );
 
