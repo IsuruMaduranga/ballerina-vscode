@@ -168,7 +168,8 @@ export const NodeReferenceSelectEditor: React.FC<NodeReferenceSelectEditorProps>
                 applyNodeReferenceFilter([...staticItems, ...items]), value, searchNodesKind
             );
             setSelectItems(resolved);
-            if (!value && resolved.length > 0) {
+            // Required fields only, and never over the static default the mount effect picks.
+            if (!value && !field.optional && staticItems.length === 0 && resolved.length > 0) {
                 onChange(resolved[0].value, resolved[0].value.length);
             }
         }).finally(() => {
