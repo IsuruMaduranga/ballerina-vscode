@@ -52,12 +52,15 @@ import {
     addableCatalogOf,
     addedParametersOf,
     applyTypeTemplate,
+    bindingGroupDiverges,
     bindingGroupOf,
     bindingGroupSiblingsOf,
+    boundRepresentativeOf,
     catalogFunctionsOf,
     composePayloadType,
     computeHandlerGroups,
     decomposePayloadType,
+    editTargetsOf,
     functionSignatureKey,
     groupedPayloadParametersOf,
     handlerGroupId,
@@ -458,6 +461,72 @@ describe("bindingGroupOf / groupedPayloadParametersOf / bindingGroupSiblingsOf",
         const kafka = kafkaPayloadParam();
         const handler = fn({ parameters: [kafka] });
         expect(bindingGroupSiblingsOf(handler, kafka)).toEqual([kafka]);
+    });
+});
+
+describe("boundRepresentativeOf / bindingGroupDiverges / editTargetsOf", () => {
+    it("boundRepresentativeOf falls back to the first param when no sibling is bound", () => {
+        const before = cdcPayloadParam("before", undefined, "rowState");
+        const after = cdcPayloadParam("after", undefined, "rowState");
+        const handler = fn({ parameters: [before, after] });
+        expect(boundRepresentativeOf(handler, before)).toBe(before);
+    });
+
+    it("boundRepresentativeOf returns a later sibling when it is the one actually bound", () => {
+        const before = cdcPayloadParam("before", undefined, "rowState");
+        const after = cdcPayloadParam("after", "AfterSchema", "rowState");
+        const handler = fn({ parameters: [before, after] });
+        expect(boundRepresentativeOf(handler, before)).toBe(after);
+    });
+
+    it("bindingGroupDiverges is false when siblings agree (both unbound or same bound type)", () => {
+        const before = cdcPayloadParam("before", undefined, "rowState");
+        const after = cdcPayloadParam("after", undefined, "rowState");
+        const handler = fn({ parameters: [before, after] });
+        expect(bindingGroupDiverges(handler, before)).toBe(false);
+
+        const before2 = cdcPayloadParam("before", "Employee", "rowState");
+        const after2 = cdcPayloadParam("after", "Employee", "rowState");
+        const handler2 = fn({ parameters: [before2, after2] });
+        expect(bindingGroupDiverges(handler2, before2)).toBe(false);
+    });
+
+    it("bindingGroupDiverges is true when siblings hold different bound types", () => {
+        const before = cdcPayloadParam("before", "Employee", "rowState");
+        const after = cdcPayloadParam("after", "EmployeeV2", "rowState");
+        const handler = fn({ parameters: [before, after] });
+        expect(bindingGroupDiverges(handler, before)).toBe(true);
+        expect(bindingGroupDiverges(handler, after)).toBe(true);
+    });
+
+    it("boundRepresentativeOf returns the param itself when its group diverges", () => {
+        const before = cdcPayloadParam("before", "Employee", "rowState");
+        const after = cdcPayloadParam("after", "EmployeeV2", "rowState");
+        const handler = fn({ parameters: [before, after] });
+        expect(boundRepresentativeOf(handler, before)).toBe(before);
+        expect(boundRepresentativeOf(handler, after)).toBe(after);
+    });
+
+    it("groupedPayloadParametersOf falls back to one entry per sibling when they diverge", () => {
+        const before = cdcPayloadParam("before", "Employee", "rowState");
+        const after = cdcPayloadParam("after", "EmployeeV2", "rowState");
+        const handler = fn({ parameters: [before, after] });
+        expect(groupedPayloadParametersOf(handler)).toEqual([before, after]);
+    });
+
+    it("editTargetsOf returns the whole group when siblings agree", () => {
+        const before = cdcPayloadParam("before", undefined, "rowState");
+        const after = cdcPayloadParam("after", undefined, "rowState");
+        const handler = fn({ parameters: [before, after] });
+        expect(editTargetsOf(handler, before)).toEqual([before, after]);
+    });
+
+    it("editTargetsOf returns just the target when its group diverges", () => {
+        const before = cdcPayloadParam("before", "Employee", "rowState");
+        const after = cdcPayloadParam("after", "EmployeeV2", "rowState");
+        const handler = fn({ parameters: [before, after] });
+        expect(editTargetsOf(handler, before)).toEqual([before]);
+        expect(editTargetsOf(handler, after)).toEqual([after]);
     });
 });
 

@@ -205,16 +205,32 @@ export function bindingGroupOf(param: ParameterModel): string | undefined {
     return param.bindingGroup;
 }
 
+/** Whether a binding group's siblings currently hold different bound types. */
+export function bindingGroupDiverges(fn: FunctionModel, param: ParameterModel): boolean {
+    const boundTypes = new Set(
+        bindingGroupSiblingsOf(fn, param)
+            .map((p) => p.type?.codedata?.boundType)
+            .filter((t): t is string => !!t)
+    );
+    return boundTypes.size > 1;
+}
+
 export function groupedPayloadParametersOf(fn: FunctionModel): ParameterModel[] {
     const seen = new Set<string>();
     const result: ParameterModel[] = [];
     for (const p of payloadParametersOf(fn)) {
         const group = bindingGroupOf(p);
-        if (group) {
-            if (seen.has(group)) {
-                continue;
-            }
-            seen.add(group);
+        if (!group) {
+            result.push(p);
+            continue;
+        }
+        if (seen.has(group)) {
+            continue;
+        }
+        seen.add(group);
+        if (bindingGroupDiverges(fn, p)) {
+            result.push(...bindingGroupSiblingsOf(fn, p));
+            continue;
         }
         result.push(p);
     }
@@ -227,6 +243,15 @@ export function bindingGroupSiblingsOf(fn: FunctionModel, param: ParameterModel)
         return [param];
     }
     return payloadParametersOf(fn).filter((p) => bindingGroupOf(p) === group);
+}
+
+/** The parameters an edit to `target` should apply to: its whole binding group, or just itself when
+ * the group's siblings currently diverge. */
+export function editTargetsOf(fn: FunctionModel, target: ParameterModel): ParameterModel[] {
+    if (bindingGroupDiverges(fn, target)) {
+        return [target];
+    }
+    return bindingGroupSiblingsOf(fn, target);
 }
 
 /** Properties of a given codedata role, keyed as shipped. */
@@ -418,6 +443,9 @@ export function hasDefaultPayload(param: ParameterModel): boolean {
 /** The group's already-bound sibling, if any, so an asymmetric pre-existing binding isn't hidden
  * behind the always-first-listed, possibly-still-unbound representative (e.g. CDC's `before`). */
 export function boundRepresentativeOf(fn: FunctionModel, param: ParameterModel): ParameterModel {
+    if (bindingGroupDiverges(fn, param)) {
+        return param;
+    }
     const siblings = bindingGroupSiblingsOf(fn, param);
     return siblings.find((p) => !hasDefaultPayload(p)) ?? param;
 }

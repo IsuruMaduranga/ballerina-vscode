@@ -65,10 +65,12 @@ import {
     CODEDATA_PAYLOAD_MODIFIER,
     CODEDATA_PAYLOAD_TYPE_INCLUDED_RECORD,
     addableCatalogOf,
-    bindingGroupSiblingsOf,
+    bindingGroupDiverges,
+    bindingGroupOf,
     boundRepresentativeOf,
     composePayloadType,
     decomposePayloadType,
+    editTargetsOf,
     functionSignatureKey,
     groupedPayloadParametersOf,
     handlerGroupId,
@@ -456,10 +458,7 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
 
     const metadataFlags = functionModel ? propertiesOfRole(functionModel, CODEDATA_METADATA_FLAG) : [];
     const modifierFlags = functionModel ? propertiesOfRole(functionModel, CODEDATA_PAYLOAD_MODIFIER) : [];
-    // All bindable payload params — a handler may expose more than one (e.g. CDC onUpdate's
-    // before/after), each configured independently below.
     const payloadParams = functionModel ? payloadParametersOf(functionModel) : [];
-    // The first payload param still drives shared UI bits (e.g. the variant dropdown's label).
     const payloadParam = payloadParams[0];
     const groupedPayloadParams = functionModel ? groupedPayloadParametersOf(functionModel) : [];
 
@@ -544,11 +543,9 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
         const typeName = typeof type === "string" ? type : type.name;
         const target = payloadParams.find((p) => p.name?.value === targetName);
         // The parameter keeps its schema-shipped name — only the bound shape changes.
-        const groupNames = new Set(
-            (target ? bindingGroupSiblingsOf(functionModel, target) : []).map((p) => p.name?.value)
-        );
+        const editTargets = new Set(target ? editTargetsOf(functionModel, target) : []);
         const parameters = functionModel.parameters.map((p) => {
-            if (!isPayloadParameter(p) || !groupNames.has(p.name?.value)) {
+            if (!isPayloadParameter(p) || !editTargets.has(p)) {
                 return p;
             }
             const updatedType: PropertyModel = {
@@ -567,9 +564,9 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
         if (!functionModel) {
             return;
         }
-        const groupNames = new Set(bindingGroupSiblingsOf(functionModel, target).map((p) => p.name?.value));
+        const editTargets = new Set(editTargetsOf(functionModel, target));
         const parameters = functionModel.parameters.map((p) =>
-            isPayloadParameter(p) && groupNames.has(p.name?.value)
+            isPayloadParameter(p) && editTargets.has(p)
                 ? { ...p, type: { ...p.type, codedata: { ...p.type.codedata, boundType: undefined } } }
                 : p
         );
@@ -872,15 +869,18 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
                         </FlagsColumn>
                     )}
 
-                    {/* Payload schema — one section per bindable DATA_BINDING param (a handler such
-                        as CDC onUpdate exposes both a before- and an after-image). */}
+                    {/* Payload schema — one section per binding group (CDC onUpdate's before/after
+                        share a group and render as a single section; see groupedPayloadParams). */}
                     {groupedPayloadParams
-                        .filter((param) => param.type?.codedata?.bindable === true)
-                        .map((param) => {
-                            const displayParam = boundRepresentativeOf(functionModel, param);
+                        .map((param) => boundRepresentativeOf(functionModel, param))
+                        .filter((displayParam) => displayParam.type?.codedata?.bindable === true)
+                        .map((displayParam) => {
                             const label = displayLabelOf(displayParam);
+                            const key = bindingGroupDiverges(functionModel, displayParam)
+                                ? (displayParam.name?.value ?? label)
+                                : (bindingGroupOf(displayParam) ?? displayParam.name?.value ?? label);
                             return (
-                                <Fragment key={displayParam.name?.value ?? label}>
+                                <Fragment key={key}>
                                     {hasDefaultPayload(displayParam) ? (
                                         <AddButtonWrapper>
                                             <Tooltip
@@ -936,15 +936,14 @@ export function TriggerHandlerForm(props: TriggerHandlerFormProps) {
                                                     const editedElement = decomposePayloadType(
                                                         functionModel, displayParam, editedPayload.type?.value ?? "");
                                                     const editedName = editedPayload.name?.value;
-                                                    const groupNames = new Set(
-                                                        bindingGroupSiblingsOf(functionModel, displayParam)
-                                                            .map((p) => p.name?.value)
+                                                    const editTargets = new Set(
+                                                        editTargetsOf(functionModel, displayParam)
                                                     );
                                                     const parameters = functionModel.parameters.map((p) => {
-                                                        if (!isPayloadParameter(p) || !groupNames.has(p.name?.value)) {
+                                                        if (!isPayloadParameter(p) || !editTargets.has(p)) {
                                                             return p;
                                                         }
-                                                        const isTarget = p.name?.value === displayParam.name?.value;
+                                                        const isTarget = p === displayParam;
                                                         return {
                                                             ...p,
                                                             name: isTarget && editedName !== undefined
