@@ -525,7 +525,7 @@ public final class TriggerModelSynthesizer {
         List<TriggerUISchemaModel.Parameter> parameters = new ArrayList<>();
         if (option.params() != null) {
             for (TriggerMetadataModel.ServiceType.Param param : option.params()) {
-                parameters.add(buildParameterFromAuthoring(param, authoring, moduleName));
+                parameters.add(buildParameterFromAuthoring(param, moduleName));
             }
         }
         TriggerUISchemaModel.ReturnType returnType = buildReturnTypeFromRefs(option.returns(), moduleName);
@@ -574,22 +574,21 @@ public final class TriggerModelSynthesizer {
      * parameter renders as a normal typed field.
      */
     private static TriggerUISchemaModel.Parameter buildParameterFromAuthoring(
-            TriggerMetadataModel.ServiceType.Param param, TriggerMetadataModel authoring, String moduleName) {
+            TriggerMetadataModel.ServiceType.Param param, String moduleName) {
         boolean optional = "optional".equals(param.presence());
         String name = param.name() == null ? "" : param.name();
-        TriggerMetadataModel.DataBindingRule bindingRule = param.dataBinding() == null ? null
-                : findDataBindingRule(param.dataBinding(), authoring);
+        TriggerMetadataModel.ServiceType.DataBinding binding = param.dataBinding();
 
         String typeName = renderTypeRef(param.type(), moduleName);
-        if (bindingRule == null && optional && !name.isEmpty()) {
+        if (binding == null && optional && !name.isEmpty()) {
             return buildFlagParameter(name, typeName);
         }
 
-        TriggerUISchemaModel.Property typeProperty = bindingRule == null
+        TriggerUISchemaModel.Property typeProperty = binding == null
                 ? plainTypeProperty(typeName)
-                : dataBindingTypeProperty(bindingRule, typeName, moduleName, name.isEmpty() ? "value" : name);
+                : dataBindingTypeProperty(binding, typeName, moduleName, name.isEmpty() ? "value" : name);
         TriggerUISchemaModel.Property nameProperty = identifierProperty(name.isEmpty() ? "value" : name, true);
-        String kind = bindingRule != null ? DATA_BINDING : (optional ? DB_KIND_OPTIONAL : KIND_REQUIRED);
+        String kind = binding != null ? DATA_BINDING : (optional ? DB_KIND_OPTIONAL : KIND_REQUIRED);
         return new TriggerUISchemaModel.Parameter(
                 new TriggerUISchemaModel.Metadata(humanize(name.isEmpty() ? "value" : name), null, null, null,
                         null, null, null, null, null),
@@ -626,41 +625,44 @@ public final class TriggerModelSynthesizer {
 
     /**
      * The {@code PAYLOAD_TYPE}/{@code PAYLOAD_TYPE_INCLUDED_RECORD} composition for a data-bound
-     * parameter, per {@code TriggerMetadataModel.DataBindingRule}'s {@code direct}/{@code includedRecord}
-     * modes. A rule that also declares {@code streamable} nests the payload under a
-     * {@code COMPLEX_PAYLOAD} container alongside a {@code stream} {@code PAYLOAD_MODIFIER} toggle
-     * (see {@link PayloadComposer}).
+     * parameter, over the {@code included} vs. plain (bare/array) shapes carried by the param's own
+     * {@link TriggerMetadataModel.ServiceType.DataBinding}. A binding with a {@code stream} shape
+     * anywhere nests the payload under a {@code COMPLEX_PAYLOAD} container alongside a {@code stream}
+     * {@code PAYLOAD_MODIFIER} toggle (see {@link PayloadComposer}); that toggle's own template is
+     * fixed and unrelated to the shape's {@code completionType}.
      */
-    private static TriggerUISchemaModel.Property dataBindingTypeProperty(TriggerMetadataModel.DataBindingRule rule,
-                                                                  String typeName, String moduleName,
-                                                                  String paramName) {
-        Optional<TriggerMetadataModel.DataBindingRule.SupportedMode> includedRecord = rule.supportedModes().stream()
-                .filter(m -> TriggerMetadataModel.DataBindingRule.SupportedMode.MODE_INCLUDED_RECORD.equals(m.mode()))
-                .findFirst();
-        Optional<TriggerMetadataModel.DataBindingRule.SupportedMode> direct = rule.supportedModes().stream()
-                .filter(m -> TriggerMetadataModel.DataBindingRule.SupportedMode.MODE_DIRECT.equals(m.mode()))
-                .findFirst();
-        Optional<TriggerMetadataModel.DataBindingRule.SupportedMode> streamable = rule.supportedModes().stream()
-                .filter(m -> TriggerMetadataModel.DataBindingRule.SupportedMode.MODE_STREAMABLE.equals(m.mode()))
-                .findFirst();
+    private static TriggerUISchemaModel.Property dataBindingTypeProperty(
+            TriggerMetadataModel.ServiceType.DataBinding binding, String typeName, String moduleName,
+            String paramName) {
+        List<TriggerMetadataModel.ServiceType.TypedescVariant> variants = binding.typedescs();
+        ShapeMatch included = findIncludedShape(variants);
 
-        String cdType = includedRecord.isPresent() ? CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD : CD_TYPE_PAYLOAD_TYPE;
+        String cdType;
         String defaultType;
-        String template = rule.cardinality() != null
-                && TriggerMetadataModel.DataBindingRule.CARDINALITY_ARRAY.equals(rule.cardinality())
-                ? "{{type}}[]" : "{{type}}";
+        String template;
         String field = null;
         String typeConstraint = null;
-        if (includedRecord.isPresent()) {
-            TriggerMetadataModel.DataBindingRule.SupportedMode mode = includedRecord.get();
-            defaultType = mode.includes() == null ? typeName : qualifyTypeRef(mode.includes(), moduleName);
-            field = mode.bindableFields() == null || mode.bindableFields().isEmpty()
-                    ? null : mode.bindableFields().get(0);
-        } else if (direct.isPresent() && !direct.get().typeConstraint().isEmpty()) {
-            defaultType = qualifyTypeRef(direct.get().typeConstraint().get(0), moduleName);
-            typeConstraint = defaultType;
+        if (included != null) {
+            cdType = CD_TYPE_PAYLOAD_TYPE_INCLUDED_RECORD;
+            defaultType = included.shape().envelope() == null ? typeName
+                    : renderTypeRef(included.shape().envelope(), moduleName);
+            List<String> bindableFields = included.shape().bindableFields();
+            field = bindableFields == null || bindableFields.isEmpty() ? null : bindableFields.get(0);
+            template = TriggerMetadataModel.ServiceType.Shape.FORM_ARRAY.equals(included.shape().form())
+                    ? "{{type}}[]" : "{{type}}";
         } else {
-            defaultType = typeName;
+            cdType = CD_TYPE_PAYLOAD_TYPE;
+            template = "{{type}}";
+            ShapeMatch declared = findDeclaredShape(variants);
+            if (declared != null) {
+                defaultType = renderTypeRef(declared.variant().constraint(), moduleName);
+                if (TriggerMetadataModel.ServiceType.Shape.FORM_ARRAY.equals(declared.shape().form())) {
+                    defaultType += "[]";
+                }
+                typeConstraint = defaultType;
+            } else {
+                defaultType = typeName;
+            }
         }
 
         TriggerUISchemaModel.PropertyType propertyType = new TriggerUISchemaModel.PropertyType(
@@ -673,7 +675,7 @@ public final class TriggerModelSynthesizer {
                 true, true, false, false, null, "", List.of(propertyType), null, null, null,
                 cdPayload(cdType, defaultType, template, field, typeConstraint), null);
 
-        if (streamable.isEmpty()) {
+        if (!hasStreamShape(variants)) {
             return payload;
         }
         Map<String, TriggerUISchemaModel.Property> children = new LinkedHashMap<>();
@@ -683,6 +685,53 @@ public final class TriggerModelSynthesizer {
                 "COMPLEX_PAYLOAD", true, null, null, null, null, null, null);
         return new TriggerUISchemaModel.Property(payload.metadata(), true, true, false, false, null, "",
                 List.of(complexType), null, null, children, cd(), null);
+    }
+
+    private record ShapeMatch(TriggerMetadataModel.ServiceType.TypedescVariant variant,
+                              TriggerMetadataModel.ServiceType.Shape shape) {
+    }
+
+    /** The first shape (declaration order) across all variants that splices into an envelope. */
+    private static ShapeMatch findIncludedShape(List<TriggerMetadataModel.ServiceType.TypedescVariant> variants) {
+        for (TriggerMetadataModel.ServiceType.TypedescVariant variant : variants) {
+            for (TriggerMetadataModel.ServiceType.Shape shape : variant.shapes()) {
+                if (isIncluded(shape)) {
+                    return new ShapeMatch(variant, shape);
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The first variant's first directly-declared shape (skipping {@code included} and {@code stream}). */
+    private static ShapeMatch findDeclaredShape(List<TriggerMetadataModel.ServiceType.TypedescVariant> variants) {
+        if (variants.isEmpty()) {
+            return null;
+        }
+        TriggerMetadataModel.ServiceType.TypedescVariant first = variants.get(0);
+        for (TriggerMetadataModel.ServiceType.Shape shape : first.shapes()) {
+            if (!isIncluded(shape) && !TriggerMetadataModel.ServiceType.Shape.FORM_STREAM.equals(shape.form())) {
+                return new ShapeMatch(first, shape);
+            }
+        }
+        return null;
+    }
+
+    private static boolean isIncluded(TriggerMetadataModel.ServiceType.Shape shape) {
+        return TriggerMetadataModel.ServiceType.Shape.FORM_INCLUDED.equals(shape.form())
+                || TriggerMetadataModel.ServiceType.Shape.ELEMENT_INCLUDED.equals(shape.element());
+    }
+
+    /** A {@code stream} shape is presence-only: {@link #buildStreamModifierProperty} owns its template. */
+    private static boolean hasStreamShape(List<TriggerMetadataModel.ServiceType.TypedescVariant> variants) {
+        for (TriggerMetadataModel.ServiceType.TypedescVariant variant : variants) {
+            for (TriggerMetadataModel.ServiceType.Shape shape : variant.shapes()) {
+                if (TriggerMetadataModel.ServiceType.Shape.FORM_STREAM.equals(shape.form())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** The {@code stream} toggle that switches a bound payload's wrap from {@code T[]} to {@code stream<T, error?>}. */
@@ -697,18 +746,6 @@ public final class TriggerModelSynthesizer {
                 new TriggerUISchemaModel.Metadata("Stream (Large Files)", "Process the file content in chunks", null,
                         null, null, null, null, null, null),
                 true, true, false, false, null, false, List.of(flagType), null, null, null, modifierCodedata, null);
-    }
-
-    private static TriggerMetadataModel.DataBindingRule findDataBindingRule(String id, TriggerMetadataModel authoring) {
-        if (authoring.dataBindingRules() == null) {
-            return null;
-        }
-        for (TriggerMetadataModel.DataBindingRule rule : authoring.dataBindingRules()) {
-            if (rule.id().equals(id)) {
-                return rule;
-            }
-        }
-        return null;
     }
 
     private static TriggerUISchemaModel.ReturnType buildReturnType(String type, boolean hasError) {
