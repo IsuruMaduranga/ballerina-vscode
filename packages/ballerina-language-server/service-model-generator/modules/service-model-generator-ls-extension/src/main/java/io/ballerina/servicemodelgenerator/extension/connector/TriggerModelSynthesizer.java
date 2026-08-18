@@ -339,7 +339,8 @@ public final class TriggerModelSynthesizer {
 
     /**
      * Adds an {@code identifier}/base-path field when the primary service type declares one and it is
-     * not already resolved (per the v1 {@code oneOf} rule) by a preferred annotation-field alternative.
+     * not already resolved by a preferred annotation-field alternative (a {@code structure.exactlyOne}
+     * rule over the identifier and one or more annotation fields).
      */
     private static void buildIdentifierField(TriggerMetadataModel.ServiceType serviceType,
                                              Map<String, TriggerUISchemaModel.Property> initProperties) {
@@ -364,35 +365,43 @@ public final class TriggerModelSynthesizer {
         initProperties.put(IDENTIFIER_KEY, property);
     }
 
-    /** True when a {@code oneOf} rule on this service type prefers an annotation field over the identifier. */
+    /**
+     * True when a {@code structure.exactlyOne} rule over the identifier prefers an annotation field.
+     * Any other rule kind is irrelevant here and simply skipped, per the spec's skip-unknown policy.
+     */
     private static boolean isSupersededByPreferredAnnotation(TriggerMetadataModel.ServiceType serviceType) {
         if (serviceType.rules() == null) {
             return false;
         }
-        for (TriggerMetadataModel.ServiceType.Rule rule : serviceType.rules()) {
-            if (!TriggerMetadataModel.ServiceType.Rule.TYPE_ONE_OF.equals(rule.type())) {
+        for (TriggerMetadataModel.Rule rule : serviceType.rules()) {
+            if (!TriggerMetadataModel.Rule.RULE_EXACTLY_ONE.equals(rule.rule())) {
                 continue;
             }
-            boolean hasIdentifierMember = rule.members().stream()
-                    .anyMatch(m -> TriggerMetadataModel.ServiceType.Rule.RuleMember.PART_IDENTIFIER.equals(m.part()));
-            if (!hasIdentifierMember) {
+            boolean hasIdentifierSubject = rule.subjects().stream()
+                    .anyMatch(s -> TriggerMetadataModel.Subject.KIND_IDENTIFIER.equals(s.kind()));
+            if (!hasIdentifierSubject) {
                 continue;
             }
-            TriggerMetadataModel.ServiceType.Rule.RuleMember preferred = preferredMember(rule);
-            if (preferred.annotation() != null) {
+            TriggerMetadataModel.Subject preferred = preferredSubject(rule);
+            if (preferred != null && TriggerMetadataModel.Subject.KIND_ANNOTATION_FIELD.equals(preferred.kind())) {
                 return true;
             }
         }
         return false;
     }
 
-    /** The {@code preferred:true} member of a {@code oneOf} rule, or its first member if none is marked. */
-    private static TriggerMetadataModel.ServiceType.Rule.RuleMember preferredMember(
-            TriggerMetadataModel.ServiceType.Rule rule) {
-        return rule.members().stream()
-                .filter(m -> Boolean.TRUE.equals(m.preferred()))
+    /** The subject named by {@code prefer} (matched on {@code role}), or the first subject if absent. */
+    private static TriggerMetadataModel.Subject preferredSubject(TriggerMetadataModel.Rule rule) {
+        if (rule.subjects().isEmpty()) {
+            return null;
+        }
+        if (rule.prefer() == null) {
+            return rule.subjects().get(0);
+        }
+        return rule.subjects().stream()
+                .filter(s -> rule.prefer().equals(s.role()))
                 .findFirst()
-                .orElse(rule.members().get(0));
+                .orElse(rule.subjects().get(0));
     }
 
     /**
