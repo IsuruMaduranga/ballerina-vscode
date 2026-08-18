@@ -71,7 +71,11 @@ const WelcomeOrbHalo = styled.div`
         position: absolute;
         inset: -14px;
         border-radius: 50%;
-        background: radial-gradient(circle, rgba(107, 92, 232, 0.28), rgba(241, 78, 35, 0.12) 42%, transparent 70%);
+        background: radial-gradient(
+            circle,
+            color-mix(in srgb, var(--vscode-button-background) 28%, transparent),
+            transparent 70%
+        );
         filter: blur(8px);
         pointer-events: none;
     }
@@ -154,7 +158,7 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ isOnboarding = false })
                             <Icon
                                 name="bi-ai-chat"
                                 sx={{ width: 24, height: 24 }}
-                                iconSx={{ fontSize: "24px", color: "#ffffff", cursor: "default" }}
+                                iconSx={{ fontSize: "24px", color: "var(--vscode-button-foreground)", cursor: "default" }}
                             />
                         </IconOverlay>
                     </WelcomeOrb>
