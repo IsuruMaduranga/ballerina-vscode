@@ -1017,41 +1017,6 @@ function handlesOpenView(): boolean {
     return value === "extensionReady" || StateMachine.isReady();
 }
 
-/**
- * Resolves once a navigation sent now would be delivered, for a caller whose navigation must not
- * be silently dropped — the post-create landing being the one that matters, since dropping it
- * leaves the window wherever startup happened to put it.
- *
- * Bounded, and proceeds anyway on expiry rather than stalling a create indefinitely: the same
- * principle {@link VISUALIZER_WEBVIEW_READY_TIMEOUT_MS} already applies to waiting on the webview.
- */
-export function whenNavigationDeliverable(timeoutMs = VISUALIZER_WEBVIEW_READY_TIMEOUT_MS): Promise<boolean> {
-    if (handlesOpenView()) {
-        return Promise.resolve(true);
-    }
-    return new Promise<boolean>((resolve) => {
-        let settled = false;
-        const finish = (delivered: boolean) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            clearTimeout(timer);
-            subscription.unsubscribe();
-            resolve(delivered);
-        };
-        const timer = setTimeout(() => {
-            console.warn(`Timed out after ${timeoutMs}ms waiting for a state that accepts navigation; sending anyway.`);
-            finish(false);
-        }, timeoutMs);
-        const subscription = stateService.subscribe(() => {
-            if (handlesOpenView()) {
-                finish(true);
-            }
-        });
-    });
-}
-
 export interface OpenViewOptions {
     /**
      * Take `viewLocation.view` literally, skipping the single-integration redirect in

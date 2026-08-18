@@ -28,7 +28,7 @@ import {
     MACHINE_VIEW,
     PendingIntegrationArtifactPayload,
 } from "@wso2/ballerina-core";
-import { openView, StateMachine, whenNavigationDeliverable } from "../../stateMachine";
+import { openView, StateMachine } from "../../stateMachine";
 import { claimCreateLanding } from "../../utils/state-machine-utils";
 import { ServiceDesignerRpcManager } from "../../rpc-managers/service-designer/rpc-manager";
 import { BiDiagramRpcManager } from "../../rpc-managers/bi-diagram/rpc-manager";
@@ -108,14 +108,7 @@ export async function schedulePendingIntegration(schedule: PendingIntegrationSch
  * function's own `alreadyViewingAddedPackage` check. A claim planted there would be one nothing
  * ever spends, and the project explorer's Show Overview would walk into it.
  */
-async function landOnNewIntegrationAfterReload(projectRoot: string): Promise<void> {
-    // Awaited because the machine handles `OPEN_VIEW` only in `extensionReady` and
-    // `viewActive.viewReady`. Generation is asynchronous, so by the time it returns the machine may
-    // be mid-load, where the landing would be dropped without trace and the window would silently
-    // stay wherever startup left it. The deleted `extensionReady` guard used to make delivery
-    // certain as a side effect of when it allowed the landing at all; this replaces that half of
-    // its job, `claimedView` having replaced the other.
-    await whenNavigationDeliverable();
+function landOnNewIntegrationAfterReload(projectRoot: string): void {
     openPackageOverview(projectRoot);
     claimCreateLanding(projectRoot);
 }
@@ -161,14 +154,14 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
         // An empty integration has no payload: there is nothing to generate, only
         // the landing view below to open.
         if (!payload) {
-            await landOnNewIntegrationAfterReload(stored.projectRoot);
+            landOnNewIntegrationAfterReload(stored.projectRoot);
             return;
         }
 
         const label = ARTIFACT_KIND_LABELS[payload.kind];
         if (!label || payload.version !== 1) {
             console.error(`[IntegrationWizard] Unsupported pending artifact payload:`, payload);
-            await landOnNewIntegrationAfterReload(stored.projectRoot);
+            landOnNewIntegrationAfterReload(stored.projectRoot);
             return;
         }
 
@@ -178,6 +171,14 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
             `opensStoredPackage=${opensStoredPackage}, insideOpenWorkspace=${insideOpenWorkspace}, ` +
             `addedIntoWorkspace=${addedIntoWorkspace}`
         );
+        // Land BEFORE generating, not only after. `OPEN_VIEW` is handled in `extensionReady` and
+        // `viewActive.viewReady` only, and this runs from the `extensionReady` subscription, so a
+        // navigation sent here is certain to be acted on. Generation is asynchronous and startup
+        // navigates while it runs, so one sent only afterwards can arrive in a state that drops it.
+        // Invisible to the user: the webview stays on the create's progress screen until the
+        // artifact appears in the project structure.
+        landOnNewIntegrationAfterReload(stored.projectRoot);
+
         let claimedView = false;
         try {
             claimedView = await generatePendingArtifact(payload, stored.projectRoot);
@@ -189,12 +190,13 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
                 `Your integration was created; you can add the artifact from the Artifacts panel.`
             );
         }
-        // Unconditional, and it has to be: this runs after awaiting generation, and the
-        // project explorer's own startup navigation lands during that await. Standing down
-        // because something had already navigated is what left the window on the workspace
-        // overview — a create is the last word on where a create ends up.
+        // Re-assert, in case startup navigated away while generation ran. Best-effort by design:
+        // if this one is dropped the landing above already happened, and the claim it refreshes
+        // still answers a workspace overview arriving later. Skipped when generation navigated
+        // somewhere deliberate of its own — only the agent does, handing off to its wizard, whose
+        // navigation also releases the claim.
         if (!claimedView) {
-            await landOnNewIntegrationAfterReload(stored.projectRoot);
+            landOnNewIntegrationAfterReload(stored.projectRoot);
         }
     } catch (error) {
         console.error("[IntegrationWizard] Unexpected error while checking pending artifact:", error);
