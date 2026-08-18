@@ -63,7 +63,6 @@ const BoxGroup = styled.div`
     flex-direction: row;
     width: 100%;
     align-items: flex-start;
-    gap: 10px;
 `;
 
 interface CheckBoxConditionalEditorProps {
