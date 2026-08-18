@@ -177,18 +177,23 @@ every nightly VSIX has one commit that pins both its source and its version.
 - The force-push uses `GITHUB_TOKEN`, whose pushes do not trigger workflows, so the
   nightly build cannot re-enter itself.
 - After every validation job passes, the workflow force-moves the `nightly` Git tag to
-  that exact stamped commit. The tag is not a GitHub Release and has no release assets;
-  the VSIX remains available from the workflow run.
+  that exact stamped commit, then overwrites the `nightly` prerelease to target it, with
+  that night's timestamped VSIX as its only asset. The release is deleted and recreated
+  rather than edited: the tag has just moved, and an existing release keeps pointing at
+  the commit it was created from; the asset filename also carries the timestamped version,
+  so editing in place would accumulate one VSIX per night instead of replacing it.
+- The release exists so the VSIX is reachable by tag rather than only through the
+  authenticated Actions artifact API — `e2e-scheduled.yml` downloads it from there (see
+  "Scheduled E2E testing" below). Its once-a-day delete/recreate window is why that
+  workflow retries every `gh release` call.
 - The machine branch is named `builds/nightly`, while the stable public marker remains
   the `nightly` tag. Keeping separate names avoids ambiguous Git ref resolution.
-- On the first run after this migration, the tag job removes the legacy `nightly`
-  GitHub Release before moving the tag. That release currently contains an old
-  `5.12.0-SNAPSHOT` VSIX; retaining it would attach a stale asset to every new tag target.
 
-Every release or pre-release GitHub release carries two assets — the VSIX and the bundled LS jar — so the server
-can be downloaded on its own to debug a regression, or pointed at an existing install via
-`ballerina.langServerPath`. It is the exact jar inside the VSIX, packed at the same version,
-so the two can never disagree about what was built.
+Every release or pre-release GitHub release cut by `release-pre-release.yml` carries two assets —
+the VSIX and the bundled LS jar (the nightly prerelease is the exception; it carries only the
+VSIX) — so the server can be downloaded on its own to debug a regression, or pointed at an
+existing install via `ballerina.langServerPath`. It is the exact jar inside the VSIX, packed at
+the same version, so the two can never disagree about what was built.
 
 | Dispatch | GitHub release + tag | LS GitHub Package | Version commit + `release/X.Y.Z` |
 |---|---|---|---|
@@ -197,7 +202,7 @@ so the two can never disagree about what was built.
 | Pre-release + `githubRelease: true` | yes, on the dispatched commit | yes | no |
 | Pre-release + `githubRelease: false` | no; VSIX artifact only | no | no |
 | Custom development build | no | no | no |
-| Scheduled nightly build | no; updates the `nightly` Git tag | no | nightly version commit only |
+| Scheduled nightly build | yes; overwrites the `nightly` tag + prerelease (VSIX only) | no | nightly version commit only |
 
 Marketplace publishing remains manual: `publish-vsix.yml` takes the `VSIX` workflow artifact
 by run ID (30-day retention), independently of the GitHub release.
