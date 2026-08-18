@@ -19,7 +19,7 @@
 package io.ballerina.servicemodelgenerator.extension.connector;
 
 import com.google.gson.Gson;
-import io.ballerina.modelgenerator.commons.trigger.models.PresenceForm;
+import io.ballerina.modelgenerator.commons.trigger.models.IdentifierSpec;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerLibraryFacts;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
@@ -343,16 +343,16 @@ public final class TriggerModelSynthesizer {
      */
     private static void buildIdentifierField(TriggerMetadataModel.ServiceType serviceType,
                                              Map<String, TriggerUISchemaModel.Property> initProperties) {
-        PresenceForm identifier = serviceType.identifier();
+        IdentifierSpec identifier = serviceType.identifier();
         if (identifier == null) {
             return;
         }
         if (isSupersededByPreferredAnnotation(serviceType)) {
             return;
         }
-        boolean isBasePath = identifier.form() != null && identifier.form().contains(PresenceForm.FORM_BASE_PATH);
+        boolean isBasePath = identifier.form() != null && identifier.form().contains(IdentifierSpec.FORM_BASE_PATH);
         String fieldType = isBasePath ? "SERVICE_PATH" : "IDENTIFIER";
-        boolean optional = PresenceForm.PRESENCE_OPTIONAL.equals(identifier.presence());
+        boolean optional = IdentifierSpec.PRESENCE_OPTIONAL.equals(identifier.presence());
         TriggerUISchemaModel.PropertyType type = new TriggerUISchemaModel.PropertyType(
                 fieldType, true, "string", null, null, null, null, null);
         TriggerUISchemaModel.Property property = new TriggerUISchemaModel.Property(
@@ -395,19 +395,26 @@ public final class TriggerModelSynthesizer {
                 .orElse(rule.members().get(0));
     }
 
+    /**
+     * The option value (and default) must be the service type's name, not its schema id: this is
+     * what {@code SchemaDrivenSourceGenerator#selectServiceType} matches the user's choice against,
+     * since {@code ServiceTypeModel} carries no other stable identifier.
+     */
     private static TriggerUISchemaModel.Property buildServiceTypeSelector(
             List<TriggerMetadataModel.ServiceType> serviceTypes) {
         List<TriggerUISchemaModel.Option> options = new ArrayList<>();
         for (TriggerMetadataModel.ServiceType st : serviceTypes) {
-            options.add(new TriggerUISchemaModel.Option(humanize(st.id()), st.id(), null));
+            String name = st.type() == null ? "" : st.type().name();
+            options.add(new TriggerUISchemaModel.Option(humanize(stripId(st.id())), name, null));
         }
         TriggerUISchemaModel.PropertyType type = new TriggerUISchemaModel.PropertyType(
                 "SINGLE_SELECT", true, null, options, null, null, null, null);
+        TypeRef firstType = serviceTypes.get(0).type();
         return new TriggerUISchemaModel.Property(
                 new TriggerUISchemaModel.Metadata("Service Type", "The kind of service to create", null, null,
                         null, null, null, null, null),
-                true, true, false, false, null, serviceTypes.get(0).id(), List.of(type), null, null, null,
-                cdType(ARG_TYPE_SERVICE_TYPE_DESCRIPTOR), null);
+                true, true, false, false, null, firstType == null ? "" : firstType.name(), List.of(type), null, null,
+                null, cdType(ARG_TYPE_SERVICE_TYPE_DESCRIPTOR), null);
     }
 
     private static TriggerUISchemaModel.ServiceTypeModel buildServiceType(TriggerMetadataModel.ServiceType serviceType,
@@ -432,14 +439,13 @@ public final class TriggerModelSynthesizer {
             }
         } else if (handlers != null && handlers.options() != null) {
             for (TriggerMetadataModel.ServiceType.HandlerOption option : handlers.options()) {
-                schemaFunctions.add(buildFunctionFromAuthoring(option, handlers.addMode(), authoring, moduleName,
-                        facts, identity));
+                schemaFunctions.add(buildFunctionFromAuthoring(option, authoring, moduleName, facts, identity));
             }
         }
 
         return new TriggerUISchemaModel.ServiceTypeModel(
-                new TriggerUISchemaModel.Metadata(humanize(serviceType.id()), null, null, null, null, null, null,
-                        null, null),
+                new TriggerUISchemaModel.Metadata(humanize(stripId(serviceType.id())), null, null, null, null, null,
+                        null, null, null),
                 typeName, null, isFirst, multiType, properties, functions, schemaFunctions,
                 cdServiceType(typeName, moduleName));
     }
@@ -511,9 +517,9 @@ public final class TriggerModelSynthesizer {
 
     /** An addable/locked handler built entirely from the authoring schema's own {@code HandlerOption}. */
     private static TriggerUISchemaModel.FunctionModel buildFunctionFromAuthoring(
-            TriggerMetadataModel.ServiceType.HandlerOption option, String addMode, TriggerMetadataModel authoring,
-            String moduleName, TriggerLibraryFacts facts, ConnectorIdentity identity) {
-        boolean many = TriggerMetadataModel.ServiceType.Handlers.ADD_MODE_MANY.equals(addMode);
+            TriggerMetadataModel.ServiceType.HandlerOption option, TriggerMetadataModel authoring, String moduleName,
+            TriggerLibraryFacts facts, ConnectorIdentity identity) {
+        boolean many = TriggerMetadataModel.ServiceType.HandlerOption.ADD_MODE_MANY.equals(option.addMode());
         boolean required = "required".equals(option.presence());
 
         List<TriggerUISchemaModel.Parameter> parameters = new ArrayList<>();
@@ -551,7 +557,7 @@ public final class TriggerModelSynthesizer {
         }
         for (String id : annotationIds) {
             findAnnotationDeclaration(id, authoring)
-                    .ifPresent(annotation -> properties.put(id,
+                    .ifPresent(annotation -> properties.put(stripId(id),
                             buildAnnotationProperty(annotation, facts, identity, CD_TYPE_ANNOTATION_ATTACHMENT)));
         }
         return properties;
@@ -729,18 +735,12 @@ public final class TriggerModelSynthesizer {
      */
     private static List<TriggerMetadataModel.Annotation> applicableServiceAnnotations(
             TriggerMetadataModel.ServiceType serviceType, TriggerMetadataModel authoring) {
-        List<TriggerMetadataModel.Annotation> applicable = new ArrayList<>();
-        if (authoring.annotations() == null) {
-            return applicable;
+        if (serviceType.annotations() == null || authoring.annotations() == null) {
+            return List.of();
         }
-        for (TriggerMetadataModel.Annotation annotation : authoring.annotations()) {
-            if (!TriggerMetadataModel.Annotation.ATTACH_POINT_SERVICE.equals(annotation.attachPoint())) {
-                continue;
-            }
-            if (annotation.appliesTo() != null && !annotation.appliesTo().contains(serviceType.id())) {
-                continue;
-            }
-            applicable.add(annotation);
+        List<TriggerMetadataModel.Annotation> applicable = new ArrayList<>();
+        for (String id : serviceType.annotations()) {
+            findAnnotationDeclaration(id, authoring).ifPresent(applicable::add);
         }
         return applicable;
     }
@@ -756,7 +756,7 @@ public final class TriggerModelSynthesizer {
             ConnectorIdentity identity) {
         Map<String, TriggerUISchemaModel.Property> properties = new LinkedHashMap<>();
         for (TriggerMetadataModel.Annotation annotation : applicableServiceAnnotations(serviceType, authoring)) {
-            properties.put(annotation.id(), buildAnnotationProperty(annotation, facts, identity,
+            properties.put(stripId(annotation.id()), buildAnnotationProperty(annotation, facts, identity,
                     CD_TYPE_ANNOTATION_ATTACHMENT));
         }
         return properties;
@@ -772,7 +772,7 @@ public final class TriggerModelSynthesizer {
                                                     ConnectorIdentity identity,
                                                     Map<String, TriggerUISchemaModel.Property> initProperties) {
         for (TriggerMetadataModel.Annotation annotation : applicableServiceAnnotations(serviceType, authoring)) {
-            initProperties.put(annotation.id(), buildAnnotationProperty(annotation, facts, identity,
+            initProperties.put(stripId(annotation.id()), buildAnnotationProperty(annotation, facts, identity,
                     CD_TYPE_SERVICE_ANNOTATION));
         }
     }
@@ -822,8 +822,8 @@ public final class TriggerModelSynthesizer {
         boolean optional = TriggerMetadataModel.Annotation.PRESENCE_OPTIONAL.equals(annotation.presence());
         // No per-field skeleton: an empty "{}" record is enough for the user to fill via the record editor.
         return new TriggerUISchemaModel.Property(
-                new TriggerUISchemaModel.Metadata(humanize(annotation.id()), "Configuration for this service", null,
-                        null, null, null, null, null, null),
+                new TriggerUISchemaModel.Metadata(humanize(stripId(annotation.id())),
+                        "Configuration for this service", null, null, null, null, null, null, null),
                 true, true, optional, false, "{}", "{}", List.of(propertyType), null, null, null,
                 cdAnnotation(codedataType, annotationName, pkgModule, pkgOrg, pkgName, optional), null);
     }
@@ -861,6 +861,11 @@ public final class TriggerModelSynthesizer {
     static String simpleName(String qualified) {
         int colon = qualified.lastIndexOf(':');
         return colon < 0 ? qualified : qualified.substring(colon + 1);
+    }
+
+    /** Strips the spec's leading {@code $} from an id used as a user-facing label or map key. */
+    private static String stripId(String id) {
+        return id != null && id.startsWith("$") ? id.substring(1) : id;
     }
 
     /** {@code "bootstrapServers" -> "Bootstrap Servers"}; also splits on {@code _}/{@code -}. */
