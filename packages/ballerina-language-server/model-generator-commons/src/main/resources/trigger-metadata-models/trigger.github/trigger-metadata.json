@@ -1,95 +1,95 @@
 {
+  "version": "v1.0",
+
   "listeners": [
     {
       "type": { "name": "Listener" },
       "services": [
-        "issues", "issueComment", "pullRequest", "pullRequestReview",
-        "pullRequestReviewComment", "release", "label", "milestone",
-        "push", "projectCard"
-      ]
+        "$issues",
+        "$issueComment",
+        "$pullRequest",
+        "$pullRequestReview",
+        "$pullRequestReviewComment",
+        "$release",
+        "$label",
+        "$milestone",
+        "$push",
+        "$projectCard"
+      ],
+      "multipleServicesAllowed": true
     }
   ],
 
   "serviceTypes": [
     {
-      "id": "issues",
+      "id": "$issues",
       "type": { "name": "IssuesService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     },
     {
-      "id": "issueComment",
+      "id": "$issueComment",
       "type": { "name": "IssueCommentService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     },
     {
-      "id": "pullRequest",
+      "id": "$pullRequest",
       "type": { "name": "PullRequestService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     },
     {
-      "id": "pullRequestReview",
+      "id": "$pullRequestReview",
       "type": { "name": "PullRequestReviewService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     },
     {
-      "id": "pullRequestReviewComment",
+      "id": "$pullRequestReviewComment",
       "type": { "name": "PullRequestReviewCommentService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     },
     {
-      "id": "release",
+      "id": "$release",
       "type": { "name": "ReleaseService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     },
     {
-      "id": "label",
+      "id": "$label",
       "type": { "name": "LabelService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     },
     {
-      "id": "milestone",
+      "id": "$milestone",
       "type": { "name": "MilestoneService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     },
     {
-      "id": "push",
+      "id": "$push",
       "type": { "name": "PushService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     },
     {
-      "id": "projectCard",
+      "id": "$projectCard",
       "type": { "name": "ProjectCardService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     }
   ]
 }

@@ -1,80 +1,134 @@
 {
+  "version": "v1.0",
+
   "listeners": [
     {
       "type": { "name": "CdcListener" },
+      "services": ["$service"],
+      "multipleServicesAllowed": true,
       "requiredImports": [
         {
           "importType": "driver",
           "packageInfo": { "org": "ballerinax", "packageName": "mssql.cdc.driver", "moduleName": "mssql.cdc.driver", "version": "1.0.2" }
         }
-      ],
-      "services": ["service"]
+      ]
     }
   ],
 
   "serviceTypes": [
     {
-      "id": "service",
-      "type": {
-        "name": "Service",
-        "packageInfo": { "org": "ballerinax", "packageName": "cdc", "moduleName": "cdc", "version": "1.3.2" }
-      },
+      "id": "$service",
+      "type": { "name": "Service", "packageInfo": { "org": "ballerinax", "packageName": "cdc", "moduleName": "cdc", "version": "1.3.2" } },
       "concrete": false,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": true,
-
+      "annotations": ["$serviceConfig"],
       "handlers": {
         "backedByConcreteType": false,
-        "addMode": "subset",
         "options": [
           {
             "name": "onRead",
             "kind": "remote",
+            "doc": "Invoked for each row captured during the initial snapshot of a table, before streaming of live changes begins.",
             "presence": "optional",
             "params": [
-              { "name": "afterEntry", "type": { "name": "record {}" }, "presence": "required", "dataBinding": "rowState" },
-              { "name": "tableName", "type": { "name": "string" }, "presence": "required" }
+              {
+                "name": "afterEntry",
+                "doc": "The row as captured. Declare a record type to project its columns, see the rowState data-binding rule.",
+                "type": { "name": "record {}" },
+                "presence": "required",
+                "dataBinding": { "typedescs": [{ "constraint": { "name": "record {}" }, "shapes": [{ "form": "bare" }] }] }
+              },
+              {
+                "name": "tableName",
+                "doc": "Name of the table the row came from, useful when one service handles several tables.",
+                "type": { "name": "string" },
+                "presence": "required"
+              }
             ],
             "returns": [{ "name": "error" }, { "name": "()" }]
           },
           {
             "name": "onCreate",
             "kind": "remote",
+            "doc": "Invoked when a row is inserted.",
             "presence": "optional",
             "params": [
-              { "name": "afterEntry", "type": { "name": "record {}" }, "presence": "required", "dataBinding": "rowState" },
-              { "name": "tableName", "type": { "name": "string" }, "presence": "required" }
+              {
+                "name": "afterEntry",
+                "doc": "The row's state after the insert. Declare a record type to project its columns, see the rowState data-binding rule.",
+                "type": { "name": "record {}" },
+                "presence": "required",
+                "dataBinding": { "typedescs": [{ "constraint": { "name": "record {}" }, "shapes": [{ "form": "bare" }] }] }
+              },
+              {
+                "name": "tableName",
+                "doc": "Name of the table the change occurred in.",
+                "type": { "name": "string" },
+                "presence": "required"
+              }
             ],
             "returns": [{ "name": "error" }, { "name": "()" }]
           },
           {
             "name": "onUpdate",
             "kind": "remote",
+            "doc": "Invoked when a row is updated, with both the pre- and post-change images of the row.",
             "presence": "optional",
             "params": [
-              { "name": "beforeEntry", "type": { "name": "record {}" }, "presence": "required", "dataBinding": "rowState" },
-              { "name": "afterEntry", "type": { "name": "record {}" }, "presence": "required", "dataBinding": "rowState" },
-              { "name": "tableName", "type": { "name": "string" }, "presence": "required" }
+              {
+                "name": "beforeEntry",
+                "doc": "The row's state before the update.",
+                "type": { "name": "record {}" },
+                "presence": "required",
+                "dataBinding": { "typedescs": [{ "constraint": { "name": "record {}" }, "shapes": [{ "form": "bare" }] }] }
+              },
+              {
+                "name": "afterEntry",
+                "doc": "The row's state after the update.",
+                "type": { "name": "record {}" },
+                "presence": "required",
+                "dataBinding": { "typedescs": [{ "constraint": { "name": "record {}" }, "shapes": [{ "form": "bare" }] }] }
+              },
+              {
+                "name": "tableName",
+                "doc": "Name of the table the change occurred in.",
+                "type": { "name": "string" },
+                "presence": "required"
+              }
             ],
             "returns": [{ "name": "error" }, { "name": "()" }]
           },
           {
             "name": "onDelete",
             "kind": "remote",
+            "doc": "Invoked when a row is deleted. Only the pre-change image is available.",
             "presence": "optional",
             "params": [
-              { "name": "beforeEntry", "type": { "name": "record {}" }, "presence": "required", "dataBinding": "rowState" },
-              { "name": "tableName", "type": { "name": "string" }, "presence": "required" }
+              {
+                "name": "beforeEntry",
+                "doc": "The row's state immediately before it was deleted.",
+                "type": { "name": "record {}" },
+                "presence": "required",
+                "dataBinding": { "typedescs": [{ "constraint": { "name": "record {}" }, "shapes": [{ "form": "bare" }] }] }
+              },
+              {
+                "name": "tableName",
+                "doc": "Name of the table the change occurred in.",
+                "type": { "name": "string" },
+                "presence": "required"
+              }
             ],
             "returns": [{ "name": "error" }, { "name": "()" }]
           },
           {
             "name": "onError",
             "kind": "remote",
+            "doc": "Invoked when the connector fails to capture or dispatch a change event.",
             "presence": "optional",
             "params": [
               {
                 "name": "cdcError",
+                "doc": "The failure that interrupted change capture.",
                 "type": {
                   "name": "Error",
                   "packageInfo": { "org": "ballerinax", "packageName": "cdc", "moduleName": "cdc", "version": "1.3.2" }
@@ -85,33 +139,32 @@
             "returns": { "name": "()" }
           }
         ]
-      }
+      },
+      "rules": [
+        {
+          "id": "$atLeastOneChangeHandler",
+          "rule": "structure.atLeastOne",
+          "message": "A CDC service must declare at least one change handler. onError alone never receives a change event, so the service would do nothing.",
+          "subjects": [
+            { "kind": "handler", "name": "onRead" },
+            { "kind": "handler", "name": "onCreate" },
+            { "kind": "handler", "name": "onUpdate" },
+            { "kind": "handler", "name": "onDelete" }
+          ]
+        }
+      ]
     }
   ],
 
   "annotations": [
     {
-      "id": "serviceConfig",
+      "id": "$serviceConfig",
       "type": {
         "name": "ServiceConfig",
         "packageInfo": { "org": "ballerinax", "packageName": "cdc", "moduleName": "cdc", "version": "1.3.2" }
       },
       "attachPoint": "service",
-      "appliesTo": ["service"],
       "presence": "required"
-    }
-  ],
-
-  "dataBindingRules": [
-    {
-      "id": "rowState",
-      "envelopeType": { "name": "record {}" },
-      "supportedModes": [
-        {
-          "mode": "direct",
-          "typeConstraint": [{ "name": "record {}" }]
-        }
-      ]
     }
   ]
 }

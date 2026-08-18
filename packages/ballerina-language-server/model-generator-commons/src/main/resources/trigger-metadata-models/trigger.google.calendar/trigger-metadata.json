@@ -1,20 +1,17 @@
 {
+  "version": "v1.0",
+
   "listeners": [
-    {
-      "type": { "name": "Listener" },
-      "services": ["calendarService"]
-    }
+    { "type": { "name": "Listener" }, "services": ["$calendarService"], "multipleServicesAllowed": false }
   ],
 
   "serviceTypes": [
     {
-      "id": "calendarService",
+      "id": "$calendarService",
       "type": { "name": "CalendarService" },
       "concrete": true,
       "multipleListenersAllowed": true,
-      "multipleServicesPerListenerAllowed": false,
-
-      "handlers": { "backedByConcreteType": true, "options": [] }
+      "handlers": { "backedByConcreteType": true }
     }
   ]
 }
