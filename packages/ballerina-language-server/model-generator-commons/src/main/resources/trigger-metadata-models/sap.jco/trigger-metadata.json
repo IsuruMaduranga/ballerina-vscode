@@ -1,0 +1,123 @@
+{
+  "version": "v1.0",
+
+  "listeners": [
+    {
+      "type": { "name": "Listener" },
+      "services": ["$idocService", "$rfcService"],
+      "multipleServicesAllowed": true,
+      "multipleServicesOfSameTypeAllowed": false,
+      "platformDependencies": [
+        {
+          "groupId": "com.sap",
+          "artifactId": "com.sap.conn.idoc",
+          "version": "3.1.*",
+          "scope": "provided",
+          "acquisition": {
+            "url": "https://support.sap.com/en/index.html",
+            "note": "Download sapidoc3.jar from the SAP Service Marketplace. Licensed, not resolvable from any public Maven repository."
+          }
+        },
+        {
+          "groupId": "com.sap",
+          "artifactId": "com.sap.conn.jco",
+          "version": "3.1.*",
+          "scope": "provided",
+          "acquisition": {
+            "url": "https://support.sap.com/en/index.html",
+            "note": "Download sapjco3.jar from the SAP Service Marketplace, together with the native library for each OS you deploy to. Licensed, not resolvable from any public Maven repository."
+          },
+          "nativeLibraries": [
+            { "os": "linux", "file": "libsapjco3.so" },
+            { "os": "windows", "file": "sapjco3.dll" },
+            { "os": "macos", "file": "libsapjco3.dylib" }
+          ]
+        }
+      ]
+    }
+  ],
+
+  "serviceTypes": [
+    {
+      "id": "$idocService",
+      "type": { "name": "IDocService" },
+      "concrete": false,
+      "multipleListenersAllowed": true,
+      "handlers": {
+        "backedByConcreteType": false,
+        "options": [
+          {
+            "name": "onReceive",
+            "kind": "remote",
+            "doc": "Invoked for each inbound IDoc dispatched to this server from the SAP system.",
+            "presence": "required",
+            "params": [{ "name": "iDoc", "doc": "The received IDoc, as XML.", "type": { "name": "xml" }, "presence": "required" }],
+            "returns": [{ "name": "error" }, { "name": "()" }]
+          },
+          {
+            "name": "onError",
+            "kind": "remote",
+            "doc": "Invoked when an inbound IDoc cannot be received or dispatched.",
+            "presence": "optional",
+            "params": [
+              {
+                "name": "err",
+                "doc": "The failure that prevented the IDoc from being handled.",
+                "type": { "name": "error" },
+                "presence": "required"
+              }
+            ],
+            "returns": [{ "name": "error" }, { "name": "()" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": "$rfcService",
+      "type": { "name": "RfcService" },
+      "concrete": false,
+      "multipleListenersAllowed": true,
+      "handlers": {
+        "backedByConcreteType": false,
+        "options": [
+          {
+            "name": "onCall",
+            "kind": "remote",
+            "doc": "Invoked when the SAP system calls a remote function module registered against this server. Whatever the handler returns is sent back to SAP as the call's export parameters.",
+            "presence": "required",
+            "params": [
+              {
+                "name": "functionName",
+                "doc": "Name of the RFC function module SAP invoked.",
+                "type": { "name": "string" },
+                "presence": "required"
+              },
+              {
+                "name": "parameters",
+                "doc": "Import and table parameters supplied by SAP for this call.",
+                "type": { "name": "RfcParameters" },
+                "presence": "required"
+              }
+            ],
+            "returns": [{ "name": "RfcRecord" }, { "name": "xml" }, { "name": "error" }, { "name": "()" }]
+          },
+          {
+            "name": "onError",
+            "kind": "remote",
+            "doc": "Invoked when an inbound RFC call cannot be handled.",
+            "presence": "optional",
+            "params": [
+              {
+                "name": "err",
+                "doc": "The failure that prevented the call from being handled.",
+                "type": { "name": "error" },
+                "presence": "required"
+              }
+            ],
+            "returns": [{ "name": "error" }, { "name": "()" }]
+          }
+        ]
+      }
+    }
+  ]
+}

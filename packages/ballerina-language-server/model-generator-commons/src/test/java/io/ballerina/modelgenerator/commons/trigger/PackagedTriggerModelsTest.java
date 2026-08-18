@@ -38,6 +38,7 @@ public class PackagedTriggerModelsTest {
         return new Object[][] {
                 {"ftp"}, {"kafka"}, {"mcp"}, {"mssql.cdc"}, {"rabbitmq"}, {"smb"},
                 {"trigger.github"}, {"trigger.google.calendar"}, {"websub"},
+                {"http"}, {"graphql"}, {"grpc"}, {"websocket"}, {"sap.jco"},
         };
     }
 

@@ -1,0 +1,89 @@
+{
+  "version": "v1.0",
+
+  "listeners": [
+    {
+      "type": { "name": "Listener" },
+      "services": ["$service"],
+      "multipleServicesAllowed": true,
+      "multipleServicesOfSameTypeAllowed": true
+    }
+  ],
+
+  "serviceTypes": [
+    {
+      "id": "$service",
+      "type": { "name": "Service" },
+      "concrete": false,
+      "multipleListenersAllowed": true,
+      "annotations": ["$serviceConfig"],
+      "identifier": { "presence": "required", "form": ["basePath"] },
+      "handlers": {
+        "backedByConcreteType": false,
+        "options": [
+          {
+            "name": "*",
+            "kind": "resource",
+            "addMode": "many",
+            "doc": "One resource method per GraphQL query field. The field name is the resource path, and the return type becomes that field's type in the generated schema.",
+            "accessor": { "presence": "required", "values": ["get"] },
+            "path": { "presence": "required" },
+            "annotations": ["$resourceConfig"],
+            "params": [
+              {
+                "doc": "One GraphQL field argument. Repeat the slot once per argument the field accepts; the user names each one and the name becomes the argument name in the generated schema.",
+                "type": { "name": "anydata" },
+                "presence": "optional",
+                "addMode": "many",
+                "annotations": ["$id"]
+              }
+            ],
+            "returns": [{ "name": "anydata" }, { "name": "error" }]
+          },
+          {
+            "name": "*",
+            "kind": "remote",
+            "addMode": "many",
+            "doc": "One remote method per GraphQL mutation field. Remote methods are exposed as mutations; resource methods are queries.",
+            "annotations": ["$resourceConfig"],
+            "params": [
+              {
+                "doc": "One GraphQL field argument. Repeat the slot once per argument the field accepts; the user names each one and the name becomes the argument name in the generated schema.",
+                "type": { "name": "anydata" },
+                "presence": "optional",
+                "addMode": "many",
+                "annotations": ["$id"]
+              }
+            ],
+            "returns": [{ "name": "anydata" }, { "name": "error" }]
+          },
+          {
+            "name": "*",
+            "kind": "resource",
+            "addMode": "many",
+            "doc": "One subscribe resource method per GraphQL subscription field. Each value emitted on the returned stream is delivered to subscribed clients as one update.",
+            "accessor": { "presence": "required", "values": ["subscribe"] },
+            "path": { "presence": "required" },
+            "annotations": ["$resourceConfig"],
+            "params": [
+              {
+                "doc": "One GraphQL field argument. Repeat the slot once per argument the field accepts; the user names each one and the name becomes the argument name in the generated schema.",
+                "type": { "name": "anydata" },
+                "presence": "optional",
+                "addMode": "many",
+                "annotations": ["$id"]
+              }
+            ],
+            "returns": { "shape": "stream", "elementType": { "name": "anydata" }, "completionType": [{ "name": "error" }, { "name": "()" }] }
+          }
+        ]
+      }
+    }
+  ],
+
+  "annotations": [
+    { "id": "$serviceConfig", "type": { "name": "ServiceConfig" }, "attachPoint": "service", "presence": "optional" },
+    { "id": "$resourceConfig", "type": { "name": "ResourceConfig" }, "attachPoint": "function", "presence": "optional" },
+    { "id": "$id", "type": { "name": "ID" }, "attachPoint": "parameter", "presence": "optional" }
+  ]
+}
