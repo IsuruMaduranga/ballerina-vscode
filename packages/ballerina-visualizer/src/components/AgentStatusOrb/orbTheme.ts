@@ -31,7 +31,7 @@
  * re-resolves whenever the theme changes.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentRunState } from "@wso2/ballerina-core";
 
 /** BI's `DefaultColors.PRIMARY` (@wso2/ui-toolkit) — used only if resolution fails. */
@@ -42,8 +42,9 @@ type Hsl = [number, number, number];
 
 /**
  * The base VS Code color token for each run state. All resolve per theme:
- * idle/running follow the primary accent; the transient states stay
- * color-coded via semantic tokens.
+ * idle follows the primary accent; running uses the progress-bar token so it
+ * reads as distinct from idle even when motion is disabled; the transient
+ * states stay color-coded via semantic tokens.
  */
 export function stateColorVar(state: AgentRunState): string {
     switch (state) {
@@ -53,8 +54,9 @@ export function stateColorVar(state: AgentRunState): string {
             return "var(--vscode-charts-green)";
         case "error":
             return "var(--vscode-errorForeground, var(--vscode-charts-red))";
-        case "idle":
         case "running":
+            return "var(--vscode-progressBar-background, var(--vscode-button-background))";
+        case "idle":
         default:
             return "var(--vscode-button-background)";
     }
@@ -230,10 +232,19 @@ export function subscribeToThemeChanges(listener: () => void): () => void {
 
 export function useOrbColors(state: AgentRunState): [string, string, string] {
     const [colors, setColors] = useState<[string, string, string]>(() => deriveOrbColors(state));
+    const isFirstRun = useRef(true);
 
     useEffect(() => {
         const updateColors = () => setColors(deriveOrbColors(state));
-        updateColors();
+        // The lazy useState initializer already resolved the initial state's
+        // colors, so skip the redundant mount-time probe; only recompute here
+        // when `state` actually changes. Theme changes still recompute via the
+        // subscription below.
+        if (isFirstRun.current) {
+            isFirstRun.current = false;
+        } else {
+            updateColors();
+        }
         return subscribeToThemeChanges(updateColors);
     }, [state]);
 
