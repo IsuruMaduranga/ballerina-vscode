@@ -23,6 +23,8 @@ import { Button, DirectorySelector, Icon, TextField } from "@wso2/ui-toolkit";
 import { useVisualizerContext } from "./context/WsClientContext";
 import {
     joinPath,
+    applyBrowsePick,
+    BrowsePickState,
     splitPath,
     sanitizePackageName,
     validateComponentName,
@@ -202,6 +204,14 @@ export function CreateProjectChooser({
     const firstFieldRef = useRef<HTMLInputElement>(null);
     const defaultPathInitialized = useRef(false);
     const projectNameTouchedRef = useRef(false);
+    // Memory of what a pick (or the default-project seed) imposed on the name and the
+    // path's last segment, so moving to another location can undo exactly that and no
+    // more. See `applyBrowsePick`.
+    const displacedNameRef = useRef<BrowsePickState["displacedName"]>(null);
+    const folderPinnedByPickRef = useRef(false);
+    // A Browse has resolved, so the one-shot default-project seed below no longer
+    // describes the current location and must not apply its findings.
+    const pathPickedRef = useRef(false);
     // Set the moment the user edits the integration name, so the async default-name
     // indexing below never clobbers what they typed.
     const integrationNameTouchedRef = useRef(false);
@@ -280,10 +290,15 @@ export function CreateProjectChooser({
                 // Browse does. The folder stays "default"; only the display name changes.
                 const defaultProjectPath = joinPath(dp, directoryName);
                 const info = await wsClient.getExistingProjectInfo({ projectPath: defaultProjectPath });
-                if (!mounted) return;
+                if (!mounted || pathPickedRef.current) return;
                 if (info?.isProject && info.name && !projectNameTouchedRef.current) {
                     setProjectName(info.name);
                     dirCoupling.setDirTouched(true);
+                    // Same memory a Browse pick records: this name and folder are the
+                    // seeded project's, so browsing elsewhere restores the placeholder
+                    // instead of carrying them to the new location.
+                    displacedNameRef.current = { name: DEFAULT_PROJECT_NAME, touched: false };
+                    folderPinnedByPickRef.current = true;
                     // This swap lands after the initial preselect has already run and
                     // silently collapses its selection, so ask for another one.
                     setPreselectRequestId((id) => id + 1);
@@ -427,6 +442,10 @@ export function CreateProjectChooser({
         // Editing the name (re)couples the folder to it — so renaming a browsed
         // existing project retargets to a NEW project at <parent>/<derived-name>.
         dirCoupling.handleDisplayNameChange(value, { recouple: true });
+        // Both the name and (via the recouple) the folder are the user's now, so a later
+        // Browse has nothing of the previous pick's left to undo.
+        displacedNameRef.current = null;
+        folderPinnedByPickRef.current = false;
     };
 
     const handlePathChange = (value: string) => {
@@ -434,23 +453,66 @@ export function CreateProjectChooser({
         setPathTouched(true);
         setEditablePath(base);
         dirCoupling.handleDirectoryNameEdit(name, autoDirectoryName);
+        // The segment is hand-edited now — a later Browse must leave it alone rather than
+        // recoupling it. Any adopted NAME is still the pick's, so that memory stands.
+        folderPinnedByPickRef.current = false;
     };
 
     /**
-     * Browse: the picked folder is the parent LOCATION, not the project folder. The
-     * project keeps the name the user gave it and is targeted at `<picked>/<name>` —
-     * whether something already lives there is reported live by the path validation
-     * above, so nothing here needs to inspect the folder.
+     * Browse: the picked folder is normally the parent LOCATION, with the project targeted
+     * at `<picked>/<name-derived folder>`. Picking a folder that is ITSELF a project is the
+     * exception — appending a folder inside it would target `<project>/default`, which is
+     * neither the project the user pointed at nor a valid place for a new one (a project
+     * inside a project). The pick is taken as the project itself instead: its real name
+     * fills the name field and its own folder becomes the path's last segment, which is
+     * exactly what typing that same path into the field already does. Whether the resolved
+     * target exists is reported live by the path validation above, so nothing here needs to
+     * read it a second time.
      */
     const handlePathSelection = async () => {
         try {
             const result = await wsClient.selectFileOrDirPath({ startPath: editablePath || defaultPath });
             if (!result.path) return;
-            setEditablePath(result.path);
             setPathTouched(true);
-            // Pin the name: the one-shot default-project lookup can still be in flight,
-            // and its result no longer describes the location just picked.
-            projectNameTouchedRef.current = true;
+            // The one-shot default-project lookup can still be in flight, and its result
+            // no longer describes the location just picked.
+            pathPickedRef.current = true;
+
+            // Best effort — an unreadable folder simply keeps the parent-location reading,
+            // which is what every pick did before.
+            const info = await wsClient
+                .getExistingProjectInfo({ projectPath: result.path })
+                .catch((error: unknown): null => {
+                    console.error("Failed to inspect the selected folder:", error);
+                    return null;
+                });
+            const next = applyBrowsePick(
+                result.path,
+                info,
+                {
+                    projectName,
+                    projectNameTouched: projectNameTouchedRef.current,
+                    displacedName: displacedNameRef.current,
+                    folderPinnedByPick: folderPinnedByPickRef.current,
+                },
+                // This screen's name field labels the project the integration lands in, so
+                // it shows an existing project's own title rather than a name to create.
+                { adoptProjectName: true }
+            );
+
+            setEditablePath(next.base);
+            if (next.folder.action === "pin") {
+                // Hold the project's OWN folder rather than re-deriving it from the name:
+                // a project's title and its directory need not match.
+                dirCoupling.setDirectoryName(next.folder.directoryName);
+                dirCoupling.setDirTouched(true);
+            } else if (next.folder.action === "recouple") {
+                dirCoupling.handleDisplayNameChange(next.folder.displayName, { recouple: true });
+            }
+            setProjectName(next.projectName);
+            projectNameTouchedRef.current = next.projectNameTouched;
+            displacedNameRef.current = next.displacedName;
+            folderPinnedByPickRef.current = next.folderPinnedByPick;
         } catch (error) {
             console.error("Failed to select path:", error);
             setPathError("Failed to select the project folder. Please try again.");
