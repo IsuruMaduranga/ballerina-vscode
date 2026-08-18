@@ -21,16 +21,15 @@ package io.ballerina.modelgenerator.commons.trigger.models;
 import java.util.List;
 
 /**
- * A requiredness + closed-vocabulary pair for a resource-kind handler's syntactic slots (e.g. HTTP's
- * {@code method}, GraphQL's {@code accessor}). Sibling of {@link PresenceForm}, used where the legal
- * shapes are a closed set of literal values rather than structural forms.
+ * Requiredness plus legal shapes for a service type's {@code identifier} slot.
  *
- * @param presence {@code required} or {@code optional} for the slot
- * @param values   the closed set of legal literal values
  * @since 1.10.0
  */
-public record PresenceValues(String presence, List<String> values) {
+public record IdentifierSpec(String presence, List<String> form) {
 
     public static final String PRESENCE_REQUIRED = "required";
     public static final String PRESENCE_OPTIONAL = "optional";
+
+    public static final String FORM_BASE_PATH = "basePath";
+    public static final String FORM_STRING_LITERAL = "stringLiteral";
 }
