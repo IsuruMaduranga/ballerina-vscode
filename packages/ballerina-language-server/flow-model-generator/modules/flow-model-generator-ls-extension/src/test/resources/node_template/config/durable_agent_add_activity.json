@@ -1,85 +1,49 @@
 {
-  "source": "builtin_activity/functions.bal",
+  "source": "durable_agent_activities.bal",
   "position": {
-    "line": 5,
+    "line": 27,
     "offset": 0
   },
-  "description": "Builtin activity - Call SOAP API node template",
+  "description": "Register Activity template from the palette: the activity selector is visible, tool identity fields are hidden, auto-retry sub-fields carry the module defaults",
   "codedata": {
-    "node": "BUILTIN_ACTIVITY",
+    "node": "DURABLE_AGENT_ADD_ACTIVITY",
     "org": "ballerina",
-    "module": "workflow.activity",
-    "symbol": "callSoapAPI"
+    "module": "workflow"
   },
   "output": {
     "id": "31",
     "metadata": {
-      "label": "Call SOAP API",
-      "description": "Call a SOAP web service as a workflow activity using a configured soap11:Client or soap12:Client connection."
+      "label": "Register Activity",
+      "description": "Register a workflow activity as a durable agent activity"
     },
     "codedata": {
-      "node": "CONNECTION_ACTIVITY_CALL",
+      "node": "DURABLE_AGENT_ADD_ACTIVITY",
       "org": "ballerina",
-      "module": "workflow.activity",
-      "symbol": "callSoapAPI",
+      "module": "workflow",
+      "object": "AgenticWorkflowContext",
+      "symbol": "registerActivity",
       "isNew": true
     },
     "returning": false,
     "properties": {
-      "connection": {
+      "activity": {
         "metadata": {
-          "label": "Connection",
-          "description": "Connection to use",
-          "connectors": [
-            {
-              "codedata": {
-                "node": "NEW_CONNECTION",
-                "org": "ballerina",
-                "module": "soap.soap11",
-                "packageName": "soap",
-                "object": "Client",
-                "symbol": "init"
-              },
-              "addNewConnectionLabel": "Add new SOAP 1.1 connection"
-            },
-            {
-              "codedata": {
-                "node": "NEW_CONNECTION",
-                "org": "ballerina",
-                "module": "soap.soap12",
-                "packageName": "soap",
-                "object": "Client",
-                "symbol": "init"
-              },
-              "addNewConnectionLabel": "Add new SOAP 1.2 connection"
-            }
-          ]
+          "label": "Activity",
+          "description": "The @workflow:Activity function to expose as an agent tool"
         },
         "types": [
           {
-            "fieldType": "CONNECTION",
-            "selected": true
-          }
-        ],
-        "value": "NEW_CONNECTION",
-        "placeholder": "NEW_CONNECTION",
-        "optional": false,
-        "editable": true,
-        "advanced": false,
-        "hidden": false,
-        "codedata": {
-          "searchNodesKind": "SOAP"
-        }
-      },
-      "body": {
-        "metadata": {
-          "label": "Body",
-          "description": "SOAP envelope as xml"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "xml",
+            "fieldType": "SINGLE_SELECT",
+            "options": [
+              {
+                "label": "lookupBill",
+                "value": "lookupBill"
+              },
+              {
+                "label": "recordPayment",
+                "value": "recordPayment"
+              }
+            ],
             "selected": true
           }
         ],
@@ -92,39 +56,15 @@
           "kind": "REQUIRED"
         }
       },
-      "action": {
+      "name": {
         "metadata": {
-          "label": "Action",
-          "description": "SOAPAction header. Required for SOAP 1.1 endpoints; optional for SOAP 1.2."
+          "label": "Activity Name",
+          "description": "The activity name advertised to the model. Defaults to the function name"
         },
         "types": [
           {
             "fieldType": "TEXT",
             "ballerinaType": "string",
-            "selected": true
-          },
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string?",
-            "selected": false
-          }
-        ],
-        "value": "",
-        "placeholder": "http://tempuri.org/Add",
-        "optional": true,
-        "editable": true,
-        "advanced": false,
-        "hidden": false
-      },
-      "headers": {
-        "metadata": {
-          "label": "Headers",
-          "description": "Additional HTTP headers"
-        },
-        "types": [
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "map<string|string[]>",
             "selected": true
           }
         ],
@@ -134,21 +74,16 @@
         "advanced": true,
         "hidden": false
       },
-      "path": {
+      "description": {
         "metadata": {
-          "label": "Path",
-          "description": "Optional resource path appended to the connection's base URL"
+          "label": "Activity Description",
+          "description": "Tells the model what this activity does and when to use it"
         },
         "types": [
           {
-            "fieldType": "TEXT",
+            "fieldType": "DOC_TEXT",
             "ballerinaType": "string",
             "selected": true
-          },
-          {
-            "fieldType": "EXPRESSION",
-            "ballerinaType": "string",
-            "selected": false
           }
         ],
         "value": "",
@@ -157,27 +92,10 @@
         "advanced": true,
         "hidden": false
       },
-      "variable": {
+      "requiresApproval": {
         "metadata": {
-          "label": "Result",
-          "description": "Name of the result variable"
-        },
-        "types": [
-          {
-            "fieldType": "IDENTIFIER",
-            "selected": true
-          }
-        ],
-        "value": "result",
-        "optional": false,
-        "editable": true,
-        "advanced": false,
-        "hidden": false
-      },
-      "checkError": {
-        "metadata": {
-          "label": "Check Error",
-          "description": "Add 'check' to propagate errors. Uncheck to handle errors manually."
+          "label": "Requires Approval",
+          "description": "Gate this tool: before the agent runs it, a review activity is created and the agent suspends durably until a reviewer proceeds (optionally editing the arguments) or rejects."
         },
         "types": [
           {
@@ -186,7 +104,25 @@
             "selected": true
           }
         ],
-        "value": "true",
+        "value": "false",
+        "optional": true,
+        "editable": true,
+        "advanced": true,
+        "hidden": false
+      },
+      "userRoles": {
+        "metadata": {
+          "label": "Reviewer Roles",
+          "description": "Role(s) permitted to decide the approval review of this activity, e.g. \"support-lead\" or [\"finance\", \"manager\"]."
+        },
+        "types": [
+          {
+            "fieldType": "EXPRESSION",
+            "ballerinaType": "string|string[]",
+            "selected": true
+          }
+        ],
+        "placeholder": "",
         "optional": true,
         "editable": true,
         "advanced": true,
@@ -427,22 +363,22 @@
         "advanced": false,
         "hidden": true
       },
-      "advanced": {
+      "checkError": {
         "metadata": {
-          "label": "Activity call configurations",
-          "description": "Activity call configurations"
+          "label": "Check Error",
+          "description": "Trigger error flow"
         },
         "types": [
           {
-            "fieldType": "ADVANCE_PARAM_LIST",
-            "selected": false
+            "fieldType": "FLAG",
+            "selected": true
           }
         ],
-        "value": {},
+        "value": true,
         "optional": false,
-        "editable": false,
-        "advanced": false,
-        "hidden": false
+        "editable": true,
+        "advanced": true,
+        "hidden": true
       }
     },
     "flags": 0
