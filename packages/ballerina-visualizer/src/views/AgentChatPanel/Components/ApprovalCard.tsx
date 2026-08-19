@@ -353,7 +353,7 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({ requests, decisions,
         <Card>
             <CardHeader>
                 <WarnIconWrapper>
-                    <Icon name="bi-shield-lock" sx={{ width: 14, height: 14 }} iconSx={{ fontSize: "14px" }} />
+                    <Icon name="user-fill" sx={{ width: 14, height: 14 }} iconSx={{ fontSize: "14px" }} />
                 </WarnIconWrapper>
                 Approval required &middot; {pendingRequests.length} pending
                 <HeaderSpacer />
