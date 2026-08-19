@@ -3,6 +3,8 @@
 
   "listeners": [
     {
+      "id": "$listener",
+      "doc": "Webhook listener that dispatches each inbound GitHub event to the concrete service type matching its event category.",
       "type": { "name": "Listener" },
       "services": [
         "$issues",
@@ -23,6 +25,7 @@
   "serviceTypes": [
     {
       "id": "$issues",
+      "doc": "Receives issue events: opened, closed, edited, and the other issue lifecycle actions.",
       "type": { "name": "IssuesService" },
       "concrete": true,
       "multipleListenersAllowed": true,
@@ -30,6 +33,7 @@
     },
     {
       "id": "$issueComment",
+      "doc": "Receives issue comment events: created, edited, and deleted.",
       "type": { "name": "IssueCommentService" },
       "concrete": true,
       "multipleListenersAllowed": true,
@@ -37,6 +41,7 @@
     },
     {
       "id": "$pullRequest",
+      "doc": "Receives pull request events: opened, closed, merged, and the other pull request lifecycle actions.",
       "type": { "name": "PullRequestService" },
       "concrete": true,
       "multipleListenersAllowed": true,
@@ -44,6 +49,7 @@
     },
     {
       "id": "$pullRequestReview",
+      "doc": "Receives pull request review events: submitted, edited, and dismissed.",
       "type": { "name": "PullRequestReviewService" },
       "concrete": true,
       "multipleListenersAllowed": true,
@@ -51,6 +57,7 @@
     },
     {
       "id": "$pullRequestReviewComment",
+      "doc": "Receives pull request review comment events: created, edited, and deleted.",
       "type": { "name": "PullRequestReviewCommentService" },
       "concrete": true,
       "multipleListenersAllowed": true,
@@ -58,6 +65,7 @@
     },
     {
       "id": "$release",
+      "doc": "Receives release events: published, edited, and deleted.",
       "type": { "name": "ReleaseService" },
       "concrete": true,
       "multipleListenersAllowed": true,
@@ -65,6 +73,7 @@
     },
     {
       "id": "$label",
+      "doc": "Receives label events: created, edited, and deleted.",
       "type": { "name": "LabelService" },
       "concrete": true,
       "multipleListenersAllowed": true,
@@ -72,6 +81,7 @@
     },
     {
       "id": "$milestone",
+      "doc": "Receives milestone events: created, closed, opened, edited, and deleted.",
       "type": { "name": "MilestoneService" },
       "concrete": true,
       "multipleListenersAllowed": true,
@@ -79,6 +89,7 @@
     },
     {
       "id": "$push",
+      "doc": "Receives push events, one per push to a repository branch.",
       "type": { "name": "PushService" },
       "concrete": true,
       "multipleListenersAllowed": true,
@@ -86,6 +97,7 @@
     },
     {
       "id": "$projectCard",
+      "doc": "Receives project card events: created, edited, moved, converted, and deleted.",
       "type": { "name": "ProjectCardService" },
       "concrete": true,
       "multipleListenersAllowed": true,

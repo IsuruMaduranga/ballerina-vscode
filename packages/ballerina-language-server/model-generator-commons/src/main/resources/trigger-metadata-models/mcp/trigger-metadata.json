@@ -3,7 +3,18 @@
 
   "listeners": [
     {
+      "id": "$listener1",
+      "doc": "MCP listener over the Streamable HTTP transport, wrapping an http:Listener and dispatching each tool call to the matching method.",
       "type": { "name": "StreamableHttpListener" },
+      "services": ["$service", "$advancedService", "$streamableHttpService", "$streamableHttpAdvancedService"],
+      "multipleServicesAllowed": true,
+      "multipleServicesOfSameTypeAllowed": true
+    },
+    {
+      "id": "$listener2",
+      "doc": "Renamed to make the transport explicit. Delegates every call to an internal StreamableHttpListener, so it accepts and dispatches the same service types the same way.",
+      "deprecated": "Renamed to make the transport explicit. Use mcp:StreamableHttpListener instead.",
+      "type": { "name": "Listener" },
       "services": ["$service", "$advancedService", "$streamableHttpService", "$streamableHttpAdvancedService"],
       "multipleServicesAllowed": true,
       "multipleServicesOfSameTypeAllowed": true
@@ -13,6 +24,7 @@
   "serviceTypes": [
     {
       "id": "$service",
+      "doc": "An MCP server exposing each remote method as a tool, discovered automatically from its signature.",
       "type": { "name": "Service" },
       "concrete": false,
       "multipleListenersAllowed": true,
@@ -22,6 +34,7 @@
         "backedByConcreteType": false,
         "options": [
           {
+            "id": "$service.tool",
             "name": "*",
             "kind": "remote",
             "addMode": "many",
@@ -29,25 +42,32 @@
             "annotations": ["$tool"],
             "params": [
               {
+                "id": "$service.tool.session",
                 "name": "session",
                 "doc": "The client session, when the server is running in a stateful session mode.",
                 "type": { "name": "Session" },
                 "presence": "optional"
               },
               {
+                "id": "$service.tool.toolArg",
                 "doc": "One tool argument. Repeat the slot once per argument the tool accepts; the user names each one and the names and types become the tool's input schema.",
-                "type": { "name": "anydata" },
+                "type": { "name": "anydata", "builtin": true },
                 "presence": "optional",
                 "addMode": "many"
               }
             ],
-            "returns": [{ "name": "anydata" }, { "name": "error" }]
+            "returns": {
+              "id": "$service.tool.returns",
+              "type": [{ "name": "anydata", "builtin": true }, { "name": "error", "builtin": true }],
+              "dataBinding": { "typedescs": [{ "constraint": { "name": "anydata", "builtin": true }, "shapes": [{ "form": "bare" }] }] }
+            }
           }
         ]
       }
     },
     {
       "id": "$advancedService",
+      "doc": "The advanced MCP server form, where tool listing and invocation are handled explicitly rather than discovered automatically.",
       "type": { "name": "AdvancedService" },
       "concrete": true,
       "multipleListenersAllowed": true,
@@ -57,6 +77,7 @@
     },
     {
       "id": "$streamableHttpService",
+      "doc": "An MCP server exposing each remote method as a tool over the streamable HTTP transport, discovered automatically from its signature.",
       "type": { "name": "StreamableHttpService" },
       "concrete": false,
       "multipleListenersAllowed": true,
@@ -66,6 +87,7 @@
         "backedByConcreteType": false,
         "options": [
           {
+            "id": "$streamableHttpService.tool",
             "name": "*",
             "kind": "remote",
             "addMode": "many",
@@ -73,25 +95,29 @@
             "annotations": ["$tool"],
             "params": [
               {
+                "id": "$streamableHttpService.tool.session",
                 "name": "session",
                 "doc": "The client session, when the server is running in a stateful session mode.",
                 "type": { "name": "Session" },
                 "presence": "optional"
               },
               {
+                "id": "$streamableHttpService.tool.toolArg",
                 "doc": "One tool argument. Repeat the slot once per argument the tool accepts; the user names each one and the names and types become the tool's input schema.",
-                "type": { "name": "anydata" },
+                "type": { "name": "anydata", "builtin": true },
                 "presence": "optional",
                 "addMode": "many"
               },
               {
+                "id": "$streamableHttpService.tool.headerParam",
                 "doc": "One HTTP request header. Repeat the slot once per header the tool reads; the user names each one.",
-                "type": [{ "name": "string" }, { "name": "int" }, { "name": "boolean" }, { "name": "decimal" }, { "name": "float" }],
+                "type": [{ "name": "string", "builtin": true }, { "name": "int", "builtin": true }, { "name": "boolean", "builtin": true }, { "name": "decimal", "builtin": true }, { "name": "float", "builtin": true }],
                 "presence": "optional",
                 "addMode": "many",
                 "annotations": ["$httpHeader"]
               },
               {
+                "id": "$streamableHttpService.tool.headers",
                 "name": "headers",
                 "doc": "Read-only access to the inbound HTTP request headers.",
                 "type": {
@@ -101,6 +127,7 @@
                 "presence": "optional"
               },
               {
+                "id": "$streamableHttpService.tool.request",
                 "name": "request",
                 "doc": "The raw inbound HTTP request, for anything the bound parameters do not expose.",
                 "type": {
@@ -110,13 +137,18 @@
                 "presence": "optional"
               }
             ],
-            "returns": [{ "name": "anydata" }, { "name": "error" }]
+            "returns": {
+              "id": "$streamableHttpService.tool.returns",
+              "type": [{ "name": "anydata", "builtin": true }, { "name": "error", "builtin": true }],
+              "dataBinding": { "typedescs": [{ "constraint": { "name": "anydata", "builtin": true }, "shapes": [{ "form": "bare" }] }] }
+            }
           }
         ]
       }
     },
     {
       "id": "$streamableHttpAdvancedService",
+      "doc": "The advanced MCP server form over streamable HTTP, where tool listing and invocation are handled explicitly rather than discovered automatically.",
       "type": { "name": "StreamableHttpAdvancedService" },
       "concrete": false,
       "multipleListenersAllowed": true,
@@ -126,19 +158,22 @@
         "backedByConcreteType": false,
         "options": [
           {
+            "id": "$streamableHttpAdvancedService.onListTools",
             "name": "onListTools",
             "kind": "remote",
             "doc": "Invoked when a client asks for this server's tool catalogue. Use this when the catalogue is computed at runtime rather than discovered from remote methods.",
             "presence": "required",
             "params": [
               {
+                "id": "$streamableHttpAdvancedService.onListTools.headerParam",
                 "doc": "One HTTP request header. Repeat the slot once per header the tool reads; the user names each one.",
-                "type": [{ "name": "string" }, { "name": "int" }, { "name": "boolean" }, { "name": "decimal" }, { "name": "float" }],
+                "type": [{ "name": "string", "builtin": true }, { "name": "int", "builtin": true }, { "name": "boolean", "builtin": true }, { "name": "decimal", "builtin": true }, { "name": "float", "builtin": true }],
                 "presence": "optional",
                 "addMode": "many",
                 "annotations": ["$httpHeader"]
               },
               {
+                "id": "$streamableHttpAdvancedService.onListTools.headers",
                 "name": "headers",
                 "doc": "Read-only access to the inbound HTTP request headers.",
                 "type": {
@@ -148,6 +183,7 @@
                 "presence": "optional"
               },
               {
+                "id": "$streamableHttpAdvancedService.onListTools.request",
                 "name": "request",
                 "doc": "The raw inbound HTTP request, for anything the bound parameters do not expose.",
                 "type": {
@@ -157,34 +193,42 @@
                 "presence": "optional"
               }
             ],
-            "returns": [{ "name": "ListToolsResult" }, { "name": "ServerError" }]
+            "returns": {
+              "id": "$streamableHttpAdvancedService.onListTools.returns",
+              "type": [{ "name": "ListToolsResult" }, { "name": "ServerError" }]
+            }
           },
           {
+            "id": "$streamableHttpAdvancedService.onCallTool",
             "name": "onCallTool",
             "kind": "remote",
             "doc": "Invoked when a client invokes a tool by name. Dispatching to the right implementation and binding the arguments are the service's own responsibility here, unlike the automatic form.",
             "presence": "required",
             "params": [
               {
+                "id": "$streamableHttpAdvancedService.onCallTool.params",
                 "name": "params",
                 "doc": "The tool name and the arguments the client supplied for it.",
                 "type": { "name": "CallToolParams" },
                 "presence": "required"
               },
               {
+                "id": "$streamableHttpAdvancedService.onCallTool.session",
                 "name": "session",
                 "doc": "The client session, when the server is running in a stateful session mode.",
                 "type": { "name": "Session" },
                 "presence": "optional"
               },
               {
+                "id": "$streamableHttpAdvancedService.onCallTool.headerParam",
                 "doc": "One HTTP request header. Repeat the slot once per header the tool reads; the user names each one.",
-                "type": [{ "name": "string" }, { "name": "int" }, { "name": "boolean" }, { "name": "decimal" }, { "name": "float" }],
+                "type": [{ "name": "string", "builtin": true }, { "name": "int", "builtin": true }, { "name": "boolean", "builtin": true }, { "name": "decimal", "builtin": true }, { "name": "float", "builtin": true }],
                 "presence": "optional",
                 "addMode": "many",
                 "annotations": ["$httpHeader"]
               },
               {
+                "id": "$streamableHttpAdvancedService.onCallTool.headers",
                 "name": "headers",
                 "doc": "Read-only access to the inbound HTTP request headers.",
                 "type": {
@@ -194,6 +238,7 @@
                 "presence": "optional"
               },
               {
+                "id": "$streamableHttpAdvancedService.onCallTool.request",
                 "name": "request",
                 "doc": "The raw inbound HTTP request, for anything the bound parameters do not expose.",
                 "type": {
@@ -203,7 +248,10 @@
                 "presence": "optional"
               }
             ],
-            "returns": [{ "name": "CallToolResult" }, { "name": "ServerError" }]
+            "returns": {
+              "id": "$streamableHttpAdvancedService.onCallTool.returns",
+              "type": [{ "name": "CallToolResult" }, { "name": "ServerError" }]
+            }
           }
         ]
       }

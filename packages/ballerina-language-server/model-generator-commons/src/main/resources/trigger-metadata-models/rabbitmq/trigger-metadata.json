@@ -3,6 +3,8 @@
 
   "listeners": [
     {
+      "id": "$listener",
+      "doc": "Polls the subscribed queue and dispatches each delivered message to the attached service.",
       "type": { "name": "Listener" },
       "services": ["$service"],
       "multipleServicesAllowed": true,
@@ -13,6 +15,7 @@
   "serviceTypes": [
     {
       "id": "$service",
+      "doc": "Consumes messages delivered from a subscribed queue, either fire-and-forget or RPC-style with a reply.",
       "type": { "name": "Service" },
       "concrete": false,
       "multipleListenersAllowed": true,
@@ -22,12 +25,14 @@
         "backedByConcreteType": false,
         "options": [
           {
+            "id": "$service.onMessage",
             "name": "onMessage",
             "kind": "remote",
             "doc": "Invoked once per message delivered from the subscribed queue. Use this for consume-only workloads; use onRequest instead when the publisher expects a reply.",
             "presence": "optional",
             "params": [
               {
+                "id": "$service.onMessage.message",
                 "name": "message",
                 "doc": "The delivered message. Declare a narrower type to project the payload, see the messagePayload data-binding rule.",
                 "type": [{ "name": "AnydataMessage" }, { "name": "BytesMessage" }],
@@ -35,12 +40,12 @@
                 "dataBinding": {
                   "typedescs": [
                     {
-                      "constraint": { "name": "anydata" },
+                      "constraint": { "name": "anydata", "builtin": true },
                       "excludes": [{ "name": "AnydataMessage" }],
                       "shapes": [{ "form": "bare" }]
                     },
                     {
-                      "constraint": { "name": "anydata" },
+                      "constraint": { "name": "anydata", "builtin": true },
                       "shapes": [{ "form": "included", "envelope": { "name": "AnydataMessage" }, "bindableFields": ["content"] }]
                     }
                   ]
@@ -48,21 +53,24 @@
                 "annotations": ["$payload"]
               },
               {
+                "id": "$service.onMessage.caller",
                 "name": "caller",
                 "doc": "Handle for explicitly acknowledging or rejecting the message. Needed only under client acknowledgement.",
                 "type": { "name": "Caller" },
                 "presence": "optional"
               }
             ],
-            "returns": [{ "name": "error" }, { "name": "()" }]
+            "returns": { "id": "$service.onMessage.returns", "type": [{ "name": "error", "builtin": true }, { "name": "()", "builtin": true }] }
           },
           {
+            "id": "$service.onRequest",
             "name": "onRequest",
             "kind": "remote",
             "doc": "Invoked once per message delivered from the subscribed queue, for RPC-style consumers. Whatever the handler returns is published back to the message's reply-to queue, which is why it returns anydata rather than ().",
             "presence": "optional",
             "params": [
               {
+                "id": "$service.onRequest.message",
                 "name": "message",
                 "doc": "The delivered request message. Declare a narrower type to project the payload, see the messagePayload data-binding rule.",
                 "type": [{ "name": "AnydataMessage" }, { "name": "BytesMessage" }],
@@ -70,12 +78,12 @@
                 "dataBinding": {
                   "typedescs": [
                     {
-                      "constraint": { "name": "anydata" },
+                      "constraint": { "name": "anydata", "builtin": true },
                       "excludes": [{ "name": "AnydataMessage" }],
                       "shapes": [{ "form": "bare" }]
                     },
                     {
-                      "constraint": { "name": "anydata" },
+                      "constraint": { "name": "anydata", "builtin": true },
                       "shapes": [{ "form": "included", "envelope": { "name": "AnydataMessage" }, "bindableFields": ["content"] }]
                     }
                   ]
@@ -83,34 +91,42 @@
                 "annotations": ["$payload"]
               },
               {
+                "id": "$service.onRequest.caller",
                 "name": "caller",
                 "doc": "Handle for explicitly acknowledging or rejecting the message. Needed only under client acknowledgement.",
                 "type": { "name": "Caller" },
                 "presence": "optional"
               }
             ],
-            "returns": [{ "name": "anydata" }, { "name": "error" }]
+            "returns": {
+              "id": "$service.onRequest.returns",
+              "type": [{ "name": "anydata", "builtin": true }, { "name": "error", "builtin": true }],
+              "dataBinding": { "typedescs": [{ "constraint": { "name": "anydata", "builtin": true }, "shapes": [{ "form": "bare" }] }] }
+            }
           },
           {
+            "id": "$service.onError",
             "name": "onError",
             "kind": "remote",
             "doc": "Invoked when a delivered message cannot be dispatched, most commonly when its payload fails to bind to the declared parameter type.",
             "presence": "optional",
             "params": [
               {
+                "id": "$service.onError.message",
                 "name": "message",
                 "doc": "The message that could not be dispatched, in its unprojected form.",
                 "type": { "name": "AnydataMessage" },
                 "presence": "required"
               },
               {
+                "id": "$service.onError.err",
                 "name": "err",
                 "doc": "The failure that prevented dispatch.",
                 "type": { "name": "Error" },
                 "presence": "required"
               }
             ],
-            "returns": [{ "name": "error" }, { "name": "()" }]
+            "returns": { "id": "$service.onError.returns", "type": [{ "name": "error", "builtin": true }, { "name": "()", "builtin": true }] }
           }
         ]
       },
@@ -121,7 +137,7 @@
           "message": "A RabbitMQ consumer needs its queue name from exactly one source: @rabbitmq:ServiceConfig { queueName } or the service identifier.",
           "subjects": [
             { "kind": "annotationField", "annotation": "$serviceConfig", "path": ["queueName"], "role": "fromAnnotation" },
-            { "kind": "identifier", "role": "fromIdentifier" }
+            { "kind": "identifier" }
           ],
           "prefer": "fromAnnotation"
         },
@@ -129,7 +145,7 @@
           "id": "$messageHandlerChoice",
           "rule": "structure.exactlyOne",
           "message": "A RabbitMQ service must implement exactly one of onMessage or onRequest.",
-          "subjects": [{ "kind": "handler", "name": "onMessage" }, { "kind": "handler", "name": "onRequest" }]
+          "subjects": [{ "kind": "handler", "id": "$service.onMessage" }, { "kind": "handler", "id": "$service.onRequest" }]
         }
       ]
     }
