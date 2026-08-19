@@ -95,6 +95,41 @@ export function isReceiveEventNode(node?: FlowNode) {
     return node?.codedata?.node === "WAIT_DATA";
 }
 
+/**
+ * Whether a node is a human task. A human task suspends the workflow on someone outside it acting,
+ * so it is drawn as a wait: the person on the left, an arrow into the body.
+ */
+export function isHumanTaskNode(node?: FlowNode) {
+    return node?.codedata?.node === "HUMAN_TASK";
+}
+
+/**
+ * The roles permitted to complete a human task, when the statement names them literally.
+ *
+ * The property holds a Ballerina expression (`string|string[]`), so it is only a set of role names
+ * we can put on the canvas when every element is a string literal — an identifier or a call is
+ * resolved at run time and would read as a role that does not exist.
+ */
+export function getHumanTaskUserRoles(node?: FlowNode): string[] {
+    const value = (node?.properties as any)?.userRoles?.value;
+    if (typeof value !== "string") {
+        return [];
+    }
+
+    const expression = value.trim();
+    const isListLiteral = expression.startsWith("[") && expression.endsWith("]");
+    const elements = (isListLiteral ? expression.slice(1, -1) : expression)
+        .split(",")
+        .map((element) => element.trim())
+        .filter(Boolean);
+
+    if (elements.length === 0 || !elements.every((element) => /^(".*"|'.*')$/.test(element))) {
+        return [];
+    }
+
+    return elements.map((element) => normalizeNodePropertyValue(element)).filter(Boolean);
+}
+
 export function isWaitingAgentCall(node?: FlowNode) {
     return (node?.metadata?.data as { waits?: boolean } | undefined)?.waits === true;
 }
