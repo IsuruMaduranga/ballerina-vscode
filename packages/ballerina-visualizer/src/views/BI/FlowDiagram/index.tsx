@@ -2365,25 +2365,36 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         // by handleOnEditDurableCapability.
         if (
             updatedNode.codedata?.isNew === false &&
-            Object.values(DURABLE_CAPABILITY_NODE_KINDS).includes(updatedNode.codedata.node) &&
-            selectedNodeRef.current?.codedata?.lineRange
+            Object.values(DURABLE_CAPABILITY_NODE_KINDS).includes(updatedNode.codedata.node)
         ) {
             // The range is only the entry's if the selected node is still the node being submitted.
             // A panel navigation between opening the form and submitting it can move the ref, and a
             // range taken from another node would splice this entry over that one's source.
-            const selectedCodedata = selectedNodeRef.current.codedata;
-            const sameNode =
+            //
+            // Identity has to separate two entries of the SAME kind on the same agent, which is the
+            // realistic stale case. They share `node` and `parentSymbol`, and `codedata.symbol` too —
+            // every activity entry's template carries `registerActivity`, whatever activity it
+            // registers. What distinguishes them is the capability's name, which the form preserves:
+            // createNodeWithUpdatedLineRange and updateNodeWithProperties both spread the node and
+            // replace only codedata.lineRange and properties.
+            const selectedCodedata = selectedNodeRef.current?.codedata;
+            const sameEntry =
+                !!selectedCodedata?.lineRange &&
                 selectedCodedata.node === updatedNode.codedata.node &&
-                selectedCodedata.parentSymbol === updatedNode.codedata.parentSymbol;
-            if (sameNode) {
-                updatedNode.codedata.lineRange = selectedCodedata.lineRange;
-            } else {
+                selectedCodedata.parentSymbol === updatedNode.codedata.parentSymbol &&
+                selectedNodeRef.current?.metadata?.label === updatedNode.metadata?.label;
+            if (!sameEntry) {
+                // There is nowhere safe to write: the submitted range is the probe position at the
+                // declaration START, so going ahead would splice the entry over the declaration
+                // itself. Abort and say so, rather than corrupting the source we cannot place.
                 console.error(
-                    ">>> Stale selected node while submitting a durable agent capability; " +
-                        "keeping the submitted range",
+                    ">>> Cannot place a durable agent capability edit; aborting the submit",
                     { submitted: updatedNode.codedata, selected: selectedCodedata }
                 );
+                showConnectorError();
+                return;
             }
+            updatedNode.codedata.lineRange = selectedCodedata.lineRange;
         }
 
         setShowProgressIndicator(true);
