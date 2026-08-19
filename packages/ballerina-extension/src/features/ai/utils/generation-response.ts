@@ -38,7 +38,10 @@ import { approvalViewManager } from "../state/ApprovalViewManager";
 export function finalizeRevertibleGeneration(projectRootPath: string, threadId: string): boolean {
     // Runs before the early return: the open review belongs to the previous turn either way.
     approvalViewManager.closeReviewModeIfOpen();
+    return finalizeThreadGeneration(projectRootPath, threadId);
+}
 
+function finalizeThreadGeneration(projectRootPath: string, threadId: string): boolean {
     const finalized = chatStateStorage.finalizeLastGenerationIfDone(projectRootPath, threadId);
     if (!finalized) {
         return false;
@@ -61,9 +64,13 @@ export function finalizeRevertibleGeneration(projectRootPath: string, threadId: 
  * @returns true if any generation was finalized
  */
 export function finalizeRevertibleGenerationsAllThreads(projectRootPath: string): boolean {
+    // Once, not per thread: closeReviewModeIfOpen only self-guards on the view having already
+    // updated, which updateView can defer, so a per-thread call pops history repeatedly.
+    approvalViewManager.closeReviewModeIfOpen();
+
     let finalizedAny = false;
     for (const thread of chatStateStorage.listThreadsSummary(projectRootPath)) {
-        finalizedAny = finalizeRevertibleGeneration(projectRootPath, thread.id) || finalizedAny;
+        finalizedAny = finalizeThreadGeneration(projectRootPath, thread.id) || finalizedAny;
     }
     return finalizedAny;
 }
