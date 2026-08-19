@@ -505,7 +505,8 @@ public final class TriggerModelSynthesizer {
         TriggerUISchemaModel.ReturnType returnType = buildReturnType(fn.returnType(), fn.returnsError());
         String description = fn.doc() == null || fn.doc().isBlank() ? "The `" + fn.name() + "` handler." : fn.doc();
         return new TriggerUISchemaModel.FunctionModel(
-                new TriggerUISchemaModel.Metadata(fn.name(), description, null, null, null, null, null, null, null, null),
+                new TriggerUISchemaModel.Metadata(fn.name(), description, null, null, null, null, null, null,
+                        null, null),
                 fn.name(), false, null, fn.kind(), null, fn.qualifiers(), null, null, true, false, false, false,
                 null, null, null, parameters, null, Map.of(), returnType, cdFunction(fn.name(), moduleName), null);
     }
