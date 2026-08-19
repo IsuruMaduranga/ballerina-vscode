@@ -169,6 +169,9 @@ public class LSPackageLoader {
                 // unimported-module completions only ever offer distribution packages — a
                 // module the project itself pulled would still get no import suggestion.
                 // The empty listener map skips the listener-metadata compilation pass.
+                // `addAll` is safe here because this is one-time init: loadModules is called once,
+                // from BallerinaLanguageServer#initialized. Were it ever called again, these two
+                // lists would accumulate duplicates.
                 lsClientLogger.logTrace("Loading packages from the Ballerina user home repositories");
                 BallerinaUserHome ballerinaUserHome = BallerinaUserHome.from(environment);
                 this.remoteRepoPackages.addAll(checkAndResolvePackagesFromRepository(
@@ -338,7 +341,7 @@ public class LSPackageLoader {
                     PackageVersion candidate = PackageVersion.from(components[1]);
                     latestVersions.merge(components[0], candidate, (existing, latest) ->
                             latest.value().greaterThan(existing.value()) ? latest : existing);
-                } catch (Throwable e) {
+                } catch (Exception e) {
                     clientLogger.logTrace("Skipped package with an unreadable version: "
                             + packageOrg + "/" + nameEntry);
                 }
