@@ -1,6 +1,6 @@
 {
   "source": "workflow_function/agent.bal",
-  "description": "Rewrite an existing activity entry at its own range inside the declaration's activities list",
+  "description": "Keep an activity entry's declared name and description when the entry is rewritten",
   "diagram": {
     "id": "1",
     "metadata": {
@@ -45,7 +45,7 @@
           "label": "Activity Name"
         },
         "valueType": "TEXT",
-        "value": "",
+        "value": "lookupClaim",
         "optional": true,
         "editable": true,
         "advanced": true,
@@ -56,7 +56,7 @@
           "label": "Activity Description"
         },
         "valueType": "DOC_TEXT",
-        "value": "",
+        "value": "Looks up a claim by its id",
         "optional": true,
         "editable": true,
         "advanced": true,
@@ -67,7 +67,7 @@
           "label": "Requires Approval"
         },
         "valueType": "FLAG",
-        "value": "true",
+        "value": "false",
         "optional": true,
         "editable": true,
         "advanced": true,
@@ -83,50 +83,6 @@
         "editable": true,
         "advanced": false,
         "hidden": false
-      },
-      "maxRetries": {
-        "metadata": {
-          "label": "Max Retries"
-        },
-        "valueType": "EXPRESSION",
-        "value": "3",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": true
-      },
-      "retryDelay": {
-        "metadata": {
-          "label": "Retry Delay"
-        },
-        "valueType": "EXPRESSION",
-        "value": "1.0",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": true
-      },
-      "retryBackoff": {
-        "metadata": {
-          "label": "Retry Backoff"
-        },
-        "valueType": "EXPRESSION",
-        "value": "2.0",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": true
-      },
-      "maxRetryDelay": {
-        "metadata": {
-          "label": "Max Retry Delay"
-        },
-        "valueType": "EXPRESSION",
-        "value": "",
-        "optional": true,
-        "editable": true,
-        "advanced": true,
-        "hidden": true
       }
     },
     "flags": 0
@@ -144,7 +100,7 @@
             "character": 18
           }
         },
-        "newText": "{activity: myActivity, requiresApproval: true}"
+        "newText": "{activity: myActivity, name: \"lookupClaim\", description: \"Looks up a claim by its id\"}"
       }
     ]
   }

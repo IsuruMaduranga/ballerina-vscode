@@ -58,8 +58,8 @@
       },
       "name": {
         "metadata": {
-          "label": "Tool Name",
-          "description": "The tool name advertised to the model. Defaults to the function name"
+          "label": "Activity Name",
+          "description": "The activity name advertised to the model. Defaults to the function name"
         },
         "types": [
           {
@@ -71,13 +71,13 @@
         "value": "",
         "optional": true,
         "editable": true,
-        "advanced": false,
-        "hidden": true
+        "advanced": true,
+        "hidden": false
       },
       "description": {
         "metadata": {
-          "label": "Description",
-          "description": "Tells the model what this tool does and when to use it"
+          "label": "Activity Description",
+          "description": "Tells the model what this activity does and when to use it"
         },
         "types": [
           {
@@ -89,8 +89,8 @@
         "value": "",
         "optional": true,
         "editable": true,
-        "advanced": false,
-        "hidden": true
+        "advanced": true,
+        "hidden": false
       },
       "requiresApproval": {
         "metadata": {

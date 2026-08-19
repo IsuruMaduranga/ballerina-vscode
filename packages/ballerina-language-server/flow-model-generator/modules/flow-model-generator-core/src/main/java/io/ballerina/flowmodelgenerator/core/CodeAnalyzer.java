@@ -1588,7 +1588,7 @@ public class CodeAnalyzer extends NodeVisitor {
                         // form shows the text, not its source syntax.
                         String value;
                         if ("cardinality".equals(fieldName)) {
-                            value = stripModulePrefix(rawValue);
+                            value = WorkflowUtil.stripModulePrefix(rawValue);
                         } else if (TEXT_MODE_CAPABILITY_FIELDS.contains(fieldName)) {
                             value = stripQuotes(rawValue);
                         } else {
@@ -1618,11 +1618,6 @@ public class CodeAnalyzer extends NodeVisitor {
         if (value != null && !value.isBlank()) {
             values.put(key, value);
         }
-    }
-
-    private static String stripModulePrefix(String value) {
-        int colon = value.lastIndexOf(':');
-        return colon >= 0 ? value.substring(colon + 1) : value;
     }
 
     private static String stripQuotes(String value) {
