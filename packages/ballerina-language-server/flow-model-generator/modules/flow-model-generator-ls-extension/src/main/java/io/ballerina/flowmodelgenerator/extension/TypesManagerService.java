@@ -145,6 +145,7 @@ public class TypesManagerService implements ExtendedLanguageServerService {
                 JsonElement allTypes = typesManager.getAllTypes(moduleModel.get().semanticModel());
                 response.setTypes(allTypes);
             } catch (Throwable e) {
+                response.setTypes(new JsonArray());
                 response.setError(e);
             }
             return response;

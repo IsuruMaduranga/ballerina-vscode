@@ -1059,6 +1059,10 @@ public final class DatabindUtil {
      * The type definition of the data binding is written to types.bal, which is one of the files that the project
      * need not hold yet. Hence, the document is resolved through {@link FileSystemUtils#getDocument}, which creates
      * the file when it is absent.
+     * <p>
+     * Creating the file is deliberate. The callers of this method are the add and the update operations of a
+     * function, which the user has already committed to, and the text edits that they return are anchored to this
+     * document and are applied to it right away. A text edit cannot bring the file into being on its own.
      *
      * @param contextFilePath  The context file path for locating types.bal
      * @param workspaceManager The workspace manager for document retrieval

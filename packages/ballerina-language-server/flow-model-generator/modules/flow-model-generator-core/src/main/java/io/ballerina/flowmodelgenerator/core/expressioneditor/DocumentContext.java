@@ -179,16 +179,20 @@ public class DocumentContext {
 
         // Resolve the module that the file belongs to. WorkspaceManager.module() cannot resolve a path that does not
         // exist on disk. Hence, the parent directory is used for such a file.
-        Path modulePath = Files.exists(inputFilePath) ? inputFilePath : inputFilePath.getParent();
-        if (modulePath == null) {
+        Path lookupPath = Files.exists(inputFilePath) ? inputFilePath : inputFilePath.getParent();
+        if (lookupPath == null) {
             throw new IllegalStateException("Module not found for the file: " + inputFilePath);
         }
-        Optional<Module> optModule = workspaceManager().module(modulePath);
+
+        // The directory that holds the documents of the resolved module, which the reserved file is placed in.
+        Path modulePath;
+        Optional<Module> optModule = workspaceManager().module(lookupPath);
         if (optModule.isPresent()) {
             module = optModule.get();
+            modulePath = lookupPath;
         } else {
-            // Get the default module if not exists
             module = optProject.get().currentPackage().getDefaultModule();
+            modulePath = optProject.get().sourceRoot();
         }
 
         // If the file is not found, it defaults to the end of a random file. Although we can create a

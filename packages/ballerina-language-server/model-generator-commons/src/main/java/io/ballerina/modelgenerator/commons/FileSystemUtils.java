@@ -195,7 +195,7 @@ public class FileSystemUtils {
      *
      * @param workspaceManager the workspace manager used to load the project
      * @param filePath         the path of the file, which need not exist on disk
-     * @return the module model, or empty if the resolved module holds no documents
+     * @return the module model, or empty if the module cannot be resolved or holds no documents
      * @throws ProjectException           if the package of the given path cannot be located
      * @throws WorkspaceDocumentException if an error occurs while loading the project
      * @throws EventSyncException         if an error occurs while publishing the project update event
@@ -217,7 +217,11 @@ public class FileSystemUtils {
 
         Project project = resolveProject(workspaceManager, filePath);
         Package currentPackage = project.currentPackage();
-        Module module = workspaceManager.module(parentPath).orElseGet(currentPackage::getDefaultModule);
+        Optional<Module> optModule = workspaceManager.module(parentPath);
+        if (optModule.isEmpty()) {
+            return Optional.empty();
+        }
+        Module module = optModule.get();
         Optional<DocumentId> documentId = module.documentIds().stream().findFirst();
         if (documentId.isEmpty()) {
             return Optional.empty();
@@ -298,8 +302,7 @@ public class FileSystemUtils {
                 throw new RuntimeException("Error occurred while deleting the file: " + path, e);
             }
         });
-        // The list is cleared so that it holds the files of the current test class alone, and so that it does not
-        // grow without a bound in a language server that is long lived.
+        // The list is cleared so that it holds the files of the current test class alone.
         CREATED_FILES.clear();
     }
 }
