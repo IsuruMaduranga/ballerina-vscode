@@ -1270,6 +1270,11 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         if (agentEditor.view !== "NONE") {
             agentEditor.close();
         }
+        // Dismissing the panel ends the agent flow, so the flags that say "this activity list belongs
+        // to an agent" end with it. They are not cleared in resetNodeSelectionStates, which also runs
+        // on post-write refreshes the flow is meant to survive — only an explicit close means cancel.
+        durableAgentActivityListRef.current = false;
+        activityWizardForAgentRef.current = false;
         resetNodeSelectionStates();
         // Cancel draft and return to previous flow model
         if (hasDraft) {
@@ -2360,7 +2365,22 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             Object.values(DURABLE_CAPABILITY_NODE_KINDS).includes(updatedNode.codedata.node) &&
             selectedNodeRef.current?.codedata?.lineRange
         ) {
-            updatedNode.codedata.lineRange = selectedNodeRef.current.codedata.lineRange;
+            // The range is only the entry's if the selected node is still the node being submitted.
+            // A panel navigation between opening the form and submitting it can move the ref, and a
+            // range taken from another node would splice this entry over that one's source.
+            const selectedCodedata = selectedNodeRef.current.codedata;
+            const sameNode =
+                selectedCodedata.node === updatedNode.codedata.node &&
+                selectedCodedata.parentSymbol === updatedNode.codedata.parentSymbol;
+            if (sameNode) {
+                updatedNode.codedata.lineRange = selectedCodedata.lineRange;
+            } else {
+                console.error(
+                    ">>> Stale selected node while submitting a durable agent capability; " +
+                        "keeping the submitted range",
+                    { submitted: updatedNode.codedata, selected: selectedCodedata }
+                );
+            }
         }
 
         setShowProgressIndicator(true);

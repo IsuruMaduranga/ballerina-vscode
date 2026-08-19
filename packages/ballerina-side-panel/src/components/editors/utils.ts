@@ -159,7 +159,10 @@ export function withHeldValue(field: FormField, values: Record<string, any> | un
     const withChildren = field.advanceProps
         ? { ...field, advanceProps: field.advanceProps.map((child) => withHeldValue(child, values)) }
         : field;
-    return held === undefined || held === "" ? withChildren : { ...withChildren, value: held };
+    // Only an absent key means "never set". An empty string is a value the form holds — a cleared
+    // field — and folding it in with undefined would snap it back to the definition's default on the
+    // next render. Indistinguishable today, since every branch definition defaults to "".
+    return held === undefined ? withChildren : { ...withChildren, value: held };
 }
 
 
