@@ -1867,6 +1867,19 @@ public class CodeAnalyzer extends NodeVisitor {
     }
 
     /**
+     * Whether the statement discards a result that carries no value of its own — the shape
+     * {@code () _ = check ctx->callActivity(...)} takes when an activity only reports failure.
+     *
+     * <p>A wildcard alone is not enough: {@code int _ = check ctx->callActivity(...)} discards a value
+     * that still has a declared type, and reading it as a nil result would drop that type from the
+     * form and rewrite the statement without it on save.
+     */
+    private boolean bindsNilWildcard() {
+        return bindsWildcard()
+                && ActivityCallBuilder.isNilResultType(this.typedBindingPatternNode.typeDescriptor());
+    }
+
+    /**
      * Whether the statement names a result whose type carries no value of its own — the shape
      * {@code error? r = ctx->callActivity(...)} takes when an activity only reports failure and its
      * errors are not checked.
@@ -3916,7 +3929,7 @@ public class CodeAnalyzer extends NodeVisitor {
                             Property.VARIABLE_DOC, true, new HashSet<>(), true);
         } else if (nodeBuilder instanceof WaitDataBuilder) {
             // Variable/type info is embedded in the dataWaits property — skip generic handling
-        } else if (nodeBuilder instanceof ActivityCallBuilder && (bindsWildcard() || bindsNilResult())) {
+        } else if (nodeBuilder instanceof ActivityCallBuilder && (bindsNilWildcard() || bindsNilResult())) {
             // An activity producing no value: `() _ = check ctx->callActivity(...)` while its errors are
             // checked, `error? r = ctx->callActivity(...)` while they are not. Either way the form gets the
             // template's shape - the Result field inside the cleared Check Error branch, its value in a
