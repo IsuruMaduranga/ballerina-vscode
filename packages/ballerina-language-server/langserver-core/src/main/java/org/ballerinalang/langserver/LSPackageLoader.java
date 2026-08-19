@@ -341,7 +341,7 @@ public class LSPackageLoader {
                     PackageVersion candidate = PackageVersion.from(components[1]);
                     latestVersions.merge(components[0], candidate, (existing, latest) ->
                             latest.value().greaterThan(existing.value()) ? latest : existing);
-                } catch (Exception e) {
+                } catch (RuntimeException e) {
                     clientLogger.logTrace("Skipped package with an unreadable version: "
                             + packageOrg + "/" + nameEntry);
                 }

@@ -544,7 +544,7 @@ public class ActivityCallBuilder extends CallBuilder {
             if (lineRange == null) {
                 return Set.of();
             }
-            sourceBuilder.workspaceManager.loadProject(sourceBuilder.filePath);
+            PackageUtil.loadProject(sourceBuilder.workspaceManager, sourceBuilder.filePath);
             SemanticModel semanticModel = sourceBuilder.workspaceManager.semanticModel(sourceBuilder.filePath)
                     .orElseThrow();
             Document document = sourceBuilder.workspaceManager.document(sourceBuilder.filePath).orElseThrow();
@@ -552,7 +552,7 @@ public class ActivityCallBuilder extends CallBuilder {
                     .filter(symbol -> symbol.getName().isPresent())
                     .map(symbol -> symbol.getName().get())
                     .collect(Collectors.toSet());
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return Set.of();
         }
     }
