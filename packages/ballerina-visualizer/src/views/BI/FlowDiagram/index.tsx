@@ -2061,6 +2061,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 addActivityToDurableAgent(node.codedata, fileName)
                     .catch((error) => {
                         console.error(">>> Error adding the activity to the agent", error);
+                        // The form never opens on failure, so without this the panel just sits on the
+                        // activity list with the spinner gone and no reason given.
+                        showConnectorError();
                     })
                     .finally(() => {
                         setShowProgressIndicator(false);

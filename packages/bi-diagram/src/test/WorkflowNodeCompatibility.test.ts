@@ -180,6 +180,13 @@ describe("Workflow Nodes", () => {
             expect(getHumanTaskUserRoles(nodeWithUserRoles('"approver"'))).toEqual(["approver"]);
         });
 
+        it("keeps a comma that belongs to a role name", () => {
+            expect(getHumanTaskUserRoles(nodeWithUserRoles('["finance,approver", "MANAGER"]'))).toEqual([
+                "finance,approver",
+                "MANAGER",
+            ]);
+        });
+
         it("shows nothing for a value only known at run time", () => {
             expect(getHumanTaskUserRoles(nodeWithUserRoles("roles"))).toEqual([]);
             expect(getHumanTaskUserRoles(nodeWithUserRoles('[roles[0], "MANAGER"]'))).toEqual([]);

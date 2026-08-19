@@ -532,7 +532,14 @@ export function WaitDataNodeWidget(props: WaitDataNodeWidgetProps) {
                             {hasTimeout && (
                                 <Icon
                                     name="bi-clock"
-                                    sx={{ fontSize: "11px", position: "absolute", right: "-5px", bottom: "-3px" }}
+                                    sx={{
+                                        fontSize: "11px",
+                                        width: "11px",
+                                        height: "11px",
+                                        position: "absolute",
+                                        right: "-5px",
+                                        bottom: "-3px",
+                                    }}
                                 />
                             )}
                         </div>

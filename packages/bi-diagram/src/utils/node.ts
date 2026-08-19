@@ -118,16 +118,59 @@ export function getHumanTaskUserRoles(node?: FlowNode): string[] {
 
     const expression = value.trim();
     const isListLiteral = expression.startsWith("[") && expression.endsWith("]");
-    const elements = (isListLiteral ? expression.slice(1, -1) : expression)
-        .split(",")
-        .map((element) => element.trim())
-        .filter(Boolean);
+    const elements = splitListElements(isListLiteral ? expression.slice(1, -1) : expression);
 
     if (elements.length === 0 || !elements.every((element) => /^(".*"|'.*')$/.test(element))) {
         return [];
     }
 
     return elements.map((element) => normalizeNodePropertyValue(element)).filter(Boolean);
+}
+
+/**
+ * The elements of a list literal's body, split on the commas that separate them rather than on every
+ * comma: a comma inside a role name (`"finance,approver"`) belongs to the name, and splitting there
+ * would leave two halves that are not literals — so the roles would silently not render at all.
+ */
+function splitListElements(body: string): string[] {
+    const elements: string[] = [];
+    let current = "";
+    let quote: string | undefined;
+    let escaped = false;
+
+    for (const char of body) {
+        if (escaped) {
+            current += char;
+            escaped = false;
+            continue;
+        }
+        if (quote && char === "\\") {
+            current += char;
+            escaped = true;
+            continue;
+        }
+        if (quote) {
+            current += char;
+            if (char === quote) {
+                quote = undefined;
+            }
+            continue;
+        }
+        if (char === '"' || char === "'") {
+            quote = char;
+            current += char;
+            continue;
+        }
+        if (char === ",") {
+            elements.push(current);
+            current = "";
+            continue;
+        }
+        current += char;
+    }
+    elements.push(current);
+
+    return elements.map((element) => element.trim()).filter(Boolean);
 }
 
 export function isWaitingAgentCall(node?: FlowNode) {
@@ -151,7 +194,14 @@ export function normalizeNodePropertyValue(value?: string): string {
         return "";
     }
 
-    return value.trim().replace(/^["']|["']$/g, "");
+    const trimmed = value.trim();
+    // Only a matched pair is quoting. An unbalanced quote is part of the value, and stripping one end
+    // of it would quietly change what the node names.
+    const quote = trimmed.charAt(0);
+    if (trimmed.length >= 2 && (quote === '"' || quote === "'") && trimmed.endsWith(quote)) {
+        return trimmed.slice(1, -1);
+    }
+    return trimmed;
 }
 
 /**
