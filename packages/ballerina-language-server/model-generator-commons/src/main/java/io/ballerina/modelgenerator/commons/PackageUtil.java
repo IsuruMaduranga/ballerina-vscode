@@ -62,6 +62,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 /**
  * Utility class that contains methods to perform package-related operations.
@@ -120,6 +121,31 @@ public class PackageUtil {
      * (and resolver), so the shared resolver was never used concurrently. Keep that property.
      */
     private static final Object SAMPLE_RESOLUTION_LOCK = new Object();
+
+    /**
+     * Caches only resolved paths. An absence is not remembered: the module-pull flow retries
+     * through here, and a cached failure would outlive the network problem that caused it.
+     */
+    private static Optional<Path> memoizedSampleBala(String key, Supplier<Optional<Path>> resolution) {
+        Optional<Path> cached = SAMPLE_RESOLUTION_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (SAMPLE_RESOLUTION_LOCK) {
+            Optional<Path> present = SAMPLE_RESOLUTION_CACHE.get(key);
+            if (present != null) {
+                return present;
+            }
+            Optional<Path> resolved;
+            try {
+                resolved = resolution.get();
+            } catch (RuntimeException e) {
+                return Optional.empty();
+            }
+            resolved.ifPresent(path -> SAMPLE_RESOLUTION_CACHE.put(key, Optional.of(path)));
+            return resolved;
+        }
+    }
 
     private static String sampleResolutionKey(String org, String name, String version, String repository) {
         return org + ":" + name + ":" + (version == null ? "<latest>" : version)
@@ -257,19 +283,9 @@ public class PackageUtil {
         // are safe to memoize across requests. Resolutions against a caller's real project may
         // depend on that project's state — leave them uncached.
         if (buildProject == SAMPLE_PROJECT) {
-            return SAMPLE_RESOLUTION_CACHE.computeIfAbsent(sampleResolutionKey(org, name, version, repository),
-                    key -> {
-                        synchronized (SAMPLE_RESOLUTION_LOCK) {
-                            try {
-                                return resolveVersionedModuleBala(buildProject, org, name, version, repository);
-                            } catch (RuntimeException e) {
-                                // Cache the miss: a package that fails to resolve (typically a
-                                // generated/test package that does not exist on Central) would
-                                // otherwise re-pay the network round trip on every request.
-                                return Optional.empty();
-                            }
-                        }
-                    }).flatMap(PackageUtil::loadBalaPackage);
+            return memoizedSampleBala(sampleResolutionKey(org, name, version, repository),
+                    () -> resolveVersionedModuleBala(buildProject, org, name, version, repository))
+                    .flatMap(PackageUtil::loadBalaPackage);
         }
         return resolveVersionedModuleBala(buildProject, org, name, version, repository)
                 .flatMap(PackageUtil::loadBalaPackage);
@@ -322,16 +338,8 @@ public class PackageUtil {
         // See the versioned overload for why sample-project resolutions are memoized. The
         // "latest version" lookup below can itself hit Central, so caching matters just as much.
         if (buildProject == SAMPLE_PROJECT) {
-            return SAMPLE_RESOLUTION_CACHE.computeIfAbsent(sampleResolutionKey(org, name, null, null),
-                    key -> {
-                        synchronized (SAMPLE_RESOLUTION_LOCK) {
-                            try {
-                                return resolveLatestModuleBala(buildProject, org, name);
-                            } catch (RuntimeException e) {
-                                return Optional.empty();
-                            }
-                        }
-                    }).flatMap(PackageUtil::loadBalaPackage);
+            return memoizedSampleBala(sampleResolutionKey(org, name, null, null),
+                    () -> resolveLatestModuleBala(buildProject, org, name)).flatMap(PackageUtil::loadBalaPackage);
         }
         return resolveLatestModuleBala(buildProject, org, name).flatMap(PackageUtil::loadBalaPackage);
     }
