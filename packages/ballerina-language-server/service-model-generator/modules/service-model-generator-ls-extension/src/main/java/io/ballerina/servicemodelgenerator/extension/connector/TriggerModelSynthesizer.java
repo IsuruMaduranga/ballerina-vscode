@@ -377,6 +377,9 @@ public final class TriggerModelSynthesizer {
             if (!TriggerMetadataModel.Rule.RULE_EXACTLY_ONE.equals(rule.rule())) {
                 continue;
             }
+            if (rule.subjects() == null) {
+                continue;
+            }
             boolean hasIdentifierSubject = rule.subjects().stream()
                     .anyMatch(s -> TriggerMetadataModel.Subject.KIND_IDENTIFIER.equals(s.kind()));
             if (!hasIdentifierSubject) {
@@ -392,7 +395,7 @@ public final class TriggerModelSynthesizer {
 
     /** The subject named by {@code prefer} (matched on {@code role}), or the first subject if absent. */
     private static TriggerMetadataModel.Subject preferredSubject(TriggerMetadataModel.Rule rule) {
-        if (rule.subjects().isEmpty()) {
+        if (rule.subjects() == null || rule.subjects().isEmpty()) {
             return null;
         }
         if (rule.prefer() == null) {
@@ -706,7 +709,13 @@ public final class TriggerModelSynthesizer {
 
     /** The first shape (declaration order) across all variants that splices into an envelope. */
     private static ShapeMatch findIncludedShape(List<TriggerMetadataModel.ServiceType.TypedescVariant> variants) {
+        if (variants == null) {
+            return null;
+        }
         for (TriggerMetadataModel.ServiceType.TypedescVariant variant : variants) {
+            if (variant.shapes() == null) {
+                continue;
+            }
             for (TriggerMetadataModel.ServiceType.Shape shape : variant.shapes()) {
                 if (isIncluded(shape)) {
                     return new ShapeMatch(variant, shape);
@@ -718,10 +727,13 @@ public final class TriggerModelSynthesizer {
 
     /** The first variant's first directly-declared shape (skipping {@code included} and {@code stream}). */
     private static ShapeMatch findDeclaredShape(List<TriggerMetadataModel.ServiceType.TypedescVariant> variants) {
-        if (variants.isEmpty()) {
+        if (variants == null || variants.isEmpty()) {
             return null;
         }
         TriggerMetadataModel.ServiceType.TypedescVariant first = variants.get(0);
+        if (first.shapes() == null) {
+            return null;
+        }
         for (TriggerMetadataModel.ServiceType.Shape shape : first.shapes()) {
             if (!isIncluded(shape) && !TriggerMetadataModel.ServiceType.Shape.FORM_STREAM.equals(shape.form())) {
                 return new ShapeMatch(first, shape);
@@ -737,7 +749,13 @@ public final class TriggerModelSynthesizer {
 
     /** A {@code stream} shape is presence-only: {@link #buildStreamModifierProperty} owns its template. */
     private static boolean hasStreamShape(List<TriggerMetadataModel.ServiceType.TypedescVariant> variants) {
+        if (variants == null) {
+            return false;
+        }
         for (TriggerMetadataModel.ServiceType.TypedescVariant variant : variants) {
+            if (variant.shapes() == null) {
+                continue;
+            }
             for (TriggerMetadataModel.ServiceType.Shape shape : variant.shapes()) {
                 if (TriggerMetadataModel.ServiceType.Shape.FORM_STREAM.equals(shape.form())) {
                     return true;
