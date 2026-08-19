@@ -343,9 +343,9 @@ async function generatePendingArtifact(
  * quick-pick). Failures are non-fatal: the agent exists and the provider can be configured
  * from the agent's model circle.
  *
- * Only attempted while the user is signed in to the AI features: fetching the default model's
- * token signs them out when it fails, so running this for a signed-out user would end their
- * session as a side effect of creating an agent.
+ * Only attempted while the user is signed in to the AI features, and with `signOutOnFailure` off:
+ * a failed token fetch signs the user out by default, and ending their AI session because a
+ * background config write hit a network blip is a far larger consequence than the write itself.
  */
 async function configureDurableAgentModelProvider(projectRoot: string): Promise<void> {
     if (!isAIAuthenticated()) {
@@ -354,7 +354,7 @@ async function configureDurableAgentModelProvider(projectRoot: string): Promise<
     try {
         const configPath = await getConfigFilePath(extension.ballerinaExtInstance, projectRoot);
         if (configPath) {
-            await addConfigFile(configPath, "model");
+            await addConfigFile(configPath, "model", { signOutOnFailure: false });
         }
     } catch (error) {
         console.error("[IntegrationWizard] Failed to configure the default model provider:", error);
