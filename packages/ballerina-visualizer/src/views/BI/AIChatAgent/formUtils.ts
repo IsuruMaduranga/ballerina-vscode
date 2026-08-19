@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import { AvailableNode, Category, NodeMetadata, ValueTypeConstraint, ToolParameters, getPrimaryInputType } from "@wso2/ballerina-core";
+import { AvailableNode, Category, NodeMetadata, NodeProperties, Property, RecordTypeField, ToolParameters,
+    ValueTypeConstraint, getPrimaryInputType } from "@wso2/ballerina-core";
 import { FormField, FormValues, Parameter } from "@wso2/ballerina-side-panel";
 
 const SQL_PARAMETERIZED_TYPES = ["sql:ParameterizedQuery", "sql:ParameterizedCallQuery"];
@@ -480,6 +481,7 @@ export function buildAgentToolFields(nameValue: string, descriptionValue: string
             key: "description",
             label: "Description",
             type: "TEXTAREA",
+            growRange: { start: 3, offset: 12 },
             optional: true,
             editable: true,
             documentation: "Describe what this tool does. The agent uses this to decide when to invoke the tool.",
@@ -488,4 +490,25 @@ export function buildAgentToolFields(nameValue: string, descriptionValue: string
             enabled: true,
         },
     ];
+}
+
+export type PropertyEntry = { key: string; property: Property };
+
+
+export function extractRecordTypeFieldsFromEntries(entries: PropertyEntry[]): RecordTypeField[] {
+    return entries
+        .filter(({ property }) => getPrimaryInputType(property?.types)?.typeMembers
+            ?.some(member => member.kind === "RECORD_TYPE"))
+        .map(({ key, property }) => ({
+            key,
+            property,
+            recordTypeMembers: getPrimaryInputType(property?.types)?.typeMembers
+                .filter(member => member.kind === "RECORD_TYPE"),
+        }));
+}
+
+export function extractRecordTypeFields(properties: NodeProperties): RecordTypeField[] {
+    return extractRecordTypeFieldsFromEntries(
+        Object.entries(properties).map(([key, property]) => ({ key, property }))
+    );
 }
