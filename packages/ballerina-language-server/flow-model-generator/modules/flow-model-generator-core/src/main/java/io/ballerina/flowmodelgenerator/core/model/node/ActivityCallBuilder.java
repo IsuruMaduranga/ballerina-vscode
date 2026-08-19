@@ -54,6 +54,7 @@ import io.ballerina.modelgenerator.commons.FunctionDataBuilder;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.modelgenerator.commons.ParameterData;
+import io.ballerina.projects.Document;
 import io.ballerina.projects.Module;
 import io.ballerina.projects.Project;
 import io.ballerina.tools.text.LineRange;
@@ -68,6 +69,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.ACTIVITY_MODULE;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.BUILTIN_EMAIL_FUNCTION;
@@ -113,6 +115,9 @@ public class ActivityCallBuilder extends CallBuilder {
      */
     public static final String NIL_UNCHECKED_RESULT_TYPE = "error?";
     public static final String DEFAULT_NIL_RESULT_VARIABLE = "activityResult";
+    // The fallback name for a call that does produce a value. Both source paths read it from here:
+    // they used to disagree, and a value-returning user activity bound `activityResult`.
+    public static final String DEFAULT_RESULT_VARIABLE = "result";
     public static final String ADVANCE_CONFIGURATIONS = "Activity call configurations";
     public static final String CHECK_ERROR_DESCRIPTION =
             "Add 'check' to propagate errors. Uncheck to handle errors manually.";
@@ -501,10 +506,11 @@ public class ActivityCallBuilder extends CallBuilder {
                 return new ResultBinding(NIL_RESULT_TYPE, WILDCARD_RESULT_VARIABLE, true);
             }
             return new ResultBinding(NIL_UNCHECKED_RESULT_TYPE,
-                    variableName == null ? fallbackVariable : variableName, false);
+                    variableName == null ? uniqueFallbackName(sourceBuilder, fallbackVariable) : variableName,
+                    false);
         }
 
-        String boundName = variableName == null ? fallbackVariable : variableName;
+        String boundName = variableName == null ? uniqueFallbackName(sourceBuilder, fallbackVariable) : variableName;
         return new ResultBinding(checkError ? declaredType : widenWithError(declaredType), boundName, checkError);
     }
 
@@ -516,6 +522,39 @@ public class ActivityCallBuilder extends CallBuilder {
                 .map(p -> p.value() == null ? "" : p.value().toString().strip())
                 .filter(value -> !value.isEmpty())
                 .orElse(null);
+    }
+
+    /**
+     * The fallback result name, made unique among the symbols visible where the statement lands.
+     *
+     * <p>The template seeds a unique name ({@link #generatedNilResultName}), so this only runs when the
+     * submitted form carried none — but two such calls would otherwise both bind the bare constant, which
+     * is the {@code redeclared symbol} this builder exists to avoid. Resolved lazily: the semantic model
+     * is only loaded on the path that needs it.
+     */
+    private static String uniqueFallbackName(SourceBuilder sourceBuilder, String fallbackVariable) {
+        return NameUtil.generateTypeName(fallbackVariable, visibleSymbolNames(sourceBuilder));
+    }
+
+    // The names in scope at the statement's position. An empty set on any failure: a name that is
+    // merely not uniquified is better than failing the whole source generation.
+    private static Set<String> visibleSymbolNames(SourceBuilder sourceBuilder) {
+        try {
+            LineRange lineRange = sourceBuilder.flowNode.codedata().lineRange();
+            if (lineRange == null) {
+                return Set.of();
+            }
+            sourceBuilder.workspaceManager.loadProject(sourceBuilder.filePath);
+            SemanticModel semanticModel = sourceBuilder.workspaceManager.semanticModel(sourceBuilder.filePath)
+                    .orElseThrow();
+            Document document = sourceBuilder.workspaceManager.document(sourceBuilder.filePath).orElseThrow();
+            return semanticModel.visibleSymbols(document, lineRange.startLine()).stream()
+                    .filter(symbol -> symbol.getName().isPresent())
+                    .map(symbol -> symbol.getName().get())
+                    .collect(Collectors.toSet());
+        } catch (Exception e) {
+            return Set.of();
+        }
     }
 
     /**
@@ -784,7 +823,9 @@ public class ActivityCallBuilder extends CallBuilder {
         // `anydata result` here made every such call declare the same variable, which is a duplicate
         // symbol as soon as there are two of them.
         String declaredType = nonBlankValue(sourceBuilder.getProperty(Property.TYPE_KEY));
-        ResultBinding binding = resolveResultBinding(sourceBuilder, declaredType, DEFAULT_NIL_RESULT_VARIABLE);
+        boolean hasReturnValue = declaredType != null && !isNilResultType(declaredType);
+        ResultBinding binding = resolveResultBinding(sourceBuilder, declaredType,
+                hasReturnValue ? DEFAULT_RESULT_VARIABLE : DEFAULT_NIL_RESULT_VARIABLE);
         String resultType = binding.resultType();
         String variableName = binding.variableName();
         boolean useCheck = binding.useCheck();
@@ -874,7 +915,7 @@ public class ActivityCallBuilder extends CallBuilder {
         // binds a wildcard — `callActivity` is dependently typed and a bare call statement cannot infer
         // its `T`. Unchecked, the error itself is the result and takes the name the form carries.
         ResultBinding binding = resolveResultBinding(sourceBuilder, hasReturnValue ? lhsType : null,
-                hasReturnValue ? "result" : DEFAULT_NIL_RESULT_VARIABLE);
+                hasReturnValue ? DEFAULT_RESULT_VARIABLE : DEFAULT_NIL_RESULT_VARIABLE);
 
         sourceBuilder.token()
                 .name(binding.resultType())
