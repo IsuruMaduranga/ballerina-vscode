@@ -115,7 +115,7 @@
                 "id": "$service.onHubError.err",
                 "name": "err",
                 "doc": "The failure the hub reported.",
-                "type": { "name": "HubError" },
+                "type": { "name": "InternalHubError" },
                 "presence": "required"
               }
             ],
