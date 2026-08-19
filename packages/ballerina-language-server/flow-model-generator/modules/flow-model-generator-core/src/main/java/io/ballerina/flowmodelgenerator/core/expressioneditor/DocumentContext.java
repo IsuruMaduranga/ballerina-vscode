@@ -184,15 +184,15 @@ public class DocumentContext {
             throw new IllegalStateException("Module not found for the file: " + inputFilePath);
         }
 
-        // The directory that holds the documents of the resolved module, which the reserved file is placed in.
+        // The directory that holds the documents of the resolved module, which the reserved file path is built from.
         Path modulePath;
         Optional<Module> optModule = workspaceManager().module(lookupPath);
         if (optModule.isPresent()) {
             module = optModule.get();
-            modulePath = lookupPath;
+            modulePath = moduleRootOf(lookupPath);
         } else {
             module = optProject.get().currentPackage().getDefaultModule();
-            modulePath = optProject.get().sourceRoot();
+            modulePath = moduleRootOf(optProject.get().sourceRoot());
         }
 
         // If the file is not found, it defaults to the end of a random file. Although we can create a
@@ -209,6 +209,28 @@ public class DocumentContext {
         filePath = modulePath.resolve(document.name());
         fileUri = CommonUtils.getExprUri(filePath.toString());
         initialized = true;
+    }
+
+    /**
+     * Returns the directory that holds the documents of a module, given a path that denotes either that directory or a
+     * file within it.
+     * <p>
+     * Both {@link WorkspaceManager#module(Path)} and {@link Project#sourceRoot()} answer with the source file itself
+     * for a single-file project, since such a project is rooted at its file rather than at a directory. Resolving a
+     * document name against that path would build a path below a file, hence a file is taken as its parent here.
+     *
+     * @param path the directory of a module, or a file that the module holds
+     * @return the directory that holds the documents of the module
+     */
+    private static Path moduleRootOf(Path path) {
+        if (Files.isDirectory(path)) {
+            return path;
+        }
+        Path parent = path.getParent();
+        if (parent == null) {
+            throw new IllegalStateException("Failed to resolve the module directory of the path: " + path);
+        }
+        return parent;
     }
 
     public void clear() {
