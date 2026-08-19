@@ -16,20 +16,25 @@
  * under the License.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 // On window so Escape is seen wherever focus is; anything opened on top (the sessions dropdown, a
 // popup) gets first refusal via preventDefault, or one Escape would dismiss it AND abort the run.
 export function useEscapeToStop(onStop: () => void) {
+    // Through a ref, so a caller passing an unmemoized callback does not re-register the
+    // window listener on every render.
+    const onStopRef = useRef(onStop);
+    onStopRef.current = onStop;
+
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key !== "Escape" || event.defaultPrevented) {
                 return;
             }
             event.preventDefault();
-            onStop();
+            onStopRef.current();
         };
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [onStop]);
+    }, []);
 }
