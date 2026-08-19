@@ -43,7 +43,14 @@ public final class TypeRefRenderer {
         return refs.stream().map(r -> render(r, moduleName, aliasResolver)).collect(Collectors.joining("|"));
     }
 
-    /** One node: a qualified name, {@code T[]}, or {@code stream<T>}/{@code stream<T, C>}. */
+    /**
+     * One node: a qualified name, {@code T[]}, {@code stream<T>}/{@code stream<T, C>}, or
+     * {@code readonly & T}.
+     *
+     * @throws IllegalArgumentException on a {@code shape} outside the closed vocabulary -- unlike the
+     *                                  open rule registry, an unrecognised type shape cannot be
+     *                                  rendered at all and must fail loudly, not silently
+     */
     public static String render(TypeRef ref, String moduleName, UnaryOperator<String> aliasResolver) {
         if (ref == null) {
             return "anydata";
@@ -51,21 +58,32 @@ public final class TypeRefRenderer {
         if (ref.isNamed()) {
             return qualifyName(ref, moduleName, aliasResolver);
         }
+        // A bare union binds looser than [] or &, so "A|B[]" reads as "A|(B[])" -- parenthesize.
         String element = render(ref.elementType(), moduleName, aliasResolver);
-        if (TypeRef.SHAPE_ARRAY.equals(ref.shape())) {
-            // A bare union binds looser than [], so "A|B[]" reads as "A|(B[])" -- parenthesize.
-            boolean parenthesize = ref.elementType() != null && ref.elementType().size() > 1;
-            return (parenthesize ? "(" + element + ")" : element) + "[]";
+        boolean parenthesize = ref.elementType() != null && ref.elementType().size() > 1;
+        String parenthesized = parenthesize ? "(" + element + ")" : element;
+        switch (ref.shape()) {
+            case TypeRef.SHAPE_ARRAY:
+                return parenthesized + "[]";
+            case TypeRef.SHAPE_READONLY:
+                return "readonly & " + parenthesized;
+            case TypeRef.SHAPE_STREAM:
+                if (ref.completionType() == null || ref.completionType().isEmpty()) {
+                    return "stream<" + element + ">";
+                }
+                return "stream<" + element + ", " + render(ref.completionType(), moduleName, aliasResolver) + ">";
+            default:
+                throw new IllegalArgumentException("Unrecognized TypeRef shape: " + ref.shape());
         }
-        if (ref.completionType() == null || ref.completionType().isEmpty()) {
-            return "stream<" + element + ">";
-        }
-        return "stream<" + element + ", " + render(ref.completionType(), moduleName, aliasResolver) + ">";
     }
 
     private static String qualifyName(TypeRef ref, String moduleName, UnaryOperator<String> aliasResolver) {
         String name = ref.name();
-        if (name == null || name.isEmpty() || !Character.isUpperCase(name.charAt(0))) {
+        if (name == null || name.isEmpty()) {
+            return name;
+        }
+        boolean builtin = Boolean.TRUE.equals(ref.builtin()) || !Character.isUpperCase(name.charAt(0));
+        if (builtin) {
             return name;
         }
         String prefixModule = ref.packageInfo() != null ? ref.packageInfo().moduleName() : moduleName;

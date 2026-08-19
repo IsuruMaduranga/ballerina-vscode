@@ -46,13 +46,14 @@ public class TriggerModelSynthesizerTest {
                 new TypeRef.PackageInfo("ballerinax", "mssql.cdc.driver", "mssql.cdc.driver", "1.0.2");
 
         TriggerMetadataModel.Listener listener = new TriggerMetadataModel.Listener(
+                "$listener", "Listens for CDC events.",
                 new TypeRef("CdcListener", null), null, List.of("$service"), true, null,
                 List.of(new TriggerMetadataModel.RequiredImport(
                         TriggerMetadataModel.RequiredImport.IMPORT_TYPE_DRIVER, driverModule)),
                 null);
 
         TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
-                "$service", new TypeRef("Service", cdcModule), null, false, true, null, null,
+                "$service", "A CDC service.", new TypeRef("Service", cdcModule), null, false, true, null, null,
                 new TriggerMetadataModel.ServiceType.Handlers(false, List.of()),
                 null);
 
@@ -83,9 +84,10 @@ public class TriggerModelSynthesizerTest {
             + "module) needs no extra imports.")
     public void testNoImportStatementsWhenEverythingIsSelfModule() {
         TriggerMetadataModel.Listener listener = new TriggerMetadataModel.Listener(
+                "$listener", "Listens for events.",
                 new TypeRef("Listener", null), null, List.of("$service"), false, null, null, null);
         TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
-                "$service", new TypeRef("Service", null), null, false, false, null, null,
+                "$service", "A service.", new TypeRef("Service", null), null, false, false, null, null,
                 new TriggerMetadataModel.ServiceType.Handlers(false, List.of()),
                 null);
         TriggerMetadataModel authoring = new TriggerMetadataModel(

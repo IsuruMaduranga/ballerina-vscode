@@ -39,6 +39,9 @@ public record TriggerMetadataModel(
         List<Rule> rules) {
 
     /**
+     * @param id flat; {@code $listener}, or {@code $listener1}/{@code $listener2} when a connector
+     *           declares more than one
+     * @param doc what this listener is and when a service attaches to it
      * @param type the listener type
      * @param deprecated why this construct is deprecated, if it is
      * @param services serviceTypes ids this listener can host
@@ -48,6 +51,8 @@ public record TriggerMetadataModel(
      * @param platformDependencies native dependencies declared in {@code Ballerina.toml}
      */
     public record Listener(
+            String id,
+            String doc,
             TypeRef type,
             String deprecated,
             List<String> services,
@@ -105,6 +110,7 @@ public record TriggerMetadataModel(
 
     /**
      * @param id referenced from {@code listeners[].services} and sibling constructs
+     * @param doc what this service type is for
      * @param type the service object type
      * @param deprecated why this construct is deprecated, if it is
      * @param concrete true when the type's own methods are introspectable
@@ -116,6 +122,7 @@ public record TriggerMetadataModel(
      */
     public record ServiceType(
             String id,
+            String doc,
             TypeRef type,
             String deprecated,
             boolean concrete,
@@ -133,6 +140,7 @@ public record TriggerMetadataModel(
         }
 
         /**
+         * @param id hierarchical: the owning serviceType's id plus this handler's name
          * @param name the handler method name, or {@code "*"} for an open handler
          * @param kind {@link #KIND_REMOTE} or {@link #KIND_RESOURCE}
          * @param addMode {@link #ADD_MODE_SUBSET} (default) or {@link #ADD_MODE_MANY}
@@ -140,13 +148,13 @@ public record TriggerMetadataModel(
          * @param deprecated why this construct is deprecated, if it is
          * @param presence only under {@code addMode: "subset"}
          * @param annotations ids of annotations with {@code attachPoint: "function"}
-         * @param returnAnnotations ids of annotations with {@code attachPoint: "return"}
          * @param params the handler's parameters
-         * @param returns the handler's possible return types
+         * @param returns the handler's return, grouped since it can carry the same id/dataBinding/annotations facts
          * @param accessor resource kind only
          * @param path resource kind only
          */
         public record HandlerOption(
+                String id,
                 String name,
                 String kind,
                 String addMode,
@@ -154,9 +162,8 @@ public record TriggerMetadataModel(
                 String deprecated,
                 String presence,
                 List<String> annotations,
-                List<String> returnAnnotations,
                 List<Param> params,
-                List<TypeRef> returns,
+                ReturnSpec returns,
                 ValueSpec accessor,
                 ValueSpec path) {
 
@@ -168,6 +175,17 @@ public record TriggerMetadataModel(
         }
 
         /**
+         * @param id hierarchical: the owning handler's id plus the fixed segment {@code returns}
+         * @param type the return's possible types
+         * @param dataBinding present only when one union member is a user-declared subtype the runtime
+         *                    serializes out, the outbound counterpart of a param's {@code dataBinding}
+         * @param annotations ids of annotations with {@code attachPoint: "return"}
+         */
+        public record ReturnSpec(String id, List<TypeRef> type, DataBinding dataBinding, List<String> annotations) {
+        }
+
+        /**
+         * @param id hierarchical: the owning handler's id plus this parameter's name
          * @param name the parameter name to emit; omitted only when {@code addMode} is {@code "many"}
          * @param doc what this parameter carries
          * @param deprecated why this construct is deprecated, if it is
@@ -178,6 +196,7 @@ public record TriggerMetadataModel(
          * @param annotations ids of annotations with {@code attachPoint: "parameter"}
          */
         public record Param(
+                String id,
                 String name,
                 String doc,
                 String deprecated,
@@ -251,14 +270,15 @@ public record TriggerMetadataModel(
      *
      * @param kind {@link #KIND_IDENTIFIER}, {@link #KIND_ANNOTATION}, {@link #KIND_ANNOTATION_FIELD},
      *             {@link #KIND_HANDLER} or {@link #KIND_PARAM}
-     * @param name an annotation id ({@code annotation} kind) or a handler name ({@code handler} kind)
+     * @param id an annotation id ({@code annotation} kind), or a handler's/param's own hierarchical id
+     *           ({@code handler}/{@code param} kind) -- never a bare name, since a {@code many} option's
+     *           name is always {@code "*"} and cannot disambiguate
      * @param annotation annotation id, for {@code annotationField}
      * @param path field path inside the annotation record, for {@code annotationField}
-     * @param handler handler name, for {@code param}
      * @param serviceType defaults to the enclosing service type; required in a top-level rule
      * @param role this subject's name within its rule
      */
-    public record Subject(String kind, String name, String annotation, List<String> path, String handler,
+    public record Subject(String kind, String id, String annotation, List<String> path,
                           String serviceType, String role) {
 
         public static final String KIND_IDENTIFIER = "identifier";

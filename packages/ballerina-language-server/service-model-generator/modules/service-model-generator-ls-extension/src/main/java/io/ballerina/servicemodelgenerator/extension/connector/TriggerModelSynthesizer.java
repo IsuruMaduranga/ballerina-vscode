@@ -452,8 +452,9 @@ public final class TriggerModelSynthesizer {
             }
         }
 
+        String description = serviceType.doc() == null || serviceType.doc().isBlank() ? null : serviceType.doc();
         return new TriggerUISchemaModel.ServiceTypeModel(
-                new TriggerUISchemaModel.Metadata(humanize(stripId(serviceType.id())), null,
+                new TriggerUISchemaModel.Metadata(humanize(stripId(serviceType.id())), description,
                         serviceType.deprecated(), null, null, null, null, null, serviceType.deprecated() != null,
                         null),
                 typeName, null, isFirst, multiType, properties, functions, schemaFunctions,
@@ -538,7 +539,8 @@ public final class TriggerModelSynthesizer {
                 parameters.add(buildParameterFromAuthoring(param, moduleName));
             }
         }
-        TriggerUISchemaModel.ReturnType returnType = buildReturnTypeFromRefs(option.returns(), moduleName);
+        TriggerUISchemaModel.ReturnType returnType = buildReturnTypeFromRefs(
+                option.returns() == null ? null : option.returns().type(), moduleName);
         Map<String, TriggerUISchemaModel.Property> properties = buildFunctionAnnotations(option.annotations(),
                 authoring, facts, identity);
 

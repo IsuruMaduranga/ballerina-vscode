@@ -36,12 +36,17 @@
 
   "$defs": {
     "id": {
-      "description": "An identifier or a reference to one. Always starts with a dollar sign.",
+      "description": "An identifier or a reference to one. Always starts with a dollar sign. A handler, param, or return id is hierarchical: dot separated segments scoping it under its owning construct, for example $service.onMessage.records.",
       "type": "string",
-      "pattern": "^\\$[A-Za-z][A-Za-z0-9_]*$"
+      "pattern": "^\\$[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)*$"
     },
     "idList": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } },
     "presence": { "enum": ["required", "optional"] },
+    "deprecatedReason": {
+      "description": "Why this construct is deprecated, as prose. A generator emitting Ballerina puts it in the # # Deprecated doc section.",
+      "type": "string",
+      "minLength": 1
+    },
     "packageInfo": {
       "description": "The package a cross module type comes from.",
       "type": "object",
@@ -68,7 +73,15 @@
               "type": "string",
               "pattern": "^(\\(\\)|record \\{\\}|[A-Za-z_][A-Za-z0-9_]*)$"
             },
-            "packageInfo": { "$ref": "#/$defs/packageInfo" }
+            "packageInfo": { "$ref": "#/$defs/packageInfo" },
+            "builtin": {
+              "description": "Present and true only when name is one of Ballerina's own language types (the basic types, anydata, any, error, (), record {}, and similarly). Absent, never false, for a module type.",
+              "const": true
+            },
+            "subtypeFamily": {
+              "description": "Present and true only where this reference stands for the named type and every introspectable subtype of it, not the exact type alone, such as http:StatusCodeResponse covering http:Ok, http:Created, and any user declared narrowing. Meaningful wherever a typeRef names a relationship a declared type must satisfy rather than the declared type itself: dataBinding's constraint, excludes, and envelope. Absent, never false, elsewhere.",
+              "const": true
+            }
           }
         },
         {
@@ -92,6 +105,17 @@
             "elementType": { "description": "The value type.", "$ref": "#/$defs/typeRefOrUnion" },
             "completionType": { "description": "Optional. What the stream terminates with.", "$ref": "#/$defs/typeRefOrUnion" }
           }
+        },
+        {
+          "title": "readonly",
+          "description": "A readonly intersection terminates with nothing, so it has no completionType.",
+          "type": "object",
+          "required": ["shape", "elementType"],
+          "additionalProperties": false,
+          "properties": {
+            "shape": { "const": "readonly" },
+            "elementType": { "description": "The type readonly intersects with.", "$ref": "#/$defs/typeRefOrUnion" }
+          }
         }
       ]
     },
@@ -101,7 +125,7 @@
     },
     "listener": {
       "type": "object",
-      "required": ["type", "services", "multipleServicesAllowed"],
+      "required": ["id", "doc", "type", "services", "multipleServicesAllowed"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -113,12 +137,10 @@
         }
       ],
       "properties": {
+        "id": { "description": "Flat, since a listener nests nothing above it. $listener, or $listener1/$listener2 when a connector declares more than one.", "$ref": "#/$defs/id" },
+        "doc": { "description": "What this listener is and when a service attaches to it.", "type": "string", "minLength": 1 },
         "type": { "$ref": "#/$defs/typeRef" },
-        "deprecated": {
-          "description": "Why this construct is deprecated, as prose. A generator emitting Ballerina puts it in the # # Deprecated doc section.",
-          "type": "string",
-          "minLength": 1
-        },
+        "deprecated": { "$ref": "#/$defs/deprecatedReason" },
         "services": { "description": "serviceTypes ids this listener can host.", "$ref": "#/$defs/idList" },
         "multipleServicesAllowed": { "description": "Can one instance of this listener host more than one service at all?", "type": "boolean" },
         "multipleServicesOfSameTypeAllowed": { "description": "Can two of those services be of the same service type? Absent means unconstrained.", "type": "boolean" },
@@ -180,16 +202,13 @@
     },
     "serviceType": {
       "type": "object",
-      "required": ["id", "type", "concrete", "multipleListenersAllowed", "handlers"],
+      "required": ["id", "doc", "type", "concrete", "multipleListenersAllowed", "handlers"],
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/$defs/id" },
+        "doc": { "description": "What this service type is for. Required even when concrete, since the id/doc pair is what makes every construct in the file navigable on its own, not only what introspection cannot recover.", "type": "string", "minLength": 1 },
         "type": { "$ref": "#/$defs/typeRef" },
-        "deprecated": {
-          "description": "Why this construct is deprecated, as prose. A generator emitting Ballerina puts it in the # # Deprecated doc section.",
-          "type": "string",
-          "minLength": 1
-        },
+        "deprecated": { "$ref": "#/$defs/deprecatedReason" },
         "concrete": { "description": "true when the type declares its own methods and they can be introspected.", "type": "boolean" },
         "multipleListenersAllowed": { "type": "boolean" },
         "annotations": { "description": "Annotation ids with attachPoint service.", "$ref": "#/$defs/idList" },
@@ -226,7 +245,7 @@
     },
     "handlerOption": {
       "type": "object",
-      "required": ["name", "kind", "doc"],
+      "required": ["id", "name", "kind", "doc"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -247,6 +266,7 @@
         }
       ],
       "properties": {
+        "id": { "description": "Hierarchical: the owning serviceType's id plus this handler's name, for example $service.onMessage.", "$ref": "#/$defs/id" },
         "name": { "description": "The handler method name, or * for an open handler.", "type": "string", "minLength": 1 },
         "kind": { "enum": ["remote", "resource"] },
         "addMode": {
@@ -258,21 +278,16 @@
           "type": "string",
           "minLength": 1
         },
-        "deprecated": {
-          "description": "Why this construct is deprecated, as prose. A generator emitting Ballerina puts it in the # # Deprecated doc section.",
-          "type": "string",
-          "minLength": 1
-        },
+        "deprecated": { "$ref": "#/$defs/deprecatedReason" },
         "presence": { "$ref": "#/$defs/presence" },
         "annotations": { "description": "Annotation ids with attachPoint function.", "$ref": "#/$defs/idList" },
-        "returnAnnotations": { "description": "Annotation ids with attachPoint return.", "$ref": "#/$defs/idList" },
         "params": {
           "description": "Order is meaningful. A param that must come first is listed first.",
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/param" }
         },
-        "returns": { "$ref": "#/$defs/typeRefOrUnion" },
+        "returns": { "$ref": "#/$defs/returnSpec" },
         "accessor": {
           "description": "Resource kind only. The accessor in resource function <accessor> <path>().",
           "$ref": "#/$defs/valueSpec"
@@ -297,20 +312,17 @@
     },
     "param": {
       "type": "object",
-      "required": ["type", "presence", "doc"],
+      "required": ["id", "type", "presence", "doc"],
       "additionalProperties": false,
       "properties": {
+        "id": { "description": "Hierarchical: the owning handler's id plus this parameter's name, for example $service.onMessage.records. On an addMode many slot, names the slot itself, not each user named occurrence.", "$ref": "#/$defs/id" },
         "name": { "description": "The parameter name to emit.", "type": "string", "minLength": 1 },
         "doc": {
           "description": "What this parameter carries. Required for the same reason as a handler's doc. On a many slot it describes what one occurrence is.",
           "type": "string",
           "minLength": 1
         },
-        "deprecated": {
-          "description": "Why this construct is deprecated, as prose. A generator emitting Ballerina puts it in the # # Deprecated doc section.",
-          "type": "string",
-          "minLength": 1
-        },
+        "deprecated": { "$ref": "#/$defs/deprecatedReason" },
         "type": { "$ref": "#/$defs/typeRefOrUnion" },
         "presence": { "$ref": "#/$defs/presence" },
         "addMode": { "description": "many means the slot repeats, with the user naming each occurrence.", "enum": ["many"] },
@@ -319,6 +331,21 @@
       },
       "if": { "not": { "properties": { "addMode": { "const": "many" } }, "required": ["addMode"] } },
       "then": { "description": "A fixed slot must carry its name, otherwise each generator invents one.", "required": ["name"] }
+    },
+    "returnSpec": {
+      "description": "A handler's return type, grouped like a param since it can carry the same id/dataBinding/annotations facts. No name or presence, a return has neither.",
+      "type": "object",
+      "required": ["id", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "description": "Hierarchical: the owning handler's id plus the fixed segment returns, for example $service.onMessage.returns.", "$ref": "#/$defs/id" },
+        "type": { "$ref": "#/$defs/typeRefOrUnion" },
+        "dataBinding": {
+          "description": "Present only when one union member is a user declared subtype the runtime serializes out, such as a resource returning anydata. Same shape as a param's dataBinding, direction reversed: outbound instead of inbound.",
+          "$ref": "#/$defs/dataBinding"
+        },
+        "annotations": { "description": "Annotation ids with attachPoint return.", "$ref": "#/$defs/idList" }
+      }
     },
     "annotation": {
       "description": "attachPoint decides which construct field holds the reference to this id.",
@@ -361,11 +388,11 @@
         },
         {
           "type": "object",
-          "required": ["kind", "name"],
+          "required": ["kind", "id"],
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "annotation" },
-            "name": { "$ref": "#/$defs/id" },
+            "id": { "description": "Id into TriggerModel.annotations.", "$ref": "#/$defs/id" },
             "serviceType": { "$ref": "#/$defs/id" },
             "role": { "type": "string" }
           }
@@ -388,24 +415,25 @@
           }
         },
         {
+          "description": "Addresses a handler option by its id, not its name: an addMode: many option's name is always *, indistinguishable from any other many option on the same service type, so only id addresses either case uniformly.",
           "type": "object",
-          "required": ["kind", "name"],
+          "required": ["kind", "id"],
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "handler" },
-            "name": { "description": "A handler name, not an id.", "type": "string", "minLength": 1 },
+            "id": { "$ref": "#/$defs/id" },
             "serviceType": { "$ref": "#/$defs/id" },
             "role": { "type": "string" }
           }
         },
         {
+          "description": "Addresses a param by its own id, not a handler-name/param-name pair, for the same reason as the handler subject.",
           "type": "object",
-          "required": ["kind", "handler", "name"],
+          "required": ["kind", "id"],
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "param" },
-            "handler": { "type": "string", "minLength": 1 },
-            "name": { "type": "string", "minLength": 1 },
+            "id": { "$ref": "#/$defs/id" },
             "serviceType": { "$ref": "#/$defs/id" },
             "role": { "type": "string" }
           }

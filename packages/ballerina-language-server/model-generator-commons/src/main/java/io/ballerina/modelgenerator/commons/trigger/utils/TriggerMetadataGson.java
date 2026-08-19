@@ -82,9 +82,11 @@ public final class TriggerMetadataGson {
         String name = obj.has("name") ? obj.get("name").getAsString() : null;
         TypeRef.PackageInfo packageInfo = obj.has("packageInfo")
                 ? PACKAGE_INFO_GSON.fromJson(obj.get("packageInfo"), TypeRef.PackageInfo.class) : null;
+        Boolean builtin = obj.has("builtin") ? obj.get("builtin").getAsBoolean() : null;
+        Boolean subtypeFamily = obj.has("subtypeFamily") ? obj.get("subtypeFamily").getAsBoolean() : null;
         String shape = obj.has("shape") ? obj.get("shape").getAsString() : null;
         List<TypeRef> elementType = obj.has("elementType") ? parseTypeRefList(obj.get("elementType")) : null;
         List<TypeRef> completionType = obj.has("completionType") ? parseTypeRefList(obj.get("completionType")) : null;
-        return new TypeRef(name, packageInfo, shape, elementType, completionType);
+        return new TypeRef(name, packageInfo, builtin, subtypeFamily, shape, elementType, completionType);
     }
 }

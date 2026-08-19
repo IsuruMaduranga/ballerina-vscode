@@ -36,9 +36,14 @@ public class PackagedTriggerModelsTest {
     @DataProvider(name = "packagedModules")
     public Object[][] packagedModules() {
         return new Object[][] {
-                {"ftp"}, {"kafka"}, {"mcp"}, {"mssql.cdc"}, {"rabbitmq"}, {"smb"},
+                {"ftp"}, {"kafka"}, {"mcp"}, {"mssql"}, {"rabbitmq"}, {"smb"},
                 {"trigger.github"}, {"trigger.google.calendar"}, {"websub"},
                 {"http"}, {"graphql"}, {"grpc"}, {"websocket"}, {"sap.jco"},
+                {"solace"}, {"solace.jms"}, {"mqtt"}, {"asb"}, {"aws.sqs"},
+                {"mysql"}, {"postgresql"}, {"oracledb"}, {"salesforce"},
+                {"trigger.shopify"}, {"trigger.hubspot"}, {"trigger.twilio"},
+                {"whatsapp.business"}, {"telegram"}, {"googleapis.chat"}, {"file"},
+                {"azure.storage.files"}, {"tcp"},
         };
     }
 
