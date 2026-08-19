@@ -17,6 +17,7 @@
  */
 
 // Deep import: the core barrel pulls in ESM-only LS transport modules that jest cannot load.
+// The path is type-checked (lib ships .d.ts), so a move or rename fails the build, not at runtime.
 import { isPathInside } from "@wso2/ballerina-core/lib/utils/path-utils";
 
 /**
