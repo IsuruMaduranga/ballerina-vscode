@@ -927,8 +927,9 @@ public final class TriggerModelSynthesizer {
                                                                   Map<String, TriggerLibraryFacts> crossModuleFacts,
                                                                   ConnectorIdentity identity,
                                                                   String codedataType, boolean forceRequired) {
-        String annotationName = annotation.type().name();
-        TypeRef.PackageInfo annotationPkg = annotation.type().packageInfo();
+        TypeRef annotationType = annotation.type();
+        String annotationName = annotationType == null ? stripId(annotation.id()) : annotationType.name();
+        TypeRef.PackageInfo annotationPkg = annotationType == null ? null : annotationType.packageInfo();
         boolean crossModule = annotationPkg != null;
         String pkgOrg = crossModule ? annotationPkg.org() : identity.orgName();
         String pkgName = crossModule ? annotationPkg.packageName() : identity.packageName();

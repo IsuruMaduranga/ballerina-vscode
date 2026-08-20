@@ -884,4 +884,30 @@ public class TriggerModelSynthesizerTest {
         Assert.assertFalse(listenOnProperty.advanced());
         Assert.assertTrue(listenOnProperty.optional(), "listenOn is still optional (defaultable), just not hidden");
     }
+
+    /** A null {@code annotation.type()} (absent from a malformed metadata file) must not throw. */
+    @Test
+    public void testAnnotationWithNullTypeDoesNotThrow() {
+        TriggerMetadataModel.Listener listener = new TriggerMetadataModel.Listener(
+                "$listener", "Listens for events.", new TypeRef("Listener", null), null,
+                List.of("$service"), false, null, null, null);
+        TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
+                "$service", "A service.", new TypeRef("Service", null), null, true, false,
+                List.of("$serviceConfig"), null, null, null);
+        TriggerMetadataModel.Annotation annotation = new TriggerMetadataModel.Annotation(
+                "$serviceConfig", null, TriggerMetadataModel.Annotation.ATTACH_POINT_SERVICE,
+                TriggerMetadataModel.Annotation.PRESENCE_OPTIONAL);
+        TriggerMetadataModel authoring = new TriggerMetadataModel(
+                "v1.0", List.of(listener), List.of(serviceType), List.of(annotation), null);
+
+        TriggerLibraryFacts.Listener listenerFacts = new TriggerLibraryFacts.Listener("Listener", List.of());
+        TriggerLibraryFacts facts = new TriggerLibraryFacts(List.of(listenerFacts), List.of(), List.of());
+        Listener listenerModel = listenerModel(Map.of());
+
+        TriggerUISchemaModel model = TriggerModelSynthesizer.synthesize(authoring, facts, listenerModel, "1", "Test",
+                null, "event", "testorg", "test", "test", "0.1.0").orElseThrow();
+
+        Assert.assertEquals(model.initProperties().get("serviceConfig").codedata().originalName(), "serviceConfig",
+                "falls back to the schema id when the annotation declares no type");
+    }
 }
