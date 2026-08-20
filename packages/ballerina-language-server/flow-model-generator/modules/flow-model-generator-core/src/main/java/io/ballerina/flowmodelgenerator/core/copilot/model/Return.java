@@ -18,6 +18,8 @@
 
 package io.ballerina.flowmodelgenerator.core.copilot.model;
 
+import java.util.List;
+
 /**
  * Represents a function return type.
  *
@@ -26,6 +28,10 @@ package io.ballerina.flowmodelgenerator.core.copilot.model;
 public class Return {
     private String description;
     private Type type;
+    // The spec at `attachPoint: "return"` — annotations the generated handler must or may carry on its
+    // return (`returns @http:Cache {...} T`). Nested here rather than on the method because that is the
+    // syntactic slot they attach to.
+    private List<ServiceAnnotationRef> annotationRefs;
 
     public Return() {
     }
@@ -44,5 +50,13 @@ public class Return {
 
     public void setType(Type type) {
         this.type = type;
+    }
+
+    public List<ServiceAnnotationRef> getAnnotationRefs() {
+        return annotationRefs;
+    }
+
+    public void setAnnotationRefs(List<ServiceAnnotationRef> annotationRefs) {
+        this.annotationRefs = annotationRefs;
     }
 }

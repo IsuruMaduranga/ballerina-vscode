@@ -27,11 +27,9 @@ import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.flowmodelgenerator.core.InstructionLoader;
 import io.ballerina.flowmodelgenerator.core.copilot.central.CentralLibrarySearchAccessor;
 import io.ballerina.flowmodelgenerator.core.copilot.database.LibraryDatabaseAccessor;
-import io.ballerina.flowmodelgenerator.core.copilot.model.Annotation;
 import io.ballerina.flowmodelgenerator.core.copilot.model.Client;
 import io.ballerina.flowmodelgenerator.core.copilot.model.Library;
 import io.ballerina.flowmodelgenerator.core.copilot.model.Service;
-import io.ballerina.flowmodelgenerator.core.copilot.service.AnnotationLoader;
 import io.ballerina.flowmodelgenerator.core.copilot.service.CopilotDeprecationEnricher;
 import io.ballerina.flowmodelgenerator.core.copilot.service.CopilotListenerNameEnricher;
 import io.ballerina.flowmodelgenerator.core.copilot.service.ServiceLoader;
@@ -166,7 +164,8 @@ public class CopilotLibraryManager {
                     semanticModel,
                     moduleInfo,
                     org,
-                    packageName
+                    packageName,
+                    pkg
             );
 
             library.setClients(symbolResult.getClients());
@@ -184,12 +183,14 @@ public class CopilotLibraryManager {
             }
             library.setServices(services);
 
-            JsonArray annotationsJson = AnnotationLoader.loadFromServiceIndex(libraryName);
-            List<Annotation> annotations = new ArrayList<>();
-            for (JsonElement annotationElement : annotationsJson) {
-                annotations.add(GSON.fromJson(annotationElement, Annotation.class));
-            }
-            library.setAnnotations(annotations);
+            // Annotations come from the Semantic Model alone: the compiler is authoritative for
+            // attachment points and type constraints, and it reports every annotation the module
+            // declares at every point it declares them (service, object function, type, record
+            // field, parameter, return, listener, ...). The curated service-index catalog covered
+            // only SERVICE/OBJECT_METHOD for six packages, and every row it holds is either
+            // reproduced by the compiler or contradicted by it (ftp's FunctionConfig, filed as
+            // OBJECT_METHOD where the compiler reports RESOURCE), so it is no longer consulted.
+            library.setAnnotations(symbolResult.getAnnotations());
 
             if (DOC_WHITELIST_ORGS.contains(org)) {
                 readPackageDocumentation(pkg).ifPresent(library::setReadme);

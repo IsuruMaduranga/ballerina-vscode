@@ -18,29 +18,21 @@
 
 package io.ballerina.flowmodelgenerator.core.copilot.model;
 
-import com.google.gson.annotations.SerializedName;
-
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * Represents a listener definition.
+ * Represents an annotation actually attached to an API element (function, type definition,
+ * record field, parameter, etc.), as extracted from the compiler Semantic Model.
+ *
+ * <p>Unlike {@link Annotation}, which describes an annotation <em>declaration</em> (the catalog),
+ * this describes a concrete <em>attachment</em> with its supplied value.</p>
  *
  * @since 1.7.0
  */
-public class Listener {
+public class AnnotationAttachment {
     private String name;
-    /**
-     * Spec's {@code deprecated} — why this construct is superseded, as the document's own prose. Text
-     * rather than a flag: the sentence names the replacement, which is the only part a reader can act on.
-     */
-    @SerializedName("deprecated")
-    private String deprecationNote;
+    private String module;
+    private String value;
 
-    private List<Parameter> parameters;
-
-    public Listener() {
-        this.parameters = new ArrayList<>();
+    public AnnotationAttachment() {
     }
 
     public String getName() {
@@ -51,19 +43,19 @@ public class Listener {
         this.name = name;
     }
 
-    public String getDeprecationNote() {
-        return deprecationNote;
+    public String getModule() {
+        return module;
     }
 
-    public void setDeprecationNote(String deprecationNote) {
-        this.deprecationNote = deprecationNote;
+    public void setModule(String module) {
+        this.module = module;
     }
 
-    public List<Parameter> getParameters() {
-        return parameters;
+    public String getValue() {
+        return value;
     }
 
-    public void setParameters(List<Parameter> parameters) {
-        this.parameters = parameters;
+    public void setValue(String value) {
+        this.value = value;
     }
 }
