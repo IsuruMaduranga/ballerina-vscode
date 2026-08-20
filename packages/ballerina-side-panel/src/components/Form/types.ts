@@ -64,6 +64,9 @@ export type FormField = {
     dynamicFormFields?: { [key: string]: FormField[] }
     paramManagerProps?: ParamConfig;
     types: InputType[];
+    hideModeSwitcher?: boolean;
+    growRange?: { start: number; offset: number };
+    group?: string;
     groupNo?: number;
     groupName?: string;
     addNewButton?: boolean;
@@ -87,6 +90,12 @@ export type FormField = {
         showMarkers?: boolean;
         valueFormatter?: (value: number) => string;
     };
+};
+
+export type FieldGroup = {
+    id: string;
+    label: string;
+    defaultCollapsed?: boolean;
 };
 
 export type ParameterValue = {
