@@ -18,8 +18,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import styled from "@emotion/styled";
-import { SemanticDiff, ChangeTypeEnum, NodeKindEnum, MACHINE_VIEW, VisualizerLocation } from "@wso2/ballerina-core";
-import { getNodeKindLabel } from "../../../ReviewMode/nodeKindLabels";
+import { SemanticDiff, ChangeTypeEnum, MACHINE_VIEW, VisualizerLocation } from "@wso2/ballerina-core";
 import { getColorByMethod } from "../../../BI/ServiceDesigner/components/ResourceAccordion";
 
 const Container = styled.div<{ subtle?: boolean; expanded?: boolean }>`
@@ -260,9 +259,10 @@ const MethodBadge = styled.span<{ $color: string }>`
     flex-shrink: 0;
 `;
 
-const NODE_KIND_FUNCTION = NodeKindEnum.MODULE_FUNCTION;
-const NODE_KIND_RESOURCE = NodeKindEnum.OBJECT_FUNCTION;
-const NODE_KIND_TYPE = NodeKindEnum.TYPE_DEFINITION;
+// nodeKind === 2 is TYPE in semantic diffs
+const NODE_KIND_TYPE = 2;
+const NODE_KIND_RESOURCE = 1;
+const NODE_KIND_FUNCTION = 0;
 
 interface DiffEntry {
     symbol: string;
@@ -341,10 +341,8 @@ function getFileName(filePath: string): string {
 function getDiffLabel(diff: SemanticDiff): string {
     if (diff.metadata) {
         if (diff.nodeKind === NODE_KIND_RESOURCE) {
-            // Class methods are OBJECT_FUNCTION diffs too but carry only `name` —
-            // fall through to it when there's no resource path.
-            const m = diff.metadata as { accessor?: string; servicePath?: string; resourcePath?: string };
-            if (m.resourcePath) return m.resourcePath;
+            const m = diff.metadata as { accessor: string; servicePath: string; resourcePath: string };
+            return m.resourcePath;
         }
         const m = diff.metadata as { name?: string };
         if (m.name) return m.name;
@@ -366,7 +364,9 @@ function getDiffKindLabel(diff: SemanticDiff): string {
         const m = diff.metadata as { name?: string } | undefined;
         return m?.name === "main" ? "automation" : "function";
     }
-    return getNodeKindLabel(diff.nodeKind, diff.metadata);
+    if (diff.nodeKind === NODE_KIND_RESOURCE) return "resource";
+    if (diff.nodeKind === NODE_KIND_TYPE) return "type";
+    return "function";
 }
 
 function getChangeTypeLabel(changeType: number): string {
@@ -449,8 +449,6 @@ function buildGroupsWithOffset(semanticDiffs: SemanticDiff[], startIndex: number
     const serviceGroups: Record<string, DiffEntry[]> = {};
     const functionEntries: DiffEntry[] = [];
     const typeEntries: DiffEntry[] = [];
-    // Non-diagram construct kinds (constants, module vars, listeners, classes, enums, imports)
-    const declarationEntries: DiffEntry[] = [];
     let hasTypeView = false;
 
     for (const diff of semanticDiffs) {
@@ -458,18 +456,12 @@ function buildGroupsWithOffset(semanticDiffs: SemanticDiff[], startIndex: number
         if (isType && hasTypeView) continue;
         if (isType) hasTypeView = true;
 
-        // OBJECT_FUNCTION covers both service members and plain class methods; only the
-        // former carry a servicePath, and only they belong under a service group.
-        const servicePath = diff.nodeKind === NODE_KIND_RESOURCE
-            ? (diff.metadata as { servicePath?: string } | undefined)?.servicePath
-            : undefined;
-
         const entry: DiffEntry = {
             symbol: getSymbol(diff.changeType),
             changeType: diff.changeType,
             label: isType ? "Types" : getDiffLabel(diff),
-            accessor: servicePath !== undefined
-                ? (diff.metadata as { accessor?: string } | undefined)?.accessor?.toUpperCase()
+            accessor: diff.nodeKind === NODE_KIND_RESOURCE
+                ? (diff.metadata as { accessor: string } | undefined)?.accessor?.toUpperCase()
                 : undefined,
             kindLabel: getDiffKindLabel(diff),
             nodeKind: diff.nodeKind,
@@ -477,17 +469,15 @@ function buildGroupsWithOffset(semanticDiffs: SemanticDiff[], startIndex: number
         };
         viewIndex++;
 
-        if (servicePath !== undefined) {
-            const svcPath = servicePath || "/";
+        if (diff.nodeKind === NODE_KIND_RESOURCE) {
+            const m = diff.metadata as { servicePath?: string } | undefined;
+            const svcPath = m?.servicePath || "/";
             if (!serviceGroups[svcPath]) serviceGroups[svcPath] = [];
             serviceGroups[svcPath].push(entry);
-        } else if (diff.nodeKind === NODE_KIND_FUNCTION || diff.nodeKind === NODE_KIND_RESOURCE) {
-            // Plain functions, and class methods (OBJECT_FUNCTION without a service path)
+        } else if (diff.nodeKind === NODE_KIND_FUNCTION) {
             functionEntries.push(entry);
-        } else if (isType) {
-            typeEntries.push(entry);
         } else {
-            declarationEntries.push(entry);
+            typeEntries.push(entry);
         }
     }
 
@@ -501,9 +491,6 @@ function buildGroupsWithOffset(semanticDiffs: SemanticDiff[], startIndex: number
     }
     if (typeEntries.length > 0) {
         groups.push({ groupLabel: "types", entries: typeEntries });
-    }
-    if (declarationEntries.length > 0) {
-        groups.push({ groupLabel: "declarations", entries: declarationEntries });
     }
 
     return { groups, viewCount: viewIndex - startIndex };
@@ -774,10 +761,8 @@ export const ReviewBar: React.FC<ReviewBarProps> = ({
             await rpcClient.getAiPanelRpcClient().revertGeneration({ generationId });
             rpcClient.getVisualizerRpcClient().goBack();
         } catch (error) {
-            // Nothing was reverted (e.g. no checkpoint exists) — the backend already told
-            // the user via an error notification. Keep the bar so the review stays
-            // actionable; closing it here would make the failure look like a success.
             console.error("[ReviewBar] Error discarding changes:", error);
+            rpcClient.getVisualizerRpcClient().goBack();
         } finally {
             setIsProcessing(false);
         }
