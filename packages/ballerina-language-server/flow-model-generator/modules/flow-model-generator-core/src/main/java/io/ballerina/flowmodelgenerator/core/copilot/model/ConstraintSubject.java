@@ -37,6 +37,10 @@ public class ConstraintSubject {
     private List<String> path;
     private String name;
     private String handler;
+    // The spec §6.1.1 id a `handler` or `param` subject was addressed by, beside the reader-facing label in
+    // `name`. Carried for traceability and never rendered: it names a slot in a JSON document, not anything
+    // that exists in Ballerina source — the same division `annotationId`/`annotation` already draws.
+    private String id;
     private String role;
     // The spec's top-level `rules[]` — a constraint spanning more than one service type. Present only on a
     // subject belonging to a service type OTHER than the entry carrying the rule, so a rule scoped to one
@@ -96,6 +100,14 @@ public class ConstraintSubject {
 
     public void setHandler(String handler) {
         this.handler = handler;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
     }
 
     public String getRole() {

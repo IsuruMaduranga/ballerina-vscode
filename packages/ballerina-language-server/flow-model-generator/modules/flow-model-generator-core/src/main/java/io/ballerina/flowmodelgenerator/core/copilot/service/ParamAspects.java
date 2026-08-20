@@ -163,8 +163,12 @@ final class ParamAspects {
      * The envelope-field lookup the spec's derived {@code fixedFields} needs, or an empty one when no
      * compiled package is behind this scope — in which case {@code fixedFields} is simply not derived,
      * rather than guessed.
+     *
+     * <p>Package-private rather than private because the spec §9.1 gave a <i>return</i> a binding of the
+     * same shape, and {@link HandlerAspects#returnType} needs the identical lookup. Sharing it is what
+     * keeps "how a fixed-field set is derived" one decision rather than two.
      */
-    private static Function<String, List<String>> envelopeFields(TriggerScope scope) {
+    static Function<String, List<String>> envelopeFields(TriggerScope scope) {
         TriggerSemanticFacts facts = scope.facts();
         return facts == null ? name -> List.of() : facts::recordFieldNames;
     }

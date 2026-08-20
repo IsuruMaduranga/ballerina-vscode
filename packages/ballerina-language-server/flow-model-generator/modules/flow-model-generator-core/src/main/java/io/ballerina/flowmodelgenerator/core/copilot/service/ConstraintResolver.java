@@ -23,6 +23,7 @@ import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 
@@ -144,28 +145,36 @@ final class ConstraintResolver {
         }
 
         /**
-         * One of the service type's handlers.
+         * One of the service type's handlers, addressed by the spec §6.1.1 {@code id}.
          *
-         * @param name          the {@code handlers.options[].name} referenced
+         * @param handlerId     the {@code handlers.options[].id} referenced, carried alongside the label
+         *                      for traceability the same way {@code annotationId} is
+         * @param name          the handler as a reader sees it: its {@code name} where that is a
+         *                      real method name, and the id's last segment where the option is
+         *                      {@code addMode: "many"} and so named {@code "*"}. A note that said
+         *                      "at least one of {@code *}" would name nothing
          * @param role          the subject's role label
          * @param serviceType   the owning service type's declared name, or {@code null}
          * @param serviceTypeId the owning service type's id, or {@code null}
          */
-        record Handler(String name, String role, String serviceType, String serviceTypeId)
+        record Handler(String handlerId, String name, String role, String serviceType, String serviceTypeId)
                 implements Subject {
         }
 
         /**
-         * One parameter of one handler.
+         * One parameter of one handler, addressed by the spec §6.1.1 {@code id}.
          *
-         * @param handler       the handler the parameter belongs to
-         * @param name          the parameter's name
+         * @param paramId       the {@code params[].id} referenced
+         * @param handler       the owning handler's reader-facing label, resolved from the param's own id
+         *                      rather than from a separate {@code handler} field, which the spec removed
+         * @param name          the parameter's name, or the id's last segment for a repeatable slot the
+         *                      document leaves unnamed
          * @param role          the subject's role label
          * @param serviceType   the owning service type's declared name, or {@code null}
          * @param serviceTypeId the owning service type's id, or {@code null}
          */
-        record Param(String handler, String name, String role, String serviceType, String serviceTypeId)
-                implements Subject {
+        record Param(String paramId, String handler, String name, String role, String serviceType,
+                     String serviceTypeId) implements Subject {
         }
     }
 
@@ -186,6 +195,35 @@ final class ConstraintResolver {
     }
 
     /**
+     * One service type's addressable constructs, as the spec §6.1.1 addresses them: by id.
+     *
+     * <p>Both maps are keyed by the construct's own hierarchical id, which is the whole point of the
+     * revision that introduced them — an {@code addMode: "many"} option is named {@code "*"}, so a
+     * name-keyed catalog cannot tell {@code graphql}'s query shape from its mutation shape, and a
+     * {@code handler}/{@code name} pair for a param inherits the same ambiguity one level down.
+     *
+     * <p>The values are what a <b>reader</b> is shown: a handler's real method name where it has one, and
+     * the id's last segment where it does not. Nothing renders the id itself — it names a slot in a JSON
+     * document, not anything that exists in Ballerina source — but it travels on the wire beside the label
+     * so a consumer can trace a note back to the rule that produced it.
+     *
+     * @param handlerLabels the reader-facing label of every declared handler, by handler id
+     * @param paramLabels   the owning handler and parameter name of every declared parameter, by param id
+     */
+    record Catalog(Map<String, String> handlerLabels, Map<String, ParamLabel> paramLabels) {
+
+        /**
+         * A parameter as a note names it.
+         *
+         * @param handler the owning handler's reader-facing label
+         * @param name    the parameter's own name, or its id's last segment when the document leaves a
+         *                repeatable slot unnamed
+         */
+        record ParamLabel(String handler, String name) {
+        }
+    }
+
+    /**
      * What a rule's subjects may be attributed to: the document's service types, by id.
      *     */
     interface ServiceTypeIndex {
@@ -200,15 +238,14 @@ final class ConstraintResolver {
         String typeName(String serviceTypeId);
 
         /**
-         * The handler names a service type declares, for the cross-check that drops a subject naming a
-         * handler that does not exist.
+         * The handler and parameter ids a service type declares, for the cross-check that drops a subject
+         * addressing a construct that does not exist.
          *
          * @param serviceTypeId the {@code serviceTypes[].id}; may be {@code null} for the enclosing type
-         * @return the names; {@code null} when the catalog is not knowable, which suppresses the
-         *         cross-check, whereas an <b>empty</b> set means the type declares no handlers and does
-         *         drop them
+         * @return the catalog; {@code null} when it is not knowable, which suppresses the cross-check,
+         *         whereas an <b>empty</b> catalog means the type declares nothing and does drop subjects
          */
-        Set<String> handlerNames(String serviceTypeId);
+        Catalog catalog(String serviceTypeId);
 
         /**
          * Whether a subject naming a service type should be attributed to it.
@@ -226,8 +263,15 @@ final class ConstraintResolver {
     /**
      * Resolves a rule set.
      *
-     * <p>A rule is dropped whole, with a warning, when it names an unimplemented registry id or when fewer
-     * than two usable subjects survive.
+     * <p>A rule is dropped whole, with a warning, when it names an unimplemented registry id or when no
+     * usable subject survives.
+     *
+     * <p><b>One subject is enough.</b> The spec's schema has always allowed it and its §6.1.1 now states
+     * the reading outright: for an {@code addMode: "many"} option, "present" means "instantiated one or
+     * more times" rather than "declared or not", so {@code structure.atLeastOne} over a single subject is a
+     * real constraint — {@code graphql}'s "a schema is invalid without at least one query field" is exactly
+     * that, and a two-subject floor silently deleted it. An <b>asymmetric</b> rule still needs both roles,
+     * which the {@code when}/{@code then} check below enforces and which no single subject can satisfy.
      *
      * @param libraryName            the library, for log attribution only
      * @param rules                  the rules to resolve; may be {@code null}
@@ -259,9 +303,9 @@ final class ConstraintResolver {
                 continue;
             }
             List<Subject> subjects = subjects(libraryName, rule, enclosingServiceTypeId, index, annotations);
-            if (subjects.size() < 2) {
-                LOGGER.warning("Skipped rule '" + rule.id() + "' for " + libraryName + ": "
-                        + subjects.size() + " usable subject(s) — a constraint needs at least two");
+            if (subjects.isEmpty()) {
+                LOGGER.warning("Skipped rule '" + rule.id() + "' for " + libraryName
+                        + ": no usable subject — a constraint that ranges over nothing states nothing");
                 continue;
             }
             if (kind.isAsymmetric() && !hasBothRoles(subjects)) {
@@ -337,7 +381,7 @@ final class ConstraintResolver {
             }
             // The catalog that governs this subject is its OWN service type's, not the enclosing entry's.
             // Otherwise a top-level rule's handler subjects would all be dropped as phantoms.
-            Set<String> handlerNames = index.handlerNames(owner.effectiveId());
+            Catalog catalog = index.catalog(owner.effectiveId());
             Subject resolved = switch (subject.kind()) {
                 case TriggerMetadataModel.Subject.KIND_IDENTIFIER ->
                         new Subject.Identifier(subject.role(), owner.name(), owner.id());
@@ -348,10 +392,9 @@ final class ConstraintResolver {
                         annotationSubject(libraryName, rule, subject.annotation(),
                                 nonEmpty(subject.path()), subject.role(), annotations, owner);
                 case TriggerMetadataModel.Subject.KIND_HANDLER ->
-                        handlerSubject(libraryName, rule, lastSegment(subject.id()), subject.role(),
-                                handlerNames, owner);
+                        handlerSubject(libraryName, rule, subject.id(), subject.role(), catalog, owner);
                 case TriggerMetadataModel.Subject.KIND_PARAM ->
-                        paramSubject(libraryName, rule, subject, handlerNames, owner);
+                        paramSubject(libraryName, rule, subject.id(), subject.role(), catalog, owner);
                 default -> {
                     LOGGER.warning("Dropped subject of rule '" + rule.id() + "' for " + libraryName
                             + ": '" + subject.kind() + "' is not a subject kind this build implements");
@@ -363,33 +406,6 @@ final class ConstraintResolver {
             }
         }
         return subjects;
-    }
-
-    /**
-     * The name a hierarchical subject id ends in. The spec ids a construct by its path from the service
-     * type down -- {@code $service.onMessage} for a handler, {@code $service.onMessage.data} for one of its
-     * parameters -- while the catalogs these subjects are checked against hold bare names, so the last
-     * segment is what matches. A bare name with no separator is already its own last segment.
-     */
-    private static String lastSegment(String id) {
-        if (id == null) {
-            return null;
-        }
-        int dot = id.lastIndexOf('.');
-        return dot < 0 ? id : id.substring(dot + 1);
-    }
-
-    /**
-     * The name of the construct that owns the one {@code id} names -- for {@code $service.onMessage.data},
-     * the handler {@code onMessage}. Null when the id names nothing above itself, which for a param subject
-     * means the document stated a handler-level id where a parameter was required.
-     */
-    private static String parentSegment(String id) {
-        if (id == null) {
-            return null;
-        }
-        int dot = id.lastIndexOf('.');
-        return dot < 0 ? null : lastSegment(id.substring(0, dot));
     }
 
     private static Subject annotationSubject(String libraryName, TriggerMetadataModel.Rule rule, String id,
@@ -412,43 +428,70 @@ final class ConstraintResolver {
                 : new Subject.AnnotationField(id, name, path, role, owner.name(), owner.id());
     }
 
-    private static Subject handlerSubject(String libraryName, TriggerMetadataModel.Rule rule, String name,
-                                          String role, Set<String> declaredHandlerNames, Attribution owner) {
-        if (name == null || name.isBlank()) {
+    /**
+     * A {@code handler} subject, resolved from the spec §6.1.1 id to the label a note names it by.
+     *
+     * <p>The id is <b>looked up</b> rather than parsed. Its last segment is the same string the catalog
+     * holds for a {@code many} option, so parsing would agree today — but that agreement is the document's
+     * convention, not a guarantee, and a lookup that misses says so where a parse would invent a handler.
+     */
+    private static Subject handlerSubject(String libraryName, TriggerMetadataModel.Rule rule, String id,
+                                          String role, Catalog catalog, Attribution owner) {
+        if (id == null || id.isBlank()) {
             LOGGER.warning("Dropped subject of rule '" + rule.id() + "' for " + libraryName
-                    + ": it names no handler");
+                    + ": it names no handler id");
             return null;
         }
         // A rule referencing a handler this service type does not declare could never be satisfied
         // through that alternative. Drop it and say so.
-        if (declaredHandlerNames != null && !declaredHandlerNames.contains(name)) {
+        if (catalog != null && !catalog.handlerLabels().containsKey(id)) {
             LOGGER.warning("Dropped subject of rule '" + rule.id() + "' for " + libraryName
-                    + ": handler '" + name + "' is not declared by "
+                    + ": handler id '" + id + "' is not declared by "
                     + (owner.name() == null ? "this service type" : "service type '" + owner.name() + "'"));
             return null;
         }
-        return new Subject.Handler(name, role, owner.name(), owner.id());
+        String label = catalog == null ? lastSegment(id) : catalog.handlerLabels().get(id);
+        return new Subject.Handler(id, label, role, owner.name(), owner.id());
     }
 
-    private static Subject paramSubject(String libraryName, TriggerMetadataModel.Rule rule,
-                                        TriggerMetadataModel.Subject subject,
-                                        Set<String> declaredHandlerNames, Attribution owner) {
-        String handler = parentSegment(subject.id());
-        String param = lastSegment(subject.id());
-        if (handler == null || handler.isBlank() || param == null || param.isBlank()) {
+    /**
+     * A {@code param} subject, resolved from the spec §6.1.1 id to the handler and parameter a note names.
+     *
+     * <p>The owning handler comes from the catalog rather than from a sibling field: the spec removed the
+     * {@code handler}/{@code name} pair precisely because a param's own id already scopes it under its
+     * handler, so re-stating the handler was both redundant and, for a {@code many} option, ambiguous.
+     */
+    private static Subject paramSubject(String libraryName, TriggerMetadataModel.Rule rule, String id,
+                                        String role, Catalog catalog, Attribution owner) {
+        if (id == null || id.isBlank()) {
             LOGGER.warning("Dropped subject of rule '" + rule.id() + "' for " + libraryName
-                    + ": a param subject needs an id naming both its handler and its parameter,"
-                    + " e.g. `$service.onMessage.data`; got '" + subject.id() + "'");
+                    + ": it names no param id");
             return null;
         }
-        if (declaredHandlerNames != null && !declaredHandlerNames.contains(handler)) {
+        if (catalog == null) {
+            // No knowable catalog suppresses the cross-check, exactly as it does for a handler subject.
+            // Without one there is no owning handler to name, so the note states the parameter alone.
+            return new Subject.Param(id, null, lastSegment(id), role, owner.name(), owner.id());
+        }
+        Catalog.ParamLabel label = catalog.paramLabels().get(id);
+        if (label == null) {
             LOGGER.warning("Dropped subject of rule '" + rule.id() + "' for " + libraryName
-                    + ": handler '" + handler + "' is not declared by "
+                    + ": param id '" + id + "' is not declared by "
                     + (owner.name() == null ? "this service type" : "service type '" + owner.name() + "'"));
             return null;
         }
-        return new Subject.Param(handler, param, subject.role(), owner.name(),
-                owner.id());
+        return new Subject.Param(id, label.handler(), label.name(), role, owner.name(), owner.id());
+    }
+
+    /**
+     * The last dot-separated segment of a hierarchical id — the construct's own name within its owner.
+     *
+     * <p>Only the fallback for an unknowable catalog. Where the catalog answers, the label it holds wins:
+     * for a {@code subset} handler that is the real method name, which the id's segment merely mirrors.
+     */
+    private static String lastSegment(String id) {
+        int separator = id.lastIndexOf('.');
+        return separator < 0 ? id.substring(id.startsWith("$") ? 1 : 0) : id.substring(separator + 1);
     }
 
     /**

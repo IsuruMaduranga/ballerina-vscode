@@ -446,8 +446,7 @@ public class CopilotLibraryManager {
 
     /**
      * Augments libraries with custom instructions loaded from resource files.
-     * Adds library-level instructions, service instructions for generic services,
-     * and test generation instructions for all services.
+     * Adds library-level instructions and service instructions for generic services.
      *
      * @param libraries the libraries to augment
      */
@@ -469,16 +468,23 @@ public class CopilotLibraryManager {
         }
     }
 
+    /**
+     * Attaches the curated {@code service.md} to a library's generic services.
+     *
+     * <p>The file is read <b>once per library</b>, not once per service. It used to be loaded inside the
+     * loop, which re-read the same classpath resource for every service a library declares — ten times for
+     * {@code ballerinax/trigger.github}. The {@code test.md} channel that shared that loop was retired: no
+     * instance had existed since the curated corpus was removed, and test conventions live in
+     * {@code ballerina/test}'s own {@code library.md}.
+     */
     private void augmentServicesWithInstructions(List<Service> services, String libraryName) {
+        Optional<String> serviceInstruction = InstructionLoader.loadServiceInstruction(libraryName);
+        if (serviceInstruction.isEmpty()) {
+            return;
+        }
         for (Service service : services) {
-            // Add test generation instruction to all services
-            InstructionLoader.loadTestInstruction(libraryName)
-                    .ifPresent(service::setTestGenerationInstruction);
-
-            // Add service instruction only to generic services
             if (TYPE_GENERIC.equals(service.getType())) {
-                InstructionLoader.loadServiceInstruction(libraryName)
-                        .ifPresent(service::setInstructions);
+                service.setInstructions(serviceInstruction.get());
             }
         }
     }

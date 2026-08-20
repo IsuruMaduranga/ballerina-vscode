@@ -26,6 +26,7 @@ import io.ballerina.flowmodelgenerator.core.copilot.model.PlatformDependency;
 import io.ballerina.flowmodelgenerator.core.copilot.model.RequiredImport;
 import io.ballerina.flowmodelgenerator.core.copilot.model.ServiceIdentifier;
 import io.ballerina.modelgenerator.commons.trigger.models.IdentifierSpec;
+import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
 import io.ballerina.modelgenerator.commons.trigger.utils.TypeRefResolver;
 
 import java.util.ArrayList;
@@ -79,6 +80,10 @@ final class ServiceAspects {
         // For a cross-module type this is the bare type name; a downstream enricher's lookup against
         // this module's symbols is then a deliberate no-op unless the module declares the name itself.
         draft.setName(identity.typeName());
+        // The spec §3 `doc`. Set here rather than in a component of its own for the same reason
+        // `deprecated` is: it is part of the entry's identity, and it must not survive the two vetoes
+        // above — a description of a service type that never renders describes nothing.
+        draft.setDescription(scope.serviceType().doc());
         draft.setServiceTypeModule(identity.serviceTypeModule());
         draft.setAlternatives(identity.alternatives());
         // The spec `deprecated`, in the same prose form as the spec's. Set here rather than in a component of
@@ -108,16 +113,15 @@ final class ServiceAspects {
     /**
      * The spec's {@code multiple*Allowed} pair — and the decision of which half of it is worth saying.
      *
-     * <p><b>Only a prohibition is emitted.</b> Both keys are set on all 26 service types in the corpus, so
-     * writing both unconditionally would land a note on essentially every trigger service the Copilot
+     * <p><b>Only a prohibition is emitted.</b> The keys are set on essentially every one of the corpus's 58
+     * service types, so writing both unconditionally would land a note on every trigger service the Copilot
      * renders. {@code true} grants a permission a generator would not exercise unprompted, whereas
      * {@code false} forbids something a model can plausibly reach for: asked to consume two Kafka topics,
      * the obvious shape is two services on one listener, which {@code kafka} makes illegal. Across the whole
-     * corpus this emits <b>three</b> lines instead of twenty-four.
+     * corpus this emits <b>27</b> lines instead of well over a hundred.
      *
      * <p>The two keys are written <b>separately</b> rather than merged into one note: they answer different
-     * questions, and {@code kafka} is the only service type where both fire, so a combined line would be
-     * wrong for {@code trigger.google.calendar}.
+     * questions, and only a few service types fire both, so a combined line would be wrong for the rest.
      */
     void cardinality(TriggerScope scope, ServiceDraft draft) {
         ServiceRules.Cardinality cardinality =
@@ -232,6 +236,7 @@ final class ServiceAspects {
     void listener(TriggerScope scope, ServiceDraft draft) {
         Object key = scope.listener() != null ? scope.listener() : scope.listenerClass();
         draft.setListener(builtListeners.computeIfAbsent(key, unused -> buildListener(scope)));
+        draft.setAlternativeListeners(alternativeListenerNames(scope));
         // The listener is still emitted either way — a consumer needs its types even when the service is
         // written some other way, and the type closure reaches them through it.
         if (scope.document() != null
@@ -241,6 +246,45 @@ final class ServiceAspects {
         }
     }
 
+    /**
+     * The spec §2 {@code listeners[].services} — the other listeners this service type may attach to, as
+     * the {@code alias:ClassName} a reader would write.
+     *
+     * <p>Resolved against the semantic model exactly as the chosen listener is, and dropped when it does
+     * not resolve: naming a class the package does not declare would offer a transport whose
+     * {@code on new mcp:X(...)} does not compile, which is the failure the pairing tier already refuses to
+     * make for the primary listener.
+     *
+     * <p>Init parameters are deliberately <b>not</b> carried. The alternative is a pointer — "this also
+     * works" — and a second full parameter list per service entry would double the listener surface of
+     * every mcp service to say something the reader can read off the library's own listener class.
+     */
+    private static List<String> alternativeListenerNames(TriggerScope scope) {
+        if (scope.document() == null) {
+            return List.of();
+        }
+        String primary = TypeRefResolver.moduleAlias(scope.packageName()) + ":"
+                + scope.listenerClass().getName().orElse(DEFAULT_LISTENER_NAME);
+        List<String> names = new ArrayList<>();
+        for (TriggerMetadataModel.Listener alternative : ListenerPairingResolver.alternativeHosts(
+                scope.document().listeners(), scope.serviceType(), scope.listener())) {
+            String declared = alternative.type() == null ? null : alternative.type().name();
+            String className = scope.facts().resolveListenerClass(declared)
+                    .flatMap(ClassSymbol::getName).orElse(null);
+            if (className == null) {
+                continue;
+            }
+            String name = TypeRefResolver.moduleAlias(scope.packageName()) + ":" + className;
+            // Two document entries can resolve to one class — `resolveListenerClass` falls back to the
+            // canonical `Listener` for an unnamed one — and an alternative identical to the primary is not
+            // an alternative at all.
+            if (!name.equals(primary) && !names.contains(name)) {
+                names.add(name);
+            }
+        }
+        return names;
+    }
+
     private static Listener buildListener(TriggerScope scope) {
         ClassSymbol listenerClass = scope.listenerClass();
         String packageName = scope.packageName();
@@ -248,6 +292,13 @@ final class ServiceAspects {
 
         Listener listener = new Listener();
         listener.setName(TypeRefResolver.moduleAlias(packageName) + ":" + className);
+        // The spec §2 `doc`. The listener's parameters carry their own documentation from the semantic
+        // model, but what attaching to the listener accomplishes is stated nowhere a symbol can be read
+        // from, which is why the spec makes this required rather than leaving it to introspection.
+        if (scope.listener() != null && scope.listener().doc() != null
+                && !scope.listener().doc().isBlank()) {
+            listener.setDescription(scope.listener().doc());
+        }
         // The spec `deprecated`: prose, not a flag. The document says *why* the listener is superseded, and
         // that sentence is the only thing that tells a reader what to use instead.
         if (scope.listener() != null && scope.listener().deprecated() != null

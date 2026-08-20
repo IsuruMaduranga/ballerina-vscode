@@ -105,8 +105,11 @@ final class TypeShapeRules {
         // For `array`/`stream`, whether each item is bare or included.
         resolved.setElement(blankToNull(shape.element()));
         if (envelope != null) {
-            // The record a user type includes with `*Envelope;`.
-            resolved.setEnvelope(TypeResolver.resolveTypeWithLinks(envelope, packageName));
+            // The record a user type includes with `*Envelope;` — or, under the spec §1.4's
+            // `subtypeFamily`, any record of the named type's own subtype family, which is what http's
+            // `StatusCodeResponse` is. The flag travels with the type because the two readings need
+            // different prose and nothing else on the page distinguishes them.
+            resolved.setEnvelope(asType(shape.envelope(), envelope, packageName));
         }
         // The envelope's fields this variant may retype, in document order; never truncated.
         resolved.setBindableFields(emptyToNull(bindable));
@@ -125,14 +128,45 @@ final class TypeShapeRules {
     }
 
     /**
-     * The spec's derivation: the envelope's declared fields minus the bindable ones, in declaration order.
+     * One document type reference, resolved to the wire's {@code {name, links}} pair and carrying the spec
+     * §1.4 {@code subtypeFamily} flag when the reference states it.
+     *
+     * <p>Used only inside a data binding, which is the whole of where §1.4 puts the flag: a binding's
+     * {@code constraint}, its {@code excludes} and a shape's {@code envelope} name a <i>relationship</i> a
+     * declared type must satisfy, so "is a subtype of" and "is exactly" are genuinely different claims
+     * there and identical everywhere else.
+     *
+     * @param ref         the document reference the signature came from; may be {@code null}
+     * @param rendered    the reference's already-rendered signature text
+     * @param packageName the library being rendered, for link resolution
+     * @return the wire type
+     */
+    private static Type asType(TypeRef ref, String rendered, String packageName) {
+        Type type = TypeResolver.resolveTypeWithLinks(rendered, packageName);
+        if (ref != null && ref.isSubtypeFamily()) {
+            type.setSubtypeFamily(true);
+        }
+        return type;
+    }
+
+    /**
+     * The spec §9's derivation: the envelope's declared fields minus the bindable ones, in declaration
+     * order.
      *
      * <p>Uses the envelope's <b>bare</b> name, not its rendered signature: the lookup is against the
      * resolved package's own symbols, where a type is known by the name it was declared with.
+     *
+     * <p><b>Not derived for a subtype family.</b> The spec §1.4 makes such an envelope stand for the named
+     * type and every subtype of it, "open ended over every subtype the named type's own module declares"
+     * plus the reader's own narrowings — so the family head's field set is a lower bound, not a fixed one,
+     * and a subtype may add fields the head never declared. Reading the head's fields and calling the
+     * remainder fixed would state a prohibition the spec does not make. Absent rather than empty, which is
+     * the difference between "nothing is pinned" and "we did not look".
      */
     private static List<String> fixedFields(TypeRef envelope, List<String> bindableFields,
                                             Function<String, List<String>> envelopeFields) {
-        if (envelope == null || envelope.name() == null || envelopeFields == null) {
+        if (envelope == null || envelope.name() == null || envelopeFields == null
+                || envelope.isSubtypeFamily()) {
             return List.of();
         }
         List<String> declared = envelopeFields.apply(TypeRefResolver.baseIdentifier(envelope.name()));
@@ -228,8 +262,9 @@ final class TypeShapeRules {
                 continue;
             }
             TypedescVariant resolvedVariant = new TypedescVariant();
-            // This variant's upper bound.
-            resolvedVariant.setConstraint(TypeResolver.resolveTypeWithLinks(constraint, packageName));
+            // This variant's upper bound, carrying the spec §1.4 flag when the bound is a subtype family
+            // rather than one exact type.
+            resolvedVariant.setConstraint(asType(variant.constraint(), constraint, packageName));
             // Instantiations a sibling variant owns, which this one must not claim. A negative constraint,
             // derivable from nothing else, so a consumer states it even when every positive type is visible.
             resolvedVariant.setExcludes(emptyToNull(
@@ -261,7 +296,10 @@ final class TypeShapeRules {
         for (TypeRef ref : refs) {
             String value = render(ref, packageName, declaresType);
             if (value != null) {
-                rendered.add(TypeResolver.resolveTypeWithLinks(value, packageName));
+                // The spec §1.4 applies to `excludes` too, and there the family reading is what makes the
+                // prohibition correct: a user record that merely *is a* `StatusCodeResponse` is excluded
+                // from the bare variant, not only the named type itself.
+                rendered.add(asType(ref, value, packageName));
             }
         }
         return rendered;

@@ -700,24 +700,43 @@ function renderRepeatNotes(method: ServiceRemoteFunction, listenerAlias: string 
  * `dataBindingRules` also says it", so the overlap is deliberate *in the document*. Repeating it in the
  * prompt is not: `ftp`'s `onFileCsv` would otherwise state the same four types three times.
  *
+ * Returns the surviving `Type`s rather than their rendered names, because a §1.4 `subtypeFamily` reference
+ * has to be *worded* differently and only the type carries the flag. Rendering here and re-deriving the
+ * flag at the call site would be two places for the same fact.
+ *
  * Named and tested rather than inlined, so "why is this type missing from the note?" has an answer.
  */
 function suppressMembersAlreadyVisible(types: Type[] | undefined, visible: Set<string>,
-                                       listenerAlias: string | null): string[] {
+                                       listenerAlias: string | null): Type[] {
     if (!types || types.length === 0) {
         return [];
     }
-    const kept: string[] = [];
+    const kept: Type[] = [];
     for (const type of types) {
         // Qualified on both sides of the comparison. The `visible` set is built the same way, so the
         // suppression still matches exactly — changing one side alone would make every type look novel
         // and re-state the whole surface the signature already shows.
-        const rendered = qualifyDeclaredType(type, listenerAlias);
-        if (!visible.has(rendered)) {
-            kept.push(rendered);
+        if (!visible.has(qualifyDeclaredType(type, listenerAlias))) {
+            kept.push(type);
         }
     }
     return kept;
+}
+
+/**
+ * A type name as a §9 note must refer to it.
+ *
+ * Spec §1.4 gives a data binding's `constraint`, its `excludes` and a shape's `envelope` an optional
+ * `subtypeFamily`, which changes what the reference *means*: not "this exact type" but "this type and every
+ * subtype of it, including one the reader declares themselves". `http:StatusCodeResponse` is the worked
+ * case — a resource may return `http:Ok`, `http:Created`, or a user's own narrowing of either, and a note
+ * naming only the family head would read as a single record it is not.
+ *
+ * Stated as a parenthetical rather than as a separate sentence so it attaches to the type it qualifies,
+ * which matters most in an `excludes` list where several types may be named in one clause.
+ */
+function familyPhrase(type: Type | undefined, rendered: string): string {
+    return type?.subtypeFamily ? `${rendered} (or any subtype of it)` : rendered;
 }
 
 /**
@@ -759,7 +778,8 @@ function renderBindingVariant(variant: TypedescVariant, paramName: string, visib
     const bound = qualifyDeclaredType(variant.constraint, listenerAlias);
     // `excludes` is compared against an empty visible set on purpose: a prohibition is derivable from
     // nothing else, so it survives even when every positive member is already on the page.
-    const excluded = suppressMembersAlreadyVisible(variant.excludes, new Set<string>(), listenerAlias);
+    const excluded = suppressMembersAlreadyVisible(variant.excludes, new Set<string>(), listenerAlias)
+        .map((type) => familyPhrase(type, qualifyDeclaredType(type, listenerAlias)));
     const rendered: string[] = [];
     for (const shape of variant.shapes ?? []) {
         const line = renderBindingShape(shape, bound, paramName, visible, listenerAlias);
@@ -794,6 +814,94 @@ function renderBindingVariant(variant: TypedescVariant, paramName: string, visib
         + ` — but never ${excluded.join(", ")}`];
 }
 
+/**
+ * Spec §9.1 — the `#` lines describing how a handler's *return* may be narrowed.
+ *
+ * **The same construct as a parameter's binding, read in the opposite direction**, which is why it is
+ * worded separately rather than routed through {@link renderBindingNotes}. A parameter's binding converts a
+ * wire payload *into* the declared type, so "`msg` may bind to X" is the right sentence. A return's
+ * converts the declared type *out* to wire form: the union already names the builtin the runtime accepts,
+ * and what the document adds is that the reader may write something narrower in its place. "The return may
+ * bind to `anydata`" would state the reverse of that, and would restate a member the signature one line
+ * below already shows.
+ *
+ * **Nothing is suppressed here.** For a parameter, a type already visible in the signature is not repeated,
+ * because the binding and the declared type say the same thing. For a return they do not: `anydata` in the
+ * union is the *bound*, and the note is the only statement that a concrete type may replace it.
+ *
+ * Every corpus instance binds `anydata` — graphql's three operation shapes, grpc's four RPC kinds,
+ * websocket's four message handlers, rabbitmq's `onRequest`, mcp's tool shapes and http's resource. Only
+ * http carries a second variant, and only http's envelope is a §1.4 subtype family.
+ */
+function renderReturnBindingNotes(method: ServiceRemoteFunction, listenerAlias: string | null,
+                                  indent: string): string[] {
+    const binding = method.return?.binding;
+    if (!binding || !binding.typedescs || binding.typedescs.length === 0) {
+        return [];
+    }
+    const lines: string[] = [];
+    for (const variant of binding.typedescs) {
+        const bound = familyPhrase(variant.constraint,
+            qualifyDeclaredType(variant.constraint, listenerAlias));
+        for (const shape of variant.shapes ?? []) {
+            const sentence = renderReturnBindingShape(shape, bound, listenerAlias);
+            if (sentence) {
+                lines.push(`${indent}# ${sentence}`);
+            }
+        }
+        // A prohibition is derivable from nothing else on the page, so it survives whatever the shapes
+        // above did or did not say — the same rule `renderBindingVariant` applies to a parameter's. No
+        // corpus return declares one yet; spec §9.1 keeps the field legal, and a document that starts
+        // using it must not lose it silently.
+        const excluded = (variant.excludes ?? [])
+            .map((type) => familyPhrase(type, qualifyDeclaredType(type, listenerAlias)));
+        if (excluded.length > 0) {
+            lines.push(`${indent}# ...but the return must never be ${excluded.join(", ")}.`);
+        }
+    }
+    return lines;
+}
+
+/** One §9.1 shape, as the sentence describing what the return may be narrowed to. */
+function renderReturnBindingShape(shape: BindingShape, bound: string,
+                                  listenerAlias: string | null): string {
+    if (shape.form === "included" || shape.element === "included") {
+        if (!shape.envelope) {
+            return "";
+        }
+        const envelopeLinks = collectExternalLinks(shape.envelope);
+        // Qualified as the reader must write it, exactly as the parameter path qualifies its envelope.
+        const envelope = envelopeLinks.length > 0
+            ? applyPrefixToTypeName(shape.envelope.name, envelopeLinks)
+            : (listenerAlias ? `${listenerAlias}:${shape.envelope.name}` : shape.envelope.name);
+        const inclusion = shape.envelope.subtypeFamily
+            ? `\`*${envelope};\` — or any subtype of \`${envelope}\` —`
+            : `\`*${envelope};\``;
+        const fields = shape.bindableFields ?? [];
+        // The prohibition, not just the permission: naming the bindable field does not say the others are
+        // fixed, and that is the whole content of `bindableFields`.
+        const overrides = fields.length > 0
+            ? ` and overrides only ${fields.map((field) => `\`${field}\``).join(", ")}`
+            : "";
+        const subject = shape.form === "array"
+            ? `an array of records that include ${inclusion}`
+            : shape.form === "stream"
+                ? `a stream of records that include ${inclusion}`
+                : `a record that includes ${inclusion}`;
+        return `The return may instead be ${subject}${overrides}.`;
+    }
+    if (shape.form === "stream") {
+        return `The returned stream's \`${bound}\` element may be narrowed: declare the concrete element`
+            + ` type in place of \`${bound}\`.`;
+    }
+    if (shape.form === "array") {
+        return `The returned array's \`${bound}\` element may be narrowed: declare the concrete element`
+            + ` type in place of \`${bound}\`.`;
+    }
+    return `The \`${bound}\` member of the return may be narrowed: declare the concrete type you return in`
+        + ` place of \`${bound}\`.`;
+}
+
 /** One §9 shape, or "" when it has nothing left to say after suppression. */
 function renderBindingShape(shape: BindingShape, bound: string, paramName: string, visible: Set<string>,
                             listenerAlias: string | null): string {
@@ -809,6 +917,12 @@ function renderBindingShape(shape: BindingShape, bound: string, paramName: strin
         const envelope = envelopeLinks.length > 0
             ? applyPrefixToTypeName(shape.envelope.name, envelopeLinks)
             : (listenerAlias ? `${listenerAlias}:${shape.envelope.name}` : shape.envelope.name);
+        // Spec §1.4: an envelope may name a whole subtype family rather than one record, and then the
+        // inclusion the reader writes is of a *subtype* — `*http:Ok;` for `http:StatusCodeResponse`. The
+        // head is still shown, because it is what the family is named by and what the reader looks up.
+        const inclusion = shape.envelope.subtypeFamily
+            ? `\`*${envelope};\` — or any subtype of \`${envelope}\` —`
+            : `\`*${envelope};\``;
         const fields = shape.bindableFields ?? [];
         // The prohibition, not just the permission: naming the bindable field does not say the others are
         // fixed, and that is the whole content of `bindableFields`.
@@ -822,10 +936,10 @@ function renderBindingShape(shape: BindingShape, bound: string, paramName: strin
         // required. The English is pluralized; the type name is not — pluralizing that is what would
         // double-count against a signature that is already an array.
         const subject = shape.form === "array"
-            ? `an array of records that include \`*${envelope};\``
+            ? `an array of records that include ${inclusion}`
             : shape.form === "stream"
-                ? `a stream of records that include \`*${envelope};\``
-                : `a record that includes \`*${envelope};\``;
+                ? `a stream of records that include ${inclusion}`
+                : `a record that includes ${inclusion}`;
         return `\`${paramName}\` may bind to ${subject}${overrides}`;
     }
 
@@ -1087,6 +1201,41 @@ function renderServiceGuidance(instructions: string | undefined): string[] {
 }
 
 /**
+ * Spec §2 `listeners[].doc` and §3 `serviceTypes[].doc` — the two required prose fields, as the `#`
+ * documentation of the declaration that follows.
+ *
+ * **Why these are rendered at all.** Everywhere else the spec leaves out what introspection recovers;
+ * these two invert it, and the 2026-08-19 revision made both required precisely so every top-level
+ * construct in a document is self-describing. Nothing else in the catalog carries the same fact: a marker
+ * service type's symbol has no doc comment to read, a concrete one's says what the *object type* is rather
+ * than what writing a service against it accomplishes, and a class named `Listener` in a package named
+ * `kafka` says only that something listens.
+ *
+ * **The service's doc leads, the listener's follows it named.** A Ballerina doc comment opens with the
+ * description of the construct being declared, and the construct here is the service. The listener's is a
+ * fact about the `on new …` clause rather than about the service, so it is attributed — the same shape
+ * {@link renderDeprecationSection}'s listener line already uses, and for the same reason: unattributed, two
+ * consecutive sentences about different constructs read as one.
+ *
+ * `#` rather than `//`, unlike the guidance block above them: this is documentation *of* the declaration,
+ * not commentary about how to write one.
+ */
+function renderServiceDocNotes(service: Service): string[] {
+    const lines: string[] = [];
+    if (service.description && service.description.trim() !== "") {
+        lines.push(...service.description.split("\n").map((line) => `# ${line.trimEnd()}`));
+    }
+    const listenerDoc = service.listener?.description;
+    if (listenerDoc && listenerDoc.trim() !== "") {
+        // Folded onto one line: a doc sentence split across `#` lines would read as two claims, and the
+        // attribution prefix belongs to the whole of it.
+        lines.push(`# Listener \`${service.listener.name}\`: `
+            + `${listenerDoc.split("\n").map((line) => line.trim()).join(" ")}`);
+    }
+    return lines;
+}
+
+/**
  * Renders a generic service.
  */
 function renderGenericService(service: GenericService): string {
@@ -1097,6 +1246,17 @@ function renderGenericService(service: GenericService): string {
     lines.push(`// --- Service (generic) ---`);
     if (service.name) {
         lines.push(`// Service Type: ${service.name}`);
+    }
+    // Spec §2/§3 `doc`. `//` rather than `#` here, because this whole block is commentary rather than a
+    // declaration's documentation — a generic entry renders no `service` declaration to attach one to.
+    // Curated overlay entries carry no doc, so in practice this fires only if a producer starts sending
+    // one; stating it costs nothing and losing it silently would not.
+    if (service.description) {
+        lines.push(`// Description: ${service.description.split("\n").map((l) => l.trim()).join(" ")}`);
+    }
+    if (service.listener.description) {
+        lines.push(`// Listener purpose: `
+            + `${service.listener.description.split("\n").map((l) => l.trim()).join(" ")}`);
     }
     if (service.isDeprecated) {
         lines.push(`// Deprecated`);
@@ -1671,6 +1831,32 @@ function renderCardinalityNotes(service: Service): string[] {
 }
 
 /**
+ * Spec §2 `listeners[].services` — the other listeners this service type may attach to.
+ *
+ * **What it is for.** A `service … on new …` clause names one listener, so the pipeline picks one and
+ * writes it into the declaration. Where the document lists the same service type under several, the choice
+ * is a *transport* choice: `ballerina/mcp` lists all four of its service types under both
+ * `mcp:StreamableHttpListener` and `mcp:Listener`, and a reader asking for the stdio transport would
+ * otherwise be shown only the HTTP one, with nothing on the page saying the other exists.
+ *
+ * Stated as a note rather than by emitting a second service entry per listener: the two would be identical
+ * apart from one token, and a catalog that showed mcp's four service types eight times would read as eight
+ * different things to write.
+ *
+ * `#`, and placed with the other cardinality notes, because it answers the same family of question — what
+ * may attach to what — that spec §3.1 groups.
+ */
+function renderAlternativeListenerNote(service: Service): string[] {
+    const alternatives = service.alternativeListeners ?? [];
+    if (alternatives.length === 0) {
+        return [];
+    }
+    const names = alternatives.map((name) => `\`${name}\``).join(", ");
+    return [`# This service type may attach to ${names} instead of `
+        + `\`${service.listener.name}\`, which the declaration below uses.`];
+}
+
+/**
  * Spec §4 `addMode: "many"` — the body of a service type whose handlers the author names.
  *
  * **Every line is a `//` comment, and that is forced rather than stylistic.** A `#` documentation line is
@@ -1795,6 +1981,11 @@ function renderHandlerTemplateBody(template: ServiceRemoteFunction,
         ...renderAlternativeNotes(template, listenerAlias, ""),
         ...renderRepeatNotes(template, listenerAlias, ""),
         ...renderBindingNotes(template, listenerAlias, ""),
+        // Spec §9.1. A wildcard catalog is the ONLY shape such a service type renders, and every corpus
+        // return binding but rabbitmq's and websocket's three named handlers sits on one — graphql's three
+        // operations, grpc's four RPC kinds, mcp's tool, http's resource — so omitting it here would lose
+        // the construct for almost every library that has it.
+        ...renderReturnBindingNotes(template, listenerAlias, ""),
         ...renderParamAnnotationNotes(template, listenerAlias, ""),
         ...renderParamPresenceNotes(template, ""),
     ].filter((note) => note !== "");
@@ -1894,6 +2085,10 @@ function renderHandlers(service: FixedService, listenerAlias: string | null,
             renderAlternativeNotes(method, listenerAlias, "    "),
             renderRepeatNotes(method, listenerAlias, "    "),
             renderBindingNotes(method, listenerAlias, "    "),
+            // Spec §9.1, immediately after the inbound bindings: the two are the same construct read in
+            // opposite directions, so a reader meets everything the document says about projection in one
+            // place rather than with the annotation notes between them.
+            renderReturnBindingNotes(method, listenerAlias, "    "),
             renderParamAnnotationNotes(method, listenerAlias, "    "),
         ].flat();
         const noteBlock = notes.length > 0 ? notes.join("\n") + "\n" : "";
@@ -1944,6 +2139,11 @@ function renderHandlers(service: FixedService, listenerAlias: string | null,
  */
 function renderServiceClass(service: FixedService, listenerAlias: string | null): string {
     const lines: string[] = [];
+
+    // Spec §2/§3 `doc`, leading for the reason `renderFixedService` gives. A type reached as the return of
+    // another service's resource still needs saying what it is for — more so, since no `service … on new …`
+    // line names it.
+    lines.push(...renderServiceDocNotes(service));
 
     // Spec §2: the listener's side-effect imports still belong to the program that hosts this type, so they
     // are stated rather than dropped — the enclosing service still constructs the listener.
@@ -2013,6 +2213,10 @@ function renderFixedService(service: FixedService): string {
     // `renderGenericService` has always used.
     lines.push(...renderServiceGuidance(service.instructions));
 
+    // Spec §2/§3 `doc`. First among the `#` lines, because a Ballerina doc comment opens with the
+    // description of the construct it documents and everything below is a caveat about writing it.
+    lines.push(...renderServiceDocNotes(service));
+
     // A default is emitted ONLY for an optional parameter. Every parameter used to get one, which told the
     // model that a mandatory value — kafka's `bootstrapServers`, grpc's `port` — had a default it could
     // leave alone. The `optional` flag has always been on the wire (set from the init method's
@@ -2059,6 +2263,7 @@ function renderFixedService(service: FixedService): string {
     // the reader write a *different number* of declarations rather than a different declaration.
     lines.push(...renderPlatformDependencyNotes(service.platformDependencies));
     lines.push(...renderCardinalityNotes(service));
+    lines.push(...renderAlternativeListenerNote(service));
 
     const identifierSlot = renderIdentifierSlot(service.identifier);
     lines.push(...identifierSlot.notes);
@@ -2248,43 +2453,6 @@ function renderServiceAlternativesNote(services: Service[]): string[] {
 }
 
 /**
- * The curated `test.md` guidance a library's services carry — emitted **once per library**.
- *
- * The Java side attaches it to every service of the library, so the text is identical across them and
- * repeating it per service type would state one fact several times. Distinct texts are all emitted, in
- * first-appearance order, because nothing guarantees a future producer keeps them uniform.
- *
- * Until now the field was declared nowhere in TypeScript and rendered nowhere, while the system prompt told
- * the model to respect "the testGenerationInstruction field in whatever library associated with the
- * service" — so the instruction pointed at text the model was never shown.
- *
- * `//` rather than `#`: this is a library-level statement, and a `#` line here would attach to whatever
- * declaration follows. Emitted after the services, since it is about testing code the reader has not
- * written yet.
- */
-function renderTestGuidance(services: Service[]): string[] {
-    const seen = new Set<string>();
-    const blocks: string[] = [];
-    for (const service of services) {
-        const guidance = service.testGenerationInstruction;
-        if (!guidance || guidance.trim() === "" || seen.has(guidance)) {
-            continue;
-        }
-        seen.add(guidance);
-        blocks.push(guidance.trimEnd());
-    }
-    if (blocks.length === 0) {
-        return [];
-    }
-    return [
-        "",
-        "// --- Test generation guidance ---",
-        "// Applies only when generating tests for this library's services.",
-        ...blocks,
-    ];
-}
-
-/**
  * Renders a service to Ballerina syntax.
  */
 function renderService(service: Service): string {
@@ -2364,7 +2532,6 @@ export function toSyntaxString(libraries: Library[]): string {
                 output.push("");
                 output.push(renderService(service));
             }
-            output.push(...renderTestGuidance(lib.services));
         }
 
         // Annotation section

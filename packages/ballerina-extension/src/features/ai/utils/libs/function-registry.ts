@@ -24,12 +24,17 @@ import {
     MinifiedClient,
     MinifiedRemoteFunction,
     MinifiedResourceFunction,
-    MinifiedService,
     PathParameter,
 } from "./function-types";
 import { Client, GetTypeResponse, GetTypesRequest, GetTypesResponse, getTypesResponseSchema, Library, MiniType, RemoteFunction, ResourceFunction, Service, FixedService, Annotation } from "./library-types";
 import { TypeDefinition, AbstractFunction, Type, RecordTypeDefinition, UnionTypeDefinition } from "./library-types";
-import { getClientFunctionCount, hasNothingToSelect, selectServices } from "./library-selection";
+import {
+    getClientFunctionCount,
+    hasNothingToSelect,
+    selectServices,
+    toSelectionRequest,
+    withRestoredServiceLibraries,
+} from "./library-selection";
 import { getAnthropicClient, ANTHROPIC_HAIKU } from "../ai-client";
 import { GenerationType } from "./libraries";
 // import { getRequiredTypesFromLibJson } from "../healthcare/healthcare";
@@ -59,6 +64,23 @@ export function mergeUsage(...usages: ModelUsage[]): ModelUsage[] {
 const TYPE_RECORD = 'Record';
 const TYPE_UNION = 'Union';
 const TYPE_CONSTRUCTOR = 'Constructor';
+
+/**
+ * The output ceiling for both selection calls.
+ *
+ * **What overflows is the response, not the request.** A selection reply echoes every kept function — its
+ * name, its parameter names and its return type — so it scales with how much the query matches, not with
+ * how large the library is. At the previous 8192 a broad query against a large connector ("wire up GitHub
+ * issues, PRs, releases and webhooks") could exceed it, and the failure is the worst shape available: the
+ * JSON is truncated mid-token, `generateObject` rejects it against the schema, the throw unwinds to
+ * `LibraryGetTool`'s catch, and the agent is handed `[]` — indistinguishable from a library that matched
+ * nothing. It then has no API documentation and a system prompt forbidding it to invent any.
+ *
+ * Raised rather than removed, and to 16384 rather than to the model's own ceiling, because these are
+ * NON-streaming `generateObject` calls: a cap high enough to permit a multi-minute generation trades a
+ * truncation failure for an HTTP-timeout one. Going materially above this should come with streaming.
+ */
+const SELECTION_MAX_OUTPUT_TOKENS = 16384;
 
 export async function selectRequiredFunctions(prompt: string, selectedLibNames: string[], generationType: GenerationType): Promise<{ libraries: Library[], usage: ModelUsage[] }> {
     const selectedLibs: Library[] = await getMaximizedSelectedLibs(selectedLibNames);
@@ -148,22 +170,17 @@ async function getRequiredFunctions(
 
     const libraryList: GetFunctionsRequest[] = librariesJson
         .filter((lib) => libraryContains(lib.name, libraries))
-        .map((lib) => ({
-            name: lib.name,
-            description: lib.description,
-            clients: filteredClients(lib.clients),
-            functions: filteredNormalFunctions(lib.functions, generationType),
-            services: filteredServicesForRequest(lib.services),
-        }));
+        .map((lib) => toSelectionRequest(
+            lib, generationType === GenerationType.HEALTHCARE_GENERATION));
 
-    // A library with no client functions and no module-level functions never reaches the model.
+    // A library the model can make no decision about never reaches it — see `hasNothingToSelect` for what
+    // that means now that a services-only library above the filter threshold is a decision.
     //
-    // Selection is the only thing this call does, and for such a library there is nothing to select — every
-    // trigger package is this shape. Sending it anyway made its presence in the output depend on the model
-    // echoing the name back, and when it did not, the library was dropped outright: not fetched, not
-    // rendered, and indistinguishable to the caller from one that does not exist. One sentence of prompt
-    // prose was the only thing standing against that. Passing it straight through removes the dependency
-    // instead of restating it.
+    // Sending such a library anyway made its presence in the output depend on the model echoing the name
+    // back, and when it did not, the library was dropped outright: not fetched, not rendered, and
+    // indistinguishable to the caller from one that does not exist. One sentence of prompt prose was the
+    // only thing standing against that. Passing it straight through removes the dependency instead of
+    // restating it; `withRestoredServiceLibraries` removes it for the libraries that do get asked about.
     const passthroughLibs = libraryList.filter(hasNothingToSelect);
     const selectableLibs = libraryList.filter((lib) => !passthroughLibs.includes(lib));
     const passthroughResp: GetFunctionResponse[] = passthroughLibs.map((lib) => ({ name: lib.name }));
@@ -204,11 +221,11 @@ async function getRequiredFunctions(
     console.log(`[Parallel Execution Complete] Total parallel execution time: ${parallelDuration}s`);
 
     // Flatten the results
-    const collectiveResp: GetFunctionResponse[] = [
+    const collectiveResp: GetFunctionResponse[] = withRestoredServiceLibraries(libraryList, [
         ...passthroughResp,
         ...smallLibResult.libraries,
         ...largeLibResults.flatMap(r => r.libraries),
-    ];
+    ]);
     const endTime = Date.now();
     const totalDuration = (endTime - startTime) / 1000;
 
@@ -250,7 +267,8 @@ CRITICAL RULES:
 2. Your ONLY task is selection - include or exclude items, NEVER modify field values.
 3. Copy all field values EXACTLY as provided - preserve every character including backslashes and special characters.
 4. For resource functions: "accessor" and "paths" are SEPARATE fields - NEVER combine them.
-5. A library is relevant if ANY of its clients, functions, or services match the query. List each matching service under the library's "services" field, copying its "listener" and "name" verbatim; omit the services that do not match. If a library matches ONLY via its services, still include the library in the output with empty/omitted clients and functions.`;
+5. A library is relevant if ANY of its clients, functions, or services match the query. A service matches when its "doc" (what the service is for), its "listenerDoc" (how it is triggered), its name, or ANY ONE of its handlers under "methods", is what the query needs. List each matching service under the library's "services" field, copying its "listener" and "name" verbatim; omit the services that do not match. If a library matches ONLY via its services, still include the library in the output with empty/omitted clients and functions.
+6. "doc", "listenerDoc" and a handler's "doc" are evidence to reason over, never fields to copy: the response carries only "listener" and "name" for a service.`;
 
     const getLibUserPrompt = `You will be provided with a list of libraries, clients, and their functions, and a user query.
 
@@ -288,7 +306,7 @@ Now, based on the provided libraries and the user query, please filter and retur
     try {
         const { object, usage } = await generateObject({
             model: await getAnthropicClient(ANTHROPIC_HAIKU),
-            maxOutputTokens: 8192,
+            maxOutputTokens: SELECTION_MAX_OUTPUT_TOKENS,
             temperature: 0,
             messages: messages,
             schema: getFunctionsResponseSchema,
@@ -331,78 +349,6 @@ function printSelectedFunctions(libraries: GetFunctionResponse[]): void {
 
 export function libraryContains(library: string, libraries: string[]): boolean {
     return libraries.includes(library);
-}
-
-function filteredClients(clients: Client[]): MinifiedClient[] {
-    return clients.map((cli) => ({
-        name: cli.name,
-        description: cli.description,
-        functions: filteredFunctions(cli.functions),
-    }));
-}
-
-function filteredFunctions(
-    functions: (RemoteFunction | ResourceFunction)[]
-): (MinifiedRemoteFunction | MinifiedResourceFunction)[] {
-    const output: (MinifiedRemoteFunction | MinifiedResourceFunction)[] = [];
-
-    for (const item of functions) {
-        if ("accessor" in item) {
-            // ResourceFunction
-            const res: MinifiedResourceFunction = {
-                accessor: item.accessor,
-                paths: item.paths,
-                parameters: item.parameters.map((param) => param.name),
-                returnType: item.return.type.name,
-            };
-            output.push(res);
-        } else { // RemoteFunction
-            if (item.type !== TYPE_CONSTRUCTOR) {
-                const rem: MinifiedRemoteFunction = {
-                    name: item.name,
-                    parameters: item.parameters.map((param) => param.name),
-                    returnType: item.return.type.name,
-                };
-                output.push(rem);
-            }
-        }
-    }
-
-    return output;
-}
-
-function filteredServicesForRequest(services?: Service[]): MinifiedService[] | undefined {
-    if (!services || services.length === 0) {
-        return undefined;
-    }
-    return services.map((svc) => {
-        const result: MinifiedService = {
-            listener: svc.listener.name,
-        };
-        if (svc.name) {
-            result.name = svc.name;
-        }
-        if (svc.type === "fixed") {
-            const methodNames = ((svc as FixedService).methods ?? []).map((m) => m.name);
-            if (methodNames.length > 0) {
-                result.methods = methodNames;
-            }
-        }
-        return result;
-    });
-}
-
-function filteredNormalFunctions(functions?: RemoteFunction[], generationType?: GenerationType): MinifiedRemoteFunction[] | undefined {
-    if (!functions) {
-        return undefined;
-    }
-
-    return functions.map((item) => ({
-        name: item.name,
-        parameters: item.parameters.map((param) => param.name),
-        returnType: item.return.type.name,
-        ...(generationType === GenerationType.HEALTHCARE_GENERATION && { description: item?.description }),
-    }));
 }
 
 export async function getMaximizedSelectedLibs(libNames: string[]): Promise<Library[]> {
@@ -832,14 +778,20 @@ function addInternalRecord(
  * follow that library's generator convention for the same shape; unverified here, since twilio is not in the
  * render corpus.
  *
- * **Excluding a name here does not hide the type.** The exclusion applies to the *closure walk* only, so a
- * library that declares one still renders it in its own `typeDefs` section. What the list avoids is dragging
- * it in as a dependency of every function that happens to touch it.
+ * **Excluding a name here DOES hide the type, and that is a known defect.** An earlier version of this
+ * comment claimed the exclusion applied to the closure walk alone, leaving the library's own `typeDefs`
+ * section to render it anyway. There is no such section: a library's `typeDefs` IS this closure — see the
+ * `getOwnTypeDefsForLib` call in `toMaximizedLibrariesFromLibJson` — so an excluded name reaches the
+ * catalog nowhere, while `renderRecord` goes on printing the fields that reference it. The prompt then
+ * declares `ActionsEnabled enabled?;` inside a record and defines `ActionsEnabled` nowhere.
  *
- * Hardcoded by library-specific name, which is the real objection to it: a third connector with the same
- * generator shape gets no benefit, and the list can only grow by hand. The principled version is a *shape*
- * test — skip an alias whose definition is a primitive or a union of primitives — which needs the type's
- * definition at the point of the walk and would move the type surface of every large connector.
+ * The list is kept for now regardless, and it is also hardcoded by library-specific name — so a third
+ * connector with the same generator shape gets no benefit, and it can only grow by hand. Two ways out, both
+ * deliberately deferred: **drop it**, which costs ~15 one-line declarations for two connectors and makes the
+ * catalog self-consistent; or a **shape test** — skip an alias whose definition is a primitive or a union of
+ * primitives, and inline it at the reference site so the field reads `boolean enabled?;` rather than naming
+ * a type that is not there. The second needs the definition at the point of the walk and would move the type
+ * surface of every large connector, which is why it is not a drive-by change.
  */
 function isIgnoredRecordName(recordName: string): boolean {
     const ignoredRecords = [
@@ -1110,7 +1062,7 @@ Think step-by-step to choose the required types in order to solve the given ques
     try {
         const { object, usage } = await generateObject({
             model: await getAnthropicClient(ANTHROPIC_HAIKU),
-            maxOutputTokens: 8192,
+            maxOutputTokens: SELECTION_MAX_OUTPUT_TOKENS,
             temperature: 0,
             messages: messages,
             schema: getTypesResponseSchema,

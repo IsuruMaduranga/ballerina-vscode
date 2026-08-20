@@ -66,9 +66,11 @@ import java.util.Set;
  * </pre>
  *
  * <p><b>No document in the shipped corpus reaches this generator.</b> Two conditions must both hold for it
- * to be called — the slot states no {@code name}, and it is not {@code addMode: "many"} — and every
- * nameless slot in all fourteen documents is {@code many}. The rules are kept because the first document to
- * declare a fixed nameless slot needs them.
+ * to be called — the slot states no {@code name}, and it is not {@code addMode: "many"} — and all ten
+ * nameless slots across the thirty-two documents are {@code many}. That is not a coincidence of authoring:
+ * the spec §7 requires {@code name} on every fixed slot and permits its omission only under
+ * {@code addMode: "many"}, where the user names each occurrence. The rules are kept because the first
+ * document to violate that — or the first spec revision to relax it — needs them.
  *
  * @since 1.7.0
  */

@@ -31,9 +31,35 @@ public class Service {
     private String type;
     @SerializedName("name")
     private String name;
+    /**
+     * The spec §3 {@code doc} — what this service type is for, in the document's own prose.
+     *
+     * <p>Required by the spec on every service type, {@code concrete} ones included, and for a reason the
+     * rest of the schema inverts: everywhere else a fact introspection can recover is left out, but a
+     * service type is one of the constructs a reader navigates the file by, so it says what it is
+     * regardless. Nothing else in the catalog carries it — a marker type's own symbol has no doc comment
+     * worth reading, and a concrete one's says what the <i>object type</i> is rather than what writing a
+     * service against it accomplishes.
+     *
+     * <p>Distinct from {@link #instructions}, which is curated guidance about <i>how</i> to write the
+     * service and exists for two libraries; this is one sentence about what the service does and exists for
+     * every schema-driven one.
+     */
+    @SerializedName("description")
+    private String description;
     @SerializedName("instructions")
     private String instructions;
     private Listener listener;
+    /**
+     * The spec §2 {@code listeners[].services} — the other listeners this service type may attach to.
+     *
+     * <p>One listener goes into {@link #listener}, because a {@code service … on new …} clause names one
+     * and the pipeline has to choose. Where the document offers more, the choice is a transport choice the
+     * reader may want to make differently: {@code ballerina/mcp} lists all four of its service types under
+     * both {@code StreamableHttpListener} and {@code Listener}, so rendering only the first would make the
+     * other transport invisible. Absent for a single-listener document, which is every other one.
+     */
+    private List<String> alternativeListeners;
     // The spec: the org/module a cross-module service type belongs to (ballerinax/cdc). Null for a
     // home-module type. The renderer derives the prefix and the provenance note from it.
     private String serviceTypeModule;
@@ -116,7 +142,6 @@ public class Service {
     private List<ServiceRemoteFunction> handlerTemplates;
     @SerializedName("methods")
     private List<ServiceRemoteFunction> methods;
-    private String testGenerationInstruction;
     /**
      * The spec's {@code deprecated} — why this construct is superseded, as the document's own prose.
      *
@@ -148,6 +173,22 @@ public class Service {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public List<String> getAlternativeListeners() {
+        return alternativeListeners;
+    }
+
+    public void setAlternativeListeners(List<String> alternativeListeners) {
+        this.alternativeListeners = alternativeListeners;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 
     public String getInstructions() {
@@ -252,14 +293,6 @@ public class Service {
 
     public void setMethods(List<ServiceRemoteFunction> methods) {
         this.methods = methods;
-    }
-
-    public String getTestGenerationInstruction() {
-        return testGenerationInstruction;
-    }
-
-    public void setTestGenerationInstruction(String testGenerationInstruction) {
-        this.testGenerationInstruction = testGenerationInstruction;
     }
 
     public Boolean isDeprecated() {

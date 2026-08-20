@@ -20,6 +20,8 @@ package io.ballerina.flowmodelgenerator.core.copilot.service;
 
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
 
+import java.util.List;
+
 /**
  * The spec {@code annotations[]} at all four attach points: which annotations generated code must or may
  * carry, on the service, on a handler, on a handler parameter, and on a handler's return.
@@ -35,10 +37,10 @@ import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
  * <p><b>Rejections {@code drop}, they do not {@code veto}.</b> An unresolvable obligation makes the
  * obligation unusable, not the construct carrying it.
  *
- * <p><b>Known coverage gap, owned elsewhere.</b> {@code ballerina/http} and {@code ballerina/graphql} both
- * declare an optional service-level {@code serviceConfig}, and
- * {@code ServiceLoader.mergeWithGenericServices} discards their synthesized entry in favour of a richer
- * curated overlay — silently, after this pipeline. Both are {@code optional}, so nothing miscompiles.
+ * <p>{@code ballerina/http} and {@code ballerina/graphql} both declare an optional service-level
+ * {@code serviceConfig}. Their curated overlay entry collides by name with the synthesized one, and
+ * {@code ServiceLoader.mergeWithGenericServices} now keeps the synthesized entry, so the obligation this
+ * component resolves does reach the prompt.
  *
  * @since 1.7.0
  */
@@ -124,8 +126,14 @@ final class AnnotationAspects {
     }
 
     /**
-     * The spec at {@code attachPoint: "return"} — reached by id from
-     * {@code handlers.options[].returnAnnotations}.
+     * The spec §8 at {@code attachPoint: "return"} — reached by id from
+     * {@code handlers.options[].returns.annotations}.
+     *
+     * <p><b>The list moved in the spec's 2026-08-19 revision</b>, from a sibling {@code returnAnnotations}
+     * on the handler onto the {@code returns} object itself. That is where it belongs: the obligation
+     * attaches to the return slot, and filing it beside the type it attaches to is what stops a handler
+     * with no return clause from carrying return annotations at all. Nothing else about this aspect
+     * changed, which is why the read is a one-line accessor swap.
      *
      * <p>Runs in the handler tier because the return slot belongs to a handler, and is resolved
      * <b>per handler</b>: selection used to be by attach point, which is a document-wide question, so every
@@ -135,13 +143,13 @@ final class AnnotationAspects {
      * <p>It targets a different syntactic slot from {@link #handler} — {@code returns @http:Cache {...} T}
      * rather than a declaration-level attachment. The refs go to
      * {@link HandlerDraft#setReturnAnnotationRefs}, which merges them into the return object at emit time,
-     * so this carries no ordering dependency on {@link ReturnAspect}.
+     * so this carries no ordering dependency on {@link HandlerAspects#returnType}.
      */
     static void returnValue(HandlerScope scope, HandlerDraft draft) {
         TriggerScope service = scope.service();
         AnnotationScopeResolver.Resolution resolution = AnnotationScopeResolver.byIds(
                 service.annotations(),
-                scope.option() == null ? null : scope.option().returnAnnotations(),
+                returnAnnotationIds(scope.option()),
                 AnnotationScopeResolver.Scope.RETURN,
                 service.homeModule(), AnnotationScopeResolver.factsOf(service.facts()));
         if (resolution.refs().isEmpty() && resolution.rejections().isEmpty()) {
@@ -149,6 +157,17 @@ final class AnnotationAspects {
         }
         report(resolution, draft, "returnAnnotation");
         draft.setReturnAnnotationRefs(AnnotationRefWriter.write(resolution.refs(), service.packageName()));
+    }
+
+    /**
+     * The return-scope annotation ids a handler option declares — {@code returns.annotations}, or nothing
+     * for a concrete method and for a handler whose language form carries no return clause.
+     */
+    private static List<String> returnAnnotationIds(TriggerMetadataModel.ServiceType.HandlerOption option) {
+        if (option == null || option.returns() == null) {
+            return null;
+        }
+        return option.returns().annotations();
     }
 
     private static void report(AnnotationScopeResolver.Resolution resolution, ServiceDraft draft, String id) {

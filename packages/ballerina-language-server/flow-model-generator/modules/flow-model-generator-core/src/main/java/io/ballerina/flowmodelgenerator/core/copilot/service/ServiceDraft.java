@@ -69,6 +69,19 @@ final class ServiceDraft {
     }
 
     /**
+     * The spec §3 {@code doc}: what this service type is for.
+     *
+     * <p>A no-op for absent or blank input, like every other setter here, though the spec makes the field
+     * required — a document that omits it is malformed, and the omission rule already says the right thing
+     * to do with a field that would be empty.
+     */
+    void setDescription(String description) {
+        if (description != null && !description.isBlank()) {
+            service.setDescription(description);
+        }
+    }
+
+    /**
      * The spec {@code deprecated} — why this service type is superseded, as the document's own prose.
      *
      * <p>Text rather than a flag: the sentence names what replaces it. Distinct from the
@@ -176,11 +189,23 @@ final class ServiceDraft {
 
     /**
      * The spec {@code rules[]}: the exclusivity constraints this service type declares. Omitted when it
-     * declares none, which is 8 of the 13 corpus documents.
+     * declares none, which is 43 of the corpus's 58 service types.
      */
     void setConstraints(List<ServiceConstraint> constraints) {
         if (constraints != null && !constraints.isEmpty()) {
             service.setConstraints(List.copyOf(constraints));
+        }
+    }
+
+    /**
+     * The spec §2 {@code listeners[].services}: the other listeners this service type may attach to.
+     *
+     * <p>Omitted when there are none, which is every single-listener document — so the key appears only
+     * where the document genuinely offers a choice.
+     */
+    void setAlternativeListeners(List<String> names) {
+        if (names != null && !names.isEmpty()) {
+            service.setAlternativeListeners(List.copyOf(names));
         }
     }
 

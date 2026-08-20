@@ -19,6 +19,13 @@ import { z } from 'zod';
 export interface Type {
     name: string;
     links?: Link[];
+    // Spec §1.4 `subtypeFamily`: this reference stands for the named type AND every subtype of it, not the
+    // exact type alone. Set only inside a data binding — a variant's `constraint` or `excludes`, or a
+    // shape's `envelope` — which is the whole of where the spec puts it, because those are the three
+    // positions that name a relationship a declared type must satisfy rather than a type to declare
+    // verbatim. `http:StatusCodeResponse` is the corpus case: the family covers `http:Ok`,
+    // `http:Created`, and any narrowing the reader declares themselves.
+    subtypeFamily?: boolean;
 }
 
 export interface Link {
@@ -121,7 +128,16 @@ export interface Return {
     type: Type;
     // Spec §8 at `attachPoint: "return"`: annotations the generated handler must or may carry on its
     // return (`returns @http:Cache {...} T`). Nested here because that is the slot they attach to.
+    //
+    // Spec §5.4 moved the document's own list from a sibling `returnAnnotations` on the handler onto
+    // `returns.annotations`, beside the type it attaches to. The wire shape here was already nested, so
+    // the move changed where the pipeline reads it and nothing about what this renderer sees.
     annotationRefs?: AnnotationRequirement[];
+    // Spec §9.1: how the declared return type is projected on the way OUT — the outbound reading of the
+    // same shape a parameter's `binding` states inbound. Present only where one member of the return union
+    // is a builtin constraint the runtime serializes through: HTTP's `anydata` response branch, graphql's
+    // streamed subscription element. Absent for a return whose members are all fixed types.
+    binding?: ParamBinding;
 }
 
 export interface EnumValue {
@@ -273,6 +289,11 @@ export interface Client {
 export interface Listener {
     name: string;
     parameters: Parameter[];
+    // Spec §2 `doc` — what this listener is and when a service attaches to it. Required by the spec on
+    // every listener, and the one fact about attaching that no symbol carries: the parameters bring their
+    // own doc comments, but a class named `Listener` in a package named `kafka` says only that something
+    // listens, not that it polls the subscribed topics and hands each poll's batch to the service.
+    description?: string;
     // Spec §2 `deprecated` — why this listener is superseded, as prose. See ServiceRemoteFunction.deprecated
     // for why it is text and not a flag.
     deprecated?: string;
@@ -332,10 +353,17 @@ export interface ConstraintSubject {
     // For `annotationField`, the field path inside the annotation record. An array, so a nested field such
     // as `["retryConfig", "maxCount"]` is addressable — truncating it would name the wrong field.
     path?: string[];
-    // For `handler` the handler's name; for `param` the parameter's name.
+    // For `handler` the handler as a reader sees it — its method name, or, for a spec §5.1
+    // `addMode: "many"` shape whose name is always `*`, the last segment of its id (`graphql`'s
+    // `$service.query` reads as `query`). For `param` the parameter's name.
     name?: string;
-    // For `param`, the handler the parameter belongs to.
+    // For `param`, the handler the parameter belongs to, resolved by the Java side from the parameter's
+    // own hierarchical id rather than from a sibling field — spec §6.1.1 removed the `handler`/`name` pair.
     handler?: string;
+    // Spec §6.1.1: the `$`-prefixed id the subject was addressed by. Carried for traceability and never
+    // rendered — it names a slot in a JSON document, not anything that exists in Ballerina source, which is
+    // the same reason the annotation subject's registry id is not rendered either.
+    id?: string;
     // This subject's name within its rule. Asymmetric constraints fix `when`/`then`; symmetric ones use
     // free labels, referenced by the rule's `prefer`.
     role?: string;
@@ -367,6 +395,13 @@ export interface Service {
     listener: Listener;
     type: "generic" | "fixed";
     name?: string;
+    // Spec §3 `doc` — what this service type is for, in the document's own prose. Required by the spec on
+    // every service type, `concrete` ones included: unlike a handler's doc, which is authored only because
+    // a marker type has no method to introspect, this exists so every top-level construct in the file is
+    // self-describing. Distinct from `instructions`, which is curated guidance on HOW to write the service
+    // and exists for two libraries; this is one sentence on what it does and exists for every
+    // schema-driven one.
+    description?: string;
     isDeprecated?: boolean;
     // Hand-authored guidance for writing this service, from
     // `resources/copilot/instructions/<org>/<module>/service.md`.
@@ -380,6 +415,13 @@ export interface Service {
     // Spec §1: the `org/module` a cross-module service type belongs to (`ballerinax/cdc`). Absent
     // for a home-module type, which is prefixed with the listener's alias instead.
     serviceTypeModule?: string;
+    // Spec §2 `listeners[].services`: the other listeners this service type may attach to, as the
+    // `alias:ClassName` a reader would write. One listener goes into `listener`, because a
+    // `service … on new …` clause names one; where the document offers more, the choice is a transport
+    // choice the reader may want to make differently. `ballerina/mcp` is the corpus case — all four of its
+    // service types are listed under both `StreamableHttpListener` and `Listener` — and it is the only one,
+    // so the field is absent for every other library.
+    alternativeListeners?: string[];
     requiredImports?: RequiredImport[];
     // Spec §8: the annotations this service type must or may carry.
     annotations?: ServiceAnnotationRef[];
@@ -412,13 +454,6 @@ export interface Service {
     // Spec §3 `deprecated` — why this service type is superseded, as prose. See
     // ServiceRemoteFunction.deprecated for why it is text and not a flag.
     deprecated?: string;
-    // Hand-authored guidance for writing TESTS against this service, from
-    // `resources/copilot/instructions/<org>/<module>/test.md`. Set by the Java side on every service of a
-    // library that ships one, and named by the system prompt.
-    //
-    // It was undeclared here and rendered nowhere, so the prompt instructed the model to honour text it never
-    // received. Rendered once per library, because the claim is about the library.
-    testGenerationInstruction?: string;
 }
 
 // Spec §2.1 — a native artifact the generated project needs on its classpath, which no public repository

@@ -904,6 +904,262 @@ public class CopilotSchemaServicesTest {
                 "document order is preserved");
     }
 
+    // ---- Trigger Construct Spec v1.0, 2026-08-19 revision --------------------------------
+
+    /**
+     * Spec §2/§3 {@code doc}: the two prose fields the revision made required reach the catalog.
+     *
+     * <p>Neither is recoverable from a symbol, which is the whole reason the spec suspends its own
+     * "leave out what introspection recovers" rule for them. A service type's own object type carries no
+     * doc comment worth reading — {@code kafka:Service} is a marker that declares nothing — and a class
+     * named {@code Listener} in a package named {@code kafka} says only that something listens.
+     */
+    @Test
+    public void testServiceAndListenerDocsReachTheCatalog() {
+        JsonObject service = serviceNamed(load("ballerinax/kafka"), "Service");
+        Assert.assertTrue(service.has("description"),
+                "the spec §3 makes `doc` required on every service type: " + service);
+        Assert.assertTrue(service.get("description").getAsString().contains("subscribed topics"),
+                service.get("description").getAsString());
+
+        JsonObject listener = service.getAsJsonObject("listener");
+        Assert.assertTrue(listener.has("description"),
+                "the spec §2 makes `doc` required on every listener: " + listener);
+        Assert.assertFalse(listener.get("description").getAsString().isBlank());
+    }
+
+    /**
+     * Spec §2 {@code listeners[].services}: a service type hosted by more than one listener says so.
+     *
+     * <p>{@code ballerina/mcp} is the case that made the multi-listener path live — it lists all four of
+     * its service types under both {@code StreamableHttpListener} and {@code Listener}, where every other
+     * corpus document declares one listener. The pairing tier still writes one into the
+     * {@code on new …} clause, so without this the stdio transport would exist in the document and nowhere
+     * in the catalog.
+     *
+     * <p>The alternative is asserted to be a class the resolved package declares, for the same reason the
+     * primary listener is: offering a transport whose {@code on new mcp:X(...)} does not compile is worse
+     * than offering none.
+     */
+    @Test
+    public void testMcpStatesTheOtherListenerItsServicesMayAttachTo() {
+        JsonArray services = load(MCP);
+        Set<String> declared = declaredNames(MCP);
+        int stated = 0;
+        for (JsonElement element : services) {
+            JsonObject svc = element.getAsJsonObject();
+            JsonArray alternatives = svc.getAsJsonArray("alternativeListeners");
+            if (alternatives == null) {
+                continue;
+            }
+            for (JsonElement alternative : alternatives) {
+                String name = alternative.getAsString();
+                assertListenerIsDeclared(name, declared);
+                Assert.assertNotEquals(name, svc.getAsJsonObject("listener").get("name").getAsString(),
+                        "a listener is never an alternative to itself");
+                stated++;
+            }
+        }
+        Assert.assertTrue(stated > 0,
+                "mcp declares two listeners hosting the same service types; the second must be stated: "
+                        + services);
+    }
+
+    /**
+     * The counterpart: a single-listener document states nothing, which is every other library.
+     *
+     * <p>Worth pinning because the field is only correct as an exception. Emitted unconditionally it would
+     * put a line on every trigger service in the catalog restating the listener the declaration already
+     * names.
+     */
+    @Test
+    public void testASingleListenerLibraryStatesNoAlternative() {
+        for (JsonElement element : load("ballerinax/kafka")) {
+            Assert.assertFalse(element.getAsJsonObject().has("alternativeListeners"),
+                    "kafka declares one listener, so there is no alternative to state: " + element);
+        }
+    }
+
+    /**
+     * Spec §6.1.1: a {@code handler} subject addresses its handler by <b>id</b>, and a
+     * {@code structure.atLeastOne} over a <b>single</b> subject is legal.
+     *
+     * <p>graphql is the case the spec cites and the case that was being lost: all three of its handler
+     * shapes are {@code addMode: "many"} and so named {@code "*"}, so only the id tells the query shape
+     * from the mutation and subscription ones — and the previous two-subject floor dropped the rule whole,
+     * saying nothing about a constraint that decides whether the generated schema is valid at all.
+     *
+     * <p>The subject's rendered {@code name} is asserted too: {@code "*"} names nothing a reader could look
+     * for, so the label has to come from the id's own segment.
+     */
+    @Test
+    public void testGraphqlSingleSubjectConstraintSurvivesAndIsAddressedById() {
+        JsonObject service = serviceNamed(load("ballerina/graphql"), "Service");
+        JsonArray constraints = service.getAsJsonArray("constraints");
+        Assert.assertNotNull(constraints, "graphql's atLeastOne rule must reach the wire: " + service);
+        Assert.assertEquals(constraints.size(), 1, constraints.toString());
+
+        JsonObject constraint = constraints.get(0).getAsJsonObject();
+        Assert.assertEquals(constraint.get("rule").getAsString(), "structure.atLeastOne");
+        JsonArray subjects = constraint.getAsJsonArray("subjects");
+        Assert.assertEquals(subjects.size(), 1, "a single subject is a legal atLeastOne: " + subjects);
+
+        JsonObject subject = subjects.get(0).getAsJsonObject();
+        Assert.assertEquals(subject.get("kind").getAsString(), "handler");
+        Assert.assertEquals(subject.get("id").getAsString(), "$service.query",
+                "the id the document addressed the handler by travels for traceability");
+        Assert.assertEquals(subject.get("name").getAsString(), "query",
+                "a `many` option is named `*`, so the reader-facing label comes from the id's own segment");
+    }
+
+    /**
+     * Spec §5.4/§8: a return-scope annotation now reaches the consumer through {@code returns.annotations}.
+     *
+     * <p>The list moved off the handler's {@code returnAnnotations} sibling, so a consumer still reading the
+     * old key would parse the document without complaint and emit no return obligation at all.
+     * {@code ballerina/http}'s {@code $cache} is the corpus instance.
+     */
+    @Test
+    public void testHttpReturnAnnotationIsReadFromTheReturnObject() {
+        JsonObject resource = onlyHandlerTemplate(load("ballerina/http"));
+        JsonObject returnInfo = resource.getAsJsonObject("return");
+        JsonArray refs = returnInfo.getAsJsonArray("annotationRefs");
+        Assert.assertNotNull(refs, "http's $cache attaches to the return: " + returnInfo);
+        Assert.assertEquals(refs.size(), 1, refs.toString());
+        Assert.assertEquals(refs.get(0).getAsJsonObject().get("name").getAsString(), "Cache");
+        Assert.assertEquals(refs.get(0).getAsJsonObject().get("attachPoint").getAsString(), "return");
+    }
+
+    /**
+     * Spec §9.1 and §1.4: a return carries its own data binding, and an envelope may name a subtype family.
+     *
+     * <p>The outbound counterpart of a parameter's binding — the declared return type is what the runtime
+     * serializes out — and the only statement anywhere that an HTTP resource may return a narrower type
+     * than the {@code anydata} its union names. The {@code subtypeFamily} flag on the envelope is what
+     * separates "include this one record" from "include any of {@code http:Ok}, {@code http:Created}, or a
+     * narrowing you declare yourself", which no other field on the page can express.
+     */
+    @Test
+    public void testHttpReturnCarriesItsDataBindingAndSubtypeFamily() {
+        JsonObject resource = onlyHandlerTemplate(load("ballerina/http"));
+        JsonObject binding = resource.getAsJsonObject("return").getAsJsonObject("binding");
+        Assert.assertNotNull(binding, "spec §9.1: http's resource return binds: " + resource);
+
+        JsonArray variants = binding.getAsJsonArray("typedescs");
+        Assert.assertEquals(variants.size(), 2, "a bare branch and an envelope branch: " + variants);
+        Assert.assertEquals(variants.get(0).getAsJsonObject().getAsJsonObject("constraint")
+                .get("name").getAsString(), "anydata");
+
+        JsonObject envelope = variants.get(1).getAsJsonObject().getAsJsonArray("shapes").get(0)
+                .getAsJsonObject().getAsJsonObject("envelope");
+        Assert.assertEquals(envelope.get("name").getAsString(), "StatusCodeResponse");
+        Assert.assertTrue(envelope.has("subtypeFamily") && envelope.get("subtypeFamily").getAsBoolean(),
+                "spec §1.4: the envelope is a family, not one record: " + envelope);
+    }
+
+    /**
+     * Spec §9.1 for a streamed return: graphql's subscription binds the stream's <i>element</i>.
+     *
+     * <p>Distinct from the bare case above and worth its own assertion: the bindable part is each value the
+     * stream yields, not the stream, so a consumer that read the shape as bare would tell a reader to
+     * declare a return type where a stream is required.
+     */
+    @Test
+    public void testGraphqlSubscriptionReturnBindsItsStreamElement() {
+        JsonArray templates = serviceNamed(load("ballerina/graphql"), "Service")
+                .getAsJsonArray("handlerTemplates");
+        JsonObject subscription = templates.get(2).getAsJsonObject();
+        Assert.assertEquals(subscription.get("accessor").getAsString(), "subscribe", subscription.toString());
+
+        JsonObject binding = subscription.getAsJsonObject("return").getAsJsonObject("binding");
+        Assert.assertNotNull(binding, "graphql's subscription return binds: " + subscription);
+        JsonObject shape = binding.getAsJsonArray("typedescs").get(0).getAsJsonObject()
+                .getAsJsonArray("shapes").get(0).getAsJsonObject();
+        Assert.assertEquals(shape.get("form").getAsString(), "stream");
+        Assert.assertEquals(shape.get("element").getAsString(), "bare");
+    }
+
+    /**
+     * Every newly bundled document, against the release the build actually provisions.
+     *
+     * <h2>Why this exists</h2>
+     *
+     * <p>The 2026-08-19 corpus added eighteen documents for libraries that previously had none. A document
+     * is only as good as its agreement with a real package: it names a listener class, service object
+     * types and handler parameter types, and every one of those is validated against the resolved release
+     * before anything is emitted. When the agreement fails the pipeline is deliberately silent about
+     * recovering — it returns an empty catalog and withholds the SQLite fallback, on the grounds that a
+     * thinner catalog presented as authoritative hides the defect. That is the right behaviour and it is
+     * also invisible, so it needs a test that names the number.
+     *
+     * <p>Schema validity does not cover this. A document can validate perfectly and still describe a
+     * release that does not exist.
+     *
+     * <h2>What each expectation means</h2>
+     *
+     * <p>The minimum service count, not the exact one: a library may gain a service type without this
+     * test having an opinion, but it may never lose its whole catalog silently. Zero is stated only where
+     * zero is the known, understood outcome, and never as a default.
+     *
+     * <p>The nine libraries here are those the build provisions. Seven more documents ship for libraries
+     * that are not in {@code build-config/ballerina_dependencies} — {@code aws.sqs},
+     * {@code azure.storage.files}, {@code googleapis.chat}, {@code sap.jco}, {@code telegram},
+     * {@code trigger.twilio} and {@code whatsapp.business} — so nothing here can resolve them. Adding one
+     * to that project's {@code Ballerina.toml} and to {@code copilotCorpusLibraries} is all it takes to
+     * bring it under this test.
+     */
+    @Test
+    public void testNewlyBundledDocumentsMatchTheirPackage() {
+        Map<String, Integer> minimumServices = new HashMap<>();
+        minimumServices.put("ballerinax/mysql", 1);
+        minimumServices.put("ballerinax/postgresql", 1);
+        minimumServices.put("ballerinax/salesforce", 2);
+        minimumServices.put("ballerinax/solace", 1);
+        minimumServices.put("ballerinax/solace.jms", 1);
+        minimumServices.put("ballerina/mqtt", 1);
+        minimumServices.put("ballerinax/trigger.shopify", 4);
+        minimumServices.put("ballerinax/trigger.hubspot", 7);
+        // ballerinax/oracledb 1.14.0 declares no listener class at all — CDC is not in that release, and
+        // its sibling packages (mssql 1.19.0, mysql 1.18.0, postgresql 1.17.0) each declare
+        // `public isolated class CdcListener` where oracledb declares nothing. The document is therefore
+        // ahead of the pinned release rather than wrong: it also names `ballerinax/oracledb.cdc.driver`
+        // 1.0.0, which the same release does not ship.
+        //
+        // Zero costs nothing here — the SQLite index has no oracledb listener either, so the library had
+        // no catalog before the document arrived and has none now. It is pinned at zero rather than left
+        // untested so that the release which fixes it shows up as a failing expectation to update, not as
+        // a change nobody notices.
+        minimumServices.put("ballerinax/oracledb", 0);
+
+        for (Map.Entry<String, Integer> expected : minimumServices.entrySet()) {
+            JsonArray services = load(expected.getKey());
+            Assert.assertTrue(services.size() >= expected.getValue(),
+                    expected.getKey() + ": expected at least " + expected.getValue()
+                            + " service(s) from its trigger-metadata document, got " + services.size()
+                            + ". A newly empty catalog means the document no longer agrees with the"
+                            + " resolved release — check the veto report for the listener or service type"
+                            + " it names.");
+            for (JsonElement element : services) {
+                JsonObject service = element.getAsJsonObject();
+                Assert.assertEquals(service.get("type").getAsString(), "fixed",
+                        expected.getKey() + ": a metadata-derived entry is always `fixed`: " + service);
+                Assert.assertTrue(service.has("description"),
+                        expected.getKey() + ": the spec §3 makes `doc` required: " + service);
+                Assert.assertTrue(service.getAsJsonObject("listener").has("description"),
+                        expected.getKey() + ": the spec §2 makes `doc` required: " + service);
+            }
+        }
+    }
+
+    /** The single {@code addMode: "many"} shape a service declares, for the libraries that declare one. */
+    private static JsonObject onlyHandlerTemplate(JsonArray services) {
+        JsonObject service = serviceNamed(services, "Service");
+        JsonArray templates = service.getAsJsonArray("handlerTemplates");
+        Assert.assertNotNull(templates, "expected an addMode:\"many\" catalog: " + service);
+        Assert.assertEquals(templates.size(), 1, templates.toString());
+        return templates.get(0).getAsJsonObject();
+    }
+
     @Test
     public void testAnIndexDerivedEntryStillYieldsToTheCuratedOverlay() {
         // The additive rule is scoped to the schema path on purpose. An index row carries a listener and a

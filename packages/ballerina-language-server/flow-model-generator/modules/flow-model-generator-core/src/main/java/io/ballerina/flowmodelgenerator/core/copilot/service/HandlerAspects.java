@@ -140,19 +140,42 @@ final class HandlerAspects {
     }
 
     /**
-     * The spec {@code options[].returns} — the handler's return type.
+     * The spec §5.4 {@code options[].returns} — the handler's return type, and the outbound data binding
+     * (§9.1) that says what a reader may narrow it to.
      *
      * <p>A concrete method's return comes from the semantic model already rendered; a marker type's is the
      * document's union, joined and canonicalized. Both then drop a nil-only return, which carries no
      * information.
+     *
+     * <p><b>The binding is documented-handler only</b>, for the same reason every other §5-tier fact is: a
+     * concrete type's method is introspectable, and the compiler reports a return type rather than a
+     * projection rule. A binding therefore rides on the {@code returns} object the document authored, and
+     * is attached to the same {@link io.ballerina.flowmodelgenerator.core.copilot.model.Return} the type
+     * went onto — not to the handler — because it constrains that slot and the renderer states it beside
+     * the type it constrains.
+     *
+     * <p>A return that resolves to nothing takes its binding with it. That is not a loss: §9.1 makes a
+     * binding present only when a union member is a builtin constraint the runtime serializes through, and
+     * a return that resolves to nothing is a nil-only one, which has no such member.
      */
     static void returnType(HandlerScope scope, HandlerDraft draft) {
         TriggerScope service = scope.service();
+        TriggerMetadataModel.ServiceType.ReturnSpec spec = scope.isConcrete()
+                ? null : scope.option().returns();
         String signature = scope.isConcrete()
                 ? scope.declared().returnTypeSignature()
-                : TypeShapeRules.signature(
-                        scope.option().returns() == null ? null : scope.option().returns().type(),
-                        service.packageName(), service.declaresType());
-        TypeShapeRules.resolveReturn(signature, service.packageName()).ifPresent(draft::setReturn);
+                : TypeShapeRules.signature(spec == null ? null : spec.type(), service.packageName(),
+                        service.declaresType());
+        TypeShapeRules.resolveReturn(signature, service.packageName()).ifPresent(returnValue -> {
+            if (spec != null && spec.dataBinding() != null) {
+                TypeShapeRules.resolveBinding(spec.dataBinding(), service.packageName(),
+                                service.declaresType(), ParamAspects.envelopeFields(service))
+                        .ifPresentOrElse(returnValue::setBinding,
+                                () -> draft.drop("returnBinding: " + scope.option().name()
+                                        + ": its dataBinding declares no variant with both a bound and a"
+                                        + " readable shape"));
+            }
+            draft.setReturn(returnValue);
+        });
     }
 }

@@ -63,7 +63,7 @@ public class SpecMajorGateTest {
 
     /**
      * A guard on the constant itself: the corpus is authored at v1, so raising the implemented major
-     * without re-authoring the 14 bundled documents would silently refuse every one of them.
+     * without re-authoring the 32 bundled documents would silently refuse every one of them.
      */
     @Test
     public void testTheImplementedMajorStillMatchesTheCorpus() {

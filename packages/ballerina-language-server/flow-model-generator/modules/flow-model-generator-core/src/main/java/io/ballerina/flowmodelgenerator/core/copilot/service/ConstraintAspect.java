@@ -24,29 +24,29 @@ import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.logging.Logger;
 
 /**
  * The spec {@code rules[]} — the exclusivity constraints a service type declares.
  *
  * <p><b>Runs before the handler catalog.</b> {@link ConstraintResolver} needs this service type's handler
- * names, so that a {@code {handler}} member naming something absent can be dropped rather than offered to
- * the model as a choice. Those names are read from the document and semantic model directly rather than
- * from the built {@link ServiceDraft}, which keeps this a pure function of its inputs and leaves the
- * registry with a single ordering rule ("the catalog runs last"). They are sourced the same way the catalog
- * itself decides them, by asking {@link HandlerCatalogResolver} which kind of catalog this type has:
- * <ul>
- *   <li>a <b>marker</b> type's names are its non-wildcard {@code options[].name} values;</li>
- *   <li>a <b>concrete</b> type's names come from the semantic model, the same source the catalog reads.</li>
- * </ul>
+ * and parameter <i>ids</i>, so that a {@code {handler}} or {@code {param}} subject addressing something
+ * absent can be dropped rather than offered to the model as a choice. Those ids are read from the document
+ * directly rather than from the built {@link ServiceDraft}, which keeps this a pure function of its inputs
+ * and leaves the registry with a single ordering rule ("the catalog runs last").
  *
- * <p>When neither is available — no facts, or a concrete type whose object type does not resolve — the set
- * is passed as {@code null}, which suppresses the cross-check rather than dropping every handler member. An
- * unresolvable type is already vetoed elsewhere and must not additionally cause a rule to be emptied.
+ * <p><b>Ids, not names, and from the document alone.</b> The spec §6.1.1 made both subject kinds address
+ * their construct by id, because an {@code addMode: "many"} option's name is always {@code "*"} — {@code
+ * graphql} declares three such shapes on one service type, and a name-keyed check could not tell an
+ * {@code atLeastOne} over its query shape from one over its mutation shape. §0 then confines hierarchical
+ * ids to a non-concrete service type: a concrete one's methods are introspectable by name and carry no id,
+ * so nothing in a rule can address them.
+ *
+ * <p>A concrete service type, or one whose {@code options} are absent, therefore yields a {@code null}
+ * catalog, which suppresses the cross-check rather than dropping every subject. An unresolvable type is
+ * already vetoed elsewhere and must not additionally cause a rule to be emptied.
  *
  * @since 1.7.0
  */
@@ -180,62 +180,78 @@ final class ConstraintAspect {
             }
 
             @Override
-            public Set<String> handlerNames(String serviceTypeId) {
+            public ConstraintResolver.Catalog catalog(String serviceTypeId) {
                 // The ENCLOSING service type is answered from the scope, never through the map. `byId` is
                 // built with `putIfAbsent`, so two entries sharing an id would resolve the second one's
                 // subjects against the first one's handlers and drop them as phantoms. Nothing validates
                 // id uniqueness, and here the right answer is already in hand.
                 String enclosingId = scope.serviceType() == null ? null : scope.serviceType().id();
                 if (serviceTypeId == null || serviceTypeId.equals(enclosingId)) {
-                    return scope.serviceType() == null
-                            ? null : declaredHandlerNames(scope, scope.serviceType());
+                    return scope.serviceType() == null ? null : declaredCatalog(scope.serviceType());
                 }
                 // An id naming nothing yields `null`, which suppresses the cross-check rather than dropping
                 // the subject: the subject itself is dropped by `attribute`, so reaching here means the id
                 // resolved and only its catalog is unknown.
                 TriggerMetadataModel.ServiceType found = byId.get(serviceTypeId);
-                return found == null ? null : declaredHandlerNames(scope, found);
+                return found == null ? null : declaredCatalog(found);
             }
         };
     }
 
     /**
-     * The handler names this service type declares, or {@code null} when the catalog is not knowable.
+     * The handler and parameter ids this service type declares, or {@code null} when the catalog is not
+     * knowable.
+     *
+     * <p><b>Read from the document alone, and only for a non-concrete type.</b> That is not a narrowing of
+     * what the old name-based check covered — it is what the spec §0 makes possible: "a handler backed by a
+     * concrete type has no {@code options[]} entry to carry an id at all … hierarchical ids therefore only
+     * ever appear under a non concrete service type". A concrete type's methods have names but no ids, so
+     * no {@code handler}/{@code param} subject can address one, and cross-checking against the semantic
+     * model would answer a question the document cannot ask. It yields {@code null} instead, which
+     * suppresses the check rather than dropping every such subject as a phantom.
      */
-    private static Set<String> declaredHandlerNames(TriggerScope scope,
-                                                    TriggerMetadataModel.ServiceType serviceType) {
-        if (!HandlerCatalogResolver.isConcrete(serviceType)) {
-            Set<String> names = new LinkedHashSet<>();
-            List<TriggerMetadataModel.ServiceType.HandlerOption> options =
-                    serviceType.handlers() == null ? null : serviceType.handlers().options();
-            if (options == null) {
-                return null;
-            }
-            for (TriggerMetadataModel.ServiceType.HandlerOption option : options) {
-                if (option == null || option.name() == null
-                        || TriggerMetadataModel.ServiceType.HandlerOption.WILDCARD_NAME
-                                .equals(option.name())) {
-                    continue;
-                }
-                names.add(option.name());
-            }
-            return names;
-        }
-        // The type's OWN name, not `scope.serviceTypeName()`: this is called for every service type a
-        // spanning rule mentions, and reading the enclosing entry's name would cross-check one service
-        // type's subjects against another's methods.
-        String typeName = serviceType.type() == null ? null : serviceType.type().name();
-        if (scope.facts() == null || typeName == null) {
+    private static ConstraintResolver.Catalog declaredCatalog(
+            TriggerMetadataModel.ServiceType serviceType) {
+        if (HandlerCatalogResolver.isConcrete(serviceType)) {
             return null;
         }
-        return scope.facts().serviceObjectType(typeName)
-                .map(objectType -> {
-                    Set<String> names = new LinkedHashSet<>();
-                    scope.facts().declaredMethods(objectType)
-                            .forEach(method -> names.add(method.name()));
-                    return names;
-                })
-                .orElse(null);
+        List<TriggerMetadataModel.ServiceType.HandlerOption> options =
+                serviceType.handlers() == null ? null : serviceType.handlers().options();
+        if (options == null) {
+            return null;
+        }
+        Map<String, String> handlerLabels = new LinkedHashMap<>();
+        Map<String, ConstraintResolver.Catalog.ParamLabel> paramLabels = new LinkedHashMap<>();
+        for (TriggerMetadataModel.ServiceType.HandlerOption option : options) {
+            if (option == null || option.id() == null) {
+                continue;
+            }
+            // A `many` option's name is `*`, which names nothing a reader could look for, so its id's own
+            // segment is the label — `graphql`'s `$service.query` reads as `query`. A `subset` option's
+            // name is the real method name and always wins.
+            String label = option.name() == null
+                    || TriggerMetadataModel.ServiceType.HandlerOption.WILDCARD_NAME.equals(option.name())
+                    ? lastSegment(option.id()) : option.name();
+            handlerLabels.put(option.id(), label);
+            for (TriggerMetadataModel.ServiceType.Param param : option.params() == null
+                    ? List.<TriggerMetadataModel.ServiceType.Param>of() : option.params()) {
+                if (param == null || param.id() == null) {
+                    continue;
+                }
+                // Same fallback one tier down: a repeatable slot is unnamed, because the author names each
+                // occurrence, so its id's segment is what a note can call it.
+                String paramName = param.name() == null ? lastSegment(param.id()) : param.name();
+                paramLabels.put(param.id(),
+                        new ConstraintResolver.Catalog.ParamLabel(label, paramName));
+            }
+        }
+        return new ConstraintResolver.Catalog(Map.copyOf(handlerLabels), Map.copyOf(paramLabels));
+    }
+
+    /** The last dot-separated segment of a hierarchical id — the construct's own name within its owner. */
+    private static String lastSegment(String id) {
+        int separator = id.lastIndexOf('.');
+        return separator < 0 ? id.substring(id.startsWith("$") ? 1 : 0) : id.substring(separator + 1);
     }
 
     /**
@@ -286,12 +302,16 @@ final class ConstraintAspect {
             }
             case ConstraintResolver.Subject.Handler handler -> {
                 resolved.setKind(TriggerMetadataModel.Subject.KIND_HANDLER);
+                // The reader-facing label is what a note names; the id it was addressed by follows for
+                // traceability, the same id/name pairing `annotationId`/`annotation` already uses.
                 resolved.setName(handler.name());
+                resolved.setId(handler.handlerId());
             }
             case ConstraintResolver.Subject.Param param -> {
                 resolved.setKind(TriggerMetadataModel.Subject.KIND_PARAM);
                 resolved.setHandler(param.handler());
                 resolved.setName(param.name());
+                resolved.setId(param.paramId());
             }
         }
         resolved.setRole(subject.role());

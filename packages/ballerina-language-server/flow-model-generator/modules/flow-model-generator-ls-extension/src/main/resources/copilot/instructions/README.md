@@ -40,10 +40,11 @@ What belongs here, and nothing else:
 Everything in this file is sent to the LLM verbatim, including any HTML comments — so keep
 maintainer notes out of it and put them here instead.
 
-### Test Generation instructions
-File name - test.md
+### Test Generation instructions — retired
 
-Instructions specific to generating tests for the library service usage.
+`test.md` is no longer read. No instance had existed since the curated corpus was removed, and test
+conventions live in `ballerina/test`'s own `library.md`, which the test-writing prompt already names.
+Do not add this file; nothing loads it.
 
 ## Notes
 - All these extension points are optional. This will only be added on top of the overall information about the library. 

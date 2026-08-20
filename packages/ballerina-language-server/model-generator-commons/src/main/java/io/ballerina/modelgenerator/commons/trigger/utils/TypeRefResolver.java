@@ -173,6 +173,12 @@ public final class TypeRefResolver {
      * strips back off while recording the link; language types and anonymous shapes ({@code json},
      * {@code record {}}, {@code ()}) stay bare.
      *
+     * <p><b>A language type is recognised by the document, not by this code.</b> The spec §1.3 puts
+     * {@code builtin: true} on every such leaf precisely so a consumer does not have to keep Ballerina's
+     * language-type set in sync by hand, and §1.2 says outright to read the flag rather than pattern-match
+     * on casing. The {@code declaredByHomeModule} fallback below still applies to an unflagged leaf, which
+     * is what keeps a document authored before the flag existed rendering exactly as it did.
+     *
      * <p><b>Qualification is per leaf</b>, which is why the spec makes this a tree: a composite is rendered
      * by rendering its parts and re-assembling the syntax around them, so {@code stream<anydata, Error?>}
      * qualifies its {@code Error} and leaves {@code anydata} alone. A flat string form could not — its
@@ -198,6 +204,14 @@ public final class TypeRefResolver {
             return "";
         }
         String name = ref.name();
+        // The spec §1.2/§1.3: a language type is never qualified, and the document states which leaves
+        // those are rather than leaving a consumer to infer it. Read before anything else, because it is
+        // the one answer that cannot be wrong — the fallback below asks whether the resolved package
+        // declares a type of the same name, which for a builtin is a coincidence away from prefixing
+        // `error` as `kafka:error`.
+        if (ref.isBuiltin()) {
+            return name;
+        }
         if (ref.packageInfo() != null) {
             String refPackage = ref.packageInfo().packageName();
             String refModule = ref.packageInfo().moduleName() != null
@@ -214,7 +228,11 @@ public final class TypeRefResolver {
         return name;
     }
 
-    /** The spec's shape table, as syntax. An unknown shape renders its element rather than inventing one. */
+    /**
+     * The spec §1.1 shape table, as syntax: {@code array} → {@code T[]}, {@code stream} →
+     * {@code stream<T[, C]>}, {@code readonly} → {@code readonly & T}. An unknown shape emits nothing
+     * rather than inventing one.
+     */
     private static String renderComposite(TypeRef ref, String homePackageName,
                                           Predicate<String> declaredByHomeModule) {
         String element = renderPart(ref.elementType(), homePackageName, declaredByHomeModule);
@@ -232,6 +250,12 @@ public final class TypeRefResolver {
             String completion = renderPart(ref.completionType(), homePackageName, declaredByHomeModule);
             return completion.isEmpty() ? "stream<" + element + ">"
                     : "stream<" + element + ", " + completion + ">";
+        }
+        if (TypeRef.SHAPE_READONLY.equals(ref.shape())) {
+            // `&` binds tighter than `|` in a Ballerina type descriptor, so `readonly & A|B` is
+            // `(readonly & A)|B` — a different type from the one a union element states. The element is
+            // parenthesised for exactly the case the array branch above parenthesises it.
+            return needsParens(ref.elementType()) ? "readonly & (" + element + ")" : "readonly & " + element;
         }
         // The spec closes the shape vocabulary precisely so this cannot be reached silently; returning the
         // element alone would misdescribe the type, so nothing is emitted and the slot reads as unstated.
@@ -280,13 +304,27 @@ public final class TypeRefResolver {
         return members.size() > 1 ? "(" + rendered + ")?" : rendered + "?";
     }
 
-    /** Whether a part must be parenthesised before an array suffix. */
+    /**
+     * Whether a part must be parenthesised before an array suffix, or inside a {@code readonly}
+     * intersection.
+     *
+     * <p>Two cases, and both are about operator precedence rather than style:
+     * <ul>
+     *   <li>a <b>union</b> — {@code A|B[]} is A-or-array-of-B, not an array of A-or-B. One member plus a
+     *       nil is rendered {@code T?}, which still needs parentheses before {@code []};</li>
+     *   <li>a <b>{@code readonly} intersection</b> — {@code readonly & byte[][]} reads as an array of the
+     *       whole intersection only with parentheses, since {@code []} binds tighter than {@code &}.</li>
+     * </ul>
+     */
     private static boolean needsParens(List<TypeRef> part) {
-        if (part == null || part.size() <= 1) {
+        if (part == null || part.isEmpty()) {
             return false;
         }
-        // One member plus a nil is rendered `T?`, which still needs parentheses before `[]`.
-        return true;
+        if (part.size() > 1) {
+            return true;
+        }
+        TypeRef only = part.get(0);
+        return only != null && TypeRef.SHAPE_READONLY.equals(only.shape());
     }
 
     /**

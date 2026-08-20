@@ -34,9 +34,13 @@ import java.util.function.Function;
  *
  * <p>The spec defines {@code services} as the {@code serviceTypes[].id} values a listener can host, so a
  * service type is paired with the listener that names its id. When no listener names it — or the document
- * omits {@code services} — the first listener is used. All 13 corpus documents declare exactly one
- * listener, so the multi-listener path is <b>latent</b>: implemented and unit-testable against a synthetic
- * document, but not reachable from any shipped connector today.
+ * omits {@code services} — the first listener is used.
+ *
+ * <p><b>The multi-listener path is live.</b> It was latent while every corpus document declared exactly one
+ * listener; {@code ballerina/mcp} now declares two — {@code StreamableHttpListener} and {@code Listener} —
+ * and lists all four of its service types under both. One of them is written into the {@code on new …}
+ * clause and the rest are reported by {@link #alternativeHosts}, so a transport the document offers is
+ * never silently dropped.
  *
  * @since 1.7.0
  */
@@ -117,6 +121,45 @@ final class ListenerPairingResolver {
         // Every listener stated a list and none named this type. A service type with no id at all cannot be
         // matched by any list, so it is trusted rather than declared unattachable.
         return !anyListenerConstrains || id == null;
+    }
+
+    /**
+     * The <b>other</b> listeners a service type may attach to — the spec §2 {@code services}, read for
+     * every listener rather than only for the one {@link #hostOf} settled on.
+     *
+     * <p>No longer hypothetical. {@code ballerina/mcp} declares two listeners, {@code StreamableHttpListener}
+     * and {@code Listener}, and lists all four of its service types under both: the choice is a transport
+     * choice, and the document says either works. {@link #hostOf} must still pick one to write into the
+     * {@code on new …} clause, and picks the first deterministically — but rendering only that one would
+     * make half of mcp's surface invisible to a reader asking for the other transport.
+     *
+     * <p>Follows {@link #isHostedByAnyListener}'s reading of an absent {@code services} list: a listener
+     * that states no restriction constrains nothing and therefore hosts everything, so it counts as an
+     * alternative rather than being skipped.
+     *
+     * @param listeners   the document's listeners; may be {@code null}
+     * @param serviceType the service type being placed
+     * @param chosen      the listener {@link #hostOf} settled on, which is never an alternative to itself
+     * @return the other hosting listeners, in document order; empty for a single-listener document
+     */
+    static List<TriggerMetadataModel.Listener> alternativeHosts(
+            List<TriggerMetadataModel.Listener> listeners, TriggerMetadataModel.ServiceType serviceType,
+            TriggerMetadataModel.Listener chosen) {
+        List<TriggerMetadataModel.Listener> alternatives = new ArrayList<>();
+        if (listeners == null || listeners.size() < 2) {
+            return alternatives;
+        }
+        String id = serviceType == null ? null : serviceType.id();
+        for (TriggerMetadataModel.Listener listener : listeners) {
+            if (listener == null || listener == chosen) {
+                continue;
+            }
+            boolean unconstrained = listener.services() == null || listener.services().isEmpty();
+            if (unconstrained || (id != null && listener.services().contains(id))) {
+                alternatives.add(listener);
+            }
+        }
+        return alternatives;
     }
 
     /**

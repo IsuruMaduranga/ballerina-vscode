@@ -2783,78 +2783,6 @@ suite("toSyntaxString", () => {
     });
 
 
-    suite("Test generation guidance", () => {
-        function library(services: Record<string, unknown>[]): string {
-            return toSyntaxString([{
-                name: "ballerina/http", description: "HTTP.",
-                typeDefs: [], clients: [], functions: [], services,
-            } as unknown as Library]);
-        }
-
-        function fixed(over: Record<string, unknown> = {}): Record<string, unknown> {
-            return {
-                type: "fixed", name: "Service",
-                listener: { name: "http:Listener", parameters: [] },
-                methods: [], ...over,
-            };
-        }
-
-        test("a library whose services carry no guidance renders no section", () => {
-            const result = library([fixed()]);
-            assert.ok(!result.includes("Test generation guidance"), `got:\n${result}`);
-        });
-
-        test("guidance reaches the prompt as its own library-level section", () => {
-            const result = library([fixed({
-                testGenerationInstruction: "- Use `http:Client` against the service base path.",
-            })]);
-            assert.ok(result.includes("// --- Test generation guidance ---"), `got:\n${result}`);
-            assert.ok(result.includes("- Use `http:Client` against the service base path."),
-                `got:\n${result}`);
-        });
-
-        test("the section is emitted once, not once per service", () => {
-            // The producer attaches identical text to every service, so a per-service block would repeat one
-            // fact N times — ten times for ballerinax/trigger.github.
-            const guidance = "- Mock the listener.";
-            const result = library([
-                fixed({ name: "Service", testGenerationInstruction: guidance }),
-                fixed({ name: "UpgradeService", testGenerationInstruction: guidance }),
-            ]);
-            assert.strictEqual(result.split("--- Test generation guidance ---").length - 1, 1,
-                `expected exactly one section, got:\n${result}`);
-            assert.strictEqual(result.split(guidance).length - 1, 1, `got:\n${result}`);
-        });
-
-        test("two genuinely different texts are both kept", () => {
-            // Nothing guarantees a future producer keeps them uniform, and dropping the second silently would
-            // be the same class of defect this section exists to fix.
-            const result = library([
-                fixed({ name: "Service", testGenerationInstruction: "- First rule." }),
-                fixed({ name: "Other", testGenerationInstruction: "- Second rule." }),
-            ]);
-            assert.ok(result.includes("- First rule.") && result.includes("- Second rule."),
-                `got:\n${result}`);
-        });
-
-        test("the section uses `//`, never `#`, and follows the service declarations", () => {
-            // A `#` line here would attach to whatever declaration follows as ITS documentation, and this is
-            // a library-level statement about code the reader has not written yet.
-            const result = library([fixed({ testGenerationInstruction: "- Mock the listener." })]);
-            const serviceIdx = result.indexOf("service http:Service");
-            const guidanceIdx = result.indexOf("--- Test generation guidance ---");
-            assert.ok(serviceIdx >= 0 && guidanceIdx > serviceIdx, `got:\n${result}`);
-            const heading = result.split("\n").find((l) => l.includes("Test generation guidance"))!;
-            assert.ok(heading.trimStart().startsWith("//"), `heading must be a // comment: ${heading}`);
-        });
-
-        test("blank guidance is treated as none", () => {
-            const result = library([fixed({ testGenerationInstruction: "   \n  " })]);
-            assert.ok(!result.includes("Test generation guidance"), `got:\n${result}`);
-        });
-    });
-
-
     suite("compile-correctness — module qualification and attach points", () => {
         /** A type the library declares itself: the prefix is stripped and an `internal` link carries it. */
         function own(name: string, recordName?: string): Record<string, unknown> {
@@ -3368,6 +3296,308 @@ suite("toSyntaxString", () => {
                         `${point} rendered the uncompilable token "${bad}":\n${result}`);
                 }
             }
+        });
+    });
+
+    // ----------------------------------------------------------------
+    // Trigger Construct Spec v1.0, 2026-08-19 revision:
+    //   §2/§3 `doc` on listeners and service types,
+    //   §5.4 `returns` as an object, §9.1 the return's own data binding,
+    //   §1.4 `subtypeFamily`.
+    // ----------------------------------------------------------------
+    suite("Trigger spec §2/§3/§5.4/§9.1/§1.4 — construct docs, return binding and subtype families", () => {
+        function renderService(service: Record<string, unknown>, libName = "ballerina/http"): string {
+            const lib = {
+                name: libName, description: "", typeDefs: [], clients: [], services: [service],
+            } as unknown as Library;
+            return toSyntaxString([lib]);
+        }
+
+        const httpListener = { name: "http:Listener", parameters: [] };
+
+        function service(over: Record<string, unknown> = {}): Record<string, unknown> {
+            return { type: "fixed", name: "Service", listener: httpListener, methods: [], ...over };
+        }
+
+        function method(over: Record<string, unknown> = {}): Record<string, unknown> {
+            return {
+                name: "onMessage", type: "remote",
+                parameters: [], return: { type: { name: "anydata|error" } }, ...over,
+            };
+        }
+
+        function line(result: string, needle: string): string {
+            const found = result.split("\n").find((l) => l.includes(needle));
+            assert.ok(found, `no line containing "${needle}" in:\n${result}`);
+            return found!;
+        }
+
+        function noLine(result: string, needle: string): void {
+            assert.ok(!result.includes(needle), `unexpected "${needle}" in:\n${result}`);
+        }
+
+        // ---- §2/§3 the two required doc fields ----
+
+        test("§3: a service type's doc leads the declaration's documentation", () => {
+            // The spec makes `doc` required on every service type — `concrete` ones included — precisely so
+            // a top-level construct is self-describing. Nothing else in the catalog carries it: a marker
+            // service type's own symbol has no doc comment to read.
+            const result = renderService(service({
+                description: "An HTTP service. Each resource method is one endpoint.",
+            }));
+            assert.strictEqual(line(result, "An HTTP service").trim(),
+                "# An HTTP service. Each resource method is one endpoint.");
+            // A Ballerina doc comment opens with the description of what it documents.
+            const lines = result.split("\n").filter((l) => l.startsWith("#"));
+            assert.strictEqual(lines[0], "# An HTTP service. Each resource method is one endpoint.");
+        });
+
+        test("§2: a listener's doc is attributed, never left to read as the service's", () => {
+            const result = renderService(service({
+                description: "An HTTP service.",
+                listener: { ...httpListener, description: "Dispatches each inbound request." },
+            }));
+            assert.strictEqual(line(result, "Dispatches each inbound").trim(),
+                "# Listener `http:Listener`: Dispatches each inbound request.");
+        });
+
+        test("§2/§3: a document stating neither doc renders exactly as it did before", () => {
+            const result = renderService(service());
+            noLine(result, "# Listener `http:Listener`:");
+            assert.ok(result.includes("service http:Service on new http:Listener()"), result);
+        });
+
+        test("§2/§3: the docs precede the §8 annotation block, as Ballerina metadata requires", () => {
+            const result = renderService(service({
+                description: "An HTTP service.",
+                listener: { ...httpListener, description: "Dispatches each inbound request." },
+                annotations: [{ name: "ServiceConfig", presence: "optional", attachPoint: "service" }],
+            }));
+            const rendered = result.split("\n");
+            const doc = rendered.findIndex((l) => l.includes("An HTTP service."));
+            const listenerDoc = rendered.findIndex((l) => l.includes("Listener `http:Listener`:"));
+            const attachment = rendered.findIndex((l) => l.startsWith("@http:ServiceConfig"));
+            assert.ok(doc >= 0 && listenerDoc > doc && attachment > listenerDoc,
+                `expected doc < listener doc < annotation, got ${doc}/${listenerDoc}/${attachment}`);
+        });
+
+        test("§2/§3: an unattachable service type carries its docs too", () => {
+            // A type reached as the return of another service's resource needs saying what it is for MORE
+            // than an attachable one, since no `service … on new …` line names it.
+            const result = renderService(service({
+                notListenerAttachable: true,
+                description: "The WebSocket connection service returned by the upgrade handler.",
+                listener: { ...httpListener, description: "Accepts the upgrade request." },
+            }));
+            assert.ok(result.includes("# The WebSocket connection service returned by the upgrade handler."),
+                result);
+            assert.ok(result.includes("# Listener `http:Listener`: Accepts the upgrade request."), result);
+            assert.ok(result.includes("service class ServiceImpl {"), result);
+        });
+
+        // ---- §2 the other listeners a service type may attach to ----
+
+        test("§2: a service type hosted by several listeners says which others it may attach to", () => {
+            // mcp is the corpus case: all four of its service types are listed under both
+            // StreamableHttpListener and Listener, so a reader asking for the stdio transport would
+            // otherwise be shown only the HTTP one with nothing saying the other exists.
+            const result = renderService(service({
+                listener: { name: "mcp:StreamableHttpListener", parameters: [] },
+                alternativeListeners: ["mcp:Listener"],
+            }));
+            assert.strictEqual(line(result, "may attach to").trim(),
+                "# This service type may attach to `mcp:Listener` instead of "
+                + "`mcp:StreamableHttpListener`, which the declaration below uses.");
+            // One entry, not one per listener: the two would differ by a single token.
+            assert.strictEqual(result.split("\n").filter((l) => l.startsWith("service ")).length, 1);
+        });
+
+        test("§2: a single-listener document states nothing, which is every other library", () => {
+            const result = renderService(service());
+            noLine(result, "may attach to");
+        });
+
+        // ---- §9.1 the return's own data binding ----
+
+        test("§9.1: a bare return binding says the declared type may replace the bound", () => {
+            // The union already names `anydata`; what the document adds is that a reader may write
+            // something narrower in its place, which is the whole content of §9.1 and is stated nowhere
+            // else. It is deliberately NOT suppressed for being "already visible" the way a parameter's is.
+            const result = renderService(service({
+                methods: [method({
+                    return: {
+                        type: { name: "anydata|error" },
+                        binding: { typedescs: [{ constraint: { name: "anydata" },
+                            shapes: [{ form: "bare" }] }] },
+                    },
+                })],
+            }));
+            assert.strictEqual(line(result, "member of the return").trim(),
+                "# The `anydata` member of the return may be narrowed: declare the concrete type you"
+                + " return in place of `anydata`.");
+        });
+
+        test("§9.1: a streamed return binds its element, not the stream", () => {
+            // graphql's subscription. Reading the shape as bare would tell a reader to declare a plain
+            // return type where the language requires a stream.
+            const result = renderService(service({
+                methods: [method({
+                    return: {
+                        type: { name: "stream<anydata, error?>" },
+                        binding: { typedescs: [{ constraint: { name: "anydata" },
+                            shapes: [{ form: "stream", element: "bare" }] }] },
+                    },
+                })],
+            }));
+            assert.strictEqual(line(result, "returned stream").trim(),
+                "# The returned stream's `anydata` element may be narrowed: declare the concrete element"
+                + " type in place of `anydata`.");
+        });
+
+        test("§9.1: a batched return binds its element", () => {
+            const result = renderService(service({
+                methods: [method({
+                    return: {
+                        type: { name: "anydata[]|error" },
+                        binding: { typedescs: [{ constraint: { name: "anydata" },
+                            shapes: [{ form: "array", element: "bare" }] }] },
+                    },
+                })],
+            }));
+            assert.strictEqual(line(result, "returned array").trim(),
+                "# The returned array's `anydata` element may be narrowed: declare the concrete element"
+                + " type in place of `anydata`.");
+        });
+
+        test("§9.1/§1.4: an envelope naming a subtype family says so", () => {
+            // http's StatusCodeResponse. Without the family clause the note names one record, and a reader
+            // told to include `*http:StatusCodeResponse;` writes something no HTTP resource returns.
+            const result = renderService(service({
+                methods: [method({
+                    return: {
+                        type: { name: "anydata|error" },
+                        binding: { typedescs: [{
+                            constraint: { name: "anydata" },
+                            shapes: [{
+                                form: "included",
+                                envelope: { name: "StatusCodeResponse", subtypeFamily: true },
+                                bindableFields: ["body"],
+                            }],
+                        }] },
+                    },
+                })],
+            }));
+            assert.strictEqual(line(result, "may instead be").trim(),
+                "# The return may instead be a record that includes `*http:StatusCodeResponse;` — or any"
+                + " subtype of `http:StatusCodeResponse` — and overrides only `body`.");
+        });
+
+        test("§9.1: an envelope that is one exact record states no family", () => {
+            const result = renderService(service({
+                methods: [method({
+                    return: {
+                        type: { name: "anydata|error" },
+                        binding: { typedescs: [{
+                            constraint: { name: "anydata" },
+                            shapes: [{ form: "included", envelope: { name: "Envelope" },
+                                bindableFields: ["body"] }],
+                        }] },
+                    },
+                })],
+            }));
+            assert.strictEqual(line(result, "may instead be").trim(),
+                "# The return may instead be a record that includes `*http:Envelope;` and overrides only"
+                + " `body`.");
+            noLine(result, "any subtype of");
+        });
+
+        test("§9.1: a return exclusion survives, because nothing else can state a prohibition", () => {
+            // Latent: no corpus return declares one, and §9.1 keeps the field legal. A document that
+            // starts using it must not lose it silently.
+            const result = renderService(service({
+                methods: [method({
+                    return: {
+                        type: { name: "anydata|error" },
+                        binding: { typedescs: [{
+                            constraint: { name: "anydata" },
+                            // Carries the `internal` link the pipeline attaches to a home-module type;
+                            // that link is what tells the renderer to write the alias back on.
+                            excludes: [{ name: "Response",
+                                links: [{ category: "internal", recordName: "Response" }] }],
+                            shapes: [{ form: "bare" }],
+                        }] },
+                    },
+                })],
+            }));
+            assert.strictEqual(line(result, "must never be").trim(),
+                "# ...but the return must never be http:Response.");
+        });
+
+        test("§9.1: a return with no binding states nothing", () => {
+            const result = renderService(service({ methods: [method()] }));
+            noLine(result, "may be narrowed");
+            noLine(result, "may instead be");
+        });
+
+        test("§9.1: a handler template's return binding is stated too", () => {
+            // A wildcard catalog is the ONLY shape such a service type renders, and every corpus return
+            // binding but four sits on one — graphql's three operations, grpc's four RPC kinds, mcp's
+            // tool, http's resource. Omitting it here would lose the construct for most of the corpus.
+            const result = renderService(service({
+                handlerTemplates: [method({
+                    name: "*",
+                    return: {
+                        type: { name: "anydata|error" },
+                        binding: { typedescs: [{ constraint: { name: "anydata" },
+                            shapes: [{ form: "bare" }] }] },
+                    },
+                })],
+            }));
+            assert.strictEqual(line(result, "member of the return").trim(),
+                "// The `anydata` member of the return may be narrowed: declare the concrete type you"
+                + " return in place of `anydata`.");
+        });
+
+        // ---- §1.4 on a parameter's binding ----
+
+        test("§1.4: a parameter envelope naming a subtype family says so", () => {
+            const result = renderService(service({
+                methods: [method({
+                    parameters: [{
+                        name: "payload", description: "", optional: false,
+                        type: { name: "anydata" },
+                        binding: { typedescs: [{
+                            constraint: { name: "anydata" },
+                            shapes: [{ form: "included", envelope: { name: "Envelope", subtypeFamily: true },
+                                bindableFields: ["body"] }],
+                        }] },
+                    }],
+                })],
+            }));
+            assert.strictEqual(line(result, "may bind to a record").trim(),
+                "# `payload` may bind to a record that includes `*http:Envelope;` — or any subtype of"
+                + " `http:Envelope` — and overrides only `body`");
+        });
+
+        test("§1.4: an excluded subtype family is prohibited as a family", () => {
+            // The prohibition has to cover the family or it does not do its job: a user record that merely
+            // IS a StatusCodeResponse would otherwise still satisfy the bare variant.
+            const result = renderService(service({
+                methods: [method({
+                    parameters: [{
+                        name: "payload", description: "", optional: false,
+                        type: { name: "anydata" },
+                        binding: { typedescs: [{
+                            constraint: { name: "anydata" },
+                            excludes: [{ name: "Envelope", subtypeFamily: true,
+                                links: [{ category: "internal", recordName: "Envelope" }] }],
+                            shapes: [{ form: "array", element: "bare" }],
+                        }] },
+                    }],
+                })],
+            }));
+            assert.ok(line(result, "but never").includes(
+                "but never http:Envelope (or any subtype of it)"), `got:\n${result}`);
         });
     });
 });

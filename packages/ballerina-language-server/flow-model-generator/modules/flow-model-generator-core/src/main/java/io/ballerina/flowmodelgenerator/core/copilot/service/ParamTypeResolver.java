@@ -131,7 +131,11 @@ final class ParamTypeResolver {
      * <p>This is the guard against a document authored for a different release: rendering
      * {@code websub}'s {@code onHubError} when the package declares no {@code HubError} would put an
      * uncompilable signature in the prompt. Only the members that actually reach the signature are
-     * inspected — the first type member of each parameter, and every return member.
+     * inspected — the first type member of each parameter, and every member of the spec §5.4
+     * {@code returns.type}.
+     *
+     * <p>A handler with no {@code returns} at all — the {@code file} connector's, whose language form
+     * forbids a return clause — contributes nothing to check rather than being treated as suspect.
      */
     static boolean signatureReferencesUndeclaredType(
             TriggerMetadataModel.ServiceType.HandlerOption option, Predicate<String> declaresType) {
@@ -157,13 +161,46 @@ final class ParamTypeResolver {
      * A bare reference (the spec: same module as the connector's own types) whose base identifier looks
      * user-defined but which the resolved package does not declare. A {@code packageInfo}-carrying
      * reference is cross-module and cannot be checked against this module's symbols, so it is trusted.
+     *
+     * <p>A leaf the document marks {@code builtin} (the spec §1.3) is trusted for the same reason and one
+     * stronger: it names a language type, which no package declares and none has to. The casing test below
+     * already lets today's builtins through — {@code anydata} and {@code record {}} are lower-case — so
+     * this changes nothing in the corpus; it is here because reading the flag is what the spec §1.2 asks a
+     * consumer to do, and a future capitalised language type would otherwise veto a whole handler.
+     *
+     * <p><b>A composite is walked, not skipped.</b> The spec §1.1 makes {@code T[]},
+     * {@code stream<T, C>} and {@code readonly & T} trees whose leaves each carry their own name, so the
+     * type a reader must be able to resolve sits one or more levels down — {@code kafka}'s payload slot is
+     * an array of {@code AnydataConsumerRecord}, not a name ending in {@code []}. Checking only the top
+     * node would let exactly the release-drift this guard exists to catch through, silently, for every
+     * batched or streamed slot in the corpus.
      */
     private static boolean isUndeclaredBareUserType(TypeRef ref, Predicate<String> declaresType) {
-        if (ref == null || ref.name() == null || ref.packageInfo() != null) {
+        if (ref == null) {
+            return false;
+        }
+        if (ref.isComposite()) {
+            return anyUndeclared(ref.elementType(), declaresType)
+                    || anyUndeclared(ref.completionType(), declaresType);
+        }
+        if (ref.name() == null || ref.packageInfo() != null || ref.isBuiltin()) {
             return false;
         }
         String base = TypeRefResolver.baseIdentifier(ref.name());
         return base != null && !base.isEmpty() && Character.isUpperCase(base.charAt(0))
                 && !declaresType.test(base);
+    }
+
+    /** Whether any member of a composite's part is an undeclared bare user type. */
+    private static boolean anyUndeclared(List<TypeRef> part, Predicate<String> declaresType) {
+        if (part == null) {
+            return false;
+        }
+        for (TypeRef member : part) {
+            if (isUndeclaredBareUserType(member, declaresType)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

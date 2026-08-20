@@ -124,6 +124,15 @@ ext.copilotCorpusLibraries = [
         // Not schema-driven, and pinned for exactly that reason: it is the control case proving the
         // overload is a no-op for a library the service index alone describes.
         'ballerina/ai',
+        // Newly bundled by the 2026-08-19 trigger-metadata corpus. Listed so their documents are
+        // checked against a real package rather than only against the schema: a document that names a
+        // listener or service type its release does not declare produces an EMPTY catalog and, by
+        // design, no index fallback — a silent loss that only a resolved package can catch.
+        // `ballerinax/oracledb` is here for the same reason even though its document does not yet work
+        // against the pinned release; see testNewlyBundledDocumentsMatchTheirPackage.
+        'ballerinax/mysql', 'ballerinax/postgresql', 'ballerinax/oracledb', 'ballerinax/salesforce',
+        'ballerinax/solace', 'ballerinax/solace.jms', 'ballerina/mqtt', 'ballerinax/trigger.shopify',
+        'ballerinax/trigger.hubspot',
 ]
 
 ext.copilotCorpusVersions = { ->
