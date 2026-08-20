@@ -34,10 +34,6 @@ import java.util.Optional;
  * {@link TriggerMetadataModel}/{@link TriggerLibraryFacts} data rather than a compiled connector, so a
  * multi-module shape (e.g. CDC's own listener module plus a shared service-type module) can be tested
  * without a real {@code .bala}.
- *
- * <p>The fixtures are built against Trigger Construct Spec v1.0: {@code ServiceType} no longer carries
- * {@code multipleServicesPerListenerAllowed}, and {@code addMode} moved off {@code Handlers} onto the
- * individual {@code HandlerOption}, so neither appears in the constructor calls below.
  */
 public class TriggerModelSynthesizerTest {
 

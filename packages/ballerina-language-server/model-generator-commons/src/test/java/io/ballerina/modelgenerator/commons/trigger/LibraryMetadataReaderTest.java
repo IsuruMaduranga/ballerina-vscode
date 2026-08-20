@@ -20,7 +20,6 @@ package io.ballerina.modelgenerator.commons.trigger;
 
 import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
-import io.ballerina.projects.Package;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -35,10 +34,10 @@ import java.util.Optional;
  * and {@link LibraryMetadataReader#getTriggerUISchemaModel} (a connector's own shipped
  * {@code trigger-metadata.json}/{@code trigger-ui-schema.json}, resolved from its {@code .bala}) and
  * {@link LibraryMetadataReader#getPackagedTriggerMetadataModel} (the LS's own bundled classpath
- * resource) -- three independent reads, none silently falling back to another. Package/JSON resolution
- * is entirely internal to this class, so these tests only ever go through {@link ModuleInfo}-keyed
- * calls -- never a resolved {@code Path} -- mirroring how a caller (e.g. {@code TriggerModelReader})
- * is expected to use it.
+ * resource) -- three independent reads, none silently falling back to another. Most go through
+ * {@link ModuleInfo}-keyed calls, mirroring how a caller (e.g. {@code TriggerModelReader}) uses it;
+ * the shipped-document cases go through the package-private {@code readTriggerMetadataModel(Path)}
+ * seam both reads funnel into, since no released connector ships a document to resolve by name yet.
  */
 public class LibraryMetadataReaderTest {
 
@@ -85,9 +84,7 @@ public class LibraryMetadataReaderTest {
 
     @Test
     public void testGetTriggerMetadataModelNullModuleInfo() {
-        // Cast required: getTriggerMetadataModel is overloaded on ModuleInfo and Package, so a bare null
-        // matches both. Every production call site passes a typed reference and is unaffected.
-        Assert.assertTrue(READER.getTriggerMetadataModel((ModuleInfo) null).isEmpty());
+        Assert.assertTrue(READER.getTriggerMetadataModel(null).isEmpty());
     }
 
     @Test
@@ -156,11 +153,10 @@ public class LibraryMetadataReaderTest {
     /**
      * Reading a connector-shipped document, over the root every metadata read funnels through.
      *
-     * <p>These go in through the {@link java.nio.file.Path} seam rather than through
-     * {@link io.ballerina.projects.Package}, because no package published to Central ships a
-     * {@code resources/trigger-metadata.json} yet — so a {@code Package}-based test would have nothing to
-     * read. It is nonetheless the path a future connector takes, and the path
-     * {@link LibraryMetadataReader#getTriggerMetadataModel(io.ballerina.projects.Package)} delegates to.
+     * <p>These go in through the {@link java.nio.file.Path} seam because no package published to Central
+     * ships a {@code resources/trigger-metadata.json} yet, so a name-keyed test would have nothing to
+     * read. It is nonetheless the path a future connector takes, and the one
+     * {@link LibraryMetadataReader#getTriggerMetadataModel(ModuleInfo)} ends in.
      */
     @Test
     public void testAPackageShippingNoDocumentReadsEmpty() throws IOException {
@@ -209,39 +205,6 @@ public class LibraryMetadataReaderTest {
         // under it cannot describe a document either way. Must not throw.
         Path notADirectory = Files.createTempFile("not-a-package", ".txt");
         Assert.assertTrue(READER.readTriggerMetadataModel(notADirectory).isEmpty());
-    }
-
-    @Test
-    public void testANullPackageReadsEmpty() {
-        Assert.assertTrue(READER.getTriggerMetadataModel((Package) null).isEmpty());
-    }
-
-    /**
-     * The two roots reach the same reader, so a document readable one way is readable the other.
-     *
-     * <p>This is the invariant that lets the Copilot hand over an already-compiled {@code Package} instead
-     * of paying a {@code .bala} resolution per library: the overload is a different way in, never a
-     * different answer.
-     */
-    @Test
-    public void testBothOverloadsShareOneReader() throws IOException {
-        Path root = shipping("""
-                {
-                  "version": "v1.0",
-                  "listeners": [{ "type": { "name": "Listener" }, "services": ["$service"] }],
-                  "serviceTypes": [{
-                    "id": "$service",
-                    "type": { "name": "Service" },
-                    "concrete": false,
-                    "multipleListenersAllowed": false,
-                    "handlers": { "backedByConcreteType": false, "options": [] }
-                  }]
-                }
-                """);
-        // The Package overload adds only `pkg.project().sourceRoot()` on top of this call, so pinning the
-        // shared reader pins both entry points.
-        Assert.assertTrue(READER.readTriggerMetadataModel(root).isPresent());
-        Assert.assertTrue(READER.readTriggerMetadataModel(Files.createTempDirectory("bare")).isEmpty());
     }
 
     /** A package root shipping the given {@code resources/trigger-metadata.json}. */

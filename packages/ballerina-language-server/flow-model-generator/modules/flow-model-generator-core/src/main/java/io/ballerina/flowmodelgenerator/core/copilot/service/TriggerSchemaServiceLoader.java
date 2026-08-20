@@ -149,7 +149,7 @@ final class TriggerSchemaServiceLoader {
         // after that point is a failure to *process* a document that exists, not an absence of metadata.
         boolean documentResolved = false;
         try {
-            Optional<TriggerMetadataModel> resolution = resolveMetadata(org, packageName, pkg);
+            Optional<TriggerMetadataModel> resolution = resolveMetadata(org, packageName);
             documentResolved = resolution.isPresent();
             if (resolution.isEmpty()) {
                 return empty(false);
@@ -262,9 +262,8 @@ final class TriggerSchemaServiceLoader {
      * with the consumer that has an opinion about it. {@code TriggerModelReader} orders its own tiers the
      * same way, over different documents.
      *
-     * <p>The shipped tier is read from the package the caller already compiled, so it costs a single
-     * {@code stat} rather than a {@code .bala} resolution — which is what makes consulting it for every
-     * library cheap enough to do unconditionally.
+     * <p>Both tiers are keyed by name off one {@link ModuleInfo}: the shipped tier resolves the
+     * connector's {@code .bala}, the bundled tier the LS's classpath copy.
      *
      * <p><b>A bundled document is filed under the library's own package name</b>, with no indirection.
      * There used to be a per-library override map, needed by exactly one entry: the CDC document for
@@ -275,12 +274,11 @@ final class TriggerSchemaServiceLoader {
      * still validated against the actually resolved package before use, which is what makes filing a
      * cross-module listener under the parent package safe.
      */
-    private static Optional<TriggerMetadataModel> resolveMetadata(String org, String packageName,
-                                                                  Package pkg) {
+    private static Optional<TriggerMetadataModel> resolveMetadata(String org, String packageName) {
         LibraryMetadataReader reader = LibraryMetadataReader.getInstance();
-        return reader.getTriggerMetadataModel(pkg)
-                .or(() -> reader.getPackagedTriggerMetadataModel(
-                        new ModuleInfo(org, packageName, packageName, null)));
+        ModuleInfo moduleInfo = new ModuleInfo(org, packageName, packageName, null);
+        return reader.getTriggerMetadataModel(moduleInfo)
+                .or(() -> reader.getPackagedTriggerMetadataModel(moduleInfo));
     }
 
 }

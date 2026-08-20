@@ -63,52 +63,11 @@ import static io.ballerina.servicemodelgenerator.extension.util.Constants.KIND_R
  * {@code TriggerServiceAdapter}, {@code TriggerSourceMerger}, and {@link SchemaDrivenSourceGenerator}
  * unmodified.
  *
- * <h2>What this class does NOT attempt</h2>
- * <ul>
- *   <li><b>Listener init-param widget selection.</b> Deliberately not reimplemented here: a listener's
- *       record-typed/union-typed/etc. init parameters are already correctly resolved by
- *       {@code ListenerUtil#getListenerModelByName} (the same utility the non-schema-driven "add
- *       listener" flow uses) -- this class only enriches that result with the schema-specific
- *       {@code argType}/{@code position} codedata {@link SchemaDrivenSourceGenerator} needs, per
- *       {@link #enrichListenerParam}.</li>
- *   <li><b>Copy-quality labels/descriptions.</b> A hand-authored model's field labels
- *       ("Bootstrap Servers") and prose descriptions are human copywriting that exists in neither
- *       input document. This synthesizer humanizes identifiers for labels
- *       ({@link #humanize(String)}) and reuses a symbol's own doc comment (via
- *       {@link TriggerLibraryFacts}, which already carries it) for descriptions where introspection
- *       found one -- functionally correct, not copy-edited.</li>
- *   <li><b>Granular per-field annotation composition.</b> A hand-authored model renders a service
- *       annotation as a field-by-field {@code MAPPING_CONSTRUCTOR} tree (see the
- *       {@code generate-trigger-model} skill). This synthesizer renders the whole annotation as one
- *       {@code RECORD_MAP_EXPRESSION} field the user fills as a single expression -- the same
- *       fallback shape {@code ServiceModelUtils#getAnnotationAttachmentProperty} already uses for the
- *       non-schema-driven default builders, so it is a recognized fidelity tier in this codebase, not
- *       a new one.</li>
- *   <li><b>The general exclusive-choice UX.</b> Per the agreed v1 rule, a {@code serviceTypes[].rules[]}
- *       entry of {@code rule: "structure.exactlyOne"} is resolved by rendering only the subject its
- *       rule-level {@code prefer} names (or its first subject when it names none) and silently dropping
- *       the alternative(s) -- e.g. RabbitMQ's queue-name-via-annotation-or-via-identifier renders the
- *       annotation field only. Revisit if a real connector needs the actual either/or surfaced.</li>
- * </ul>
- *
- * <h2>Spec v1.0</h2>
- *
- * <p>Four constructs were restructured relative to the shape this class first read, and each is handled
- * where it is consumed rather than adapted at the boundary:
- * <ul>
- *   <li><b>Exclusive choice.</b> {@code type: "oneOf"} over {@code members[].part} became {@code rule:
- *       "structure.exactlyOne"} over {@code subjects[].kind}, and {@code members[].preferred} became a
- *       rule-level {@code prefer: "<role>"}. See {@link #isSupersededByPreferredAnnotation}.</li>
- *   <li><b>Handler add mode.</b> {@code addMode} moved from the {@code handlers} block onto each option,
- *       so a service type may mix fixed handlers with open user-named ones. See
- *       {@link #buildFunctionFromAuthoring}.</li>
- *   <li><b>Annotation applicability.</b> The annotation's reverse {@code appliesTo} list became a forward
- *       reference from {@code serviceTypes[].annotations}. See {@link #applicableServiceAnnotations}.</li>
- *   <li><b>Data binding.</b> The top-level {@code dataBindingRules} registry and its {@code direct}/
- *       {@code includedRecord}/{@code streamable} modes became a binding written inline on the parameter,
- *       as independent {@code typedescs[]} variants each carrying its own {@code shapes[]}. See
- *       {@link #dataBindingTypeProperty}.</li>
- * </ul>
+ * <p>Notably does not attempt: listener init-param widget selection (delegated to
+ * {@code ListenerUtil#getListenerModelByName}), copy-quality labels/descriptions (identifiers are
+ * humanized instead), granular per-field annotation composition (rendered as one
+ * {@code RECORD_MAP_EXPRESSION} field), or the general {@code oneOf} choice UX (only the preferred
+ * member is rendered).
  *
  * @since 1.10.0
  */

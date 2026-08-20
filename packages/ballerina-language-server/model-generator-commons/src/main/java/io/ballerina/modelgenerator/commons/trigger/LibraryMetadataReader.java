@@ -90,43 +90,9 @@ public final class LibraryMetadataReader {
         return INSTANCE;
     }
 
-    /**
-     * The connector's own {@code resources/trigger-metadata.json}, resolved from its {@code .bala} by name.
-     *
-     * <p>Resolving by name costs a package lookup against a throwaway sample project. A caller holding an
-     * already-compiled package should hand it over instead — {@link #getTriggerMetadataModel(Package)}.
-     */
+    /** The connector's own {@code resources/trigger-metadata.json}, resolved from its {@code .bala}. */
     public Optional<TriggerMetadataModel> getTriggerMetadataModel(ModuleInfo moduleInfo) {
         return packageRoot(moduleInfo).flatMap(this::readTriggerMetadataModel);
-    }
-
-    /**
-     * The same document, read from a package the caller has already resolved.
-     *
-     * <p>Only the <i>root</i> differs from {@link #getTriggerMetadataModel(ModuleInfo)} — both end in
-     * {@link #readTriggerMetadataModel(Path)}, so this is a different way in, never a different answer. It
-     * exists because the name-keyed path resolves a {@code .bala} per library and returns whatever release
-     * the sample project picks, neither of which suits a caller walking every library against a release it
-     * already compiled.
-     *
-     * <p>Empty means "no readable document here" and nothing more; where to look next is the caller's
-     * policy, composable with {@link Optional#or}.
-     *
-     * @param pkg the already-resolved package (may be {@code null})
-     * @return the parsed document, or empty when the package ships none that can be read
-     */
-    public Optional<TriggerMetadataModel> getTriggerMetadataModel(Package pkg) {
-        if (pkg == null) {
-            return Optional.empty();
-        }
-        try {
-            return readTriggerMetadataModel(pkg.project().sourceRoot());
-        } catch (Throwable e) {
-            LOGGER.warning("Could not read " + TRIGGER_METADATA_RESOURCE_PATH + " from "
-                    + pkg.packageOrg().value() + "/" + pkg.packageName().value()
-                    + "; treating the package as shipping no metadata: " + e);
-            return Optional.empty();
-        }
     }
 
     /** The connector's own {@code resources/trigger-ui-schema.json}, resolved from its {@code .bala}. */
