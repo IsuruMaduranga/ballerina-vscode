@@ -79,14 +79,34 @@ public final class TriggerMetadataGson {
             return null;
         }
         JsonObject obj = json.getAsJsonObject();
-        String name = obj.has("name") ? obj.get("name").getAsString() : null;
-        TypeRef.PackageInfo packageInfo = obj.has("packageInfo")
-                ? PACKAGE_INFO_GSON.fromJson(obj.get("packageInfo"), TypeRef.PackageInfo.class) : null;
-        Boolean builtin = obj.has("builtin") ? obj.get("builtin").getAsBoolean() : null;
-        Boolean subtypeFamily = obj.has("subtypeFamily") ? obj.get("subtypeFamily").getAsBoolean() : null;
-        String shape = obj.has("shape") ? obj.get("shape").getAsString() : null;
-        List<TypeRef> elementType = obj.has("elementType") ? parseTypeRefList(obj.get("elementType")) : null;
-        List<TypeRef> completionType = obj.has("completionType") ? parseTypeRefList(obj.get("completionType")) : null;
+        String name = asString(obj, "name");
+        TypeRef.PackageInfo packageInfo =
+                PACKAGE_INFO_GSON.fromJson(member(obj, "packageInfo"), TypeRef.PackageInfo.class);
+        Boolean builtin = asBoolean(obj, "builtin");
+        Boolean subtypeFamily = asBoolean(obj, "subtypeFamily");
+        String shape = asString(obj, "shape");
+        List<TypeRef> elementType = parseTypeRefList(member(obj, "elementType"));
+        List<TypeRef> completionType = parseTypeRefList(member(obj, "completionType"));
         return new TypeRef(name, packageInfo, builtin, subtypeFamily, shape, elementType, completionType);
+    }
+
+    /**
+     * The member under {@code key}, or {@code null} when it is absent <em>or</em> explicitly
+     * {@code null} -- {@code has} alone is true for {@code "key": null}, whose accessors then throw an
+     * {@link UnsupportedOperationException} that no {@code JsonParseException} handler would catch.
+     */
+    private static JsonElement member(JsonObject obj, String key) {
+        JsonElement element = obj.get(key);
+        return element == null || element.isJsonNull() ? null : element;
+    }
+
+    private static String asString(JsonObject obj, String key) {
+        JsonElement element = member(obj, key);
+        return element == null ? null : element.getAsString();
+    }
+
+    private static Boolean asBoolean(JsonObject obj, String key) {
+        JsonElement element = member(obj, key);
+        return element == null ? null : element.getAsBoolean();
     }
 }
