@@ -152,6 +152,8 @@ public record TriggerMetadataModel(
          * @param returns the handler's return, grouped since it can carry the same id/dataBinding/annotations facts
          * @param accessor resource kind only
          * @param path resource kind only
+         * @param returnAnnotations ids of annotations with {@code attachPoint: "return"}, when the return
+         *                          carries them independently of {@code returns.annotations}
          */
         public record HandlerOption(
                 String id,
@@ -165,13 +167,21 @@ public record TriggerMetadataModel(
                 List<Param> params,
                 ReturnSpec returns,
                 ValueSpec accessor,
-                ValueSpec path) {
+                ValueSpec path,
+                List<String> returnAnnotations) {
 
             public static final String KIND_REMOTE = "remote";
             public static final String KIND_RESOURCE = "resource";
+            /** The spec: one fixed method name, governed by {@code presence}. The default when absent. */
             public static final String ADD_MODE_SUBSET = "subset";
+            /** The spec: a shape the user instantiates any number of times, always named {@code "*"}. */
             public static final String ADD_MODE_MANY = "many";
             public static final String WILDCARD_NAME = "*";
+
+            /** The spec makes {@code subset} the reading for an absent {@code addMode}. */
+            public boolean isMany() {
+                return ADD_MODE_MANY.equals(addMode);
+            }
         }
 
         /**
@@ -260,6 +270,11 @@ public record TriggerMetadataModel(
         public static final String RULE_ALL_OR_NONE = "structure.allOrNone";
         public static final String RULE_REQUIRES = "structure.requires";
         public static final String RULE_CONFLICTS_WITH = "structure.conflictsWith";
+
+        /** The {@link Subject#role()} an asymmetric rule's antecedent must carry. */
+        public static final String ROLE_WHEN = "when";
+        /** The {@link Subject#role()} an asymmetric rule's consequent must carry. */
+        public static final String ROLE_THEN = "then";
 
         public static final String SEVERITY_ERROR = "error";
         public static final String SEVERITY_WARNING = "warning";

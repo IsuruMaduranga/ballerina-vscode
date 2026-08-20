@@ -62,8 +62,14 @@ public final class LibraryMetadataReader {
     private static final String TRIGGER_UI_SCHEMA_RESOURCE_PATH = "resources/trigger-ui-schema.json";
     private static final String PACKAGED_TRIGGER_METADATA_ROOT = "trigger-metadata-models";
     private static final String PACKAGED_TRIGGER_METADATA_FILE = "trigger-metadata.json";
+    /** Sized for the designer, which resolves one connector at a time. */
     private static final int MAX_CACHE_SIZE = 2;
 
+    /**
+     * Sized for the Copilot, which walks every library in one request. At the designer's bound of 2, the
+     * corpus's 14 bundled documents evicted each other and nearly every request re-parsed the same JSON.
+     */
+    private static final int PACKAGED_METADATA_CACHE_SIZE = 20;
     private static final Pattern SUPPORTED_VERSION = Pattern.compile("^v1\\.\\d+$");
 
     private static final Duration PACKAGE_ROOT_CACHE_TTL = Duration.ofSeconds(60);
@@ -73,7 +79,7 @@ public final class LibraryMetadataReader {
     private final Cache<String, Optional<Path>> packageRootCache =
             Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).expireAfterWrite(PACKAGE_ROOT_CACHE_TTL).build();
     private final Cache<String, Optional<TriggerMetadataModel>> packagedMetadataCache =
-            Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).build();
+            Caffeine.newBuilder().maximumSize(PACKAGED_METADATA_CACHE_SIZE).build();
 
     private final Gson plainGson = new Gson();
 
@@ -192,11 +198,16 @@ public final class LibraryMetadataReader {
             TriggerMetadataModel model = TriggerMetadataGson.instance().fromJson(json, TriggerMetadataModel.class);
             return requireSupportedVersion(model, resourcePath);
         } catch (IOException | JsonParseException e) {
+            // A bundled document is this repo's own, so a failure here is a build defect. Logged all the
+            // same: silence is what made the shipped-document equivalent undiagnosable.
+            LOGGER.warning("Ignoring bundled " + resourcePath + ": " + e);
             return Optional.empty();
         }
     }
 
-    private Optional<TriggerMetadataModel> readTriggerMetadataModel(Path packageRoot) {
+    // Package-private rather than private: both public reads funnel through here, so the tests
+    // exercise the shared tail directly instead of once per entry point.
+    Optional<TriggerMetadataModel> readTriggerMetadataModel(Path packageRoot) {
         return readResourceFile(packageRoot, TRIGGER_METADATA_RESOURCE_PATH).flatMap(json -> {
             try {
                 TriggerMetadataModel model = TriggerMetadataGson.instance().fromJson(json, TriggerMetadataModel.class);

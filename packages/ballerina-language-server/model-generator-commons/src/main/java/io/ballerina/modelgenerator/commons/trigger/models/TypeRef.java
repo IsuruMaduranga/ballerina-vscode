@@ -48,8 +48,26 @@ public record TypeRef(String name, PackageInfo packageInfo, Boolean builtin, Boo
         this(name, packageInfo, null, null, null, null, null);
     }
 
+    public TypeRef(String name, PackageInfo packageInfo, String shape, List<TypeRef> elementType,
+                   List<TypeRef> completionType) {
+        this(name, packageInfo, null, null, shape, elementType, completionType);
+    }
+
     public boolean isNamed() {
         return shape == null;
+    }
+
+    public boolean isComposite() {
+        return shape != null;
+    }
+
+    /** Read rather than inferred from casing: the spec says {@code builtin} is what decides a module prefix. */
+    public boolean isBuiltin() {
+        return Boolean.TRUE.equals(builtin);
+    }
+
+    public boolean isSubtypeFamily() {
+        return Boolean.TRUE.equals(subtypeFamily);
     }
 
     public record PackageInfo(String org, String packageName, String moduleName, String version) {

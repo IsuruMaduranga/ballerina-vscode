@@ -30,4 +30,17 @@ public record ValueSpec(String presence, List<String> values) {
 
     public static final String PRESENCE_REQUIRED = "required";
     public static final String PRESENCE_OPTIONAL = "optional";
+
+    /** A single {@code "*"} in {@code values} means any value the language accepts. */
+    public static final String ANY = "*";
+
+    /** Whether this slot must be written. */
+    public boolean isRequired() {
+        return PRESENCE_REQUIRED.equals(presence);
+    }
+
+    /** Whether the document leaves the value open rather than enumerating a vocabulary. */
+    public boolean isOpen() {
+        return values != null && values.size() == 1 && ANY.equals(values.get(0));
+    }
 }
