@@ -36,7 +36,11 @@
                 "type": { "name": "FileEvent" },
                 "presence": "required"
               }
-            ]
+            ],
+            "returns": {
+              "id": "$service.onCreate.returns",
+              "type": [{ "name": "error", "builtin": true }, { "name": "()", "builtin": true }]
+            }
           },
           {
             "id": "$service.onModify",
@@ -52,7 +56,11 @@
                 "type": { "name": "FileEvent" },
                 "presence": "required"
               }
-            ]
+            ],
+            "returns": {
+              "id": "$service.onModify.returns",
+              "type": [{ "name": "error", "builtin": true }, { "name": "()", "builtin": true }]
+            }
           },
           {
             "id": "$service.onDelete",
@@ -68,7 +76,11 @@
                 "type": { "name": "FileEvent" },
                 "presence": "required"
               }
-            ]
+            ],
+            "returns": {
+              "id": "$service.onDelete.returns",
+              "type": [{ "name": "error", "builtin": true }, { "name": "()", "builtin": true }]
+            }
           }
         ]
       },
