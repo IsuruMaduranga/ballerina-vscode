@@ -126,7 +126,8 @@ const haloPulse = keyframes`
 
 const Wrapper = styled.div`
     position: fixed;
-    z-index: 10000;
+    /* Below side panels and modals (>=1900) so an open form keeps its controls reachable; above diagram content. */
+    z-index: 1800;
     display: flex;
     align-items: center;
     gap: 10px;
