@@ -660,7 +660,6 @@ export class ApprovalManager {
         approvalViewManager.cleanupAllViews();
 
         const error = new Error(reason);
-        error.name = 'AbortError';
 
         // Cancel plan approvals
         for (const [requestId, resolver] of this.planApprovals.entries()) {

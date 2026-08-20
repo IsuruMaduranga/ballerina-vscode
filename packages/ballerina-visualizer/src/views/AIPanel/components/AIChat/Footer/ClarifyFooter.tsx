@@ -23,8 +23,6 @@ import { FooterContainer } from "./index";
 import { ActionButton } from "../../AgentStreamView/styles";
 import { FooterBox, FooterDivider, FooterTextInputRow, FooterInput } from "./styles";
 import { AmbientFrame } from "../../../../../components/AgentStatusOrb/shared";
-import StopControl from "./StopControl";
-import { useEscapeToStop } from "./useEscapeToStop";
 
 // ── Clarify-specific styled components ────────────────────────────────────────
 
@@ -135,12 +133,11 @@ interface ClarifyFooterProps {
     questions: ClarifyQuestion[];
     requestId: string;
     rpcClient: any;
-    onStop: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const ClarifyFooter: React.FC<ClarifyFooterProps> = ({ questions, requestId, rpcClient, onStop }) => {
+const ClarifyFooter: React.FC<ClarifyFooterProps> = ({ questions, requestId, rpcClient }) => {
     const [page, setPage] = useState(0);
     const [selections, setSelections] = useState<Record<number, string[]>>(
         () => Object.fromEntries(questions.map((_, i): [number, string[]] => [i, []]))
@@ -152,8 +149,6 @@ const ClarifyFooter: React.FC<ClarifyFooterProps> = ({ questions, requestId, rpc
         () => Object.fromEntries(questions.map((_, i): [number, string] => [i, ""]))
     );
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    useEscapeToStop(onStop);
 
     const q = questions[page];
     const isMulti = q?.selectionType === "multiple";
@@ -236,20 +231,12 @@ const ClarifyFooter: React.FC<ClarifyFooterProps> = ({ questions, requestId, rpc
                                     {qu.tabLabel}
                                 </Tab>
                             ))}
-                            <div style={{ marginLeft: "auto" }}>
-                                <StopControl onStop={onStop} />
-                            </div>
                         </TabRow>
                     )}
 
                     <QuestionHeader>
                         <QuestionText>{q.question}</QuestionText>
                         <TypeBadge>{isMulti ? "multiple answer" : "single answer"}</TypeBadge>
-                        {questions.length <= 1 && (
-                            <div style={{ marginLeft: "auto" }}>
-                                <StopControl onStop={onStop} />
-                            </div>
-                        )}
                     </QuestionHeader>
 
                     <OptionsList>

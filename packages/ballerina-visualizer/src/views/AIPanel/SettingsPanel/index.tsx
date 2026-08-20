@@ -204,7 +204,6 @@ const CancelLink = styled.button`
 
 interface SettingsPanelProps {
     onClose: () => void;
-    backTooltip?: string;
     onNavigate?: (route: PanelRoute) => void;
     mcpToolsEnabled?: boolean;
 }
@@ -343,7 +342,7 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
     return (
         <AIChatView>
             <PanelHeader>
-                <Button appearance="icon" onClick={() => props.onClose()} tooltip={props.backTooltip ?? "Back"}>
+                <Button appearance="icon" onClick={() => props.onClose()} tooltip="Back to chat">
                     <Codicon name="arrow-left" />
                 </Button>
                 <PanelTitle>Settings</PanelTitle>
