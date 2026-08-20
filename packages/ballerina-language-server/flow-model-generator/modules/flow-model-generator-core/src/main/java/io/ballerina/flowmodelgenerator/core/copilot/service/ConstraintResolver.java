@@ -21,10 +21,8 @@ package io.ballerina.flowmodelgenerator.core.copilot.service;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -511,13 +509,13 @@ final class ConstraintResolver {
         if (path == null || path.isEmpty()) {
             return List.of();
         }
-        Set<String> seen = new LinkedHashSet<>();
+        List<String> kept = new ArrayList<>();
         for (String segment : path) {
             if (segment != null && !segment.isBlank()) {
-                seen.add(segment);
+                kept.add(segment);
             }
         }
-        return List.copyOf(seen);
+        return List.copyOf(kept);
     }
 
     private static String blankToNull(String value) {

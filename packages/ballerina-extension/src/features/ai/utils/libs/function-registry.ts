@@ -580,7 +580,7 @@ function collectServiceTypeRefs(service: Service): Type[] {
         }
     };
 
-    for (const param of service.listener.parameters) {
+    for (const param of service.listener?.parameters ?? []) {
         add(param.type);
     }
     // Spec §8 at service scope: a constraining record is a type reference no other scanner reaches, so

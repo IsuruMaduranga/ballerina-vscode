@@ -186,7 +186,7 @@ final class HandlerDraft {
     /**
      * The spec at {@code attachPoint: "return"} — the annotations the handler's return must or may carry.
      *
-     * <p>Held separately and merged into the {@code return} object by {@link #toJson()} rather than written
+     * <p>Held separately and merged into the {@code return} object by {@link #toModel()} rather than written
      * into it directly, so the component that resolves them does not have to run after the one that builds
      * the return. Dropped when the handler has no return object at all: there is no slot to attach to, and
      * a return that carries no type carries no annotation either.
