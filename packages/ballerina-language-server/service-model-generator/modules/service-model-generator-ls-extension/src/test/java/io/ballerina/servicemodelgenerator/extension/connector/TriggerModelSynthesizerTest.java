@@ -534,7 +534,7 @@ public class TriggerModelSynthesizerTest {
                 "$service.onConsumerRecord", "onConsumerRecord",
                 TriggerMetadataModel.ServiceType.HandlerOption.KIND_REMOTE, null,
                 "Invoked with each batch of records.", null, "required", null,
-                List.of(recordsParam), returns, null, null);
+                List.of(recordsParam), returns, null, null, null);
         TriggerMetadataModel.ServiceType.Handlers handlers = new TriggerMetadataModel.ServiceType.Handlers(
                 false, List.of(option));
         TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
@@ -599,7 +599,7 @@ public class TriggerModelSynthesizerTest {
         TriggerMetadataModel.ServiceType.HandlerOption option = new TriggerMetadataModel.ServiceType.HandlerOption(
                 "$service.onFileCsv", "onFileCsv", TriggerMetadataModel.ServiceType.HandlerOption.KIND_REMOTE, null,
                 "Invoked for each .csv file.", null, "required", null,
-                List.of(contentParam), returns, null, null);
+                List.of(contentParam), returns, null, null, null);
         TriggerMetadataModel.ServiceType.Handlers handlers = new TriggerMetadataModel.ServiceType.Handlers(
                 false, List.of(option));
         TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
@@ -680,7 +680,7 @@ public class TriggerModelSynthesizerTest {
         TriggerMetadataModel.ServiceType.HandlerOption option = new TriggerMetadataModel.ServiceType.HandlerOption(
                 "$service.onFileXml", "onFileXml", TriggerMetadataModel.ServiceType.HandlerOption.KIND_REMOTE, null,
                 "Invoked for each .xml file.", null, "required", null,
-                List.of(contentParam, callerParam, fileInfoParam), returns, null, null);
+                List.of(contentParam, callerParam, fileInfoParam), returns, null, null, null);
         TriggerMetadataModel.ServiceType.Handlers handlers = new TriggerMetadataModel.ServiceType.Handlers(
                 false, List.of(option));
         TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
@@ -743,7 +743,7 @@ public class TriggerModelSynthesizerTest {
         TriggerMetadataModel.ServiceType.HandlerOption option = new TriggerMetadataModel.ServiceType.HandlerOption(
                 "$service.onFileXml", "onFileXml", TriggerMetadataModel.ServiceType.HandlerOption.KIND_REMOTE, null,
                 "Invoked for each .xml file.", null, "required", List.of("$fnConfig"),
-                List.of(contentParam), returns, null, null);
+                List.of(contentParam), returns, null, null, null);
         TriggerMetadataModel.ServiceType.Handlers handlers = new TriggerMetadataModel.ServiceType.Handlers(
                 false, List.of(option));
         TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(

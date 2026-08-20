@@ -62,8 +62,14 @@ public final class LibraryMetadataReader {
     private static final String TRIGGER_UI_SCHEMA_RESOURCE_PATH = "resources/trigger-ui-schema.json";
     private static final String PACKAGED_TRIGGER_METADATA_ROOT = "trigger-metadata-models";
     private static final String PACKAGED_TRIGGER_METADATA_FILE = "trigger-metadata.json";
+    /** Sized for the designer, which resolves one connector at a time. */
     private static final int MAX_CACHE_SIZE = 2;
 
+    /**
+     * Sized for the Copilot, which walks every library in one request. At the designer's bound of 2, the
+     * corpus's 14 bundled documents evicted each other and nearly every request re-parsed the same JSON.
+     */
+    private static final int PACKAGED_METADATA_CACHE_SIZE = 20;
     private static final Pattern SUPPORTED_VERSION = Pattern.compile("^v1\\.\\d+$");
 
     private static final Duration PACKAGE_ROOT_CACHE_TTL = Duration.ofSeconds(60);
@@ -73,7 +79,7 @@ public final class LibraryMetadataReader {
     private final Cache<String, Optional<Path>> packageRootCache =
             Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).expireAfterWrite(PACKAGE_ROOT_CACHE_TTL).build();
     private final Cache<String, Optional<TriggerMetadataModel>> packagedMetadataCache =
-            Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE).build();
+            Caffeine.newBuilder().maximumSize(PACKAGED_METADATA_CACHE_SIZE).build();
 
     private final Gson plainGson = new Gson();
 
@@ -84,9 +90,43 @@ public final class LibraryMetadataReader {
         return INSTANCE;
     }
 
-    /** The connector's own {@code resources/trigger-metadata.json}, resolved from its {@code .bala}. */
+    /**
+     * The connector's own {@code resources/trigger-metadata.json}, resolved from its {@code .bala} by name.
+     *
+     * <p>Resolving by name costs a package lookup against a throwaway sample project. A caller holding an
+     * already-compiled package should hand it over instead — {@link #getTriggerMetadataModel(Package)}.
+     */
     public Optional<TriggerMetadataModel> getTriggerMetadataModel(ModuleInfo moduleInfo) {
         return packageRoot(moduleInfo).flatMap(this::readTriggerMetadataModel);
+    }
+
+    /**
+     * The same document, read from a package the caller has already resolved.
+     *
+     * <p>Only the <i>root</i> differs from {@link #getTriggerMetadataModel(ModuleInfo)} — both end in
+     * {@link #readTriggerMetadataModel(Path)}, so this is a different way in, never a different answer. It
+     * exists because the name-keyed path resolves a {@code .bala} per library and returns whatever release
+     * the sample project picks, neither of which suits a caller walking every library against a release it
+     * already compiled.
+     *
+     * <p>Empty means "no readable document here" and nothing more; where to look next is the caller's
+     * policy, composable with {@link Optional#or}.
+     *
+     * @param pkg the already-resolved package (may be {@code null})
+     * @return the parsed document, or empty when the package ships none that can be read
+     */
+    public Optional<TriggerMetadataModel> getTriggerMetadataModel(Package pkg) {
+        if (pkg == null) {
+            return Optional.empty();
+        }
+        try {
+            return readTriggerMetadataModel(pkg.project().sourceRoot());
+        } catch (Throwable e) {
+            LOGGER.warning("Could not read " + TRIGGER_METADATA_RESOURCE_PATH + " from "
+                    + pkg.packageOrg().value() + "/" + pkg.packageName().value()
+                    + "; treating the package as shipping no metadata: " + e);
+            return Optional.empty();
+        }
     }
 
     /** The connector's own {@code resources/trigger-ui-schema.json}, resolved from its {@code .bala}. */
@@ -192,11 +232,16 @@ public final class LibraryMetadataReader {
             TriggerMetadataModel model = TriggerMetadataGson.instance().fromJson(json, TriggerMetadataModel.class);
             return requireSupportedVersion(model, resourcePath);
         } catch (IOException | JsonParseException e) {
+            // A bundled document is this repo's own, so a failure here is a build defect. Logged all the
+            // same: silence is what made the shipped-document equivalent undiagnosable.
+            LOGGER.warning("Ignoring bundled " + resourcePath + ": " + e);
             return Optional.empty();
         }
     }
 
-    private Optional<TriggerMetadataModel> readTriggerMetadataModel(Path packageRoot) {
+    // Package-private rather than private: both public reads funnel through here, so the tests
+    // exercise the shared tail directly instead of once per entry point.
+    Optional<TriggerMetadataModel> readTriggerMetadataModel(Path packageRoot) {
         return readResourceFile(packageRoot, TRIGGER_METADATA_RESOURCE_PATH).flatMap(json -> {
             try {
                 TriggerMetadataModel model = TriggerMetadataGson.instance().fromJson(json, TriggerMetadataModel.class);
