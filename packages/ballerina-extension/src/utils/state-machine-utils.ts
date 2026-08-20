@@ -63,7 +63,8 @@ export function releaseCreateLanding(): void {
  */
 export function resolveCreateLandingOverride(
     viewLocation: VisualizerLocation,
-    deliverable: boolean
+    deliverable: boolean,
+    contextProjectPath?: string
 ): VisualizerLocation | undefined {
     // `OPEN_VIEW` is handled only in `extensionReady` and `viewActive.viewReady`, so a navigation
     // sent mid-load is dropped. Spending the claim on one that never happens would leave the next
@@ -81,9 +82,13 @@ export function resolveCreateLandingOverride(
     // a different package's overview, reachable from the config generator, Try It, the doc command
     // and the BI diagram manager — is the user somewhere else, and must not leave a claim behind to
     // redirect them back here.
+    // Compared against the path `openView` will actually resolve, not just the one named here: a
+    // package overview carrying no path falls back to the context's, which is frequently a
+    // different package (several commands navigate that way).
+    const resolvedProjectPath = viewLocation.projectPath || contextProjectPath;
     const staysOnClaimedPackage =
         viewLocation.view === MACHINE_VIEW.PackageOverview &&
-        (!viewLocation.projectPath || isSamePath(viewLocation.projectPath, createLanding));
+        (!resolvedProjectPath || isSamePath(resolvedProjectPath, createLanding));
     if (viewLocation.view && !staysOnClaimedPackage) {
         createLanding = undefined;
     }

@@ -201,6 +201,22 @@ describe("resolveCreateLandingOverride", () => {
         expect(resolveCreateLandingOverride(workspaceOverview, true)).toBeUndefined();
     });
 
+    // A package overview carrying no path resolves against the context's, which is often another
+    // package. The claim has to be compared against the path `openView` will actually resolve.
+    it("is released by a pathless package overview that resolves to another package", () => {
+        claimCreateLanding(CREATED);
+
+        expect(resolveCreateLandingOverride({ view: MACHINE_VIEW.PackageOverview }, true, OTHER)).toBeUndefined();
+        expect(resolveCreateLandingOverride(workspaceOverview, true)).toBeUndefined();
+    });
+
+    it("survives a pathless package overview that resolves to the claimed package", () => {
+        claimCreateLanding(CREATED);
+
+        expect(resolveCreateLandingOverride({ view: MACHINE_VIEW.PackageOverview }, true, CREATED)).toBeUndefined();
+        expect(resolveCreateLandingOverride(workspaceOverview, true)).toEqual(redirected);
+    });
+
     // `OPEN_VIEW` is dropped outside `extensionReady` and `viewActive.viewReady`. Spending the
     // claim on a navigation that never happens would leave the next workspace overview unopposed.
     it("ignores a navigation that will not be delivered, claim intact", () => {

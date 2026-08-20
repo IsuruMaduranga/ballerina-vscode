@@ -26,6 +26,7 @@ import {
     isPathInside,
     isSamePath,
     MACHINE_VIEW,
+    PendingIntegrationArtifactKind,
     PendingIntegrationArtifactPayload,
 } from "@wso2/ballerina-core";
 import { openView, StateMachine } from "../../stateMachine";
@@ -47,6 +48,16 @@ const PENDING_ARTIFACT_RELATIVE_PATH = path.join("target", ".wizard-pending-arti
 
 /** Human-readable labels for progress and error messages, per artifact kind. */
 const ARTIFACT_KIND_LABELS = INTEGRATION_ARTIFACT_LABELS;
+
+/**
+ * Kinds whose generation navigates somewhere of its own, so the landing below must leave them
+ * alone — the agent hands off to its wizard rather than finishing on an overview.
+ *
+ * They must also not be pre-landed. `KINDS_WRITING_AN_ARTIFACT` in `Visualizer.tsx` holds the
+ * create's progress screen for the other three only, so for these a pre-landing would be visible
+ * as a flash on the way to the wizard, and would leave a spare history entry behind.
+ */
+const KINDS_NAVIGATING_THEMSELVES: PendingIntegrationArtifactKind[] = ["AI_CHAT_AGENT"];
 
 function pendingArtifactFilePath(projectRoot: string): string {
     return path.join(projectRoot, PENDING_ARTIFACT_RELATIVE_PATH);
@@ -173,15 +184,22 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
         );
         // Land BEFORE generating, not only after. `OPEN_VIEW` is handled in `extensionReady` and
         // `viewActive.viewReady` only, and this runs from the `extensionReady` subscription, so a
-        // navigation sent here is certain to be acted on. Generation is asynchronous and startup
-        // navigates while it runs, so one sent only afterwards can arrive in a state that drops it.
-        // Invisible to the user: the webview stays on the create's progress screen until the
-        // artifact appears in the project structure.
-        landOnNewIntegrationAfterReload(stored.projectRoot);
+        // navigation sent here is very likely to be acted on — and free if it is not, since the
+        // `deliverable` guard keeps a dropped one from spending the claim and the re-assert below
+        // follows. Not a guarantee: `clearPendingIntegrationPointer` above is awaited, so a startup
+        // navigation can land in that gap. Generation is asynchronous and startup navigates while
+        // it runs, so a landing sent only afterwards is the one likely to arrive somewhere that
+        // drops it.
+        //
+        // Invisible to the user, for the kinds this covers: the webview holds the create's progress
+        // screen until the artifact appears in the project structure.
+        const generationNavigatesItself = KINDS_NAVIGATING_THEMSELVES.includes(payload.kind);
+        if (!generationNavigatesItself) {
+            landOnNewIntegrationAfterReload(stored.projectRoot);
+        }
 
-        let claimedView = false;
         try {
-            claimedView = await generatePendingArtifact(payload, stored.projectRoot);
+            await generatePendingArtifact(payload, stored.projectRoot);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error(`[IntegrationWizard] Failed to generate pending ${payload.kind} artifact:`, error);
@@ -192,10 +210,8 @@ export async function checkAndRunPendingArtifact(): Promise<void> {
         }
         // Re-assert, in case startup navigated away while generation ran. Best-effort by design:
         // if this one is dropped the landing above already happened, and the claim it refreshes
-        // still answers a workspace overview arriving later. Skipped when generation navigated
-        // somewhere deliberate of its own — only the agent does, handing off to its wizard, whose
-        // navigation also releases the claim.
-        if (!claimedView) {
+        // still answers a workspace overview arriving later.
+        if (!generationNavigatesItself) {
             landOnNewIntegrationAfterReload(stored.projectRoot);
         }
     } catch (error) {
@@ -244,11 +260,11 @@ export async function generateArtifactInPlace(
     }
 
     try {
-        const claimedView = await window.withProgress(
+        await window.withProgress(
             { location: ProgressLocation.Notification, title: `Generating your ${label}...` },
             () => generatePendingArtifact(payload, packageRoot)
         );
-        if (!claimedView) {
+        if (!KINDS_NAVIGATING_THEMSELVES.includes(payload.kind)) {
             openPackageOverview(packageRoot);
         }
         // Silent: a non-silent refresh lands on the workspace overview, which would clobber
@@ -267,16 +283,14 @@ export async function generateArtifactInPlace(
 /**
  * Runs the kind-specific generation. All files target `projectRoot` (the new package).
  *
- * Returns whether generation claimed the view for a destination of its own, in which case the
- * caller leaves it alone. Only the agent does that — it hands off to a wizard rather than
- * finishing here. Everything else leaves the caller to land on the new integration, which is
- * the thing the user came to see whether it went into a project that already existed or one
- * this same submit created.
+ * Landing is the caller's business, not this function's — see {@link KINDS_NAVIGATING_THEMSELVES}
+ * for the one kind that navigates itself. Keeping that distinction in a single list rather than a
+ * value returned from here is what lets the caller act on it BEFORE generation as well as after.
  */
 async function generatePendingArtifact(
     payload: PendingIntegrationArtifactPayload,
     projectRoot: string
-): Promise<boolean> {
+): Promise<void> {
     switch (payload.kind) {
         case "SERVICE": {
             if (!payload.serviceInitModel) {
@@ -289,7 +303,7 @@ async function generatePendingArtifact(
                 projectPath: projectRoot,
                 serviceInitModel: payload.serviceInitModel,
             });
-            return false;
+            return;
         }
         case "AUTOMATION":
         case "WORKFLOW": {
@@ -306,7 +320,7 @@ async function generatePendingArtifact(
             if (payload.flowNode.codedata?.node === "DURABLE_AGENT") {
                 await configureDurableAgentModelProvider(projectRoot);
             }
-            return false;
+            return;
         }
         case "AI_CHAT_AGENT": {
             // Pragmatic v1: the agent's multi-RPC orchestration stays webview-side —
@@ -316,7 +330,7 @@ async function generatePendingArtifact(
                 view: MACHINE_VIEW.AIChatAgentWizard,
                 identifier: payload.aiAgent?.name,
             });
-            return true;
+            return;
         }
         default:
             throw new Error(`Unsupported artifact kind: ${(payload as PendingIntegrationArtifactPayload).kind}`);

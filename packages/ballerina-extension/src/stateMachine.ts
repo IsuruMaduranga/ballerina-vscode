@@ -970,6 +970,8 @@ export const StateMachine = {
     state: () => { return stateService.getSnapshot().value as MachineStateValue; },
     setEditMode: () => { stateService.send({ type: EVENT_TYPE.FILE_EDIT }); },
     setReadyMode: () => { stateService.send({ type: EVENT_TYPE.EDIT_DONE }); },
+    // Also the `viewActive` half of {@link handlesOpenView}: keep the two in step, since a change
+    // here silently stops the create-landing claim from working rather than failing.
     isReady: () => {
         const state = stateService.getSnapshot().value;
         return typeof state === 'object' && 'viewActive' in state && state.viewActive === "viewReady";
@@ -1056,7 +1058,7 @@ export function openView(
     if (options?.exactView) {
         releaseCreateLanding();
     } else {
-        override = resolveCreateLandingOverride(viewLocation, handlesOpenView())
+        override = resolveCreateLandingOverride(viewLocation, handlesOpenView(), StateMachine.context().projectPath)
             ?? resolveSingleIntegrationOverride(viewLocation, StateMachine.context());
     }
     const location = override ?? viewLocation;
