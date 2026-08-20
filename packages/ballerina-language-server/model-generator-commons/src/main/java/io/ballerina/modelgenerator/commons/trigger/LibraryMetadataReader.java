@@ -49,6 +49,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 /**
  * Connector-agnostic entry point for reading the trigger model family, shared by every LS extension.
@@ -62,6 +63,8 @@ public final class LibraryMetadataReader {
     private static final String PACKAGED_TRIGGER_METADATA_ROOT = "trigger-metadata-models";
     private static final String PACKAGED_TRIGGER_METADATA_FILE = "trigger-metadata.json";
     private static final int MAX_CACHE_SIZE = 2;
+
+    private static final Pattern SUPPORTED_VERSION = Pattern.compile("^v1\\.\\d+$");
 
     private static final Duration PACKAGE_ROOT_CACHE_TTL = Duration.ofSeconds(60);
 
@@ -186,7 +189,8 @@ public final class LibraryMetadataReader {
                 return Optional.empty();
             }
             String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            return Optional.ofNullable(TriggerMetadataGson.instance().fromJson(json, TriggerMetadataModel.class));
+            TriggerMetadataModel model = TriggerMetadataGson.instance().fromJson(json, TriggerMetadataModel.class);
+            return requireSupportedVersion(model, resourcePath);
         } catch (IOException | JsonParseException e) {
             return Optional.empty();
         }
@@ -195,11 +199,22 @@ public final class LibraryMetadataReader {
     private Optional<TriggerMetadataModel> readTriggerMetadataModel(Path packageRoot) {
         return readResourceFile(packageRoot, TRIGGER_METADATA_RESOURCE_PATH).flatMap(json -> {
             try {
-                return Optional.ofNullable(TriggerMetadataGson.instance().fromJson(json, TriggerMetadataModel.class));
+                TriggerMetadataModel model = TriggerMetadataGson.instance().fromJson(json, TriggerMetadataModel.class);
+                return requireSupportedVersion(model, packageRoot.resolve(TRIGGER_METADATA_RESOURCE_PATH).toString());
             } catch (JsonParseException e) {
                 return Optional.empty();
             }
         });
+    }
+
+    /** Refuses a {@code null}/absent/unsupported-major version, logging why. */
+    private Optional<TriggerMetadataModel> requireSupportedVersion(TriggerMetadataModel model, String source) {
+        if (model != null && model.version() != null && SUPPORTED_VERSION.matcher(model.version()).matches()) {
+            return Optional.of(model);
+        }
+        LOGGER.log(Level.WARNING, "Unsupported trigger-metadata.json version \""
+                + (model == null ? null : model.version()) + "\" in " + source + "; expected v1.x");
+        return Optional.empty();
     }
 
     private Optional<TriggerUISchemaModel> readTriggerUISchemaModel(Path packageRoot) {
