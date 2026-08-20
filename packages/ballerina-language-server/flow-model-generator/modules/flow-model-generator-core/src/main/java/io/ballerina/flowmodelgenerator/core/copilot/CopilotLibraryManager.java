@@ -19,8 +19,6 @@
 package io.ballerina.flowmodelgenerator.core.copilot;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.reflect.TypeToken;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.Symbol;
@@ -172,15 +170,10 @@ public class CopilotLibraryManager {
             library.setFunctions(symbolResult.getFunctions());
             library.setTypeDefs(symbolResult.getTypeDefs());
 
-            JsonArray servicesJson = ServiceLoader.loadAllServices(libraryName);
+            List<Service> services = ServiceLoader.loadAllServices(libraryName);
             List<Symbol> moduleSymbols = semanticModel.moduleSymbols();
-            CopilotDeprecationEnricher.enrich(servicesJson, moduleSymbols);
-            CopilotListenerNameEnricher.enrich(servicesJson, moduleSymbols);
-            List<Service> services = new ArrayList<>();
-            for (JsonElement serviceElement : servicesJson) {
-                Service service = GSON.fromJson(serviceElement, Service.class);
-                services.add(service);
-            }
+            CopilotDeprecationEnricher.enrich(services, moduleSymbols);
+            CopilotListenerNameEnricher.enrich(services, moduleSymbols);
             library.setServices(services);
 
             // Annotations come from the Semantic Model alone: the compiler is authoritative for

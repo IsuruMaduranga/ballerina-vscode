@@ -18,17 +18,22 @@
 
 package io.ballerina.flowmodelgenerator.core.copilot.service;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import io.ballerina.flowmodelgenerator.core.InstructionLoader;
+import io.ballerina.flowmodelgenerator.core.copilot.model.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -44,7 +49,18 @@ public class ServiceLoader {
     private static final Logger LOGGER = Logger.getLogger(ServiceLoader.class.getName());
     private static final String GENERIC_SERVICES_JSON_PATH = "/copilot/generic-services.json";
 
-    // Lazily cached generic services keyed by library name
+    private static final Gson GSON = new Gson();
+
+    /**
+     * Lazily cached generic-services entries keyed by library name, held as <b>parsed JSON rather than
+     * {@link Service} objects</b>.
+     *
+     * <p>The cache is static and process-wide, while the entries it hands out are mutated downstream: the
+     * two enrichers write onto whatever services they are given, and the schema-derived merge writes an
+     * {@code instructions} string onto a colliding entry. Caching the objects themselves would let one
+     * library's load permanently alter what every later load sees. Deserializing per call is what keeps each
+     * caller's entries its own, which is exactly the guarantee the old {@code GSON.fromJson} hop provided.
+     */
     private static volatile Map<String, JsonArray> genericServicesCache;
 
     private ServiceLoader() {
@@ -53,10 +69,9 @@ public class ServiceLoader {
 
     /**
      * Loads all services for a given library from the service-index DB and generic services.
-     * Index-sourced entries carry a {@code name} field (the service-type name); callers that
-     * want deprecation flags should pass the result through
-     * {@link CopilotDeprecationEnricher#enrich(JsonArray, io.ballerina.compiler.api.SemanticModel)}
-     * before consuming.
+     * Index-sourced entries carry a {@code name} (the service-type name); callers that want deprecation
+     * flags should pass the result through
+     * {@link CopilotDeprecationEnricher#enrich(java.util.List, java.util.List)} before consuming.
      *
      * <p>If a generic-services.json entry shares its {@code name} with an index-sourced fixed
      * entry, the generic entry takes precedence and the fixed one is dropped. This lets curated
@@ -64,28 +79,69 @@ public class ServiceLoader {
      * raw shape produced by the SQLite index.
      *
      * @param libraryName the library name (e.g., "ballerina/http", "ballerinax/kafka")
-     * @return JsonArray containing all services for this library
+     * @return all services for this library
      */
-    public static JsonArray loadAllServices(String libraryName) {
-        JsonArray genericServices = getGenericServices(libraryName);
+    public static List<Service> loadAllServices(String libraryName) {
+        return mergeWithGenericServices(libraryName, ServiceIndexLoader.loadFromServiceIndex(libraryName),
+                false);
+    }
+
+    /**
+     * Applies the generic-services overlay. What a {@code name} collision means depends on where the fixed
+     * entry came from.
+     *
+     * <p><b>Index-derived ({@code schemaDerived == false}) — replace.</b> The curated entry wins and the
+     * index entry is dropped, exactly as before: an index row carries a listener and a method list and
+     * nothing else, which is why the curated prose was written in the first place.
+     *
+     * <p><b>Schema-derived ({@code schemaDerived == true}) — <i>merge</i>.</b> The metadata-derived entry
+     * survives and absorbs the curated guidance. This case was silently destroying work:
+     * {@code ballerina/http} and {@code ballerina/graphql} both declare {@code type.name = "Service"} and
+     * both have a curated entry named {@code Service}, so their entire trigger-metadata documents rendered
+     * nothing at all.
+     *
+     * <p>The two sources are not substitutes: the document states the <i>facts</i> (types, presence,
+     * annotations, binding), while the curated file states the <i>conventions</i> a document deliberately
+     * cannot carry. Merging keeps both; the old behaviour kept only the second.
+     *
+     * @param libraryName   the library being loaded
+     * @param fixedServices the non-generic entries
+     * @param schemaDerived whether {@code fixedServices} came from the trigger-metadata pipeline
+     * @return the merged service list
+     */
+    private static List<Service> mergeWithGenericServices(String libraryName, List<Service> fixedServices,
+                                                      boolean schemaDerived) {
+        List<Service> genericServices = getGenericServices(libraryName);
 
         Set<String> genericNames = new HashSet<>();
-        for (JsonElement element : genericServices) {
-            JsonObject svc = element.getAsJsonObject();
-            if (svc.has("name")) {
-                genericNames.add(svc.get("name").getAsString());
+        for (Service svc : genericServices) {
+            if (svc.getName() != null) {
+                genericNames.add(svc.getName());
             }
         }
 
-        JsonArray services = new JsonArray();
-        for (JsonElement element : ServiceIndexLoader.loadFromServiceIndex(libraryName)) {
-            JsonObject svc = element.getAsJsonObject();
-            if (svc.has("name") && genericNames.contains(svc.get("name").getAsString())) {
+        Set<String> absorbed = new HashSet<>();
+        List<Service> services = new ArrayList<>();
+        for (Service svc : fixedServices) {
+            String name = svc.getName();
+            if (name != null && genericNames.contains(name)) {
+                if (!schemaDerived) {
+                    continue;
+                }
+                absorbed.add(name);
+                InstructionLoader.loadServiceInstruction(libraryName)
+                        .ifPresent(svc::setInstructions);
+            }
+            services.add(svc);
+        }
+        // Document order is preserved for whatever was not absorbed, so the index path emits exactly the
+        // list it emitted before.
+        for (Service svc : genericServices) {
+            if (svc.getName() != null && absorbed.contains(svc.getName())) {
                 continue;
             }
             services.add(svc);
         }
-        genericServices.forEach(services::add);
         return services;
     }
 
@@ -93,9 +149,9 @@ public class ServiceLoader {
      * Returns cached generic services for a specific library from the generic-services.json resource.
      *
      * @param libraryName the library name (e.g., "ballerina/http")
-     * @return JsonArray containing services for this library, or empty array if not found
+     * @return freshly deserialized services for this library, or an empty list if not found
      */
-    private static JsonArray getGenericServices(String libraryName) {
+    private static List<Service> getGenericServices(String libraryName) {
         Map<String, JsonArray> cache = genericServicesCache;
         if (cache == null) {
             synchronized (ServiceLoader.class) {
@@ -106,7 +162,16 @@ public class ServiceLoader {
                 }
             }
         }
-        return cache.getOrDefault(libraryName, new JsonArray());
+        JsonArray entries = cache.get(libraryName);
+        if (entries == null) {
+            return new ArrayList<>();
+        }
+        // Deserialized per call, never cached as objects — see genericServicesCache.
+        List<Service> services = new ArrayList<>();
+        for (JsonElement entry : entries) {
+            services.add(GSON.fromJson(entry, Service.class));
+        }
+        return services;
     }
 
     /**
