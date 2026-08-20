@@ -78,6 +78,7 @@ public final class TriggerModelSynthesizer {
     private static final String LISTENER_VAR_NAME_KEY = "listenerVarName";
     private static final String SERVICE_TYPE_KEY = "serviceType";
     private static final String IDENTIFIER_KEY = "identifier";
+    private static final String ERROR_TYPE = "error";
     private static final Gson GSON = new Gson();
 
     private TriggerModelSynthesizer() {
@@ -842,8 +843,25 @@ public final class TriggerModelSynthesizer {
         if (refs == null || refs.isEmpty()) {
             return buildReturnType(null, false);
         }
-        String rendered = renderTypeRef(refs, moduleName);
-        return buildReturnType(rendered, rendered.contains("error"));
+        return buildReturnType(renderTypeRef(refs, moduleName), hasErrorMember(refs));
+    }
+
+    /**
+     * Whether the returned union has an {@code error} member of its own. Only the union's top-level
+     * members count: a substring scan of the rendered signature would also match an {@code error} that
+     * is merely a stream's completion type (e.g. {@code stream<anydata, error|()>}, a union with no
+     * error member) and would misfire on any type name that embeds the word. A module's own distinct
+     * error (e.g. {@code tcp:Error}) is deliberately not counted it is already spelled out in the
+     * rendered type, and {@code hasError} only drives appending a further {@code |error} to it.
+     */
+    private static boolean hasErrorMember(List<TypeRef> refs) {
+        for (TypeRef ref : refs) {
+            if (ref != null && ref.isNamed() && ERROR_TYPE.equals(ref.name())) {
+                return true;
+            }
+        }
+        // TODO: handle sub type of error type using semantic api
+        return false;
     }
 
     /**
