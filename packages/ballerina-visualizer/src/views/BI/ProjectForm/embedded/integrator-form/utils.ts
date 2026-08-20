@@ -204,10 +204,17 @@ export const resolveBrowsePick = (
     // the parent — drop it so the project's own folder survives as the last segment.
     const trimmed = pickedPath.replace(/[/\\]+$/, '');
     const { base, name } = splitPath(trimmed);
-    if (!base || !name) {
-        // Nothing to split (a bare or root-level pick): keep it as the location and leave
-        // the segment name-derived rather than emitting a target that drops the pick.
-        return { base: pickedPath, projectName: existingProject.name || undefined };
+    if (!name) {
+        // No segment to hold (a root-only pick): keep it as the location. No target both
+        // holds the pick and has a folder of its own, so leave the segment name-derived.
+        return { base: trimmed || pickedPath, projectName: existingProject.name || undefined };
+    }
+    if (!base) {
+        // A bare relative pick has no parent to hold. Held as the location with an EMPTY
+        // segment, which `joinPath` renders as the pick itself — letting it fall through to
+        // the parent-location reading would instead nest below it, the one thing this
+        // function exists to prevent.
+        return { base: trimmed, directoryName: '', projectName: existingProject.name || undefined };
     }
     return { base, directoryName: name, projectName: existingProject.name || undefined };
 };
@@ -258,8 +265,12 @@ export const applyBrowsePick = (
 ): AppliedBrowsePick => {
     const pick = resolveBrowsePick(pickedPath, existingProject);
 
-    if (pick.directoryName) {
-        const adoptedName = options.adoptProjectName ? pick.projectName : undefined;
+    // Checked against undefined, not truthiness: a bare pick pins an EMPTY segment, which
+    // still means "the pick IS the target" rather than "no segment was pinned".
+    if (pick.directoryName !== undefined) {
+        // Fall back to the folder when a project reports no title: keeping the PREVIOUS
+        // project's adopted title would label a project that is no longer the target.
+        const adoptedName = options.adoptProjectName ? pick.projectName || pick.directoryName || undefined : undefined;
         return {
             base: pick.base,
             folder: { action: 'pin', directoryName: pick.directoryName },

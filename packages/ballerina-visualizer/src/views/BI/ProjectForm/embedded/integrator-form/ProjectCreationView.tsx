@@ -20,9 +20,9 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import debounce from "lodash/debounce";
 import { Button, DirectorySelector, Icon, TextField } from "@wso2/ui-toolkit";
 import { useVisualizerContext } from "./context/WsClientContext";
+import { useBrowsePick } from "./useBrowsePick";
 import {
     joinPath,
-    applyBrowsePick,
     splitPath,
     sanitizePackageName,
     validateProjectName,
@@ -55,13 +55,6 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
     // True once the user has typed in the name field — stops the one-time seed from
     // overwriting a name the user entered before the async seed resolved.
     const projectNameTouchedRef = useRef(false);
-    // Whether a Browse pinned an existing project's folder as the path's last segment, so
-    // a later pick elsewhere hands the segment back to the name instead of carrying that
-    // project's folder to the new location. See `applyBrowsePick`.
-    const folderPinnedByPickRef = useRef(false);
-    // A Browse has resolved, so the one-shot default-path seed below must not re-derive
-    // the directory segment it had resolved for the previous location.
-    const pathPickedRef = useRef(false);
     const [isValidating, setIsValidating] = useState(false);
     const [projectNameError, setProjectNameError] = useState<string | null>(null);
     const [pathError, setPathError] = useState<string | null>(null);
@@ -74,6 +67,22 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
     // which it is left under manual control.
     const dirCoupling = useDirectoryNameCoupling(() => sanitizePackageName(DEFAULT_PROJECT_NAME), sanitizePackageName);
     const { directoryName, dirTouched } = dirCoupling;
+
+    // Owns the Browse interaction. No `adoptProjectName`: this form only ever creates a NEW
+    // project, so the name field stays the user's — an existing project at the pick is a
+    // conflict for the path validation to report, not a name to take on.
+    const browsePick = useBrowsePick({
+        wsClient,
+        dirCoupling,
+        projectName,
+        setProjectName,
+        projectNameTouchedRef,
+        setEditablePath,
+        setPathTouched,
+        setPathError,
+        startPath: editablePath || defaultPath,
+        selectFailedMessage: "Failed to select path. Please try again.",
+    });
 
     const debouncedSetProjectNameError = useMemo(
         () => debounce((error: string) => setProjectNameError(error), 300),
@@ -99,24 +108,29 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
         (async () => {
             if (defaultPathInitialized.current) return;
             try {
+                // Re-checked before EVERY write below, not just once: this seed spans
+                // several round-trips, and a Browse that lands mid-flight has already
+                // retargeted the form — applying any part of a reading taken for the
+                // default location would drag it back.
+                const superseded = () => !mounted || browsePick.pathPickedRef.current;
                 const { path: workspacePath } = await wsClient.getWorkspaceRoot();
-                if (!mounted) return;
+                if (superseded()) return;
                 const dp = workspacePath || (await wsClient.getDefaultCreationPath()).path;
-                if (!mounted) return;
+                if (superseded()) return;
                 let taken = emptyTakenNames();
                 try {
                     taken = toTakenNames(await wsClient.getProjectComponentNames({ projectPath: dp }));
                 } catch {
                     // Best effort — fall back to the un-indexed default on failure.
                 }
-                if (!mounted) return;
+                if (superseded()) return;
                 const { directoryName: dirName } = resolveDefaultNameAndDirectory(DEFAULT_PROJECT_NAME, taken, sanitizePackageName);
                 defaultPathInitialized.current = true;
                 // Set the resolved directory name BEFORE the path becomes non-empty so no
                 // render ever pairs a real path with the un-indexed default name (which is
                 // what triggers the realtime "already exists" diagnostic flash).
                 // Don't clobber a name the user typed while the seed was resolving.
-                if (!projectNameTouchedRef.current && !pathPickedRef.current) {
+                if (!projectNameTouchedRef.current) {
                     dirCoupling.setDirectoryName(dirName);
                 }
                 setDefaultPath(dp);
@@ -177,13 +191,9 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
         // Keep the directory name in sync with the project name until the user edits it.
         // (Only the default name is auto-indexed, at seed time — a name the user types is
         // used verbatim, matching the integration wizard.)
-        dirCoupling.handleDisplayNameChange(value);
         // A name typed while a Browse still pins an existing project's folder would be
-        // ignored by the path — release the pin so the folder tracks the name again.
-        if (folderPinnedByPickRef.current) {
-            folderPinnedByPickRef.current = false;
-            dirCoupling.handleDisplayNameChange(value, { recouple: true });
-        }
+        // ignored by the path, so releasing the pin also recouples the folder to the name.
+        dirCoupling.handleDisplayNameChange(value, browsePick.releaseName() ? { recouple: true } : undefined);
     };
 
     const handlePathChange = (value: string) => {
@@ -193,9 +203,9 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
         setPathTouched(true);
         setEditablePath(base);
         dirCoupling.handleDirectoryNameEdit(name, autoDirectoryName);
-        // The segment is hand-edited now — a later Browse must leave it alone rather than
-        // recoupling it to the name.
-        folderPinnedByPickRef.current = false;
+        // Only an edit to the SEGMENT claims it from a pick — retyping the parent portion
+        // leaves the pinned folder exactly as the pick left it.
+        browsePick.releaseFolderIfSegmentEdited(name);
     };
 
     /**
@@ -206,44 +216,7 @@ export function ProjectCreationView({ onBack, ballerinaUnavailable }: { onBack?:
      * root instead, which lets the realtime validation report the conflict under the path
      * field rather than silently targeting `<project>/default`.
      */
-    const handlePathSelection = async () => {
-        try {
-            const result = await wsClient.selectFileOrDirPath({ startPath: editablePath || defaultPath });
-            if (!result.path) return;
-            setPathTouched(true);
-            pathPickedRef.current = true;
-
-            // Best effort — an unreadable folder simply keeps the parent-location reading,
-            // which is what every pick did before.
-            const info = await wsClient
-                .getExistingProjectInfo({ projectPath: result.path })
-                .catch((error: unknown): null => {
-                    console.error("Failed to inspect the selected folder:", error);
-                    return null;
-                });
-            // No `adoptProjectName`: this form only ever creates a NEW project, so the name
-            // field stays the user's — an existing project at the pick is a conflict for the
-            // path validation to report, not a name to take on.
-            const next = applyBrowsePick(result.path, info, {
-                projectName,
-                projectNameTouched: projectNameTouchedRef.current,
-                displacedName: null,
-                folderPinnedByPick: folderPinnedByPickRef.current,
-            });
-
-            setEditablePath(next.base);
-            if (next.folder.action === "pin") {
-                dirCoupling.setDirectoryName(next.folder.directoryName);
-                dirCoupling.setDirTouched(true);
-            } else if (next.folder.action === "recouple") {
-                dirCoupling.handleDisplayNameChange(next.folder.displayName, { recouple: true });
-            }
-            folderPinnedByPickRef.current = next.folderPinnedByPick;
-        } catch (error) {
-            console.error("Failed to select path:", error);
-            setPathError("Failed to select path. Please try again.");
-        }
-    };
+    const handlePathSelection = browsePick.selectPath;
 
     const handleCreate = async () => {
         setIsValidating(true);

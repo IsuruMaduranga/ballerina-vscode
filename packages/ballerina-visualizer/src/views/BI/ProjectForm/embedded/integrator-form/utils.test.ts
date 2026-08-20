@@ -90,10 +90,18 @@ describe("resolveBrowsePick", () => {
             }
         });
 
-        it("falls back to the parent-location reading when there is nothing to split", () => {
+        it("holds a bare relative pick as the target rather than nesting below it", () => {
             const pick = resolveBrowsePick("projectexp", { isProject: true, name: "projectexp" });
 
-            expect(pick).toEqual({ base: "projectexp", projectName: "projectexp" });
+            expect(pick).toEqual({ base: "projectexp", directoryName: "", projectName: "projectexp" });
+            expect(targetPath(pick, "Default")).toBe("projectexp");
+        });
+
+        it("keeps a root-only pick as the location, since it has no folder of its own", () => {
+            const pick = resolveBrowsePick("/", { isProject: true, name: "root" });
+
+            expect(pick.directoryName).toBeUndefined();
+            expect(pick.base).toBe("/");
         });
     });
 });
@@ -184,6 +192,22 @@ describe("applyBrowsePick", () => {
         });
     });
 
+    describe("a project that reports no title", () => {
+        it("adopts its folder as the name rather than leaving the previous adoption", () => {
+            const onTitled = applyBrowsePick("/Users/me/projectexp", PROJECT, pristine, {
+                adoptProjectName: true,
+            });
+            expect(onTitled.projectName).toBe("projectexp");
+
+            const onUntitled = applyBrowsePick("/Users/me/other", { isProject: true }, onTitled, {
+                adoptProjectName: true,
+            });
+
+            // Not "projectexp" — the field must never label a project that is not the target.
+            expect(onUntitled.projectName).toBe("other");
+        });
+    });
+
     describe("state the user has claimed back", () => {
         // Typing a name recouples the folder to it, so the views clear BOTH memories —
         // a later pick must not resurrect the project title over what the user typed.
@@ -218,14 +242,19 @@ describe("applyBrowsePick", () => {
     });
 
     describe("state no pick imposed", () => {
-        it("keeps a hand-edited path segment across a plain pick", () => {
-            const handEdited: BrowsePickState = { ...pristine, projectName: "Default" };
+        it("keeps the segment when no pick ever owned it", () => {
+            const untouchedByPick: BrowsePickState = {
+                ...pristine,
+                projectName: "My Thing",
+                projectNameTouched: true,
+            };
 
-            const applied = applyBrowsePick("/Users/me/elsewhere", PLAIN, handEdited);
+            const applied = applyBrowsePick("/Users/me/elsewhere", PLAIN, untouchedByPick);
 
             // `keep` leaves the segment alone — the views hold whatever the user typed.
             expect(applied.folder).toEqual({ action: "keep" });
             expect(applied.base).toBe("/Users/me/elsewhere");
+            expect(applied.projectName).toBe("My Thing");
         });
 
         it("never displaces a name twice for the same adoption", () => {
