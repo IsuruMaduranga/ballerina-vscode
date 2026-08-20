@@ -125,6 +125,22 @@ public class CopilotLibraryManager {
      * @return List of Library objects with complete information
      */
     public List<Library> loadFilteredLibraries(String[] libraryNames) {
+        return loadFilteredLibraries(libraryNames, Map.of());
+    }
+
+    /**
+     * {@link #loadFilteredLibraries(String[])} against explicitly pinned package versions.
+     *
+     * <p>The no-pin overload resolves whatever the local repository serves as latest, which is right at
+     * request time and wrong whenever two runs have to be compared: a release landing between them shows up
+     * as a catalog difference no code change caused. Pinning makes a render reproducible.
+     *
+     * @param libraryNames   the libraries to load, in {@code "org/package"} form
+     * @param pinnedVersions the version to resolve per library name; a library absent from the map resolves
+     *                       latest, exactly as before
+     * @return the loaded libraries
+     */
+    public List<Library> loadFilteredLibraries(String[] libraryNames, Map<String, String> pinnedVersions) {
         List<Library> libraries = new ArrayList<>();
 
         for (String libraryName : libraryNames) {
@@ -142,8 +158,10 @@ public class CopilotLibraryManager {
 
             // Resolve the package once; the README loader below reuses this same Package
             // to avoid a second (potentially network-bound) resolution.
-            Optional<Package> optPackage = PackageUtil.getModulePackage(
-                    PackageUtil.getSampleProject(), org, packageName);
+            String pinned = pinnedVersions == null ? null : pinnedVersions.get(libraryName);
+            Optional<Package> optPackage = pinned == null || pinned.isBlank()
+                    ? PackageUtil.getModulePackage(PackageUtil.getSampleProject(), org, packageName)
+                    : PackageUtil.getModulePackage(PackageUtil.getSampleProject(), org, packageName, pinned);
             if (optPackage.isEmpty()) {
                 continue;
             }
@@ -170,7 +188,7 @@ public class CopilotLibraryManager {
             library.setFunctions(symbolResult.getFunctions());
             library.setTypeDefs(symbolResult.getTypeDefs());
 
-            List<Service> services = ServiceLoader.loadAllServices(libraryName);
+            List<Service> services = ServiceLoader.loadAllServices(libraryName, pkg, semanticModel);
             List<Symbol> moduleSymbols = semanticModel.moduleSymbols();
             CopilotDeprecationEnricher.enrich(services, moduleSymbols);
             CopilotListenerNameEnricher.enrich(services, moduleSymbols);

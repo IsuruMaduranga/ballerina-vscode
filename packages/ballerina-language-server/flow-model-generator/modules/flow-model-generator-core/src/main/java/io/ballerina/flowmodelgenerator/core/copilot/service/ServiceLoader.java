@@ -23,8 +23,10 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.flowmodelgenerator.core.InstructionLoader;
 import io.ballerina.flowmodelgenerator.core.copilot.model.Service;
+import io.ballerina.projects.Package;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -48,6 +50,12 @@ public class ServiceLoader {
 
     private static final Logger LOGGER = Logger.getLogger(ServiceLoader.class.getName());
     private static final String GENERIC_SERVICES_JSON_PATH = "/copilot/generic-services.json";
+    /**
+     * System property that forces the trigger-service source: {@code "index"} pins every library to
+     * the SQLite service-index path; anything else (including unset) lets schema-driven libraries be
+     * served from trigger metadata + the semantic model.
+     */
+    static final String TRIGGER_SOURCE_PROPERTY = "ballerina.copilot.triggerSource";
 
     private static final Gson GSON = new Gson();
 
@@ -84,6 +92,54 @@ public class ServiceLoader {
     public static List<Service> loadAllServices(String libraryName) {
         return mergeWithGenericServices(libraryName, ServiceIndexLoader.loadFromServiceIndex(libraryName),
                 false);
+    }
+
+    /**
+     * Loads all services for a library, preferring the schema-driven path (trigger metadata + semantic
+     * model) whenever a metadata document resolves for the library. Setting the system property
+     * {@value #TRIGGER_SOURCE_PROPERTY} to {@code "index"} pins everything to the SQLite path.
+     *
+     * <p>The schema path is attempted for every library, not a fixed set: it returns empty for anything with
+     * no metadata document, which is the overwhelming majority and costs one {@code stat} against the
+     * already-resolved package. Falling through is therefore the normal case and is not logged.
+     *
+     * <p>Empty is two different outcomes, and only one of them falls back:
+     * <ul>
+     *   <li><b>No document</b> — the library is not schema-driven, so the service index is its only source
+     *       and is used silently, exactly as before.</li>
+     *   <li><b>Document resolved, produced nothing</b> — the index is <i>not</i> consulted. Everything it
+     *       holds for a schema-driven library is a subset of what the document describes, so it cannot repair
+     *       this outcome, only disguise it by substituting a thinner catalog for a real defect. An obvious
+     *       absence is preferred over a confident-looking downgrade.</li>
+     * </ul>
+     *
+     * @param libraryName   the library name (e.g., "ballerinax/kafka")
+     * @param pkg           the resolved package the caller already compiled (may be null)
+     * @param semanticModel the package's semantic model (may be null)
+     * @return all services for this library
+     */
+    public static List<Service> loadAllServices(String libraryName, Package pkg,
+                                                SemanticModel semanticModel) {
+        if (!"index".equals(System.getProperty(TRIGGER_SOURCE_PROPERTY))) {
+            TriggerSchemaServiceLoader.LoadResult result =
+                    TriggerSchemaServiceLoader.load(libraryName, pkg, semanticModel);
+            if (!result.services().isEmpty()) {
+                return mergeWithGenericServices(libraryName, result.services(), true);
+            }
+            if (result.documentResolved()) {
+                LOGGER.warning("Trigger metadata resolved for " + libraryName + " but produced no"
+                        + " services. Not falling back to the service index: the index catalog is a"
+                        + " strict subset of what this document describes, so substituting it would"
+                        + " hide the failure behind a poorer answer. Check the veto report — the usual"
+                        + " cause is a package release the document no longer matches.");
+                // The curated overlay is still emitted. It is not a fallback for the document: it
+                // states project conventions the document never carried, so it stands whether or not
+                // the metadata path produced anything, and dropping it here would lose ballerina/http
+                // and ballerina/graphql their hand-written guidance over an unrelated failure.
+                return mergeWithGenericServices(libraryName, List.of(), false);
+            }
+        }
+        return loadAllServices(libraryName);
     }
 
     /**

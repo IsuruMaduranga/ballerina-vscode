@@ -21,7 +21,24 @@ Overall usage instructions about the library.
 ### Service writing instructions
 File name - service.md
 
-Instructions specific to writing services using the library. For fixed services which has a json, its automatically covered but for the generic triggers, you have to give instructions here.
+Instructions specific to writing services using the library.
+
+**A service.md may state ONLY what neither `trigger-metadata.json` nor the semantic model can.**
+A library with a trigger-metadata document no longer has this file *replace* its synthesized service
+block — both are rendered, prose first, declaration second. So anything factual (types, presence,
+accessors, path forms, annotations, data binding, the listener signature) is already emitted and must
+not be restated here: two sources for one fact is how the two come to disagree, and a contradiction
+inside a single section is worse than either source alone.
+
+What belongs here, and nothing else:
+- project conventions (e.g. "declare the listener at module level as a variable")
+- compiler-plugin rules a document cannot express (e.g. "`@http:Payload` is optional for a lone
+  record parameter")
+- defaults and style preferences (e.g. "default the base path to `/graphql`")
+- worked examples
+
+Everything in this file is sent to the LLM verbatim, including any HTML comments — so keep
+maintainer notes out of it and put them here instead.
 
 ### Test Generation instructions
 File name - test.md
