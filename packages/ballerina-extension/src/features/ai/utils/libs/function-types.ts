@@ -36,6 +36,24 @@ export interface MinifiedService {
     methods?: string[];
 }
 
+/**
+ * One service the selection model kept, as it comes back in the response.
+ *
+ * Deliberately narrower than {@link MinifiedService}, which is the *request* shape. The request carries
+ * `methods` because handler names are what make a service recognisably relevant to a query — that is input
+ * the model reasons over. The response does not, because a selected service is re-inflated from the original
+ * library whole: its methods, handler templates and constraints have to agree with each other, and
+ * `renderConstraintLines` emits notes naming handlers by name, so a per-method selection would produce
+ * constraint notes pointing at handlers no longer in the body.
+ *
+ * `listener` and `name` are therefore the entire response surface — exactly enough to identify which service
+ * was kept, and nothing the renderer would have to reconcile.
+ */
+export interface SelectedService {
+    listener: string;
+    name?: string;
+}
+
 export interface MinifiedRemoteFunction extends MiniFunction {
     name: string;
 }
@@ -59,7 +77,7 @@ export interface GetFunctionResponse {
     name: string;
     clients?: MinifiedClient[];
     functions?: MinifiedRemoteFunction[];
-    services?: MinifiedService[];
+    services?: SelectedService[];
 }
 
 export interface PathParameter {
@@ -96,17 +114,18 @@ const clientSchema = z.object({
     functions: z.array(z.union([resourceFunctionSchema, remoteFunctionSchema])),
 });
 
-const minifiedServiceSchema = z.object({
+// The response counterpart of `MinifiedService` — see `SelectedService` for why `methods` is absent here
+// while the request carries it.
+const selectedServiceSchema = z.object({
     listener: z.string(),
     name: z.string().optional(),
-    methods: z.array(z.string()).optional(),
 });
 
 const libraryResponseSchema = z.object({
     name: z.string(),
     clients: z.array(clientSchema).optional(),
     functions: z.array(remoteFunctionSchema).optional(),
-    services: z.array(minifiedServiceSchema).optional(),
+    services: z.array(selectedServiceSchema).optional(),
 });
 
 export const getFunctionsResponseSchema = z.object({

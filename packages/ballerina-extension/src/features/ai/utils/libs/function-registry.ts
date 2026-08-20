@@ -29,6 +29,7 @@ import {
 } from "./function-types";
 import { Client, GetTypeResponse, GetTypesRequest, GetTypesResponse, getTypesResponseSchema, Library, MiniType, RemoteFunction, ResourceFunction, Service, FixedService, Annotation } from "./library-types";
 import { TypeDefinition, AbstractFunction, Type, RecordTypeDefinition, UnionTypeDefinition } from "./library-types";
+import { getClientFunctionCount, hasNothingToSelect, selectServices } from "./library-selection";
 import { getAnthropicClient, ANTHROPIC_HAIKU } from "../ai-client";
 import { GenerationType } from "./libraries";
 // import { getRequiredTypesFromLibJson } from "../healthcare/healthcare";
@@ -74,10 +75,6 @@ export async function selectRequiredFunctions(prompt: string, selectedLibNames: 
 
     const result = { libraries: mergedLibraries, usage: mergeUsage(...allUsages) };
     return result;
-}
-
-function getClientFunctionCount(clients: MinifiedClient[]): number {
-    return clients.reduce((count, client) => count + client.functions.length, 0);
 }
 
 function toTypesToLibraries(types: GetTypeResponse[], fullLibs: Library[]): Library[] {
@@ -159,13 +156,28 @@ async function getRequiredFunctions(
             services: filteredServicesForRequest(lib.services),
         }));
 
-    const largeLibs = libraryList.filter((lib) => getClientFunctionCount(lib.clients) >= 100);
-    const smallLibs = libraryList.filter((lib) => !largeLibs.includes(lib));
+    // A library with no client functions and no module-level functions never reaches the model.
+    //
+    // Selection is the only thing this call does, and for such a library there is nothing to select — every
+    // trigger package is this shape. Sending it anyway made its presence in the output depend on the model
+    // echoing the name back, and when it did not, the library was dropped outright: not fetched, not
+    // rendered, and indistinguishable to the caller from one that does not exist. One sentence of prompt
+    // prose was the only thing standing against that. Passing it straight through removes the dependency
+    // instead of restating it.
+    const passthroughLibs = libraryList.filter(hasNothingToSelect);
+    const selectableLibs = libraryList.filter((lib) => !passthroughLibs.includes(lib));
+    const passthroughResp: GetFunctionResponse[] = passthroughLibs.map((lib) => ({ name: lib.name }));
+
+    const largeLibs = selectableLibs.filter((lib) => getClientFunctionCount(lib.clients) >= 100);
+    const smallLibs = selectableLibs.filter((lib) => !largeLibs.includes(lib));
 
     console.log(
         `[Parallel Execution Plan] Large libraries: ${largeLibs.length} (${largeLibs
             .map((lib) => lib.name)
             .join(", ")}), Small libraries: ${smallLibs.length} (${smallLibs.map((lib) => lib.name).join(", ")})`
+        + `, Passthrough (nothing to select): ${passthroughLibs.length} (${passthroughLibs
+            .map((lib) => lib.name)
+            .join(", ")})`
     );
 
     // Create promises for large libraries (each processed individually)
@@ -192,7 +204,11 @@ async function getRequiredFunctions(
     console.log(`[Parallel Execution Complete] Total parallel execution time: ${parallelDuration}s`);
 
     // Flatten the results
-    const collectiveResp: GetFunctionResponse[] = [...smallLibResult.libraries, ...largeLibResults.flatMap(r => r.libraries)];
+    const collectiveResp: GetFunctionResponse[] = [
+        ...passthroughResp,
+        ...smallLibResult.libraries,
+        ...largeLibResults.flatMap(r => r.libraries),
+    ];
     const endTime = Date.now();
     const totalDuration = (endTime - startTime) / 1000;
 
@@ -234,7 +250,7 @@ CRITICAL RULES:
 2. Your ONLY task is selection - include or exclude items, NEVER modify field values.
 3. Copy all field values EXACTLY as provided - preserve every character including backslashes and special characters.
 4. For resource functions: "accessor" and "paths" are SEPARATE fields - NEVER combine them.
-5. A library is relevant if ANY of its clients, functions, or services match the query. Echo matching services under the library's "services" field (copy listener, name, and methods verbatim). If a library matches ONLY via its services, still include the library in the output with empty/omitted clients and functions.`;
+5. A library is relevant if ANY of its clients, functions, or services match the query. List each matching service under the library's "services" field, copying its "listener" and "name" verbatim; omit the services that do not match. If a library matches ONLY via its services, still include the library in the output with empty/omitted clients and functions.`;
 
     const getLibUserPrompt = `You will be provided with a list of libraries, clients, and their functions, and a user query.
 
@@ -367,7 +383,7 @@ function filteredServicesForRequest(services?: Service[]): MinifiedService[] | u
             result.name = svc.name;
         }
         if (svc.type === "fixed") {
-            const methodNames = (svc as FixedService).methods.map((m) => m.name);
+            const methodNames = ((svc as FixedService).methods ?? []).map((m) => m.name);
             if (methodNames.length > 0) {
                 result.methods = methodNames;
             }
@@ -426,6 +442,7 @@ export async function toMaximizedLibrariesFromLibJson(
 
         const filteredClients = selectClients(originalLib.clients, funcResponse);
         const filteredFunctions = selectFunctions(originalLib.functions, funcResponse);
+        const filteredServices = selectServices(originalLib.services, funcResponse);
 
         const maximizedLib: Library = {
             name: funcResponse.name,
@@ -433,8 +450,11 @@ export async function toMaximizedLibrariesFromLibJson(
             clients: filteredClients,
             functions: filteredFunctions ? filteredFunctions : null,
             // Get only the type definitions that are actually used by the selected functions, clients, services, and annotations
-            typeDefs: getOwnTypeDefsForLib(filteredClients, filteredFunctions, originalLib.typeDefs, originalLib.services, originalLib.annotations),
-            services: originalLib.services ? originalLib.services : null,
+            // The SELECTED services, not the library's whole set: the closure is what pulls a service's
+            // parameter, return, annotation and binding types into `typeDefs`, so walking dropped services
+            // would keep paying the larger half of their cost after dropping the services themselves.
+            typeDefs: getOwnTypeDefsForLib(filteredClients, filteredFunctions, originalLib.typeDefs, filteredServices ? filteredServices : undefined, originalLib.annotations),
+            services: filteredServices,
             annotations: originalLib.annotations ? originalLib.annotations : null,
             instructions: originalLib.instructions ? originalLib.instructions : null,
             readme: originalLib.readme ? originalLib.readme : null,
@@ -488,6 +508,7 @@ function selectClients(originalClients: Client[], funcResponse: GetFunctionRespo
             name: originalClient.name,
             description: originalClient.description,
             functions: [],
+            annotations: originalClient.annotations,
         };
 
         const output: (RemoteFunction | ResourceFunction)[] = [];
@@ -593,6 +614,105 @@ function getOwnTypeDefsForLib(
     return getOwnRecordRefs(allFunctions, allTypeDefs, services, annotations);
 }
 
+/**
+ * Every type a service names, from every construct that can name one — the single scan table both the
+ * internal and the external reference scanners walk.
+ *
+ * Shared deliberately. The two scanners feed different destinations (`typeDefs` for a same-library type,
+ * a fetch of the owning library for a foreign one), but they must agree on *where types come from*: a
+ * construct covered by one and missed by the other produces a prompt that names a type it never defines.
+ * Adding a construct that introduces types is one edit here, and neither scanner changes.
+ *
+ * Kept adjacent to the renderer's own list of what it emits — the invariant is that every type name the
+ * renderer can write is reachable from this table.
+ */
+function collectServiceTypeRefs(service: Service): Type[] {
+    const refs: Type[] = [];
+    const add = (type?: Type): void => {
+        if (type) {
+            refs.push(type);
+        }
+    };
+
+    for (const param of service.listener.parameters) {
+        add(param.type);
+    }
+    // Spec §8 at service scope: a constraining record is a type reference no other scanner reaches, so
+    // without this the prompt could require `@ftp:ServiceConfig {...}` while defining nothing that says
+    // which fields it takes.
+    for (const annotation of service.annotations ?? []) {
+        add(annotation?.typeConstraint);
+    }
+    if (service.type !== "fixed") {
+        return refs;
+    }
+    // Spec §4 `addMode: "many"`: a handler template names types the reader must write — mcp's
+    // `mcp:Session`, `http:Headers`, `http:Request` — in a body that lists no methods at all. Without this
+    // the templates would be the one construct in the catalog that can name a type nothing defines.
+    //
+    // Every template is scanned, not just the first: graphql's subscription shape is the only place
+    // `stream<anydata, error?>` is named, and it is the third of three.
+    for (const template of (service as FixedService).handlerTemplates ?? []) {
+        for (const annotation of template.annotationRefs ?? []) {
+            add(annotation?.typeConstraint);
+        }
+        for (const param of template.parameters ?? []) {
+            add(param.type);
+            for (const alternative of param.alternatives ?? []) {
+                add(alternative);
+            }
+            for (const annotation of param.annotationRefs ?? []) {
+                add(annotation?.typeConstraint);
+            }
+        }
+        add(template.return?.type);
+        for (const annotation of template.return?.annotationRefs ?? []) {
+            add(annotation?.typeConstraint);
+        }
+    }
+    for (const method of (service as FixedService).methods ?? []) {
+        // Spec §8 at function scope — same reasoning, one tier down.
+        for (const annotation of method.annotationRefs ?? []) {
+            add(annotation?.typeConstraint);
+        }
+        for (const param of method.parameters ?? []) {
+            add(param.type);
+            // Spec §7: an alternative is a type the reader may write in place of the declared one, so it
+            // needs its definition exactly as much as the declared one does.
+            for (const alternative of param.alternatives ?? []) {
+                add(alternative);
+            }
+            // Spec §8 at parameter scope.
+            for (const annotation of param.annotationRefs ?? []) {
+                add(annotation?.typeConstraint);
+            }
+            // Spec §9: every type a binding note can name. The envelope matters most — the renderer tells
+            // the reader to write `*kafka:AnydataConsumerRecord;`, which is unusable unless that record is
+            // defined in the same prompt.
+            //
+            // Walks `typedescs[]`, the shape §9 now takes. It walked the removed `modes[]` until this was
+            // fixed, which silently emptied the whole branch and dropped every envelope, bound and excluded
+            // type out of the closure.
+            for (const variant of param.binding?.typedescs ?? []) {
+                add(variant.constraint);
+                for (const type of variant.excludes ?? []) {
+                    add(type);
+                }
+                for (const shape of variant.shapes ?? []) {
+                    add(shape.envelope);
+                    add(shape.completionType);
+                }
+            }
+        }
+        add(method.return?.type);
+        // Spec §8 at return scope.
+        for (const annotation of method.return?.annotationRefs ?? []) {
+            add(annotation?.typeConstraint);
+        }
+    }
+    return refs;
+}
+
 function getOwnRecordRefs(functions: AbstractFunction[], allTypeDefs: TypeDefinition[], services?: Service[], annotations?: Annotation[]): TypeDefinition[] {
     const ownRecords = new Map<string, TypeDefinition>();
 
@@ -607,22 +727,11 @@ function getOwnRecordRefs(functions: AbstractFunction[], allTypeDefs: TypeDefini
         addInternalRecord(func.return.type, ownRecords, allTypeDefs);
     }
 
-    // Process service listener parameters and fixed service method parameters
+    // Process every type a service names, per the shared scan table
     if (services) {
         for (const service of services) {
-            for (const param of service.listener.parameters) {
-                addInternalRecord(param.type, ownRecords, allTypeDefs);
-            }
-            if (service.type === "fixed") {
-                const fixedService = service as FixedService;
-                for (const method of fixedService.methods) {
-                    for (const param of method.parameters) {
-                        addInternalRecord(param.type, ownRecords, allTypeDefs);
-                    }
-                    if (method.return?.type) {
-                        addInternalRecord(method.return.type, ownRecords, allTypeDefs);
-                    }
-                }
+            for (const type of collectServiceTypeRefs(service)) {
+                addInternalRecord(type, ownRecords, allTypeDefs);
             }
         }
     }
@@ -710,6 +819,28 @@ function addInternalRecord(
     return foundTypes;
 }
 
+/**
+ * Type names excluded from the internal type closure.
+ *
+ * **No rationale was recorded when this list was introduced** (it predates the current file), so what follows
+ * is what the entries verifiably have in common rather than a restatement of an intent nobody wrote down.
+ *
+ * Every one of the ten `ballerinax/github` entries is an **alias of a primitive** (`type ActionsEnabled
+ * boolean;`, `type AlertDismissedAt string|();` and so on), which tells a reader nothing they cannot see from
+ * the field that references it — and these connectors reference them from dozens of records, so pulling each
+ * into the closure spends prompt budget on declarations with no content. The five `ballerinax/twilio` entries
+ * follow that library's generator convention for the same shape; unverified here, since twilio is not in the
+ * render corpus.
+ *
+ * **Excluding a name here does not hide the type.** The exclusion applies to the *closure walk* only, so a
+ * library that declares one still renders it in its own `typeDefs` section. What the list avoids is dragging
+ * it in as a dependency of every function that happens to touch it.
+ *
+ * Hardcoded by library-specific name, which is the real objection to it: a third connector with the same
+ * generator shape gets no benefit, and the list can only grow by hand. The principled version is a *shape*
+ * test — skip an alias whose definition is a primitive or a union of primitives — which needs the type's
+ * definition at the point of the walk and would move the type surface of every large connector.
+ */
 function isIgnoredRecordName(recordName: string): boolean {
     const ignoredRecords = [
         "CodeScanningAnalysisToolGuid",
@@ -772,22 +903,16 @@ function getExternalTypeDefRefs(
         addExternalRecord(func.return.type, externalRecords);
     }
 
-    // Check service listener parameters and fixed service method parameters
+    // The external counterpart of the internal scan, walking the same table so the two cannot diverge.
+    //
+    // Note what a foreign annotation still does NOT bring with it: a cross-module annotation resolved
+    // from another module's symbols does carry a `typeConstraint` now, and it arrives with an `external`
+    // link, so its record is fetched here — but an annotation whose module is unreachable carries none at
+    // all, and its record is announced by the Special Agent Note instead.
     if (services) {
         for (const service of services) {
-            for (const param of service.listener.parameters) {
-                addExternalRecord(param.type, externalRecords);
-            }
-            if (service.type === "fixed") {
-                const fixedService = service as FixedService;
-                for (const method of fixedService.methods) {
-                    for (const param of method.parameters) {
-                        addExternalRecord(param.type, externalRecords);
-                    }
-                    if (method.return?.type) {
-                        addExternalRecord(method.return.type, externalRecords);
-                    }
-                }
+            for (const type of collectServiceTypeRefs(service)) {
+                addExternalRecord(type, externalRecords);
             }
         }
     }
@@ -840,14 +965,36 @@ function addLibraryRecords(externalRecords: Map<string, string[]>, libraryName: 
     }
 }
 
+/**
+ * Whether a library is a Ballerina **lang library** — `ballerina/lang.string`, `lang.array`, `lang.value` and
+ * the rest — whose members the language exposes as built-in methods rather than as an importable API.
+ *
+ * Fetching one to satisfy a type reference is never right: there is nothing for a reader to import or write,
+ * and the fetch itself costs a package resolution. `lang.annotations` is the one exception, because it
+ * declares real annotation types (`@deprecated`) that generated code does attach.
+ *
+ * This replaces a `ballerina/lang.int`-only skip marked `// TODO: find a proper solution`. The Java side
+ * applies the same predicate at the point links are created (`TypeLinkBuilder.isPredefinedLangLib`, same
+ * `lang.annotations` carve-out), so the two now agree.
+ *
+ * Both are kept rather than collapsed into one: the Java filter decides whether a *link* is emitted, this one
+ * whether a *library is fetched*, and the second is reachable from any producer that builds links another way
+ * — `TypeResolver.resolveAnnotationConstraint` sets a library name straight from a metadata document. With
+ * the Java filter in place no `ballerina/lang.*` reference survives to reach this function, so this is a
+ * backstop rather than a live path.
+ */
+function isLangLibrary(libraryName: string): boolean {
+    return libraryName.startsWith("ballerina/lang.")
+        && libraryName !== "ballerina/lang.annotations";
+}
+
 async function getExternalRecords(
     newLibraries: Library[],
     libRefs: Map<string, string[]>,
     cachedLibraries: Library[]
 ): Promise<void> {
     for (const [libName, recordNames] of libRefs.entries()) {
-        if (libName.startsWith("ballerina/lang.int")) {
-            // TODO: find a proper solution
+        if (isLangLibrary(libName)) {
             continue;
         }
 
