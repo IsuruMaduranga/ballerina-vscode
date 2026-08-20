@@ -268,8 +268,8 @@ public class TriggerModelSynthesizerTest {
                 "emission must use the annotation's own real name, not the schema's local id");
         Assert.assertFalse(annotationProperty.optional(), "declared required in the authoring schema");
         Assert.assertFalse(annotationProperty.advanced(), "a required annotation must never be hidden");
-        Assert.assertEquals(annotationProperty.value(), "{}",
-                "no per-field skeleton is pre-filled -- an empty record is enough, the user fills it in");
+        Assert.assertNull(annotationProperty.value(),
+                "no value is pre-filled -- the \"{}\" placeholder hints at the shape, the user fills it in");
         TriggerUISchemaModel.TypeMember member = annotationProperty.types().get(0).typeMembers().get(0);
         Assert.assertEquals(member.type(), "ServiceConfigData",
                 "typeMembers names the backing RECORD type, distinct from the annotation's own name");
@@ -289,7 +289,7 @@ public class TriggerModelSynthesizerTest {
         Assert.assertEquals(initAnnotation.codedata().type(), "SERVICE_ANNOTATION",
                 "the init-form copy uses the role SchemaDrivenSourceGenerator scans the filled form for");
         Assert.assertEquals(initAnnotation.codedata().originalName(), "ServiceConfig");
-        Assert.assertEquals(initAnnotation.value(), "{}");
+        Assert.assertNull(initAnnotation.value());
         Assert.assertFalse(initAnnotation.advanced());
         List<String> initKeysInOrder = new ArrayList<>(model.initProperties().keySet());
         Assert.assertTrue(initKeysInOrder.indexOf("serviceConfig") > initKeysInOrder.indexOf("listener"),
@@ -311,10 +311,10 @@ public class TriggerModelSynthesizerTest {
         Assert.assertTrue(block.contains("service triggerfixture:Service on "), "service descriptor: " + block);
         Assert.assertTrue(block.contains("remote function onMessage"), "onMessage handler emitted: " + block);
         Assert.assertTrue(block.contains("remote function onError"), "onError handler emitted: " + block);
-        // The init-form's own SERVICE_ANNOTATION copy (see testSynthesizedModelShape) must actually be
-        // emitted above the service block too, using its (empty, unedited) value as-is.
-        Assert.assertTrue(block.contains("@triggerfixture:ServiceConfig {}"),
-                "the service annotation must be emitted from the init form: " + block);
+        // The init-form's own SERVICE_ANNOTATION copy (see testSynthesizedModelShape) starts with no
+        // value, so an unedited annotation must not be emitted above the service block.
+        Assert.assertFalse(block.contains("@triggerfixture:ServiceConfig"),
+                "an unfilled annotation must not be emitted from the init form: " + block);
     }
 
     @Test
@@ -586,14 +586,14 @@ public class TriggerModelSynthesizerTest {
         TriggerUISchemaModel.Property annotation = fn.properties().get("fnConfig");
         Assert.assertEquals(annotation.codedata().type(), "ANNOTATION_ATTACHMENT");
         Assert.assertEquals(annotation.codedata().originalName(), "FunctionConfig");
-        Assert.assertEquals(annotation.value(), "{}", "no per-field skeleton -- an empty record is enough");
+        Assert.assertNull(annotation.value(), "no value is pre-filled -- the user must opt in to attach it");
         Assert.assertTrue(annotation.optional(), "declared optional in the authoring schema");
         Assert.assertTrue(annotation.types().get(0).typeMembers().get(0).selected(),
                 "a handler annotation's sole type member must be selected, same as a service annotation");
 
         String source = SchemaDrivenSourceGenerator.buildFunctionSource(fn);
-        Assert.assertTrue(source.contains("@smb:FunctionConfig {}"),
-                "the handler annotation must be emitted above the function: " + source);
+        Assert.assertFalse(source.contains("@smb:FunctionConfig"),
+                "an unfilled annotation must not be emitted above the function: " + source);
     }
 
     /**

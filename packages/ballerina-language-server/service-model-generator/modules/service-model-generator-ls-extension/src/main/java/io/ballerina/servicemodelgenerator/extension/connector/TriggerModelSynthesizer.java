@@ -888,11 +888,10 @@ public final class TriggerModelSynthesizer {
                 "RECORD_MAP_EXPRESSION", true, aliasOf(pkgModule) + ":" + recordTypeName, null, List.of(member),
                 null, null, null);
         boolean optional = TriggerMetadataModel.Annotation.PRESENCE_OPTIONAL.equals(annotation.presence());
-        // No per-field skeleton: an empty "{}" record is enough for the user to fill via the record editor.
         return new TriggerUISchemaModel.Property(
                 new TriggerUISchemaModel.Metadata(humanize(stripId(annotation.id())),
                         "Configuration for this service", null, null, null, null, null, null, null, null),
-                true, true, optional, false, "{}", "{}", List.of(propertyType), null, null, null,
+                true, true, optional, false, "{}", null, List.of(propertyType), null, null, null,
                 cdAnnotation(codedataType, annotationName, pkgModule, pkgOrg, pkgName, optional), null);
     }
 
