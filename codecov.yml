@@ -21,11 +21,29 @@ codecov:
     # waiting for the rest of the build matrix.
     wait_for_ci: false
 
+# Count a partially covered line as covered, so the dashboard reports the same
+# figure as the LINE counter that `createCodeCoverageReport` prints into the
+# build log.
+#
+# JaCoCo marks a line partial when it executed but not every branch on it was
+# taken. Codecov's default keeps those lines in the denominator but not the
+# numerator, so the same report yielded ~64.9% here and ~72.5% in the build log
+# — one report, two definitions, and an ~8-point gap that every reviewer who
+# read both had to rediscover.
+#
+# The trade-off is deliberate: a half-tested conditional now reads as fully
+# covered, so this number no longer says anything about branch coverage. That
+# lives in the BRANCH counter in the build log, which is where to look for it.
+parsers:
+  jacoco:
+    partials_as_hits: true
+
 coverage:
   precision: 2
   round: down
-  # Red below 30%, green at 80%. Adjust once the first full CI run establishes
-  # where the language server actually sits.
+  # Red below 30%, green at 80%. Calibrated against the partials-as-hits
+  # definition above, not the stricter default. Adjust once the first full CI
+  # run establishes where the language server actually sits.
   range: "30...80"
   status:
     # Codecov posts an unscoped 'default' status for each type whether or not it is
