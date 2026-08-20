@@ -44,114 +44,17 @@
       "id": "$idocService",
       "doc": "Receives inbound IDocs dispatched from the SAP system to this server.",
       "type": { "name": "IDocService" },
-      "concrete": false,
+      "concrete": true,
       "multipleListenersAllowed": true,
-      "handlers": {
-        "backedByConcreteType": false,
-        "options": [
-          {
-            "id": "$idocService.onReceive",
-            "name": "onReceive",
-            "kind": "remote",
-            "doc": "Invoked for each inbound IDoc dispatched to this server from the SAP system.",
-            "presence": "required",
-            "params": [
-              {
-                "id": "$idocService.onReceive.iDoc",
-                "name": "iDoc",
-                "doc": "The received IDoc, as XML.",
-                "type": { "name": "xml", "builtin": true },
-                "presence": "required"
-              }
-            ],
-            "returns": {
-              "id": "$idocService.onReceive.returns",
-              "type": [{ "name": "error", "builtin": true }, { "name": "()", "builtin": true }]
-            }
-          },
-          {
-            "id": "$idocService.onError",
-            "name": "onError",
-            "kind": "remote",
-            "doc": "Invoked when an inbound IDoc cannot be received or dispatched.",
-            "presence": "optional",
-            "params": [
-              {
-                "id": "$idocService.onError.err",
-                "name": "err",
-                "doc": "The failure that prevented the IDoc from being handled.",
-                "type": { "name": "error", "builtin": true },
-                "presence": "required"
-              }
-            ],
-            "returns": {
-              "id": "$idocService.onError.returns",
-              "type": [{ "name": "error", "builtin": true }, { "name": "()", "builtin": true }]
-            }
-          }
-        ]
-      }
+      "handlers": { "backedByConcreteType": true }
     },
     {
       "id": "$rfcService",
       "doc": "Receives inbound RFC calls dispatched from the SAP system for registered function modules on this server.",
       "type": { "name": "RfcService" },
-      "concrete": false,
+      "concrete": true,
       "multipleListenersAllowed": true,
-      "handlers": {
-        "backedByConcreteType": false,
-        "options": [
-          {
-            "id": "$rfcService.onCall",
-            "name": "onCall",
-            "kind": "remote",
-            "doc": "Invoked when the SAP system calls a remote function module registered against this server. Whatever the handler returns is sent back to SAP as the call's export parameters.",
-            "presence": "required",
-            "params": [
-              {
-                "id": "$rfcService.onCall.functionName",
-                "name": "functionName",
-                "doc": "Name of the RFC function module SAP invoked.",
-                "type": { "name": "string", "builtin": true },
-                "presence": "required"
-              },
-              {
-                "id": "$rfcService.onCall.parameters",
-                "name": "parameters",
-                "doc": "Import and table parameters supplied by SAP for this call.",
-                "type": { "name": "RfcParameters" },
-                "presence": "required"
-              }
-            ],
-            "returns": {
-              "id": "$rfcService.onCall.returns",
-              "type": [
-                { "name": "RfcRecord" },
-                { "name": "xml", "builtin": true },
-                { "name": "error", "builtin": true },
-                { "name": "()", "builtin": true }
-              ]
-            }
-          },
-          {
-            "id": "$rfcService.onError",
-            "name": "onError",
-            "kind": "remote",
-            "doc": "Invoked when an inbound RFC call cannot be handled.",
-            "presence": "optional",
-            "params": [
-              {
-                "id": "$rfcService.onError.err",
-                "name": "err",
-                "doc": "The failure that prevented the call from being handled.",
-                "type": { "name": "error", "builtin": true },
-                "presence": "required"
-              }
-            ],
-            "returns": { "id": "$rfcService.onError.returns", "type": [{ "name": "error", "builtin": true }, { "name": "()", "builtin": true }] }
-          }
-        ]
-      }
+      "handlers": { "backedByConcreteType": true }
     }
   ]
 }

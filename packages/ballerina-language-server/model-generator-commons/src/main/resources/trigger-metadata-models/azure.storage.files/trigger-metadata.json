@@ -271,7 +271,7 @@
   ],
 
   "annotations": [
-    { "id": "$serviceConfig", "type": { "name": "ServiceConfiguration" }, "attachPoint": "service", "presence": "optional" },
-    { "id": "$functionConfig", "type": { "name": "FunctionConfiguration" }, "attachPoint": "function", "presence": "optional" }
+    { "id": "$serviceConfig", "type": { "name": "ServiceConfig" }, "attachPoint": "service", "presence": "optional" },
+    { "id": "$functionConfig", "type": { "name": "FunctionConfig" }, "attachPoint": "function", "presence": "optional" }
   ]
 }

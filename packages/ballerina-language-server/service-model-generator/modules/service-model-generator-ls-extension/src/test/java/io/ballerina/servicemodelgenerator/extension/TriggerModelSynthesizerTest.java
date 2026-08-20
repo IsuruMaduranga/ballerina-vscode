@@ -73,8 +73,9 @@ public class TriggerModelSynthesizerTest {
         List<String> importStatements = result.get().importStatements();
         Assert.assertTrue(importStatements.contains("ballerinax/cdc"),
                 "Expected the service type's own module to be a required import: " + importStatements);
-        Assert.assertTrue(importStatements.contains("ballerinax/mssql.cdc.driver"),
-                "Expected the listener's required driver import to be surfaced: " + importStatements);
+        Assert.assertTrue(importStatements.contains("ballerinax/mssql.cdc.driver as _"),
+                "Expected the listener's required driver import to be surfaced as side-effect-only: "
+                        + importStatements);
         Assert.assertFalse(importStatements.contains("ballerinax/mssql.cdc"),
                 "The connector's own module must not be duplicated into importStatements -- "
                         + "SchemaDrivenSourceGenerator already emits that import separately.");

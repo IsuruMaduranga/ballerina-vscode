@@ -20,6 +20,7 @@ package io.ballerina.servicemodelgenerator.extension.connector;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import io.ballerina.modelgenerator.commons.trigger.models.IdentifierSpec;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerLibraryFacts;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerMetadataModel;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
@@ -315,6 +316,194 @@ public class TriggerModelSynthesizerTest {
         // value, so an unedited annotation must not be emitted above the service block.
         Assert.assertFalse(block.contains("@triggerfixture:ServiceConfig"),
                 "an unfilled annotation must not be emitted from the init form: " + block);
+    }
+
+
+    @Test
+    public void testCdcCrossModuleServiceTypeAndRealListenerType() {
+        TypeRef.PackageInfo cdcPackage = new TypeRef.PackageInfo("ballerinax", "cdc", "cdc", "1.4.0");
+        TriggerMetadataModel.Listener listener = new TriggerMetadataModel.Listener(
+                "$listener", "Listens for CDC events.", new TypeRef("CdcListener", null), null,
+                List.of("$service"), false, null, null, null);
+        TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
+                "$service", "A service.", new TypeRef("Service", cdcPackage), null, false, false,
+                null, null, null, null);
+        TriggerMetadataModel authoring = new TriggerMetadataModel(
+                "v1.0", List.of(listener), List.of(serviceType), null, null);
+
+        TriggerLibraryFacts.Listener listenerFacts = new TriggerLibraryFacts.Listener("CdcListener", List.of());
+        TriggerLibraryFacts facts = new TriggerLibraryFacts(List.of(listenerFacts), List.of(), List.of());
+        Listener listenerModel = listenerModel(Map.of());
+
+        TriggerUISchemaModel model = TriggerModelSynthesizer.synthesize(authoring, facts, listenerModel, "1", "MySQL",
+                null, "event", "ballerinax", "mysql", "mysql", "1.19.0").orElseThrow();
+
+        TriggerUISchemaModel.Codedata serviceTypeCodedata = model.serviceTypes().get(0).codedata();
+        Assert.assertEquals(serviceTypeCodedata.moduleName(), "cdc",
+                "the service type's real module, not the connector's own (\"mysql\")");
+        Assert.assertEquals(serviceTypeCodedata.orgName(), "ballerinax");
+        Assert.assertEquals(serviceTypeCodedata.packageName(), "cdc");
+
+        TriggerUISchemaModel.Property listenerVarName = model.initProperties().get("listener")
+                .choices().stream().filter(TriggerUISchemaModel.Property::enabled).findFirst().orElseThrow()
+                .properties().get("listenerConfig").properties().get("listenerVarName");
+        Assert.assertEquals(listenerVarName.types().get(0).ballerinaType(), "mysql:CdcListener",
+                "the listener's own declared type name, not a hardcoded \"Listener\"");
+
+        ServiceInitModel initModel = toServiceInitModel(model);
+        Value initListener = initModel.getProperties().get("listener");
+        Value createNew = initListener.getChoices().stream().filter(Value::isEnabled).findFirst().orElseThrow();
+        createNew.getProperties().get("listenerConfig").getProperties().get("listenerVarName").setValue("cdcListener");
+
+        String block = SchemaDrivenSourceGenerator.buildServiceBlockForTrigger(initModel, model);
+        Assert.assertTrue(block.contains("listener mysql:CdcListener"),
+                "the declared listener type must be the real one, not the generic default: " + block);
+        Assert.assertTrue(block.contains("service cdc:Service on "),
+                "the service descriptor must reference the service type's real module: " + block);
+        Assert.assertFalse(block.contains("mysql:Service"),
+                "must not mistakenly qualify the service type with the connector's own module: " + block);
+    }
+
+    @Test
+    public void testCrossModuleAnnotationResolvesRealRecordTypeFromCrossModuleFacts() {
+        TypeRef.PackageInfo cdcPackage = new TypeRef.PackageInfo("ballerinax", "cdc", "cdc", "1.4.0");
+        TriggerMetadataModel.Listener listener = new TriggerMetadataModel.Listener(
+                "$listener", "Listens for CDC events.", new TypeRef("CdcListener", null), null,
+                List.of("$service"), false, null, null, null);
+        TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
+                "$service", "A service.", new TypeRef("Service", cdcPackage), null, false, false,
+                List.of("$serviceConfig"), null, null, null);
+        TriggerMetadataModel.Annotation annotation = new TriggerMetadataModel.Annotation(
+                "$serviceConfig", new TypeRef("ServiceConfig", cdcPackage),
+                TriggerMetadataModel.Annotation.ATTACH_POINT_SERVICE,
+                TriggerMetadataModel.Annotation.PRESENCE_REQUIRED);
+        TriggerMetadataModel authoring = new TriggerMetadataModel(
+                "v1.0", List.of(listener), List.of(serviceType), List.of(annotation), null);
+
+        TriggerLibraryFacts.Listener listenerFacts = new TriggerLibraryFacts.Listener("CdcListener", List.of());
+        // The connector's OWN introspected facts -- deliberately carries no "ServiceConfig" annotation,
+        // since the real one lives in ballerinax/cdc, not ballerinax/mysql.
+        TriggerLibraryFacts ownFacts = new TriggerLibraryFacts(List.of(listenerFacts), List.of(), List.of());
+
+        TriggerLibraryFacts.Annotation cdcAnnotationFacts = new TriggerLibraryFacts.Annotation(
+                "ServiceConfig", "cdc", "cdc:CdcServiceConfig", List.of("SERVICE"), "", List.of());
+        TriggerLibraryFacts crossFacts = new TriggerLibraryFacts(List.of(), List.of(), List.of(cdcAnnotationFacts));
+        Map<String, TriggerLibraryFacts> crossModuleFacts = Map.of("ballerinax/cdc", crossFacts);
+
+        Listener listenerModel = listenerModel(Map.of());
+
+        TriggerUISchemaModel model = TriggerModelSynthesizer.synthesize(authoring, ownFacts, crossModuleFacts,
+                listenerModel, "1", "MySQL", null, "event", "ballerinax", "mysql", "mysql", "1.19.0").orElseThrow();
+
+        TriggerUISchemaModel.Property serviceConfig = model.initProperties().get("serviceConfig");
+        TriggerUISchemaModel.TypeMember member = serviceConfig.types().get(0).typeMembers().get(0);
+        Assert.assertEquals(member.type(), "CdcServiceConfig",
+                "the real backing record type from the cross-module package, not the annotation's own name");
+        Assert.assertEquals(serviceConfig.types().get(0).ballerinaType(), "cdc:CdcServiceConfig");
+    }
+
+    /** A driver-kind {@code requiredImport} (e.g. a CDC JDBC driver) must be imported as {@code as _}. */
+    @Test
+    public void testDriverRequiredImportEmitsSideEffectOnlyImport() {
+        TypeRef.PackageInfo driverPackage = new TypeRef.PackageInfo(
+                "ballerinax", "mssql.cdc.driver", "mssql.cdc.driver", "1.1.0");
+        TriggerMetadataModel.RequiredImport requiredImport = new TriggerMetadataModel.RequiredImport(
+                TriggerMetadataModel.RequiredImport.IMPORT_TYPE_DRIVER, driverPackage);
+        TriggerMetadataModel.Listener listener = new TriggerMetadataModel.Listener(
+                "$listener", "Listens for CDC events.", new TypeRef("CdcListener", null), null,
+                List.of("$service"), false, null, List.of(requiredImport), null);
+        TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
+                "$service", "A service.", new TypeRef("Service", null), null, false, false,
+                null, null, null, null);
+        TriggerMetadataModel authoring = new TriggerMetadataModel(
+                "v1.0", List.of(listener), List.of(serviceType), null, null);
+
+        TriggerLibraryFacts.Listener listenerFacts = new TriggerLibraryFacts.Listener("CdcListener", List.of());
+        TriggerLibraryFacts facts = new TriggerLibraryFacts(List.of(listenerFacts), List.of(), List.of());
+        Listener listenerModel = listenerModel(Map.of());
+
+        TriggerUISchemaModel model = TriggerModelSynthesizer.synthesize(authoring, facts, listenerModel, "1", "MSSQL",
+                null, "event", "ballerinax", "mssql", "mssql", "1.19.0").orElseThrow();
+
+        Assert.assertEquals(model.importStatements(), List.of("ballerinax/mssql.cdc.driver as _"),
+                "a driver-kind requiredImport must be emitted as a side-effect-only (\"as _\") import");
+    }
+
+    @Test
+    public void testExactlyOneRuleForcesPreferredAnnotationRequiredInInitForm() {
+        IdentifierSpec identifier = new IdentifierSpec(
+                IdentifierSpec.PRESENCE_OPTIONAL, List.of(IdentifierSpec.FORM_STRING_LITERAL));
+        TriggerMetadataModel.Subject annotationFieldSubject = new TriggerMetadataModel.Subject(
+                TriggerMetadataModel.Subject.KIND_ANNOTATION_FIELD, null, "$serviceConfig",
+                List.of("queueName"), null, "fromAnnotation");
+        TriggerMetadataModel.Subject identifierSubject = new TriggerMetadataModel.Subject(
+                TriggerMetadataModel.Subject.KIND_IDENTIFIER, null, null, null, null, null);
+        TriggerMetadataModel.Rule rule = new TriggerMetadataModel.Rule(
+                "$queueNameSource", TriggerMetadataModel.Rule.RULE_EXACTLY_ONE,
+                List.of(annotationFieldSubject, identifierSubject), null,
+                "A consumer needs its queue name from exactly one source.", "fromAnnotation");
+
+        TriggerMetadataModel.Listener listener = new TriggerMetadataModel.Listener(
+                "$listener", "Listens for events.", new TypeRef("Listener", null), null,
+                List.of("$service"), false, null, null, null);
+        TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
+                "$service", "A service.", new TypeRef("Service", null), null, false, false,
+                List.of("$serviceConfig"), identifier, null, List.of(rule));
+        TriggerMetadataModel.Annotation annotation = new TriggerMetadataModel.Annotation(
+                "$serviceConfig", new TypeRef("ServiceConfig", null),
+                TriggerMetadataModel.Annotation.ATTACH_POINT_SERVICE,
+                TriggerMetadataModel.Annotation.PRESENCE_OPTIONAL);
+        TriggerMetadataModel authoring = new TriggerMetadataModel(
+                "v1.0", List.of(listener), List.of(serviceType), List.of(annotation), null);
+
+        TriggerLibraryFacts.Listener listenerFacts = new TriggerLibraryFacts.Listener("Listener", List.of());
+        TriggerLibraryFacts facts = new TriggerLibraryFacts(List.of(listenerFacts), List.of(), List.of());
+        Listener listenerModel = listenerModel(Map.of());
+
+        TriggerUISchemaModel model = TriggerModelSynthesizer.synthesize(authoring, facts, listenerModel, "1",
+                "RabbitMQ", null, "event", "ballerinax", "rabbitmq", "rabbitmq", "3.6.0").orElseThrow();
+
+        Assert.assertFalse(model.initProperties().containsKey("identifier"),
+                "the identifier field is superseded by the preferred annotation field");
+        TriggerUISchemaModel.Property serviceConfig = model.initProperties().get("serviceConfig");
+        Assert.assertFalse(serviceConfig.optional(),
+                "the only remaining source for the exactlyOne rule must be required, "
+                        + "despite its own declared presence being \"optional\"");
+    }
+
+    @Test
+    public void testDottedModuleNameAnnotationUsesNaturalPrefix() {
+        TriggerMetadataModel.Listener listener = new TriggerMetadataModel.Listener(
+                "$listener", "Listens for events.", new TypeRef("Listener", null), null,
+                List.of("$service"), false, null, null, null);
+        TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
+                "$service", "A service.", new TypeRef("Service", null), null, true, false,
+                List.of("$serviceConfig"), null, null, null);
+        TriggerMetadataModel.Annotation annotation = new TriggerMetadataModel.Annotation(
+                "$serviceConfig", new TypeRef("ServiceConfigType", null),
+                TriggerMetadataModel.Annotation.ATTACH_POINT_SERVICE,
+                TriggerMetadataModel.Annotation.PRESENCE_REQUIRED);
+        TriggerMetadataModel authoring = new TriggerMetadataModel(
+                "v1.0", List.of(listener), List.of(serviceType), List.of(annotation), null);
+
+        TriggerLibraryFacts.Listener listenerFacts = new TriggerLibraryFacts.Listener("Listener", List.of());
+        TriggerLibraryFacts facts = new TriggerLibraryFacts(List.of(listenerFacts), List.of(), List.of());
+        Listener listenerModel = listenerModel(Map.of());
+
+        TriggerUISchemaModel model = TriggerModelSynthesizer.synthesize(authoring, facts, listenerModel, "1",
+                "AWS SQS", null, "event", "ballerinax", "aws.sqs", "aws.sqs", "5.0.0").orElseThrow();
+
+        ServiceInitModel initModel = toServiceInitModel(model);
+        initModel.getProperties().get("serviceConfig").setValue("{queueUrl: \"\"}");
+
+        String block = SchemaDrivenSourceGenerator.buildServiceBlockForTrigger(initModel, model);
+        Assert.assertTrue(block.contains("@sqs:ServiceConfigType"),
+                "the annotation must use the module's natural import prefix: " + block);
+        Assert.assertFalse(block.contains("@aws.sqs:ServiceConfigType"),
+                "the raw dotted module name is never a valid qualifier: " + block);
+        Assert.assertTrue(block.contains("awsSqsListener"),
+                "the default listener variable name must stay a legal identifier, not contain a dot: " + block);
+        Assert.assertFalse(block.contains("aws.sqsListener"), "a dot is never legal inside an identifier: " + block);
     }
 
     @Test
