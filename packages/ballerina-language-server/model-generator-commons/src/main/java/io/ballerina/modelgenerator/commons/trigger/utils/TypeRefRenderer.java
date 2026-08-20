@@ -58,15 +58,15 @@ public final class TypeRefRenderer {
         if (ref.isNamed()) {
             return qualifyName(ref, moduleName, aliasResolver);
         }
+        List<TypeRef> elements = ref.elementType();
+        String element = render(elements, moduleName, aliasResolver);
         // A bare union binds looser than [] or &, so "A|B[]" reads as "A|(B[])" -- parenthesize.
-        String element = render(ref.elementType(), moduleName, aliasResolver);
-        boolean parenthesize = ref.elementType() != null && ref.elementType().size() > 1;
-        String parenthesized = parenthesize ? "(" + element + ")" : element;
+        boolean union = elements != null && elements.size() > 1;
         switch (ref.shape()) {
             case TypeRef.SHAPE_ARRAY:
-                return parenthesized + "[]";
+                return union || isIntersection(elements) ? "(" + element + ")[]" : element + "[]";
             case TypeRef.SHAPE_READONLY:
-                return "readonly & " + parenthesized;
+                return union ? "readonly & (" + element + ")" : "readonly & " + element;
             case TypeRef.SHAPE_STREAM:
                 if (ref.completionType() == null || ref.completionType().isEmpty()) {
                     return "stream<" + element + ">";
@@ -75,6 +75,12 @@ public final class TypeRefRenderer {
             default:
                 throw new IllegalArgumentException("Unrecognized TypeRef shape: " + ref.shape());
         }
+    }
+
+    /** Whether a single-member element list renders as a {@code readonly & T} intersection. */
+    private static boolean isIntersection(List<TypeRef> elements) {
+        return elements != null && elements.size() == 1 && elements.get(0) != null
+                && TypeRef.SHAPE_READONLY.equals(elements.get(0).shape());
     }
 
     private static String qualifyName(TypeRef ref, String moduleName, UnaryOperator<String> aliasResolver) {
