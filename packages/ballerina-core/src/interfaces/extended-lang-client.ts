@@ -854,8 +854,6 @@ export interface ProjectDiagnosticsRequest {
 
 export interface ProjectDiagnosticsResponse {
     errorDiagnosticMap?: Map<string, Diagnostic[]>;
-    /** Why diagnostics could not be produced (e.g. the package failed to compile). */
-    errorMsg?: string;
 }
 
 export interface MainFunctionParamsRequest {
@@ -1785,6 +1783,8 @@ export interface VerifyTypeDeleteResponse {
 
 export interface GetTypesResponse {
     types: Type[];
+    errorMsg?: string;
+    stacktrace?: string;
 }
 
 export interface GetTypeResponse {

@@ -292,10 +292,6 @@ import {
     ClausePositionRequest,
     SemanticDiffRequest,
     SemanticDiffResponse,
-    EnsureAiBaselineRequest,
-    EnsureAiBaselineResponse,
-    PrewarmDependenciesRequest,
-    PrewarmDependenciesResponse,
     ConvertExpressionRequest,
     ConvertExpressionResponse,
     IntrospectDatabaseRequest,
@@ -503,8 +499,6 @@ enum EXTENDED_APIS {
     BI_AI_GEN_AGENT_DEFINITION = 'agentManager/genAgentDefinition',
     BI_AI_GET_PACKAGE_VERSION = 'agentManager/getPackageVersion',
     BI_GET_SEMANTIC_DIFF = 'copilotAgentService/getSemanticDiff',
-    BI_ENSURE_AI_BASELINE = 'copilotAgentService/ensureAiBaseline',
-    BI_PREWARM_DEPENDENCIES = 'copilotAgentService/prewarmDependencies',
     BI_IS_ICP_ENABLED = 'icpService/isIcpEnabled',
     BI_ADD_ICP = 'icpService/addICP',
     BI_DISABLE_ICP = 'icpService/disableICP',
@@ -1625,14 +1619,6 @@ export class ExtendedLangClient extends LanguageClient implements ExtendedLangCl
 
     async getSemanticDiff(params: SemanticDiffRequest): Promise<SemanticDiffResponse> {
         return this.sendRequest<SemanticDiffResponse>(EXTENDED_APIS.BI_GET_SEMANTIC_DIFF, params);
-    }
-
-    async ensureAiBaseline(params: EnsureAiBaselineRequest): Promise<EnsureAiBaselineResponse> {
-        return this.sendRequest<EnsureAiBaselineResponse>(EXTENDED_APIS.BI_ENSURE_AI_BASELINE, params);
-    }
-
-    async prewarmDependencies(params: PrewarmDependenciesRequest): Promise<PrewarmDependenciesResponse> {
-        return this.sendRequest<PrewarmDependenciesResponse>(EXTENDED_APIS.BI_PREWARM_DEPENDENCIES, params);
     }
 
     // <------------ BI APIS END --------------->

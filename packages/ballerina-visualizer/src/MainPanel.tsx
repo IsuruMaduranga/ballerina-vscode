@@ -305,7 +305,7 @@ const MainPanel = () => {
 
             try {
                 if (isStaleNavigation()) return;
-                const navTarget = `${value?.view ?? ''}-${value?.identifier ?? ''}-${value?.documentUri ?? ''}-${value?.projectPath ?? ''}-${value?.reviewData?.generationId ?? ''}`;
+                const navTarget = `${value?.view ?? ''}-${value?.identifier ?? ''}-${value?.documentUri ?? ''}-${value?.projectPath ?? ''}`;
                 if (navTarget !== previousNavTargetRef.current) {
                     remountKeyRef.current += 1;
                     previousNavTargetRef.current = navTarget;
@@ -940,7 +940,7 @@ const MainPanel = () => {
                         case MACHINE_VIEW.ReviewMode: {
                             const { ReviewMode } = await import("./views/ReviewMode");
                             if (isStaleNavigation()) return;
-                            setViewComponent(<ReviewMode key={remountKey} />);
+                            setViewComponent(<ReviewMode />);
                             break;
                         }
                         case MACHINE_VIEW.EvalsetViewer: {
