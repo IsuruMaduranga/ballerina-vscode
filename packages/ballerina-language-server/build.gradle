@@ -463,8 +463,11 @@ tasks.register('createCodeCoverageReport', JacocoReport) {
 
     // Asking for this task always produces a report and always logs the percentage;
     // an UP-TO-DATE skip would silently print nothing. Regeneration is seconds against
-    // a suite that takes tens of minutes.
+    // a suite that takes tens of minutes. JacocoReport is @CacheableTask and
+    // org.gradle.caching is on, so upToDateWhen alone is not enough: a FROM-CACHE hit
+    // would restore the report without running the doLast that logs the percentages.
     outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
 
     subprojects.each { subproject ->
         // fileTree resolves at execution time, so exec files written earlier in the same
@@ -505,7 +508,7 @@ tasks.register('createCodeCoverageReport', JacocoReport) {
             def missed = counter.@missed.toInteger()
             def covered = counter.@covered.toInteger()
             def total = missed + covered
-            def percentage = total == 0 ? 0 : (covered * 100.0d / total)
+            def percentage = total == 0 ? 0.0d : (covered * 100.0d / total)
             logger.lifecycle(String.format('%-12s coverage: %6.2f%% (%d/%d)', type, percentage, covered, total))
         }
         logger.lifecycle("Coverage report: ${xmlReport}")

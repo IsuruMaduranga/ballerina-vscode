@@ -50,7 +50,7 @@ all of it into one report and logs the overall percentage:
 The output looks like this (illustrative figures — a report only reflects the tests that
 actually ran, so only a full `test` run gives the project's real coverage):
 
-```
+```text
 INSTRUCTION  coverage:  nn.nn% (171187/375097)
 BRANCH       coverage:  nn.nn% (14382/38765)
 LINE         coverage:  nn.nn% (36348/84510)

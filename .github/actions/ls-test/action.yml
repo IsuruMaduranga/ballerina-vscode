@@ -83,11 +83,18 @@ runs:
     # same suite over the same sources, so a second upload would only duplicate the
     # report, and its Windows paths do not map onto the repository layout.
     #
-    # always(): a failing suite still wrote JaCoCo execution data for everything that
+    # !cancelled(): a failing suite still wrote JaCoCo execution data for everything that
     # did run, and the coverage number for it is more useful than none. createCodeCoverageReport
     # declares no task dependencies, so this re-reads build outputs instead of rebuilding.
+    # Not always(): a cancelled run (pull-request.yml cancels superseded runs) would otherwise
+    # re-invoke Gradle and publish a partial report during teardown.
+    #
+    # continue-on-error: report generation is the one step here that can fail on its own
+    # (duplicate FQCNs across modules, a parse failure in the doLast). Coverage is
+    # informational, so it must not turn a passing suite into a red job.
     - name: Generate aggregated coverage report
-      if: ${{ always() && runner.os == 'Linux' }}
+      if: ${{ !cancelled() && runner.os == 'Linux' }}
+      continue-on-error: true
       shell: bash
       working-directory: packages/ballerina-language-server
       env:
@@ -96,7 +103,7 @@ runs:
       run: ./gradlew createCodeCoverageReport
 
     - name: Resolve coverage upload metadata
-      if: ${{ always() && runner.os == 'Linux' }}
+      if: ${{ !cancelled() && runner.os == 'Linux' }}
       id: coverage
       shell: bash
       env:
@@ -114,7 +121,7 @@ runs:
         echo "label=$(echo "${CODECOV_BRANCH:-$REF_NAME}" | tr '/' '-')" >> "$GITHUB_OUTPUT"
 
     - name: Upload coverage to Codecov
-      if: ${{ always() && runner.os == 'Linux' }}
+      if: ${{ !cancelled() && runner.os == 'Linux' }}
       uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       with:
         token: ${{ inputs.codecov-token }}
@@ -131,7 +138,7 @@ runs:
     # The XML is what Codecov consumes; the HTML report next to it is how a developer
     # finds which classes are uncovered without re-running the suite locally.
     - name: Upload coverage report
-      if: ${{ always() && runner.os == 'Linux' }}
+      if: ${{ !cancelled() && runner.os == 'Linux' }}
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: ls-coverage-${{ steps.coverage.outputs.label }}

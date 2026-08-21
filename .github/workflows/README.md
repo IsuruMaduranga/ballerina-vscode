@@ -346,7 +346,9 @@ Three details worth knowing:
 
 - **Linux only.** The Windows matrix leg runs the same suite over the same sources, so a
   second upload would only duplicate the report and its paths do not map onto the repo layout.
-- **Runs even when tests fail** (`if: always()`), because a partial number beats none.
+- **Runs even when tests fail** (`if: !cancelled()`), because a partial number beats none. A
+  cancelled run is excluded — a superseded run should not publish a half-finished report.
+  Report generation is `continue-on-error`, so it cannot turn a passing suite red.
 - **`schedule.yml` passes `codecov-branch`.** Its matrix checks out `matrix.branch` rather
   than the ref the schedule fired on, so the upload has to be attributed explicitly. These
   nightly runs are what give `main` and each release line the baseline that PR comparisons
