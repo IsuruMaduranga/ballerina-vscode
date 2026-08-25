@@ -335,6 +335,8 @@ const AIChat: React.FC = () => {
     // staleness has to be judged against a ref, not the captured isLoading value.
     const isLoadingRef = useRef(false);
     isLoadingRef.current = isLoading;
+    // Set by the "abort" notification, which always arrives before the RPC error (whose name is lost in transit).
+    const abortHandledRef = useRef(false);
     const [followupSuggestions, setFollowupSuggestions] = useState<FollowupSuggestion[]>([]);
     const [isCompacting, setIsCompacting] = useState(false);
     // Tools currently in flight, oldest first, for the composer's loading
@@ -1511,6 +1513,7 @@ const AIChat: React.FC = () => {
             console.log("Received stop signal");
             setIsWebToolsEnabled(userWebSearchPreferenceRef.current);
             setWebToolApprovalRequest(null);
+            setApprovalRequest(null);
             setIsCompacting(false);
             setIsCodeLoading(false);
             setIsLoading(false);
@@ -1525,9 +1528,11 @@ const AIChat: React.FC = () => {
 
         } else if (type === "abort") {
             console.log("Received abort signal");
+            abortHandledRef.current = true;
             activeScaffoldKeyRef.current = null;
             setIsWebToolsEnabled(userWebSearchPreferenceRef.current);
             setWebToolApprovalRequest(null);
+            setApprovalRequest(null);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
                 const targetIndex = ensureAssistantMessage(msgs);
@@ -1761,10 +1766,9 @@ const AIChat: React.FC = () => {
             setIsCompacting(false);
             setIsLoading(false);
             setIsCodeLoading(false);
-            if (error.name === "AbortError") {
-                updateLastMessage((lastContent) =>
-                    lastContent + `\n\n<error data-system="true" data-auth="${SYSTEM_ERROR_SECRET}">Generation stopped by the user</error>`
-                );
+            if (abortHandledRef.current || error.name === "AbortError") {
+                abortHandledRef.current = false;
+                // The "abort" notification already appended the interruption marker.
             } else if (error?.name === "UsageLimitError" || error?.statusCode === 429) {
                 setIsUsageExceeded(true);
                 fetchUsage();
@@ -2909,54 +2913,54 @@ const AIChat: React.FC = () => {
                             (item: StreamItem) => item.kind === "ask" && (item as any).data?.stage === "asking"
                         ) as { kind: "ask"; data: { requestId: string; questions: any[] } } | undefined;
 
-                        if (activeClarifyItem) {
-                            return (
-                                <ClarifyFooter
-                                    questions={activeClarifyItem.data.questions}
-                                    requestId={activeClarifyItem.data.requestId}
-                                    rpcClient={rpcClient}
-                                />
-                            );
-                        }
-
                         const activeSkillEnableItem = lastStreamItems.find(
                             (item: StreamItem) => item.kind === "skill_enable" && (item as any).data?.stage === "prompting"
                         ) as { kind: "skill_enable"; data: { requestId: string; skillName: string; skillId: string } } | undefined;
 
-                        if (activeSkillEnableItem) {
-                            const { requestId, skillName, skillId } = activeSkillEnableItem.data;
-                            return (
-                                <CommonApprovalFooter
-                                    type="skill_enable"
-                                    skillName={skillName}
-                                    onEnable={() => rpcClient.getAiPanelRpcClient().enableSkillFromChat({ requestId, skillId })}
-                                    onSkip={() => rpcClient.getAiPanelRpcClient().cancelSkillEnable({ requestId })}
-                                />
-                            );
-                        }
+                        const approvalFooter = activeClarifyItem ? (
+                            <ClarifyFooter
+                                questions={activeClarifyItem.data.questions}
+                                requestId={activeClarifyItem.data.requestId}
+                                rpcClient={rpcClient}
+                                onStop={handleStop}
+                            />
+                        ) : activeSkillEnableItem ? (
+                            <CommonApprovalFooter
+                                type="skill_enable"
+                                skillName={activeSkillEnableItem.data.skillName}
+                                onEnable={() => rpcClient.getAiPanelRpcClient().enableSkillFromChat({
+                                    requestId: activeSkillEnableItem.data.requestId,
+                                    skillId: activeSkillEnableItem.data.skillId,
+                                })}
+                                onSkip={() => rpcClient.getAiPanelRpcClient().cancelSkillEnable({
+                                    requestId: activeSkillEnableItem.data.requestId,
+                                })}
+                                onStop={handleStop}
+                            />
+                        ) : webToolApprovalRequest ? (
+                            <CommonApprovalFooter
+                                type="web_tool"
+                                toolName={webToolApprovalRequest.toolName}
+                                content={webToolApprovalRequest.content}
+                                onAllow={handleWebToolAllow}
+                                onDeny={handleWebToolDeny}
+                                onStop={handleStop}
+                            />
+                        ) : approvalRequest ? (
+                            <CommonApprovalFooter
+                                type={approvalRequest.approvalType}
+                                onApprove={handleApprovalApprove}
+                                onReject={handleApprovalReject}
+                                onStop={handleStop}
+                            />
+                        ) : null;
 
-                        if (webToolApprovalRequest) {
-                            return (
-                                <CommonApprovalFooter
-                                    type="web_tool"
-                                    toolName={webToolApprovalRequest.toolName}
-                                    content={webToolApprovalRequest.content}
-                                    onAllow={handleWebToolAllow}
-                                    onDeny={handleWebToolDeny}
-                                />
-                            );
-                        }
-                        if (approvalRequest) {
-                            return (
-                                <CommonApprovalFooter
-                                    type={approvalRequest.approvalType}
-                                    onApprove={handleApprovalApprove}
-                                    onReject={handleApprovalReject}
-                                />
-                            );
-                        }
+                        // Kept mounted behind the approval footer so the draft and attachments survive.
                         return (
+                        <>
+                            {approvalFooter}
                             <Footer
+                            hidden={!!approvalFooter}
                             aiChatInputRef={aiChatInputRef}
                             tagOptions={{
                                 placeholderTags: placeholderTags,
@@ -3001,6 +3005,7 @@ const AIChat: React.FC = () => {
                             }}
                             skills={skills}
                         />
+                        </>
                         );
                     })()}
                 </AIChatView>
