@@ -182,7 +182,7 @@ export function activateAIFeatures(ballerinaExternalInstance: BallerinaExtension
         });
 
         commands.registerCommand('ballerina.test.ai.restoreCheckpoint', async (checkpoint: Checkpoint, skipArtifactWait?: boolean): Promise<void> => {
-            return await restoreWorkspaceSnapshot(checkpoint, skipArtifactWait);
+            await restoreWorkspaceSnapshot(checkpoint, skipArtifactWait);
         });
 
         commands.registerCommand('ballerina.test.ai.integrateCodeToWorkspace', async (tempProjectPath: string, modifiedFiles: string[], ctx: ExecutionContext): Promise<void> => {

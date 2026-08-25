@@ -646,11 +646,14 @@ const CollapsibleGroupList: React.FC<{
                 const isFunctions = group.groupLabel === "functions";
                 const isTypes = group.groupLabel === "types";
                 const isDesign = group.groupLabel === "design";
-                const isCollapsible = isService || isFunctions;
+                const isDeclarations = group.groupLabel === "declarations";
+                const isCollapsible = isService || isFunctions || isDeclarations;
                 const isCollapsed = !!collapsed[gi];
 
                 const displayLabel = isService
                     ? group.groupLabel.slice("service ".length)
+                    : isDeclarations
+                    ? "declarations"
                     : "functions";
 
                 return (
@@ -666,6 +669,9 @@ const CollapsibleGroupList: React.FC<{
                                 )}
                                 {isFunctions && (
                                     <span className="codicon codicon-symbol-method" style={{ fontSize: "11px", color: "var(--vscode-descriptionForeground)" }} />
+                                )}
+                                {isDeclarations && (
+                                    <span className="codicon codicon-symbol-variable" style={{ fontSize: "11px", color: "var(--vscode-descriptionForeground)" }} />
                                 )}
                                 {isService && <span style={{ color: "var(--vscode-descriptionForeground)", fontWeight: 400 }}>service</span>}
                                 <span>{displayLabel}</span>

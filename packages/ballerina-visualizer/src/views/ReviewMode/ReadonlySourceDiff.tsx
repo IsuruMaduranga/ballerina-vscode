@@ -50,9 +50,9 @@ const SourceBlock = styled.pre<{ variant: "old" | "new" | "plain" }>`
     border: 1px solid
         ${(props: { variant: "old" | "new" | "plain" }) =>
             props.variant === "old"
-                ? "var(--vscode-inputValidation-errorBorder, #f85149)"
+                ? "var(--vscode-inputValidation-errorBorder, var(--vscode-charts-red))"
                 : props.variant === "new"
-                ? "var(--vscode-gitDecoration-addedResourceForeground, #2ea043)"
+                ? "var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green))"
                 : "var(--vscode-panel-border)"};
     background: var(--vscode-editor-background);
     color: var(--vscode-editor-foreground);

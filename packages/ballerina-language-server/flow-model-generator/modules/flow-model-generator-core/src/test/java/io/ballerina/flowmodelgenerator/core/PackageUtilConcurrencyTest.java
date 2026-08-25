@@ -138,11 +138,15 @@ public class PackageUtilConcurrencyTest {
                         startLine.await(); // release all threads at once to maximise contention
                         for (int i = 0; i < ITERATIONS && !stop.get(); i++) {
                             // Exercise the load path (getModulePackage*, each of which builds a fresh
-                            // lang-lib environment) only on the first pass: that is where every thread
-                            // first-misses at once and hits the resolver. Doing it every pass would
+                            // lang-lib environment) only on the first pass. Doing it every pass would
                             // allocate thousands of environments and exhaust the test heap without
-                            // adding coverage (later passes are memoized path-cache hits anyway). The
-                            // cheap metadata methods run every pass to sustain resolver contention.
+                            // adding coverage (later passes are memoized path-cache hits anyway).
+                            // Concurrent resolver pressure here comes from the coordinates the shared
+                            // SAMPLE_RESOLUTION_CACHE cannot serve: the single-threaded baseline warmed
+                            // it for offline-present coordinates, but absence is never cached, so the
+                            // bogus coordinates re-enter the resolver on every thread at once. The cheap
+                            // metadata methods (cachedVersion / isModuleUnresolved, neither memoized) run
+                            // every pass to sustain that contention across the whole run.
                             boolean exerciseLoads = i == 0;
                             for (int j = 0; j < COORDS.size(); j++) {
                                 int c = (offset + j) % COORDS.size();

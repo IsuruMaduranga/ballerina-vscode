@@ -107,7 +107,13 @@ export async function captureWorkspaceSnapshot(messageId: string): Promise<Check
     }
 }
 
-export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtifactWait = false): Promise<void> {
+/**
+ * Restores the workspace to a checkpoint snapshot. Returns {@code true} only when the restore
+ * actually applied; callers that mark a generation reverted (and tell the model its changes were
+ * undone) must gate that on the return value, since a failed {@code applyEdit} is reported to the
+ * user here but not thrown.
+ */
+export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtifactWait = false): Promise<boolean> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
         throw new Error('No workspace folder found');
@@ -227,7 +233,7 @@ export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtif
         });
 
         // Wait for artifact update notification if any .bal files were restored
-        if (skipArtifactWait) { return; }
+        if (skipArtifactWait) { return true; }
         await new Promise<void>((resolve, reject) => {
             if (!isBalFileRestored) {
                 resolve();
@@ -260,9 +266,11 @@ export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtif
         });
 
         vscode.window.showInformationMessage('Checkpoint restored successfully');
+        return true;
     } catch (error) {
         console.error('[Checkpoint] Failed to restore workspace snapshot:', error);
         vscode.window.showErrorMessage('Failed to restore checkpoint: ' + (error as Error).message);
+        return false;
     }
 }
 

@@ -65,6 +65,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Utility class that contains methods to perform package-related operations.
@@ -72,6 +74,8 @@ import java.util.function.Supplier;
  * @since 1.0.0
  */
 public class PackageUtil {
+
+    private static final Logger LOGGER = Logger.getLogger(PackageUtil.class.getName());
 
     private static final String BALLERINA_HOME_PROPERTY = "ballerina.home";
 
@@ -186,6 +190,9 @@ public class PackageUtil {
         try {
             resolved = resolution.get();
         } catch (RuntimeException e) {
+            // Absence is not cached (see javadoc), so a caller retry can still succeed; log the cause
+            // so a Central outage or corrupted bala is distinguishable from a genuinely missing package.
+            LOGGER.log(Level.FINE, "Sample-project resolution failed for " + key, e);
             return Optional.empty();
         }
         resolved.ifPresent(path -> SAMPLE_RESOLUTION_CACHE.putIfAbsent(key, Optional.of(path)));

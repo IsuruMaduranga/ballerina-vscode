@@ -294,6 +294,7 @@ export function sendReviewRestoreDidOpenBatch(
       const tempFileFullPath = path.resolve(tempProjectPath, filePath);
       if (tempFileFullPath !== normalizedTempRoot && !tempFileFullPath.startsWith(normalizedTempRoot + path.sep)) {
         console.warn(`[AgentNotification] Review restore path escapes temp project, skipping: ${filePath}`);
+        skippedCount++;
         continue;
       }
 

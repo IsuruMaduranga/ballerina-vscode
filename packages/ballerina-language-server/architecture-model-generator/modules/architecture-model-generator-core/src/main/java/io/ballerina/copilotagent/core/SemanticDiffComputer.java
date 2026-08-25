@@ -318,7 +318,7 @@ public class SemanticDiffComputer {
                         buildFunctionMetadata(className + "." + methodEntry.getKey()));
             }
 
-            if (!nonMethodMembersSource(originalClass).equals(nonMethodMembersSource(modifiedClass))) {
+            if (!classHeaderAndMembersSource(originalClass).equals(classHeaderAndMembersSource(modifiedClass))) {
                 addModificationDiff(NodeKind.CLASS_DEFINITION, modifiedClass.lineRange(),
                         originalClass.lineRange(),
                         buildSourceMetadata(className, originalClassSource, modifiedClassSource));
@@ -350,6 +350,24 @@ public class SemanticDiffComputer {
                 .filter(member -> !(member instanceof FunctionDefinitionNode))
                 .map(Node::toSourceCode)
                 .collect(Collectors.joining());
+    }
+
+    /**
+     * Signature used to decide whether a class needs a {@code CLASS_DEFINITION} diff once its methods
+     * have been diffed separately. It combines the class header — metadata, visibility, class-type
+     * qualifiers, the {@code class} keyword and the name — with the non-method members, so a
+     * header-only change (for example adding {@code isolated} or an annotation) is not lost when the
+     * members are unchanged. Qualifier/keyword/name tokens use {@code text()} to stay trivia-insensitive,
+     * matching the trivia-only handling elsewhere in this computer.
+     */
+    private static String classHeaderAndMembersSource(ClassDefinitionNode classNode) {
+        StringBuilder header = new StringBuilder();
+        classNode.metadata().ifPresent(metadata -> header.append(metadata.toSourceCode().trim()));
+        classNode.visibilityQualifier().ifPresent(qualifier -> header.append(qualifier.text().trim()).append(' '));
+        classNode.classTypeQualifiers().forEach(qualifier -> header.append(qualifier.text().trim()).append(' '));
+        header.append(classNode.classKeyword().text().trim()).append(' ');
+        header.append(classNode.className().text().trim());
+        return header + "\n" + nonMethodMembersSource(classNode);
     }
 
     /**

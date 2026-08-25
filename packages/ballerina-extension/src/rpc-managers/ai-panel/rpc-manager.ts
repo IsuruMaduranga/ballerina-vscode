@@ -562,7 +562,15 @@ export class AiPanelRpcManager implements AIPanelAPI {
                 window.showErrorMessage(`Could not revert the Copilot changes: ${reason}`);
                 throw new Error(reason);
             }
-            await restoreWorkspaceSnapshot(checkpoint, true);
+            // restoreWorkspaceSnapshot reports its own failures to the user but does not throw, so a
+            // failed applyEdit must not fall through to marking the generation reverted and telling
+            // the model the files were restored when they weren't — the same refusal as no checkpoint.
+            const restored = await restoreWorkspaceSnapshot(checkpoint, true);
+            if (!restored) {
+                const reason = "Restoring the workspace to the pre-generation checkpoint failed, so the changes were not reverted. Use source control to undo them if needed.";
+                console.error(`[Review Actions] Revert refused for ${doneGeneration.id}: ${reason}`);
+                throw new Error(reason);
+            }
 
             // Append revert notification to model messages so the LLM knows changes were reverted
             const existingMessages = doneGeneration.modelMessages || [];
