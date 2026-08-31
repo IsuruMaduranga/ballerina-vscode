@@ -39,6 +39,7 @@ import io.ballerina.compiler.syntax.tree.NonTerminalNode;
 import io.ballerina.compiler.syntax.tree.OnFailClauseNode;
 import io.ballerina.compiler.syntax.tree.ServiceDeclarationNode;
 import io.ballerina.compiler.syntax.tree.StatementNode;
+import io.ballerina.compiler.syntax.tree.Token;
 import io.ballerina.compiler.syntax.tree.TransactionStatementNode;
 import io.ballerina.compiler.syntax.tree.TypeDefinitionNode;
 import io.ballerina.compiler.syntax.tree.WhileStatementNode;
@@ -239,8 +240,9 @@ public class SemanticDiffComputer {
 
     /**
      * Computes diffs for a construct kind whose changes are reviewed as source text:
-     * name-keyed nodes compared by their source, producing addition/deletion/modification
-     * entries carrying that source in the metadata.
+     * name-keyed nodes compared by their trivia-free source ({@link #triviaFreeSource}, so a
+     * comment that re-attaches to an untouched declaration never reports it as modified),
+     * producing addition/deletion/modification entries carrying the raw source in the metadata.
      *
      * @param originalMap   original map of construct names to their declaration nodes
      * @param modifiedMap   modified map of construct names to their declaration nodes
@@ -261,12 +263,10 @@ public class SemanticDiffComputer {
                 continue;
             }
             T modifiedNode = modifiedMap.remove(name);
-            String originalSource = originalNode.toSourceCode();
-            String modifiedSource = modifiedNode.toSourceCode();
-            if (!originalSource.equals(modifiedSource)) {
+            if (!triviaFreeSource(originalNode).equals(triviaFreeSource(modifiedNode))) {
                 loadDesignDiagrams |= affectsDesign;
                 addModificationDiff(kind, modifiedNode.lineRange(), originalNode.lineRange(),
-                        buildSourceMetadata(name, originalSource, modifiedSource));
+                        buildSourceMetadata(name, originalNode.toSourceCode(), modifiedNode.toSourceCode()));
             }
         }
 
@@ -348,8 +348,8 @@ public class SemanticDiffComputer {
     private static String nonMethodMembersSource(ClassDefinitionNode classNode) {
         return classNode.members().stream()
                 .filter(member -> !(member instanceof FunctionDefinitionNode))
-                .map(Node::toSourceCode)
-                .collect(Collectors.joining());
+                .map(SemanticDiffComputer::triviaFreeSource)
+                .collect(Collectors.joining("\n"));
     }
 
     /**
@@ -357,17 +357,43 @@ public class SemanticDiffComputer {
      * have been diffed separately. It combines the class header — metadata, visibility, class-type
      * qualifiers, the {@code class} keyword and the name — with the non-method members, so a
      * header-only change (for example adding {@code isolated} or an annotation) is not lost when the
-     * members are unchanged. Qualifier/keyword/name tokens use {@code text()} to stay trivia-insensitive,
-     * matching the trivia-only handling elsewhere in this computer.
+     * members are unchanged. Built from token text only ({@link #triviaFreeSource}), so a comment or
+     * formatting shuffle around the class or its fields never registers as a modification — the same
+     * trivia-only handling as {@link #computeImportDiffs}. Annotations and markdown documentation are
+     * syntax nodes, not trivia, so genuine changes to them still produce a diff.
      */
     private static String classHeaderAndMembersSource(ClassDefinitionNode classNode) {
         StringBuilder header = new StringBuilder();
-        classNode.metadata().ifPresent(metadata -> header.append(metadata.toSourceCode().trim()));
-        classNode.visibilityQualifier().ifPresent(qualifier -> header.append(qualifier.text().trim()).append(' '));
-        classNode.classTypeQualifiers().forEach(qualifier -> header.append(qualifier.text().trim()).append(' '));
-        header.append(classNode.classKeyword().text().trim()).append(' ');
-        header.append(classNode.className().text().trim());
+        classNode.metadata().ifPresent(metadata -> header.append(triviaFreeSource(metadata)).append(' '));
+        classNode.visibilityQualifier().ifPresent(qualifier -> header.append(qualifier.text()).append(' '));
+        classNode.classTypeQualifiers().forEach(qualifier -> header.append(qualifier.text()).append(' '));
+        header.append(classNode.classKeyword().text()).append(' ');
+        header.append(classNode.className().text());
         return header + "\n" + nonMethodMembersSource(classNode);
+    }
+
+    /**
+     * Source text of a node with all trivia removed: token texts joined by single spaces, so
+     * comments and whitespace never contribute. Only for comparison keys — the joined text is
+     * not valid, displayable source.
+     */
+    private static String triviaFreeSource(Node node) {
+        StringBuilder sb = new StringBuilder();
+        appendTriviaFreeSource(node, sb);
+        return sb.toString();
+    }
+
+    private static void appendTriviaFreeSource(Node node, StringBuilder sb) {
+        if (node instanceof Token token) {
+            if (!sb.isEmpty()) {
+                sb.append(' ');
+            }
+            sb.append(token.text());
+        } else if (node instanceof NonTerminalNode nonTerminal) {
+            for (Node child : nonTerminal.children()) {
+                appendTriviaFreeSource(child, sb);
+            }
+        }
     }
 
     /**

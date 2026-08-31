@@ -18,7 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Uri } from 'vscode';
 import { StateMachine } from "../../../../stateMachine";
-import { ProjectSource, PROJECT_KIND } from "@wso2/ballerina-core";
+import { EnsureAiBaselineResponse, ProjectSource, PROJECT_KIND } from "@wso2/ballerina-core";
 import { mapWithConcurrency } from "../concurrency";
 
 /**
@@ -143,6 +143,23 @@ function collectBaselineFiles(project: ProjectSource): { filePath: string; conte
  * @param tempProjectPath The root path of the project (the real workspace/project root)
  * @param projects Array of project sources containing source files, modules, and tests
  */
+/**
+ * Rejects an ensureAiBaseline response that failed outright or seeded only part of the
+ * baseline. A partially seeded baseline is worse than the racy didOpen fallback the callers'
+ * catch blocks run: the unseeded files would diff against post-edit disk and read as unchanged.
+ */
+function assertBaselineSeeded(res: EnsureAiBaselineResponse | undefined): void {
+  if (!res) {
+    throw new Error('ensureAiBaseline returned no response');
+  }
+  if (res.errorMsg) {
+    throw new Error(res.errorMsg);
+  }
+  if (res.failedFiles?.length) {
+    throw new Error(`could not seed ${res.failedFiles.length} file(s): ${res.failedFiles.join(', ')}`);
+  }
+}
+
 export async function seedAiBaselines(tempProjectPath: string, projects: ProjectSource[]): Promise<void> {
   const isWorkspace = StateMachine.context().projectInfo?.projectKind === PROJECT_KIND.WORKSPACE_PROJECT;
 
@@ -152,10 +169,11 @@ export async function seedAiBaselines(tempProjectPath: string, projects: Project
     if (fs.existsSync(workspaceTomlPath)) {
       try {
         const content = fs.readFileSync(workspaceTomlPath, 'utf-8');
-        await StateMachine.langClient().ensureAiBaseline({
+        const res = await StateMachine.langClient().ensureAiBaseline({
           projectPath: tempProjectPath,
           files: [{ filePath: 'Ballerina.toml', content }],
         });
+        assertBaselineSeeded(res);
       } catch (error) {
         console.error('[AgentNotification] ensureAiBaseline failed for workspace root, falling back:', error);
         seedAiBaseline(tempProjectPath, 'Ballerina.toml');
@@ -173,12 +191,7 @@ export async function seedAiBaselines(tempProjectPath: string, projects: Project
     const files = collectBaselineFiles(project);
     try {
       const res = await StateMachine.langClient().ensureAiBaseline({ projectPath: packageRoot, files });
-      if (res?.errorMsg) {
-        throw new Error(res.errorMsg);
-      }
-      if (res?.failedFiles?.length) {
-        console.warn(`[AgentNotification] ensureAiBaseline could not seed ${res.failedFiles.length} file(s) in ${packageRoot}:`, res.failedFiles);
-      }
+      assertBaselineSeeded(res);
       console.log(`[AgentNotification] Seeded ai:// baseline (${res?.seededFileCount ?? 0} files) for: ${packageRoot}`);
     } catch (error) {
       // Older LS or request failure: fall back to the racy-but-working notification seed.
@@ -211,9 +224,7 @@ export async function seedNewPackageBaseline(
   ];
   try {
     const res = await StateMachine.langClient().ensureAiBaseline({ projectPath: packageRoot, files });
-    if (res?.errorMsg) {
-      throw new Error(res.errorMsg);
-    }
+    assertBaselineSeeded(res);
     console.log(`[AgentNotification] Seeded ai:// baseline for new package: ${packageRoot}`);
   } catch (error) {
     // Same policy as seedAiBaselines: fall back to the notification seed. Right after the
@@ -353,17 +364,23 @@ export function sendReviewRestoreDidOpenBatch(
   // the package from the live sources on disk and the rest update documents in place, so the
   // batch costs one rebuild instead of one per file — and no file's original is clobbered by
   // the next file's rebuild. See the module notes on the ai:// baseline.
+  let restoredCount = 0;
   for (const { filePath, aiUri, originalContent } of restored) {
     try {
       StateMachine.langClient().didChange({
         textDocument: { uri: aiUri, version: 2 },
         contentChanges: [{ text: originalContent }]
       });
+      restoredCount++;
       console.log(`[AgentNotification] Restored review schemas for: ${filePath}`);
     } catch (error) {
+      // A file whose baseline never landed counts as skipped, not restored — otherwise a
+      // total didChange failure would still report every file restored and suppress the
+      // caller's unavailable-originals warning.
+      skippedCount++;
       console.error(`[AgentNotification] Failed to restore the ai:// baseline for ${filePath}:`, error);
     }
   }
 
-  return { restoredCount: restored.length, skippedCount };
+  return { restoredCount, skippedCount };
 }

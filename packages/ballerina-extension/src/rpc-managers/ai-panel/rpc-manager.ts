@@ -795,8 +795,14 @@ User reverted the last made changes. The files have been restored to the state b
 
         const { checkpoint } = found;
 
-        // 1. Restore workspace files from checkpoint snapshot
-        await restoreWorkspaceSnapshot(checkpoint);
+        // 1. Restore workspace files from checkpoint snapshot.
+        // restoreWorkspaceSnapshot reports its own failures to the user but does not throw, so a
+        // failed restore must not fall through to truncating the thread history — that loss is
+        // irreversible while the files would stay unchanged.
+        const workspaceRestored = await restoreWorkspaceSnapshot(checkpoint);
+        if (!workspaceRestored) {
+            throw new Error('Restoring the workspace from the checkpoint failed; the conversation was not rewound.');
+        }
 
         // 2. Truncate thread history to this checkpoint
         const restored = chatStateStorage.restoreThreadToCheckpoint(

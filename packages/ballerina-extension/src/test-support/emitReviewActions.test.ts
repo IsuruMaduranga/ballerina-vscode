@@ -179,6 +179,24 @@ describe('emitReviewActions', () => {
         expect(reviewData.semanticDiffError).toContain('LS died');
     });
 
+    it("EDGE: keeps every package's compilation error, not just the first", async () => {
+        seedGeneration('gen-1', ['a.bal', 'b.bal'], [PKG_A, PKG_B]);
+        getSemanticDiff
+            .mockResolvedValueOnce({ semanticDiffs: [{ a: 1 }], loadDesignDiagrams: false, compilationError: 'pkg-a failed to compile' })
+            .mockResolvedValueOnce({ semanticDiffs: [{ b: 1 }], loadDesignDiagrams: false, compilationError: 'pkg-b failed to compile' });
+        const events: any[] = [];
+        const { executor, context } = makeExecutor(events);
+
+        await executor.emitReviewActions(context);
+
+        // Partial-success compile errors aggregate like request failures — a later
+        // package's reason must not be dropped because an earlier one already failed.
+        expect(reviewEvent(events).data.semanticDiffs).toEqual([{ a: 1 }, { b: 1 }]);
+        const reviewData = openReviewMode.mock.calls[0][1];
+        expect(reviewData.semanticDiffError).toContain('pkg-a failed to compile');
+        expect(reviewData.semanticDiffError).toContain('pkg-b failed to compile');
+    });
+
     it('EDGE: skips the workspace root, which holds no package to diff', async () => {
         projectKind = 'WORKSPACE_PROJECT';
         seedGeneration('gen-1', ['main.bal'], [ROOT, PKG_A]);

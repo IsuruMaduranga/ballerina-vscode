@@ -1085,6 +1085,9 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                 : await determineAffectedPackages(accumulatedModifiedFiles, context.projects, context.ctx, workingProjectPath);
             const isWorkspace = StateMachine.context().projectInfo?.projectKind === PROJECT_KIND.WORKSPACE_PROJECT;
             let semanticDiffError: string | undefined;
+            const appendDiffError = (msg: string) => {
+                semanticDiffError = semanticDiffError ? `${semanticDiffError}\n${msg}` : msg;
+            };
             let diffedPackageCount = 0;
             // Each package's diff is an independent LS request against its own project root,
             // so fetch them concurrently; results are folded back in affectedPackages order
@@ -1115,7 +1118,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             });
             for (const { pkgName, res, error } of packageResults) {
                 if (error !== undefined) {
-                    semanticDiffError = semanticDiffError ? `${semanticDiffError}\n${error}` : error;
+                    appendDiffError(error);
                     continue;
                 }
                 if (res) {
@@ -1125,8 +1128,11 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                     loadDesignDiagrams = loadDesignDiagrams || res.loadDesignDiagrams;
                     // Partial success: diffs are valid but the package failed to compile,
                     // so flow diagrams will likely be unavailable. Keep the diffs and
-                    // surface the reason as a warning.
-                    semanticDiffError = semanticDiffError ?? res.compilationError ?? undefined;
+                    // surface the reason as a warning — appended so no package's reason
+                    // is dropped.
+                    if (res.compilationError) {
+                        appendDiffError(res.compilationError);
+                    }
                 }
             }
 

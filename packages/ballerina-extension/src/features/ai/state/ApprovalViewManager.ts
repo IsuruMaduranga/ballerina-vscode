@@ -580,16 +580,19 @@ export class ApprovalViewManager {
             generation.checkpoint?.workspaceSnapshot
         );
 
-        // Without original content (no checkpoint — disabled or size-capped), the ai://
-        // baseline could not be re-established, so the "old" side of every diagram is
-        // gone. Surface that instead of silently degrading to New-only views.
+        // A skipped file's ai:// baseline could not be re-established (no checkpoint
+        // snapshot — disabled or size-capped — or the restore itself failed), so its "old"
+        // side is gone. Surface that instead of silently degrading to New-only views,
+        // whether every file was hit or only some.
         let semanticDiffError = review.reviewView.semanticDiffError;
-        if (restoredCount === 0 && skippedCount > 0) {
-            const restoreWarning =
-                'The original (pre-change) version of the files could not be restored after the window reload ' +
-                '(no checkpoint snapshot exists for this generation), so only the New view is available.';
+        if (skippedCount > 0) {
+            const restoreWarning = restoredCount === 0
+                ? 'The original (pre-change) version of the files could not be restored after the window ' +
+                  'reload, so only the New view is available.'
+                : `The original (pre-change) version of ${skippedCount} file(s) could not be restored after ` +
+                  'the window reload; those files show only the New view.';
             semanticDiffError = semanticDiffError ? `${semanticDiffError}\n${restoreWarning}` : restoreWarning;
-            console.error(`[ApprovalViewManager] Review restore had no original content for ${generationId} — ${skippedCount} file(s) skipped.`);
+            console.error(`[ApprovalViewManager] Review restore skipped ${skippedCount} file(s) for ${generationId} (${restoredCount} restored).`);
         }
 
         return {
