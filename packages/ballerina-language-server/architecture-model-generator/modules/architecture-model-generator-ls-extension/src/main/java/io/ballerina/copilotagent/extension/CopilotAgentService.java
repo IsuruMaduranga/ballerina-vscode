@@ -132,11 +132,13 @@ public class CopilotAgentService implements ExtendedLanguageServerService {
     }
 
     /**
-     * Warms the standalone module-package caches (see {@code PackageUtil}) for the package's
-     * direct dependencies. The flow-model generator resolves and compiles each dependency's
-     * standalone package the first time a diagram references it — a one-time-per-session cost
-     * of seconds that otherwise lands on the first review-diff click. Callers fire this in the
-     * background at generation start so the caches are hot by the time the review opens.
+     * Warms the standalone module-resolution cache (see {@code PackageUtil}) for the package's
+     * direct dependencies. The flow-model generator standalone-resolves each dependency the
+     * first time a diagram references it, and an unwarmed resolution costs Central round trips
+     * that otherwise land on the first review-diff click. Callers fire this in the background
+     * at generation start so the cache is hot by the time the review opens. Only the resolved
+     * bala path is cached — every consumer loads (and compiles) its own {@code Package}
+     * instance from that path, so there is nothing to usefully pre-compile here.
      */
     @JsonRequest
     public CompletableFuture<PrewarmDependenciesResponse> prewarmDependencies(PrewarmDependenciesRequest request) {
@@ -167,11 +169,11 @@ public class CopilotAgentService implements ExtendedLanguageServerService {
                             || descriptor.isBuiltInPackage()) {
                         continue;
                     }
+                    // Resolution is the expensive, cacheable part: the resolved bala path lands
+                    // in PackageUtil's shared resolution cache. The returned Package instance is
+                    // fresh per call and discarded, so pre-compiling it here would be wasted work.
                     PackageUtil.resolveModulePackage(descriptor.org().value(), descriptor.name().value(),
-                                    descriptor.version().value().toString())
-                            // The flow-model generator needs the dependency's own semantic model,
-                            // so pre-compile it too; memoized on the cached Package instance.
-                            .ifPresent(PackageUtil::getCompilation);
+                            descriptor.version().value().toString());
                     warmed++;
                 }
                 response.setWarmedDependencyCount(warmed);

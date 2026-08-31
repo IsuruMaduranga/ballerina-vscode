@@ -56,8 +56,9 @@ export async function captureWorkspaceSnapshot(messageId: string): Promise<Check
 
         // Read in bounded-concurrency chunks: one-at-a-time reads dominate run-start
         // latency on large workspaces, while unbounded Promise.all can exhaust file
-        // handles. Chunks keep fileList in findFiles order and let the size cap abort
-        // between chunks.
+        // handles. Hand-rolled rather than mapWithConcurrency because the size cap must
+        // be able to abort between batches, which that helper cannot express; chunks
+        // also keep fileList in findFiles order.
         const READ_CONCURRENCY = 32;
         for (let i = 0; i < allFiles.length; i += READ_CONCURRENCY) {
             const chunk = allFiles.slice(i, i + READ_CONCURRENCY);
