@@ -120,6 +120,26 @@ describe("grepDocs", () => {
 
         expect(grepDocs(dir, { pattern: "(a+)+$" })).toMatch(/^Rejected pattern/);
     });
+
+    it("rejects a quantified group whose alternatives share a first character", () => {
+        // Ambiguous alternation is exponential under repetition, but has no nested quantifier, so the
+        // star-height check above does not see it.
+        expect(isSafeGrepPattern("(a|aa)+$")).toBe(false);
+        expect(isSafeGrepPattern("(cat|car)+")).toBe(false);
+        expect(isSafeGrepPattern("((a|aa)b)+")).toBe(false);
+        expect(isSafeGrepPattern("(a|)+")).toBe(false);
+        expect(isSafeGrepPattern("(a|.)+")).toBe(false);
+        expect(isSafeGrepPattern("(a|\\d)+")).toBe(false);
+        expect(isSafeGrepPattern("(a|A)+")).toBe(false);
+
+        // Unrepeated ambiguity, and alternatives with distinct first characters, are linear.
+        expect(isSafeGrepPattern("(a|aa)")).toBe(true);
+        expect(isSafeGrepPattern("(get|post)+")).toBe(true);
+        expect(isSafeGrepPattern("(?:read|write){2,}")).toBe(true);
+        expect(isSafeGrepPattern("(ab|cd)+")).toBe(true);
+
+        expect(grepDocs(dir, { pattern: "(a|aa)+$" })).toMatch(/^Rejected pattern/);
+    });
 });
 
 describe("readDocs", () => {
