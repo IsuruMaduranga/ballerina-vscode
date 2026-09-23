@@ -26,7 +26,7 @@
  * pure mapping can be unit-tested without a DOM. The visualizer package's jsdom
  * environment is currently broken; tests here run under `--env=node`.
  */
-export const COMMAND_OUTPUT_TOOLS = new Set(["runBallerinaPackage", "runTests", "getServiceLogs", "stopBallerinaService", "shell"]);
+export const COMMAND_OUTPUT_TOOLS = new Set(["runBallerinaPackage", "runTests", "getServiceLogs", "stopBallerinaService", "shell", "powershell"]);
 
 // ── Tool icon mapping ─────────────────────────────────────────────────────────
 
@@ -47,6 +47,7 @@ const TOOL_ICON_MAP: Record<string, ToolIconEntry> = {
     getServiceLogs:                { loading: "codicon-output" },
     stopBallerinaService:          { loading: "codicon-debug-stop" },
     shell:                         { loading: "codicon-terminal" },
+    powershell:                    { loading: "codicon-terminal" },
     getCompilationErrors:          { loading: "codicon-pulse", done: "codicon-pass-filled" },
     TaskWrite:                     { loading: "codicon-checklist" },
     ConfigCollector:               { loading: "codicon-settings-gear" },
@@ -167,7 +168,8 @@ export function getToolCallDisplay(toolName: string | undefined, toolInput: any)
         case "runBallerinaPackage": return { label: `Running ${toolInput?.runType === "service" ? "service" : "program"}...` };
         case "getServiceLogs": return { label: "Fetching logs..." };
         case "stopBallerinaService": return { label: "Stopping service..." };
-        case "shell": return shellCallDisplay(toolInput);
+        case "shell":
+        case "powershell": return shellCallDisplay(toolInput);
         case "web_search": return { label: toolInput?.query ? "Searching the web:" : "Searching the web...", detail: toolInput?.query };
         case "web_fetch":  return { label: toolInput?.url ? "Fetching from web:" : "Fetching from web...", detail: toolInput?.url };
         case "invoke_skill": return { label: toolInput?.skillName ? `Loading skill: ${toolInput.skillName}` : "Loading skill..." };
@@ -238,7 +240,8 @@ export function getToolResultDisplay(toolName: string | undefined, toolOutput: a
             const status = toolOutput?.status ?? "running";
             return { label: status === "exited" ? "Service exited" : status === "not_found" ? "Service not found" : "Logs retrieved" };
         }
-        case "shell": {
+        case "shell":
+        case "powershell": {
             const what = shellWhat(toolOutput);
             switch (toolOutput?.status) {
                 case "blocked": return { label: "Command not run:", detail: what };

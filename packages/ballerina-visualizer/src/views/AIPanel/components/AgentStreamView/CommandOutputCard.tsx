@@ -97,6 +97,7 @@ const TOOL_TITLES: Record<string, string> = {
     getServiceLogs: "Service Logs",
     stopBallerinaService: "Stopping Service",
     shell: "Command",
+    powershell: "PowerShell command",
 };
 
 const TOOL_ICONS: Record<string, string> = {
@@ -105,6 +106,7 @@ const TOOL_ICONS: Record<string, string> = {
     getServiceLogs: "codicon-output",
     stopBallerinaService: "codicon-debug-stop",
     shell: "codicon-terminal",
+    powershell: "codicon-terminal",
 };
 
 function getStatus(isResult: boolean, toolName: string | undefined, toolOutput: any): "running" | "success" | "error" {
@@ -117,7 +119,7 @@ function getStatus(isResult: boolean, toolName: string | undefined, toolOutput: 
         if (s === "error") return "error";
         return "success";
     }
-    if (toolName === "shell") return s === "completed" || s === "background" ? "success" : "error";
+    if (toolName === "shell" || toolName === "powershell") return s === "completed" || s === "background" ? "success" : "error";
     if (s === "completed" || s === "started" || s === "stopped" || s === "already_exited" || s === "running") return "success";
     return "error";
 }
@@ -157,7 +159,7 @@ function getStatusLabel(isResult: boolean, toolName: string | undefined, toolOut
         if (s === "timeout") return "Timed out";
         return "Failed";
     }
-    if (toolName === "shell") {
+    if (toolName === "shell" || toolName === "powershell") {
         return shellStatusLabel(toolOutput);
     }
     if (toolName === "runTests") {
@@ -189,7 +191,7 @@ const CommandOutputCard: React.FC<CommandOutputCardProps> = ({ toolName, toolInp
     const [expanded, setExpanded] = useState(false);
     const prevStatusRef = useRef<string | undefined>(undefined);
 
-    const shellDescription = toolName === "shell" ? (toolOutput?.description ?? toolInput?.description) : undefined;
+    const shellDescription = toolName === "shell" || toolName === "powershell" ? (toolOutput?.description ?? toolInput?.description) : undefined;
     const title = shellDescription || (TOOL_TITLES[toolName ?? ""] ?? "Command");
     const iconClass = TOOL_ICONS[toolName ?? ""] ?? "codicon-terminal";
     const command = toolOutput?.command ?? toolInput?.command;

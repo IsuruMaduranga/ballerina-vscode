@@ -43,6 +43,8 @@ import { classifyShellCommand, shellKindOf } from '../auto-mode/shell-classify';
 import type { TranscriptEntry } from '../auto-mode/transcript';
 import type { ShellRunSetup } from '../shell/shell-session';
 import { SHELL_TOOL_NAME } from '../shell/bash-description';
+import { POWERSHELL_TOOL_NAME } from '../shell/powershell-description';
+import { powerShellEdition, powerShellSpawn } from '../shell/shell-spawn';
 
 /** Per-thread pause trackers and user denials, in memory for as long as the extension host runs. */
 const pauseTrackers = new Map<string, PauseTracker>();
@@ -102,7 +104,10 @@ export interface ShellAuthorizerOptions {
 /** The `authorize` callback of the shell tool. */
 export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
     const { shell, mode, eventHandler, runKey, projectRootPath, threadId } = opts;
-    const config = loadAutoModeConfig(shell.home, defaultEnvironment(shellKindOf('shell')));
+    const tool = shell.tool;
+    const toolName = tool === 'powershell' ? POWERSHELL_TOOL_NAME : SHELL_TOOL_NAME;
+    const edition = tool === 'powershell' ? powerShellEdition(powerShellSpawn()) : undefined;
+    const config = loadAutoModeConfig(shell.home, defaultEnvironment(shellKindOf(tool, edition)));
     if (config.diagnostics.length > 0) {
         console.warn(`[ShellTool] ~/.ballerina/copilot/auto-mode.json: ${config.diagnostics.join('; ')}`);
     }
@@ -120,11 +125,12 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                 readableRoots: shell.readableRoots,
                 writableRoots: shell.writableRoots,
                 sessionRules: sessionRuleStore.get(runKey),
+                shell: tool === 'powershell' ? 'powershell' : 'bash',
             },
             mode,
             {
                 ask: (prompt) => approvalManager.requestShellApproval(`shell-${uuidv4()}`, {
-                    toolName: SHELL_TOOL_NAME,
+                    toolName,
                     command: prompt.command,
                     description,
                     reasons: prompt.reasons,
@@ -136,7 +142,7 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                     classify: (subject) => classifyShellCommand(
                         {
                             command: subject,
-                            tool: 'shell',
+                            tool,
                             cwd: shell.cwd,
                             generations: projectRootPath ? chatStateStorage.getGenerations(projectRootPath, threadId) : [],
                             denials: userDenials.get(runKey) ?? [],
@@ -151,11 +157,11 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                 },
                 onDecision: (record) => {
                     if (!logFile) { return; }
-                    appendDecision(logFile, decisionEntry({ ...record, tool: SHELL_TOOL_NAME, subject: command, sessionId: threadId, model: record.source === 'classifier' ? ANTHROPIC_SONNET : undefined }));
+                    appendDecision(logFile, decisionEntry({ ...record, tool: toolName, subject: command, sessionId: threadId, model: record.source === 'classifier' ? ANTHROPIC_SONNET : undefined }));
                 },
                 onUserDenied: (subject) => {
                     const list = userDenials.get(runKey) ?? [];
-                    list.push({ kind: 'denied', tool: SHELL_TOOL_NAME, subject, rule: 'declined by the user at the approval prompt' });
+                    list.push({ kind: 'denied', tool, subject, rule: 'declined by the user at the approval prompt' });
                     userDenials.set(runKey, list.slice(-50));
                 },
             },

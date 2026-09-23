@@ -41,6 +41,7 @@
 
 import { existsSync } from "fs";
 import { join } from "path";
+import { powershellStatements, powershellWords, statementCommand } from "./powershell-rules";
 import { hasUnmodelledSyntax, leadTokens, parseCommand, resolvePayload, type Segment, type ShellEvidence } from "./shell-analysis";
 
 export interface SessionRule {
@@ -215,4 +216,41 @@ export function matchSessionRule(rules: readonly SessionRule[], command: string,
 /** Add a rule unless an identical one is already there. Returns the new list. */
 export function addSessionRule(rules: readonly SessionRule[], rule: SessionRule): SessionRule[] {
     return rules.some((existing) => existing.kind === rule.kind && existing.command === rule.command) ? [...rules] : [...rules, rule];
+}
+
+// ---------------------------------------------------------------------------
+// PowerShell (Phase B2)
+
+/**
+ * Cmdlets that delete, stop, overwrite state or run other code; no session
+ * rule is offered for a line containing one, however it is aliased.
+ */
+const DESTRUCTIVE_CMDLETS = new Set([
+    "remove-item", "remove-itemproperty", "clear-content", "clear-item", "clear-recyclebin", "stop-process", "stop-service",
+    "stop-computer", "restart-computer", "format-volume", "clear-disk", "set-executionpolicy", "invoke-expression",
+    "invoke-command", "start-process", "start-job", "new-service", "register-scheduledtask", "set-mppreference", "add-mppreference",
+]);
+
+/**
+ * The session rule offered for a PowerShell command: the exact line, or none
+ * for a destructive or unparseable one. Prefix rules would need Claude Code's
+ * alias-canonicalized per-statement matching, which is not ported yet.
+ */
+export function suggestPowerShellSessionRule(command: string): SessionRuleGrant | undefined {
+    const trimmed = command.trim();
+    const statements = trimmed ? powershellStatements(trimmed) : undefined;
+    if (!statements || statements.length === 0) { return undefined; }
+    for (const statement of statements) {
+        const cmd = statementCommand(statement);
+        if (DESTRUCTIVE_CMDLETS.has(cmd)) { return undefined; }
+        const words = powershellWords(statement) ?? statement.split(/\s+/);
+        if (isDestructive([cmd, ...words.slice(1)])) { return undefined; }
+    }
+    return { rule: { kind: "exact", command: trimmed }, label: "Allow this exact command for this session" };
+}
+
+/** A PowerShell command is covered only by an exact rule for the identical line. */
+export function matchPowerShellSessionRule(rules: readonly SessionRule[], command: string): SessionRule | undefined {
+    const trimmed = command.trim();
+    return trimmed ? rules.find((rule) => rule.kind === "exact" && rule.command === trimmed) : undefined;
 }

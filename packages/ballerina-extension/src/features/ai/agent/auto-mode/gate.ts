@@ -39,8 +39,17 @@
 import type { ClassifyVerdict } from "./prompt";
 import type { PauseTracker } from "./pause";
 import { checkRecoverability } from "./recoverability";
-import { bashFloorReason } from "./safety-floor";
-import { addSessionRule, matchSessionRule, suggestSessionRule, type SessionRule, type SessionRuleGrant } from "./session-rules";
+import { powershellReadOnly } from "./powershell-rules";
+import { bashFloorReason, powershellFloorReason } from "./safety-floor";
+import {
+    addSessionRule,
+    matchPowerShellSessionRule,
+    matchSessionRule,
+    suggestPowerShellSessionRule,
+    suggestSessionRule,
+    type SessionRule,
+    type SessionRuleGrant,
+} from "./session-rules";
 import { analyzeShellCommand, type ShellEvidence } from "./shell-analysis";
 
 export type { SessionRule, SessionRuleGrant };
@@ -62,7 +71,7 @@ export type ShellAuthorization =
 
 /** Whether a cleared command may still change workspace files: only a pre-gate read with no write target cannot. */
 function mayWrite(decision: ShellGateDecision): boolean {
-    return !(decision.outcome === "allow" && decision.layer === "pre-gate" && decision.evidence.writes.length === 0);
+    return !(decision.outcome === "allow" && decision.layer === "pre-gate" && (decision.evidence?.writes.length ?? 0) === 0);
 }
 
 export interface ShellGateInput {
@@ -78,14 +87,41 @@ export interface ShellGateInput {
     sessionRules: readonly SessionRule[];
     /** The system temp directory holding the review baselines (floor target); `os.tmpdir()` when absent. */
     tmpDir?: string;
+    /** Which shell the command is for; bash when absent. */
+    shell?: "bash" | "powershell";
 }
 
+/** `evidence` is the bash pre-gate's analysis; a PowerShell decision has none. */
 export type ShellGateDecision =
-    | { outcome: "allow"; layer: "pre-gate" | "recoverability" | "session-rule"; reason?: string; evidence: ShellEvidence }
-    | { outcome: "ask"; reasons: string[]; grant?: SessionRuleGrant; floor?: true; evidence: ShellEvidence };
+    | { outcome: "allow"; layer: "pre-gate" | "recoverability" | "session-rule"; reason?: string; evidence?: ShellEvidence }
+    | { outcome: "ask"; reasons: string[]; grant?: SessionRuleGrant; floor?: true; evidence?: ShellEvidence };
 
-/** Decide one bash command without asking anyone or calling a model. */
+/**
+ * Decide one PowerShell command (design §6): the textual floor, then the
+ * read-only allowlist as the only pre-gate. There is no containment fast path
+ * and no recoverability judge, so an in-workspace `Remove-Item` is judged,
+ * never cleared deterministically.
+ */
+function decidePowerShellCommand(input: ShellGateInput): ShellGateDecision {
+    const { command, cwd, home, readableRoots, sessionRules, tmpDir } = input;
+    const floor = powershellFloorReason(command, { cwd, home, tmpDir });
+    if (floor) {
+        return { outcome: "ask", reasons: [`The command is always shown to you because ${floor}.`], floor: true };
+    }
+    const verdict = powershellReadOnly(command, { cwd, home, readableRoots });
+    if (verdict.readOnly) {
+        return { outcome: "allow", layer: "pre-gate" };
+    }
+    const rule = matchPowerShellSessionRule(sessionRules, command);
+    if (rule) {
+        return { outcome: "allow", layer: "session-rule", reason: `exact rule \`${rule.command}\`` };
+    }
+    return { outcome: "ask", reasons: [verdict.reason ? `not a read-only command: ${verdict.reason}` : "not a read-only command"], grant: suggestPowerShellSessionRule(command) };
+}
+
+/** Decide one command without asking anyone or calling a model. */
 export function decideShellCommand(input: ShellGateInput): ShellGateDecision {
+    if (input.shell === "powershell") { return decidePowerShellCommand(input); }
     const { command, cwd, home, readableRoots, writableRoots, sessionRules, tmpDir } = input;
     const evidence = analyzeShellCommand({ command, cwd, home, readableRoots, writableRoots });
     const floor = bashFloorReason(command, { cwd, home, tmpDir });
@@ -217,7 +253,7 @@ export async function authorizeShellCommand(input: ShellGateInput, mode: ShellMo
             if (verdict.tier === "timeout") {
                 return { allowed: false, text: classifierTimeoutText(verdict), by: "timeout" };
             }
-            auto.pause.recordBlock({ toolName: "shell", subject: input.command, reason: verdict.reason, tier: verdict.tier, ruleId: verdict.ruleId, raw: verdict.raw });
+            auto.pause.recordBlock({ toolName: input.shell === "powershell" ? "powershell" : "shell", subject: input.command, reason: verdict.reason, tier: verdict.tier, ruleId: verdict.ruleId, raw: verdict.raw });
             return { allowed: false, text: classifierBlockedText(verdict), by: "classifier", rule: verdict.ruleId ?? verdict.reason };
         }
         // Paused: this is the resume prompt, not a per-action approval.

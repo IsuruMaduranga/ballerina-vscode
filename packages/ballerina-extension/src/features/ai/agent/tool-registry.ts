@@ -43,7 +43,7 @@ import { createSubagentTool } from './tools/subagent-tool';
 import { createKillTaskTool, createTaskOutputTool } from './tools/task-tools';
 import { buildRunKey, KILL_TASK_TOOL_NAME, SUBAGENT_TOOL_NAME, SubagentRunContext, TASK_OUTPUT_TOOL_NAME } from './subagents/types';
 import { withBackgroundNotifications } from './background/registry';
-import { createShellTool, SHELL_TOOL_NAME } from './tools/shell-tool';
+import { createShellTool, POWERSHELL_TOOL_NAME, SHELL_TOOL_NAME } from './tools/shell-tool';
 import { createShellAuthorizer } from './tools/shell-authorizer';
 import type { ShellRunSetup } from './shell/shell-session';
 import { registerShellTouchedFiles } from './tools/shell-touched-files';
@@ -108,6 +108,7 @@ export interface ToolRegistryOptions {
  */
 function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, runKey: string, threadId: string) {
     return createShellTool({
+        kind: shell.tool,
         eventHandler: opts.eventHandler,
         cwd: shell.cwd,
         runKey,
@@ -250,7 +251,7 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
         [CLARIFY_TOOL]: createClarifyTool(eventHandler),
         [SKILL_TOOL_NAME]: createSkillTool(REGISTERED_SKILLS, projectRootPath, eventHandler),
         [TOOL_SEARCH_TOOL_NAME]: createToolSearchTool(() => deferredCatalog(), eventHandler),
-        ...(opts.shell ? { [SHELL_TOOL_NAME]: createGatedShellTool(opts, opts.shell, subagentCtx.runKey, resolvedThreadId) } : {}),
+        ...(opts.shell ? { [opts.shell.tool === 'powershell' ? POWERSHELL_TOOL_NAME : SHELL_TOOL_NAME]: createGatedShellTool(opts, opts.shell, subagentCtx.runKey, resolvedThreadId) } : {}),
         // TODO(auto-memory): memory tools temporarily disabled for this release — restore once the memory feature is refined.
         // // Memory tools — registered only when auto-memory is enabled and a workspace root is known
         // ...(autoMemoryEnabled && projectRootPath ? {

@@ -23,10 +23,15 @@ import { bashGuardReason } from '../shell/guards';
 import { tailCap } from '../shell/output';
 import { finishLine } from '../shell/runner';
 import { runShellCall, type ShellCallParams } from '../shell/shell-call';
-import { bashSpawn } from '../shell/shell-spawn';
+import { bashSpawn, powerShellEdition, powerShellSpawn, withPowerShellUtf8 } from '../shell/shell-spawn';
+import { POWERSHELL_TOOL_NAME, powershellToolDescription } from '../shell/powershell-description';
+import { powershellGuardReason } from '../shell/powershell-guards';
 import { diffSnapshots, hasTouchedFiles, snapshotWorkspace, type TouchedFiles } from '../shell/touched-files';
 
-export { SHELL_TOOL_NAME };
+export { SHELL_TOOL_NAME, POWERSHELL_TOOL_NAME };
+
+/** The shell tool a platform gets (`shell/shell-policy.ts`). */
+export type ShellToolKindName = "shell" | "powershell";
 
 /** How much output the tool row carries to the UI. */
 const UI_OUTPUT_CAP = 2_000;
@@ -40,6 +45,8 @@ const ShellInputSchema = z.object({
 
 
 export interface ShellToolOptions {
+    /** bash (`shell`, macOS / Linux) or PowerShell (`powershell`, Windows); bash when absent. */
+    kind?: ShellToolKindName;
     eventHandler: CopilotEventHandler;
     /** The workspace root: every command runs here. */
     cwd: string;
@@ -53,22 +60,39 @@ export interface ShellToolOptions {
     onFilesTouched?: (touched: TouchedFiles) => Promise<void>;
 }
 
-/** The bash `shell` tool (macOS and Linux). */
+/** What differs between the two shell tools; the body is shared (`shell/shell-call.ts`). */
+function shellFlavour(kind: ShellToolKindName) {
+    if (kind === "powershell") {
+        const spawn = powerShellSpawn();
+        return {
+            name: POWERSHELL_TOOL_NAME,
+            label: "PowerShell",
+            description: powershellToolDescription(powerShellEdition(spawn)),
+            spawn,
+            guard: powershellGuardReason,
+            wrapCommand: withPowerShellUtf8,
+        };
+    }
+    return { name: SHELL_TOOL_NAME, label: "Bash", description: bashToolDescription(), spawn: bashSpawn(), guard: bashGuardReason, wrapCommand: undefined };
+}
+
+/** The shell tool: bash `shell` on macOS and Linux, `powershell` on Windows. */
 export function createShellTool(opts: ShellToolOptions) {
+    const flavour = shellFlavour(opts.kind ?? "shell");
     return tool({
-        description: bashToolDescription(),
+        description: flavour.description,
         inputSchema: ShellInputSchema,
         execute: async (input: ShellCallParams, context?: { toolCallId?: string; abortSignal?: AbortSignal }): Promise<string> => {
             const toolCallId = context?.toolCallId || `fallback-${Date.now()}`;
             const background = input.run_in_background === true;
             opts.eventHandler({
                 type: "tool_call",
-                toolName: SHELL_TOOL_NAME,
+                toolName: flavour.name,
                 toolCallId,
                 toolInput: { command: input.command, description: input.description, run_in_background: background },
             });
             const emitResult = (status: "completed" | "error" | "blocked" | "background", toolOutput: Record<string, unknown>) =>
-                opts.eventHandler({ type: "tool_result", toolName: SHELL_TOOL_NAME, toolCallId, toolOutput: { status, command: input.command, description: input.description, ...toolOutput } });
+                opts.eventHandler({ type: "tool_result", toolName: flavour.name, toolCallId, toolOutput: { status, command: input.command, description: input.description, ...toolOutput } });
 
             const authorization = await opts.authorize({ command: input.command, description: input.description, toolCallId, abortSignal: context?.abortSignal });
             if (authorization.allowed === false) {
@@ -90,10 +114,11 @@ export function createShellTool(opts: ShellToolOptions) {
             };
 
             const result = await runShellCall(input, {
-                toolName: SHELL_TOOL_NAME,
-                label: "Bash",
-                spawn: bashSpawn(),
-                guard: bashGuardReason,
+                toolName: flavour.name,
+                label: flavour.label,
+                spawn: flavour.spawn,
+                guard: flavour.guard,
+                wrapCommand: flavour.wrapCommand,
                 cwd: opts.cwd,
                 runKey: opts.runKey,
                 toolCallId,

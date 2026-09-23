@@ -77,7 +77,8 @@ export function describeToolCall(toolName: string, toolInput?: any): string {
         }
         case 'kill_task':
             return 'Stopping a background task';
-        case 'shell': {
+        case 'shell':
+        case 'powershell': {
             const what = typeof toolInput?.description === 'string' && toolInput.description.trim() ? toolInput.description.trim() : '';
             return what ? `Running: ${what}` : 'Running a command';
         }

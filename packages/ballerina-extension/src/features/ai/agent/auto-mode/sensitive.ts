@@ -94,6 +94,22 @@ const SENSITIVE_BASENAMES = new Set([
 ]);
 
 /**
+ * Windows roots (design §7 restriction 4, BI): the Windows directory, and the
+ * per-user AppData trees where credential stores, browser profiles and tool
+ * tokens live. `AppData\Local\Temp` is carved out: it is `%TEMP%`, which
+ * holds the thread's scratchpad, and a rule covering it would send every
+ * scratchpad write to the classifier.
+ */
+function isSensitiveWindowsPath(folded: string, segments: string[]): boolean {
+    if (/^[a-z]:\/windows(\/|$)/.test(folded)) return true;
+    const appData = segments.indexOf("appdata");
+    if (appData < 0) return false;
+    const next = segments[appData + 1];
+    if (next === "roaming" || next === "locallow") return true;
+    return next === "local" && segments[appData + 2] !== undefined && segments[appData + 2] !== "temp";
+}
+
+/**
  * Filesystem roots that expose process state — `/proc/self/environ` hands over
  * every environment variable, which defeats any path-based secret protection
  * (review finding N23). Anything under these is sensitive regardless of name.
@@ -138,6 +154,7 @@ export function isSensitivePath(candidate: string): boolean {
             if (segments[i] === first && segments[i + 1] === second) return true;
         }
     }
+    if (isSensitiveWindowsPath(folded, segments)) return true;
 
     return isSensitiveBasename(basename(folded));
 }
