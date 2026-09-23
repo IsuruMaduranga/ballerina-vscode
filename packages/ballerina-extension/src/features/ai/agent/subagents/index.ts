@@ -16,7 +16,8 @@
 export * from "./types";
 export * from "./definitions";
 export { runSubagent } from "./runner";
-export * from "./background";
+export * from "../background/types";
+export * from "../background/registry";
 export * from "./store";
 export * from "./messages";
 export * from "./report";

@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 import { ModelMessage } from "ai";
-import { randomUUID } from "crypto";
+import { generateTaskId } from "../background/types";
 import type { CopilotEventHandler, ToolModelUsage } from "../../utils/events";
 import type { GenerationType } from "../../utils/libs/libraries";
 
@@ -27,12 +27,11 @@ export type SubagentType = typeof SUBAGENT_TYPES[number];
 
 export type SubagentModel = "sonnet" | "haiku";
 
-/** Task ids share one namespace with a future shell tool, as in the MI Copilot. */
+/** Task ids share one namespace with the shell tool's background runs (background/types.ts `generateTaskId`). */
 export const SUBAGENT_ID_PREFIX = "task-subagent-";
 
 export function generateSubagentId(): string {
-    // Node's crypto rather than the `uuid` package: uuid@14 ships ESM only, which Jest cannot load.
-    return `${SUBAGENT_ID_PREFIX}${randomUUID().split("-")[0]}`;
+    return generateTaskId("subagent");
 }
 
 export function isSubagentId(value: string): boolean {
@@ -64,31 +63,6 @@ export interface SubagentMetadata {
     subagentType: SubagentType;
     description: string;
     createdAt: string;
-}
-
-export interface BackgroundSubagent {
-    id: string;
-    subagentType: SubagentType;
-    description: string;
-    runKey: string;
-    /** The Subagent tool call that started it; the completion `tool_result` reuses it. */
-    toolCallId: string;
-    startTime: Date;
-    completedAt?: Date;
-    output: string;
-    completed: boolean;
-    success: boolean | null;
-    aborted: boolean;
-    abortController: AbortController;
-    /** True once the completion has reached the main agent (drain reminder or task_output). */
-    notified: boolean;
-    /**
-     * Set by run-end cleanup. The task's own completion/abort settles later, in a turn that may already
-     * belong to another run, so the starter reports the abort synchronously through `onRunEnd` and
-     * ignores the late settlement.
-     */
-    runEnded?: boolean;
-    onRunEnd?: () => void;
 }
 
 export function buildRunKey(projectRootPath: string, threadId: string): string {

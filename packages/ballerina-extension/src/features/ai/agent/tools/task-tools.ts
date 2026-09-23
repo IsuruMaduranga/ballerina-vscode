@@ -15,62 +15,85 @@
 // under the License.
 /**
  * `task_output` and `kill_task` — the background-task half of the MI Copilot's task workflow, for
- * subagents only (there is no shell tool yet; the id namespace is shared so one can be added).
+ * background subagents and background shell commands alike (one id namespace, one registry:
+ * `background/registry.ts`).
  *
  * `task_output` with block=true is the wait-and-wake point: the main agent's step blocks inside this call,
- * the UI shows a waiting row, and the promise resolves the moment the subagent finishes.
+ * the UI shows a waiting row, and the promise resolves the moment the task finishes.
  */
 
 import { tool } from "ai";
 import { z } from "zod";
 import { CopilotEventHandler } from "../../utils/events";
 import { KILL_TASK_TOOL_NAME, TASK_OUTPUT_TOOL_NAME } from "../subagents/types";
-import { getBackgroundSubagent, removeBackgroundSubagent } from "../subagents/background";
+import { getBackgroundTask, NOTIFY_OUTPUT_CAP, removeBackgroundTask, terminatedOutput } from "../background/registry";
+import type { BackgroundTask } from "../background/types";
 
 export const TASK_OUTPUT_DEFAULT_BLOCK_MS = 120_000;
 export const TASK_OUTPUT_MAX_BLOCK_MS = 600_000;
 const POLL_INTERVAL_MS = 500;
 
+/** The kind-specific fields of a task, for the UI's tool row. */
+function taskLabel(task: BackgroundTask | undefined): Record<string, unknown> {
+    if (!task) { return {}; }
+    return task.kind === "subagent"
+        ? { description: task.description, subagent_type: task.subagentType }
+        : { description: task.description, command: task.command, kind: "shell" };
+}
+
+/** A failed shell task names why (`exit code 2`, `timed out after 120s`); a subagent's report says it. */
+function failureDetail(task: BackgroundTask): string {
+    if (task.kind !== "shell") { return ""; }
+    const detail = task.finishDetail ?? (task.exitCode !== null && task.exitCode !== undefined ? `exit code ${task.exitCode}` : undefined);
+    return detail ? ` (${detail})` : "";
+}
+
 /**
- * `runKey` is the run that owns the tools. Background tasks are run-scoped (`cleanupRunningBackgroundSubagents`),
+ * `runKey` is the run that owns the tools. Background tasks are run-scoped (`cleanupRunningBackgroundTasks`),
  * so a task id from another run must read as not found — otherwise a stale id in a resumed thread could reach
  * a task another turn started.
  */
 export function createTaskOutputTool(eventHandler: CopilotEventHandler, runKey: string) {
     return tool({
-        description: `Get the result of a background subagent by task id. block=true (default) waits until it completes — use this when you have no other work to do; you are woken as soon as the report is ready. block=false returns the current status immediately. Not for foreground runs (their report was returned inline).`,
+        description: `Get the result of a background task (a subagent or a shell command started with run_in_background) by task id. block=true (default) waits until it completes — use this when you have no other work to do; you are woken as soon as it finishes. block=false returns the current status immediately, with a running shell command's output so far. Not for foreground runs (their result was returned inline).`,
         inputSchema: z.object({
-            task_id: z.string().describe("The task id returned by Subagent with run_in_background=true."),
+            task_id: z.string().describe("The task id returned by the tool that started the background task."),
             block: z.boolean().optional().describe("Wait for completion (default true)."),
             timeout: z.number().int().optional().describe(`Maximum wait in milliseconds when block=true (default ${TASK_OUTPUT_DEFAULT_BLOCK_MS}, max ${TASK_OUTPUT_MAX_BLOCK_MS}).`),
         }),
         execute: async ({ task_id, block = true, timeout = TASK_OUTPUT_DEFAULT_BLOCK_MS }, options?: { toolCallId?: string; abortSignal?: AbortSignal }) => {
             const toolCallId = options?.toolCallId ?? `fallback-${Date.now()}`;
-            const found = getBackgroundSubagent(task_id);
+            const found = getBackgroundTask(task_id);
             const task = found && found.runKey === runKey ? found : undefined;
             eventHandler({
                 type: "tool_call",
                 toolName: TASK_OUTPUT_TOOL_NAME,
-                toolInput: { task_id, block, description: task?.description, subagent_type: task?.subagentType },
+                toolInput: { task_id, block, ...taskLabel(task) },
                 toolCallId,
             });
 
             if (!task) {
                 eventHandler({ type: "tool_result", toolName: TASK_OUTPUT_TOOL_NAME, toolOutput: { task_id, status: "not_found" }, toolCallId, failed: true });
-                return `Task not found: ${task_id}. No background task with that id exists — it may have completed and been cleaned up, or it was a foreground run whose report was already returned.`;
+                return `Task not found: ${task_id}. No background task with that id exists — it may have completed and been cleaned up, or it was a foreground run whose result was already returned.`;
             }
 
             const finish = (status: "completed" | "running" | "aborted" | "failed", waitedMs = 0): string => {
                 eventHandler({ type: "tool_result", toolName: TASK_OUTPUT_TOOL_NAME, toolOutput: { task_id, status, description: task.description }, toolCallId, failed: status === "failed" });
                 if (status === "running") {
                     const waited = waitedMs > 0 ? ` after ${Math.round(waitedMs / 1000)}s` : "";
-                    return `Task ${task_id} ("${task.description}") is still running${waited}. Call ${TASK_OUTPUT_TOOL_NAME} again to keep waiting, or ${KILL_TASK_TOOL_NAME} to stop it.`;
+                    const soFar = task.kind === "shell" ? task.peek() : "";
+                    const interim = soFar
+                        ? `\n\nOutput so far:\n${soFar.length <= NOTIFY_OUTPUT_CAP ? soFar : `… (earlier output truncated)\n${soFar.slice(-NOTIFY_OUTPUT_CAP)}`}`
+                        : "";
+                    return `Task ${task_id} ("${task.description}") is still running${waited}. Call ${TASK_OUTPUT_TOOL_NAME} again to keep waiting, or ${KILL_TASK_TOOL_NAME} to stop it.${interim}`;
                 }
+                // The model now has the result: the completion reminder for it is withdrawn.
                 task.notified = true;
                 const header = status === "completed"
                     ? `Task ${task_id} ("${task.description}") completed.`
-                    : `Task ${task_id} ("${task.description}") ${status === "aborted" ? "was aborted" : "failed"}.`;
-                return `${header}\n\n${task.output}`;
+                    : `Task ${task_id} ("${task.description}") ${status === "aborted" ? "was aborted" : `failed${failureDetail(task)}`}.`;
+                const logLine = task.kind === "shell" && task.logPath ? `\nFull output: ${task.logPath}` : "";
+                return `${header}${logLine}\n\n${task.output}`;
             };
 
             const statusOf = (): "completed" | "aborted" | "failed" => task.aborted ? "aborted" : task.success ? "completed" : "failed";
@@ -100,22 +123,22 @@ export function createTaskOutputTool(eventHandler: CopilotEventHandler, runKey: 
 
 export function createKillTaskTool(eventHandler: CopilotEventHandler, runKey: string) {
     return tool({
-        description: "Terminate a running background subagent by task id.",
+        description: "Terminate a running background task (a subagent or a shell command) by task id.",
         inputSchema: z.object({
             task_id: z.string().describe("The task id to terminate."),
         }),
         execute: async ({ task_id }, options?: { toolCallId?: string }) => {
             const toolCallId = options?.toolCallId ?? `fallback-${Date.now()}`;
-            const found = getBackgroundSubagent(task_id);
+            const found = getBackgroundTask(task_id);
             const task = found && found.runKey === runKey ? found : undefined;
-            eventHandler({ type: "tool_call", toolName: KILL_TASK_TOOL_NAME, toolInput: { task_id, description: task?.description }, toolCallId });
+            eventHandler({ type: "tool_call", toolName: KILL_TASK_TOOL_NAME, toolInput: { task_id, ...taskLabel(task) }, toolCallId });
             if (!task) {
                 eventHandler({ type: "tool_result", toolName: KILL_TASK_TOOL_NAME, toolOutput: { task_id, status: "not_found" }, toolCallId, failed: true });
                 return `Task not found: ${task_id}.`;
             }
             if (task.completed) {
                 task.notified = true;
-                removeBackgroundSubagent(task_id);
+                removeBackgroundTask(task_id);
                 eventHandler({ type: "tool_result", toolName: KILL_TASK_TOOL_NAME, toolOutput: { task_id, status: "already_completed" }, toolCallId });
                 return `Task ${task_id} had already completed; its result is discarded.`;
             }
@@ -124,9 +147,9 @@ export function createKillTaskTool(eventHandler: CopilotEventHandler, runKey: st
             task.success = false;
             task.completedAt = new Date();
             task.notified = true;
-            task.output = `Subagent ${task_id} was terminated by request.`;
+            task.output = terminatedOutput(task, "by request");
             task.abortController.abort();
-            removeBackgroundSubagent(task_id);
+            removeBackgroundTask(task_id);
             eventHandler({ type: "tool_result", toolName: KILL_TASK_TOOL_NAME, toolOutput: { task_id, status: "killed" }, toolCallId });
             return `Task ${task_id} ("${task.description}") terminated.`;
         },

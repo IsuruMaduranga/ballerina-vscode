@@ -33,12 +33,12 @@ import {
     SubagentNotFoundError,
 } from "../features/ai/agent/subagents/store";
 import { markForegroundRun, validateResume } from "../features/ai/agent/subagents/resume";
-import { registerBackgroundSubagent, resetBackgroundSubagentsForTests } from "../features/ai/agent/subagents/background";
+import { registerBackgroundTask, resetBackgroundTasksForTests } from "../features/ai/agent/background/registry";
 import { generateSubagentId, isSubagentId } from "../features/ai/agent/subagents/types";
 
 let threadDir: string;
-beforeEach(() => { threadDir = fs.mkdtempSync(path.join(os.tmpdir(), "subagent-store-")); resetBackgroundSubagentsForTests(); });
-afterEach(() => { fs.rmSync(threadDir, { recursive: true, force: true }); resetBackgroundSubagentsForTests(); });
+beforeEach(() => { threadDir = fs.mkdtempSync(path.join(os.tmpdir(), "subagent-store-")); resetBackgroundTasksForTests(); });
+afterEach(() => { fs.rmSync(threadDir, { recursive: true, force: true }); resetBackgroundTasksForTests(); });
 
 describe("ids", () => {
     it("generates task-subagent-<8 hex> ids", () => {
@@ -162,8 +162,8 @@ describe("validateResume", () => {
 
     it("rejects a task that is still running in the background", () => {
         const id = generateSubagentId();
-        registerBackgroundSubagent({
-            id, subagentType: "Librarian", description: "bg", runKey: "r", toolCallId: "c", startTime: new Date(),
+        registerBackgroundTask({
+            kind: "subagent", id, subagentType: "Librarian", description: "bg", runKey: "r", toolCallId: "c", startTime: new Date(),
             output: "", completed: false, success: null, aborted: false, abortController: new AbortController(), notified: false,
         });
         const v = validateResume(threadDir, id, "Librarian");

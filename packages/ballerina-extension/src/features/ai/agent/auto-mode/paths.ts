@@ -1,0 +1,137 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com/) All Rights Reserved.
+
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+
+// http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations
+// under the License.
+/**
+ * Path resolution and containment for the shell pre-gate (pure apart from fs
+ * reads). Ported from pincer-agent `extensions/auto-mode/paths.ts` (tip
+ * `5059966`); only `WRITING_TOOLS` names BI's tools.
+ *
+ * Two fixes over the sandbox this derives from:
+ *
+ * 1. **The symlink leaf is inspected** (review finding N9). The original's
+ *    ENOENT fallback joined literal basenames onto the nearest resolved
+ *    ancestor without ever lstat-ing the leaf, so `ln -s /outside/x link`
+ *    followed by `echo hi > link` resolved to `<project>/link` — inside the
+ *    project — while bash wrote through the symlink to `/outside/x`.
+ * 2. **Resolution failure is reported, not swallowed.** The original returned a
+ *    best-effort path on failure, so the caller could not tell a real
+ *    containment pass from a guess. Here an unresolvable path is `undefined`
+ *    and every caller treats that as "not provably contained".
+ */
+
+import { lstatSync, readlinkSync } from "fs";
+import { basename, dirname, isAbsolute, join, resolve } from "path";
+import { comparablePath, expandTilde, gitBashPathToNative, isPathAtOrUnder, tryRealpath } from "./shared-paths";
+
+/**
+ * Tools whose calls write to a path. Lives here — the lowest shared layer both
+ * the shell safety floor and the permission gate import — so the two write-gates
+ * share one source of truth for "which tools write". The names are
+ * `tools/text-editor.ts`'s `FILE_WRITE_TOOL_NAME` / `FILE_SINGLE_EDIT_TOOL_NAME`
+ * / `FILE_BATCH_EDIT_TOOL_NAME`, spelled out because importing that module
+ * would pull `vscode` into this leaf.
+ */
+export const WRITING_TOOLS = new Set(["file_write", "file_edit", "file_batch_edit"]);
+
+export function isWritingTool(toolName: string): boolean {
+    return WRITING_TOOLS.has(toolName);
+}
+
+/**
+ * The path a file tool call targets (`file_path` for BI's file tools; `path`
+ * and `notebook_path` kept from the pincer original), or undefined. The one place that knows the field names, shared by every
+ * path-based gate.
+ */
+export function pathArgument(input: Record<string, unknown> | undefined): string | undefined {
+    const path = input?.path ?? input?.file_path ?? input?.notebook_path;
+    return typeof path === "string" ? path : undefined;
+}
+
+/** The shared comparison form (lib/paths.ts): `/` separators, case-folded on darwin/win32. */
+const normalize = comparablePath;
+
+/**
+ * Resolve a path for containment checks, following a symlink leaf that does not
+ * yet have a target. Returns undefined when nothing about the path can be
+ * resolved — callers must not treat that as contained.
+ */
+export function resolveForContainment(target: string): string | undefined {
+    const absolute = resolve(target);
+
+    const direct = tryRealpath(absolute);
+    if (direct) return normalize(direct);
+
+    // The leaf may be a dangling symlink: realpath fails on it, but writes still
+    // follow it. Read the link and resolve its target instead of assuming the
+    // literal path (N9).
+    try {
+        const stats = lstatSync(absolute);
+        if (stats.isSymbolicLink()) {
+            const linkTarget = readlinkSync(absolute);
+            const resolvedTarget = isAbsolute(linkTarget) ? linkTarget : resolve(dirname(absolute), linkTarget);
+            // One hop is enough: the target's own realpath covers the rest of a chain.
+            return resolveForContainment(resolvedTarget) ?? normalize(resolvedTarget);
+        }
+    } catch {
+        // Does not exist yet — fall through to ancestor resolution below.
+    }
+
+    // A path being created (`> newfile`): resolve the nearest existing ancestor
+    // and re-attach the tail, so a symlinked *parent* directory is still followed.
+    const tail: string[] = [];
+    let cursor = absolute;
+    for (;;) {
+        const parent = dirname(cursor);
+        if (parent === cursor) return undefined;
+        tail.unshift(basename(cursor));
+        const realParent = tryRealpath(parent);
+        if (realParent) return normalize(join(realParent, ...tail));
+        cursor = parent;
+    }
+}
+
+/** True only when `target` is provably at or under `base` (lib/paths.ts `isPathAtOrUnder`, argument order kept for the callers here). */
+export function isWithin(base: string, target: string): boolean {
+    return isPathAtOrUnder(target, base);
+}
+
+/**
+ * Expand a leading `~`, then resolve relative to `cwd`. Kept separate from
+ * resolveForContainment so callers can report the *original* token in messages:
+ * a resolved path can embed an expanded environment-variable value, and echoing
+ * that back to the model leaks the secret it was meant to protect (review
+ * finding N18).
+ */
+export function toAbsolute(cwd: string, token: string, home: string): string {
+    if (token === "~") return home;
+    if (token === "~" || token.startsWith("~/")) return resolve(expandTilde(token, home));
+    if (isAbsolute(token)) return resolve(token);
+    return resolve(cwd, token);
+}
+
+/**
+ * {@link toAbsolute} for a token taken from a bash command line. On Windows the
+ * bash tool runs Git Bash, whose absolute paths are MSYS spellings — `/c/proj/f`
+ * is `C:\proj\f`, `/tmp/f` sits under the user's temp dir — so the token is
+ * converted first (lib/paths.ts gitBashPathToNative). `path.resolve` alone reads
+ * `/c/proj/f` as `<cwd drive>:\c\proj\f`, which no gate recognises as the
+ * project: the error fell towards escalate/prompt, never towards allow, but every
+ * in-project write spelled that way went to the classifier. File-tool paths keep
+ * `toAbsolute`: the file tools resolve them natively, and a gate must
+ * judge the path the tool acts on, not the one Git Bash would reach.
+ */
+export function toAbsoluteBash(cwd: string, token: string, home: string): string {
+    return toAbsolute(cwd, gitBashPathToNative(token), home);
+}

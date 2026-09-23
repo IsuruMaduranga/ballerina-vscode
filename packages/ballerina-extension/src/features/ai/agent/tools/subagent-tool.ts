@@ -27,7 +27,6 @@ import { tool } from "ai";
 import { z } from "zod";
 import { CopilotEventHandler } from "../../utils/events";
 import {
-    BackgroundSubagent,
     KILL_TASK_TOOL_NAME,
     SUBAGENT_TOOL_NAME,
     SUBAGENT_TYPES,
@@ -41,7 +40,8 @@ import { describeSubagentTypes } from "../subagents/definitions";
 import { runSubagent } from "../subagents/runner";
 import type { SubagentProgress } from "../subagents/progress";
 import { saveSubagentRun } from "../subagents/store";
-import { ensureBackgroundCapacity, getBackgroundSubagent, registerBackgroundSubagent } from "../subagents/background";
+import { ensureBackgroundCapacity, getBackgroundSubagent, registerBackgroundTask } from "../background/registry";
+import type { BackgroundSubagent } from "../background/types";
 import { extractReportedLibraries, truncateReport } from "../subagents/report";
 import { markForegroundRun, validateResume } from "../subagents/resume";
 
@@ -210,6 +210,7 @@ function startBackground(
     }
 
     const entry: BackgroundSubagent = {
+        kind: "subagent",
         id: subagentId,
         subagentType: input.subagent_type,
         description: input.description,
@@ -224,7 +225,7 @@ function startBackground(
         notified: false,
         onRunEnd: () => emitResult(ctx.eventHandler, toolCallId, { ...labelFields(input), status: "aborted", taskId: subagentId }, true),
     };
-    registerBackgroundSubagent(entry);
+    registerBackgroundTask(entry);
 
     runSubagent({
         type: input.subagent_type, prompt: input.prompt, model, previousMessages, abortSignal: abortController.signal, ctx,

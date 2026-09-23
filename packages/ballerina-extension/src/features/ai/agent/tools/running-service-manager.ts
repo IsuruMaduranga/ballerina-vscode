@@ -15,7 +15,11 @@
 // under the License.
 
 import * as child_process from 'child_process';
-import { quoteShellPath } from '../../../../utils';
+import { system32Path } from '../auto-mode/shared-paths';
+import { commandLaunch } from '../shell/command-launch';
+import { stripAnsiAndControl } from '../shell/output';
+import { waitForChildExit } from '../shell/process-tree';
+import { spawnLaunch } from '../shell/runner';
 
 const isWindows = process.platform === 'win32';
 
@@ -59,11 +63,12 @@ const DISPOSE_TIMEOUT_MS = 2_000;
  * Spawns a child process, capturing stdout/stderr into `logs`.
  * No VS Code terminal is created — output is consumed by the inline UI card.
  *
- * Because we run with `shell: true`, the shell would otherwise split the
- * command on whitespace — breaking executable paths that contain spaces
- * (e.g. `/Applications/WSO2 Integrator.app/.../bin/bal`). We pre-quote the
- * command path and pass a single command string so the shell sees the path
- * as one token.
+ * Goes through the shell runner's one spawn (`shell: false`, argv array, own
+ * process group): an executable path with spaces
+ * (`/Applications/WSO2 Integrator.app/.../bin/bal`) is one argv element, so it
+ * needs no quoting. On Windows `bal` is `bal.bat`, which Node refuses to spawn
+ * without a shell; `commandLaunch` starts it through `cmd.exe /d /s /c` with
+ * the line quoted once (design §9 of the shell-tool feature).
  */
 export function spawnProcess(
     command: string,
@@ -71,20 +76,12 @@ export function spawnProcess(
     cwd: string,
     logs: string[]
 ): { process: child_process.ChildProcess } {
-    const fullCommand = args.length > 0
-        ? `${quoteShellPath(command)} ${args.join(' ')}`
-        : quoteShellPath(command);
+    const launch = commandLaunch(stripSurroundingQuotes(command), args, process.env);
+    // stdin stays a pipe, as it always has for `bal run` (a program reading stdin blocks rather than seeing EOF).
+    const proc = spawnLaunch(launch, { cwd, stdin: 'pipe' });
 
-    const proc = child_process.spawn(fullCommand, {
-        cwd,
-        shell: true,
-        detached: !isWindows,
-        stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    const handleData = (data: Buffer) => {
-        const text = data.toString();
-        logs.push(removeAnsiEscapeCodes(text));
+    const handleData = (data: string | Buffer) => {
+        logs.push(stripAnsiAndControl(data.toString()));
     };
 
     proc.stdout?.on('data', handleData);
@@ -133,9 +130,10 @@ export function killProcessGroup(proc: child_process.ChildProcess, signal: NodeJ
 
     if (isWindows) {
         return new Promise((resolve) => {
-            // /T kills the process tree, /F forces termination.
-            // Use async exec so the extension host isn't blocked by antivirus-slow taskkill.
-            child_process.exec(`taskkill /T /F /PID ${pid}`, (err, _stdout, stderr) => {
+            // /T kills the process tree, /F forces termination. taskkill.exe is
+            // addressed in System32 so a PATH entry cannot stand in for it; async
+            // so the extension host isn't blocked by antivirus-slow taskkill.
+            child_process.execFile(system32Path('taskkill.exe'), ['/T', '/F', '/PID', String(pid)], { windowsHide: true }, (err, _stdout, stderr) => {
                 if (err) {
                     const msg = (stderr || err.message || '').trim();
                     // Exit code 128 / "not found" just means the process already died.
@@ -145,6 +143,13 @@ export function killProcessGroup(proc: child_process.ChildProcess, signal: NodeJ
                             `[RunningServicesManager] taskkill /T /F /PID ${pid} failed: ${msg || '(no stderr)'}`
                         );
                     }
+                }
+                // Whatever taskkill reported, end the leader directly too: the
+                // waiters key on its exit (pincer lib/process-tree.ts).
+                try {
+                    proc.kill();
+                } catch {
+                    // Already gone.
                 }
                 resolve();
             });
@@ -181,7 +186,7 @@ export function killProcessGroup(proc: child_process.ChildProcess, signal: NodeJ
 
 const STOP_TIMEOUT_MS = 5000;
 /**
- * After `close` fires or the timeout elapses, we verify the PID is actually
+ * After the exit (or the timeout), we verify the PID is actually
  * gone. On Windows, `taskkill /T` can fail to walk the full tree (e.g. when
  * the shell exits before grandchildren are registered), leaving orphans.
  * This constant controls how long we wait for each post-kill verification
@@ -196,23 +201,22 @@ const VERIFY_MAX_WAIT_MS = 1_000;
  * (b) we've exhausted our escalation attempts.
  */
 export async function waitForExit(proc: child_process.ChildProcess, timeoutMs: number = STOP_TIMEOUT_MS): Promise<void> {
-    if (proc.exitCode !== null) {
+    // A signal-killed process has `exitCode === null` and `signalCode` set; the
+    // exit event already fired, so waiting for it would sit out the timeout.
+    if (proc.exitCode !== null || proc.signalCode !== null) {
         return;
     }
 
-    await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-            proc.removeListener('close', onClose);
-            resolve();
-        }, timeoutMs);
-
-        function onClose() {
-            clearTimeout(timeout);
-            resolve();
-        }
-
-        proc.once('close', onClose);
-    });
+    // Settle on `exit` plus the capped stdio grace, never on `close` alone: on
+    // Windows a dead tree's inherited pipe can stay open for seconds.
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+        waitForChildExit(proc).catch(() => undefined),
+        new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
+    ]);
+    if (timer) {
+        clearTimeout(timer);
+    }
 
     await verifyPidGone(proc);
 }
@@ -282,9 +286,15 @@ export class RunningServicesManager {
     register(service: RunningService): void {
         this.services.set(service.taskId, service);
 
-        service.process.once('close', (code) => {
+        // Exit-based (runner.ts): a descendant holding the inherited pipe must
+        // not keep a finished service listed as running.
+        const onExited = (code: number | null) => {
             service.exited = true;
             service.exitCode = code ?? -1;
+            // Already removed (stopOne, remove, dispose): nothing to show or expire.
+            if (this.services.get(service.taskId) !== service) {
+                return;
+            }
             this.notifyChange();
             // Hold the exited entry briefly so the UI can show the final state
             // before it disappears from the list.
@@ -294,7 +304,8 @@ export class RunningServicesManager {
                     this.notifyChange();
                 }
             }, EXITED_SERVICE_TTL_MS);
-        });
+        };
+        waitForChildExit(service.process).then(({ code }) => onExited(code), () => onExited(null));
 
         this.notifyChange();
     }
@@ -318,7 +329,7 @@ export class RunningServicesManager {
             await killProcessGroup(service.process, 'SIGTERM');
             await waitForExit(service.process);
         }
-        // The 'close' listener may have already removed the entry and fired
+        // The exit listener may have already removed the entry and fired
         // notifyChange. Only fire again if we're the ones doing the removal.
         if (this.dropService(service)) {
             this.notifyChange();
@@ -377,8 +388,9 @@ export class RunningServicesManager {
     }
 }
 
-function removeAnsiEscapeCodes(text: string): string {
-    return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+/** `getBallerinaCmd()` may arrive quoted (the old `quoteShellPath` normalised that); argv needs the bare path. */
+function stripSurroundingQuotes(command: string): string {
+    return command.length >= 2 && command.startsWith('"') && command.endsWith('"') ? command.slice(1, -1) : command;
 }
 
 export const runningServicesManager = new RunningServicesManager();

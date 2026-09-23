@@ -24,43 +24,43 @@
 import { tool, type Tool, type ToolExecutionOptions } from "ai";
 import { z } from "zod";
 import type { ChatNotify } from "@wso2/ballerina-core";
-import type { BackgroundSubagent } from "../features/ai/agent/subagents/types";
+import type { BackgroundSubagent } from "../features/ai/agent/background/types";
 import { createKillTaskTool, createTaskOutputTool } from "../features/ai/agent/tools/task-tools";
 import {
-    BACKGROUND_SUBAGENT_TTL_MS,
-    MAX_BACKGROUND_SUBAGENTS,
-    cleanupOldSubagents,
-    cleanupRunningBackgroundSubagents,
+    BACKGROUND_TASK_TTL_MS,
+    MAX_BACKGROUND_TASKS,
+    cleanupOldTasks,
+    cleanupRunningBackgroundTasks,
     drainBackgroundTaskNotifications,
     ensureBackgroundCapacity,
     getBackgroundSubagent,
-    listBackgroundSubagents,
-    registerBackgroundSubagent,
-    resetBackgroundSubagentsForTests,
+    listBackgroundTasks,
+    registerBackgroundTask,
+    resetBackgroundTasksForTests,
     withBackgroundNotifications,
-} from "../features/ai/agent/subagents/background";
+} from "../features/ai/agent/background/registry";
 
 function entry(id: string, overrides: Partial<BackgroundSubagent> = {}): BackgroundSubagent {
     return {
-        id, subagentType: "Librarian", description: `task ${id}`, runKey: "run-a", toolCallId: `call-${id}`,
+        kind: "subagent", id, subagentType: "Librarian", description: `task ${id}`, runKey: "run-a", toolCallId: `call-${id}`,
         startTime: new Date(), output: "", completed: false, success: null, aborted: false,
         abortController: new AbortController(), notified: false, ...overrides,
     };
 }
 
-beforeEach(() => resetBackgroundSubagentsForTests());
-afterEach(() => resetBackgroundSubagentsForTests());
+beforeEach(() => resetBackgroundTasksForTests());
+afterEach(() => resetBackgroundTasksForTests());
 
 describe("capacity and TTL", () => {
     it("refuses new tasks only when the map is full of running tasks", () => {
-        for (let i = 0; i < MAX_BACKGROUND_SUBAGENTS; i++) { registerBackgroundSubagent(entry(`t${i}`)); }
+        for (let i = 0; i < MAX_BACKGROUND_TASKS; i++) { registerBackgroundTask(entry(`t${i}`)); }
         const full = ensureBackgroundCapacity();
         expect(full.kind).toBe("full");
         if (full.kind === "full") { expect(full.reason).toContain("kill_task"); }
     });
 
     it("evicts the oldest completed task to make room", () => {
-        for (let i = 0; i < MAX_BACKGROUND_SUBAGENTS; i++) { registerBackgroundSubagent(entry(`t${i}`)); }
+        for (let i = 0; i < MAX_BACKGROUND_TASKS; i++) { registerBackgroundTask(entry(`t${i}`)); }
         const done = getBackgroundSubagent("t3")!;
         done.completed = true; done.completedAt = new Date(Date.now() - 1000);
         expect(ensureBackgroundCapacity().kind).toBe("ok");
@@ -69,22 +69,22 @@ describe("capacity and TTL", () => {
     });
 
     it("drops completed tasks past the TTL and keeps running ones", () => {
-        const old = new Date(Date.now() - BACKGROUND_SUBAGENT_TTL_MS - 1);
-        registerBackgroundSubagent(entry("old", { completed: true, success: true, completedAt: old }));
-        registerBackgroundSubagent(entry("running", { startTime: old }));
-        expect(cleanupOldSubagents()).toBe(1);
+        const old = new Date(Date.now() - BACKGROUND_TASK_TTL_MS - 1);
+        registerBackgroundTask(entry("old", { completed: true, success: true, completedAt: old }));
+        registerBackgroundTask(entry("running", { startTime: old }));
+        expect(cleanupOldTasks()).toBe(1);
         expect(getBackgroundSubagent("old")).toBeUndefined();
         expect(getBackgroundSubagent("running")).toBeDefined();
     });
 });
 
-describe("cleanupRunningBackgroundSubagents", () => {
+describe("cleanupRunningBackgroundTasks", () => {
     it("aborts and removes running tasks of the given run only", () => {
         const a = entry("a", { runKey: "run-a" });
         const b = entry("b", { runKey: "run-b" });
         const doneA = entry("done-a", { runKey: "run-a", completed: true, success: true });
-        [a, b, doneA].forEach(registerBackgroundSubagent);
-        expect(cleanupRunningBackgroundSubagents("run-a")).toBe(1);
+        [a, b, doneA].forEach(registerBackgroundTask);
+        expect(cleanupRunningBackgroundTasks("run-a")).toBe(1);
         expect(a.abortController.signal.aborted).toBe(true);
         expect(a.aborted).toBe(true);
         expect(a.output).toContain("terminated because the main agent run ended");
@@ -92,16 +92,16 @@ describe("cleanupRunningBackgroundSubagents", () => {
         expect(getBackgroundSubagent("b")).toBeDefined();
         expect(b.abortController.signal.aborted).toBe(false);
         expect(getBackgroundSubagent("done-a")).toBeDefined();
-        expect(listBackgroundSubagents("run-a").map(s => s.id)).toEqual(["done-a"]);
+        expect(listBackgroundTasks("run-a").map(s => s.id)).toEqual(["done-a"]);
     });
 });
 
 describe("drainBackgroundTaskNotifications", () => {
     it("reports each completed task once, for its own run, escaping angle brackets", () => {
-        registerBackgroundSubagent(entry("x", { completed: true, success: true, description: "find <kafka>" }));
-        registerBackgroundSubagent(entry("y", { completed: true, success: false, aborted: true }));
-        registerBackgroundSubagent(entry("z", { completed: true, success: true, runKey: "run-b" }));
-        registerBackgroundSubagent(entry("w"));
+        registerBackgroundTask(entry("x", { completed: true, success: true, description: "find <kafka>" }));
+        registerBackgroundTask(entry("y", { completed: true, success: false, aborted: true }));
+        registerBackgroundTask(entry("z", { completed: true, success: true, runKey: "run-b" }));
+        registerBackgroundTask(entry("w"));
         const first = drainBackgroundTaskNotifications("run-a");
         expect(first).toContain("<system-reminder>");
         expect(first).toContain('Background Librarian subagent "find &lt;kafka&gt;" (x) completed successfully. Use task_output to retrieve the result.');
@@ -119,7 +119,7 @@ describe("withBackgroundNotifications", () => {
     const execOptions = (toolCallId: string): ToolExecutionOptions => ({ toolCallId, messages: [] });
 
     it("appends the reminder to string results and attaches it to object results", async () => {
-        registerBackgroundSubagent(entry("s", { completed: true, success: true }));
+        registerBackgroundTask(entry("s", { completed: true, success: true }));
         const stringTool = withBackgroundNotifications(tool({
             description: "d",
             inputSchema: z.object({}),
@@ -131,7 +131,7 @@ describe("withBackgroundNotifications", () => {
         if (typeof out !== "string") { throw new Error("unexpected streamed result"); }
         expect(out).toMatch(/^ok\n\n<system-reminder>/);
 
-        registerBackgroundSubagent(entry("o", { completed: true, success: true }));
+        registerBackgroundTask(entry("o", { completed: true, success: true }));
         const objectTool = withBackgroundNotifications(tool({
             description: "d",
             inputSchema: z.object({}),
@@ -160,7 +160,7 @@ describe("task tools are scoped to the owning run", () => {
     const execOptions = (toolCallId: string): ToolExecutionOptions => ({ toolCallId, messages: [] });
 
     it("reads a task from another run as not found and leaves it untouched", async () => {
-        registerBackgroundSubagent(entry("foreign", { runKey: "run-b", completed: true, success: true }));
+        registerBackgroundTask(entry("foreign", { runKey: "run-b", completed: true, success: true }));
         const events: ChatNotify[] = [];
 
         const out = await createTaskOutputTool(e => events.push(e), "run-a").execute!({ task_id: "foreign" }, execOptions("call-1"));
@@ -180,12 +180,12 @@ describe("run-end cleanup reports the abort inside the owning run", () => {
     it("marks the entry runEnded and calls onRunEnd before aborting", () => {
         const events: string[] = [];
         const controller = new AbortController();
-        registerBackgroundSubagent({
+        registerBackgroundTask({
             id: "task-subagent-0000ab12", subagentType: "Librarian", description: "bg", runKey: "run-a", toolCallId: "c", startTime: new Date(),
             output: "", completed: false, success: null, aborted: false, abortController: controller, notified: false,
             onRunEnd: () => events.push(`aborted-reported signal=${controller.signal.aborted}`),
         });
-        expect(cleanupRunningBackgroundSubagents("run-a")).toBe(1);
+        expect(cleanupRunningBackgroundTasks("run-a")).toBe(1);
         // Reported synchronously, and before the abort signal fires, so the late rejection has nothing left to say.
         expect(events).toEqual(["aborted-reported signal=false"]);
         expect(controller.signal.aborted).toBe(true);

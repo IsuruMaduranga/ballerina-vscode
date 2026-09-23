@@ -42,7 +42,7 @@ import { SpecContext } from './tools/connector-spec-source';
 import { createSubagentTool } from './tools/subagent-tool';
 import { createKillTaskTool, createTaskOutputTool } from './tools/task-tools';
 import { buildRunKey, KILL_TASK_TOOL_NAME, SUBAGENT_TOOL_NAME, SubagentRunContext, TASK_OUTPUT_TOOL_NAME } from './subagents/types';
-import { withBackgroundNotifications } from './subagents/background';
+import { withBackgroundNotifications } from './background/registry';
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
 import { createConfigCollectorTool, CONFIG_COLLECTOR_TOOL } from './tools/config-collector';
 import { createTestRunnerTool, TEST_RUNNER_TOOL_NAME } from './tools/test-runner';

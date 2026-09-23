@@ -18,7 +18,8 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { CopilotEventHandler } from '../../utils/events';
 import { extension } from '../../../../BalExtensionContext';
-import { spawnProcess, killProcessGroup } from './running-service-manager';
+import { commandLaunch } from '../shell/command-launch';
+import { runProcess } from '../shell/runner';
 import { BALLERINA_COMMANDS } from '../../../project/cmds/cmd-runner';
 import { DIAGNOSTICS_TOOL_NAME } from './diagnostics';
 
@@ -52,7 +53,7 @@ export function createTestRunnerTool(
 **Output:** Returns the full raw \`bal test\` output. Read the output carefully to identify which tests passed or failed, then fix any failures before marking the task as complete.
 `,
         inputSchema: TestRunnerInputSchema,
-        execute: async (_input: Record<string, never>, context?: { toolCallId?: string }): Promise<TestRunResult> => {
+        execute: async (_input: Record<string, never>, context?: { toolCallId?: string; abortSignal?: AbortSignal }): Promise<TestRunResult> => {
             const toolCallId = context?.toolCallId || `fallback-${Date.now()}`;
 
             eventHandler({
@@ -62,7 +63,7 @@ export function createTestRunnerTool(
                 toolInput: { command: "bal test" },
             });
 
-            const result = await runBallerinaTests(tempProjectPath);
+            const result = await runBallerinaTests(tempProjectPath, context?.abortSignal);
             const status = result.exitCode === 0 ? "completed" : "error";
 
             eventHandler({
@@ -89,45 +90,26 @@ function parseTestSummary(output: string): string {
     return "Tests completed";
 }
 
-async function runBallerinaTests(cwd: string): Promise<TestRunResult> {
-    const balCmd = extension.ballerinaExtInstance.getBallerinaCmd();
-
-    const logs: string[] = [];
-    const { process: proc } = spawnProcess(
-        balCmd,
-        [BALLERINA_COMMANDS.TEST],
+/**
+ * `bal test` through the shell runner: `bal.bat` through `commandLaunch` on Windows, the process tree
+ * stopped at the timeout or when the run aborts, and the wait settled on exit (shell/runner.ts).
+ */
+async function runBallerinaTests(cwd: string, abortSignal?: AbortSignal): Promise<TestRunResult> {
+    const balCmd = extension.ballerinaExtInstance.getBallerinaCmd().replace(/^"(.*)"$/, "$1");
+    const summary = await runProcess(commandLaunch(balCmd, [BALLERINA_COMMANDS.TEST], process.env), {
         cwd,
-        logs
-    );
-
-    let exited = false;
-    let exitCode = -1;
-    proc.on('close', (code) => {
-        exitCode = code ?? -1;
-        exited = true;
-    });
-    proc.on('error', (err) => {
-        logs.push(`\nFailed to start process: ${err.message}\n`);
-        exited = true;
+        timeoutMs: DEFAULT_TEST_TIMEOUT,
+        signal: abortSignal,
     });
 
-    // Wait for completion
-    const startTime = Date.now();
-    const pollInterval = 500;
-
-    while (!exited && (Date.now() - startTime) < DEFAULT_TEST_TIMEOUT) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-    }
-
-    const output = logs.join('');
-
-    if (!exited) {
-        await killProcessGroup(proc, 'SIGTERM');
+    if (summary.timedOut) {
         return {
-            output: output + `\n\nTest execution timed out after ${DEFAULT_TEST_TIMEOUT}ms.`,
+            output: summary.output + `\n\nTest execution timed out after ${DEFAULT_TEST_TIMEOUT}ms.`,
             exitCode: -1,
         };
     }
-
-    return { output, exitCode };
+    if (summary.stopped) {
+        return { output: summary.output + `\n\nTest execution was stopped because the run was aborted.`, exitCode: -1 };
+    }
+    return { output: summary.output, exitCode: summary.exitCode ?? -1 };
 }

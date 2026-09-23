@@ -22,7 +22,7 @@
 import type { ModelMessage } from "ai";
 import { isSubagentId, KILL_TASK_TOOL_NAME, SubagentType, TASK_OUTPUT_TOOL_NAME } from "./types";
 import { loadSubagentHistory, loadSubagentMetadata, SubagentNotFoundError } from "./store";
-import { getBackgroundSubagent } from "./background";
+import { getBackgroundSubagent } from "../background/registry";
 
 export type ResumeValidationError = "SUBAGENT_STILL_RUNNING" | "SUBAGENT_TYPE_MISMATCH" | "SUBAGENT_NOT_FOUND";
 
