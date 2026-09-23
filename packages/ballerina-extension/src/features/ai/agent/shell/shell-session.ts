@@ -54,7 +54,7 @@ export interface ShellRunSetupOptions {
 export function shellPromptSection(scratchpadDir: string | undefined): string {
     const shell = `# Shell
 
-The ${SHELL_TOOL_NAME} tool runs bash commands in the workspace root. Read-only commands inside the workspace, the scratchpad and the Ballerina library cache run straight away. Any other command waits for the user to approve it, so do not run one the task does not need. If the user declines a command, the result says so: do not retry it or reach the same effect another way; explain what you needed it for and continue with other work.`;
+The ${SHELL_TOOL_NAME} tool runs bash commands in the workspace root. Read-only commands inside the workspace, the scratchpad and the Ballerina library cache run straight away. Any other command is checked first: depending on the user's setting, a safety check screens it or the user approves it, so do not run one the task does not need. If a command is declined or blocked, the result says so and why: do not retry it or reach the same effect another way; explain what you needed it for and continue with other work.`;
     return scratchpadDir ? `${shell}\n\n${scratchpadPromptSection(scratchpadDir)}` : shell;
 }
 

@@ -319,6 +319,7 @@ type PanelUnmodelledNotifyType =
     | "migration_progress";
 
 const SCAFFOLD_DONE_PREFIX = "ballerina.scaffold.done:";
+const SHELL_MODE_KEY = "ballerina.copilot.shellMode";
 
 // Stable, non-crypto hash for keying scaffold runs by (prompt + steps).
 function scaffoldKeyHash(text: string, hiddenContext: string | undefined): string {
@@ -470,6 +471,14 @@ const AIChat: React.FC = () => {
         content: string;
     } | null>(null);
     const [shellApprovalRequest, setShellApprovalRequest] = useState<ShellApprovalEvent | null>(null);
+    // How shell commands the gate cannot clear are approved; a per-viewer preference, auto by default.
+    const [shellMode, setShellMode] = useState<"auto" | "ask">(() => {
+        try {
+            return localStorage.getItem(SHELL_MODE_KEY) === "ask" ? "ask" : "auto";
+        } catch {
+            return "auto";
+        }
+    });
 
     const [currentFileArray, setCurrentFileArray] = useState<SourceFile[]>([]);
     const [codeContext, setCodeContext] = useState<CodeContext | undefined>(undefined);
@@ -2384,7 +2393,7 @@ const AIChat: React.FC = () => {
         await rpcClient.getAiPanelRpcClient().generateAgent({
             generationId: activeRunGenerationIdRef.current,
             promptSource: 'ai-panel',
-            usecase: useCase, hiddenContext: currentHiddenContext, consoleScaffold, isPlanMode: agentModeRef.current === AgentMode.Plan, codeContext: currentCodeContext, operationType, fileAttachmentContents: fileAttatchments
+            usecase: useCase, hiddenContext: currentHiddenContext, consoleScaffold, isPlanMode: agentModeRef.current === AgentMode.Plan, codeContext: currentCodeContext, operationType, fileAttachmentContents: fileAttatchments, shellMode
         });
     }
 
@@ -2494,6 +2503,16 @@ const AIChat: React.FC = () => {
     const handleToggleAutoApprove = () => {
         const newValue = !isAutoApproveEnabled;
         setIsAutoApproveEnabled(newValue);
+    };
+
+    const handleToggleShellMode = () => {
+        const next = shellMode === "auto" ? "ask" : "auto";
+        setShellMode(next);
+        try {
+            localStorage.setItem(SHELL_MODE_KEY, next);
+        } catch {
+            // The preference is a convenience; the host defaults to auto without it.
+        }
     };
 
     const handleChangeAgentMode = (mode: AgentMode) => {
@@ -3242,6 +3261,8 @@ const AIChat: React.FC = () => {
                             onChangeAgentMode={handleChangeAgentMode}
                             isAutoApproveEnabled={isAutoApproveEnabled}
                             onDisableAutoApprove={handleToggleAutoApprove}
+                            shellMode={shellMode}
+                            onToggleShellMode={handleToggleShellMode}
                             disabled={isUsageExceeded}
                             contextUsage={showContextUsage ? contextUsage : null}
                             mcpToolsEnabled={mcpToolsEnabled}

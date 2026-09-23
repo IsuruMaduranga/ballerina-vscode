@@ -331,6 +331,8 @@ export interface GenerateAgentCodeRequest {
     threadId?: string; //TODO: Make this required once we support threads in UI
     isPlanMode: boolean;
     codeContext?: CodeContext;
+    /** How shell commands the gate cannot clear are handled: judged by the classifier (default) or asked. */
+    shellMode?: 'auto' | 'ask';
     /** Identifies the UI surface so the host can resolve the correct ambient file context. */
     promptSource?: 'ai-panel' | 'mini-chat';
     /** Host-validated workspace-relative Ballerina file currently associated with the prompt surface. */

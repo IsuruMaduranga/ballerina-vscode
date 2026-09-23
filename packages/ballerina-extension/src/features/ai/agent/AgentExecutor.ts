@@ -505,6 +505,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                 ctx: this.config.executionContext,
                 specContext: this.buildSpecContext(threadId),
                 shell,
+                shellMode: params.shellMode,
                 // TODO(auto-memory): temporarily disabled for this release.
                 // autoMemoryEnabled: isMemoryEnabled(),
             });

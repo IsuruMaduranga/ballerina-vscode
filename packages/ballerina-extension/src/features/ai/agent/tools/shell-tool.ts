@@ -48,7 +48,7 @@ export interface ShellToolOptions {
     /** The thread's scratchpad: task logs and spilled output go under it. */
     scratchpadDir?: string;
     /** Decides whether a command may run (`auto-mode/gate.ts`). Required: the tool must never run a command no gate has seen. */
-    authorize: (request: { command: string; description?: string; toolCallId: string }) => Promise<ShellAuthorization>;
+    authorize: (request: { command: string; description?: string; toolCallId: string; abortSignal?: AbortSignal }) => Promise<ShellAuthorization>;
     /** Registers files a command changed (`tools/shell-touched-files.ts`); without it no scan runs. */
     onFilesTouched?: (touched: TouchedFiles) => Promise<void>;
 }
@@ -70,9 +70,9 @@ export function createShellTool(opts: ShellToolOptions) {
             const emitResult = (status: "completed" | "error" | "blocked" | "background", toolOutput: Record<string, unknown>) =>
                 opts.eventHandler({ type: "tool_result", toolName: SHELL_TOOL_NAME, toolCallId, toolOutput: { status, command: input.command, description: input.description, ...toolOutput } });
 
-            const authorization = await opts.authorize({ command: input.command, description: input.description, toolCallId });
+            const authorization = await opts.authorize({ command: input.command, description: input.description, toolCallId, abortSignal: context?.abortSignal });
             if (authorization.allowed === false) {
-                emitResult("blocked", { reason: authorization.text });
+                emitResult("blocked", { reason: authorization.text, gate: { by: authorization.by, rule: authorization.rule } });
                 return authorization.text;
             }
 
@@ -102,10 +102,11 @@ export function createShellTool(opts: ShellToolOptions) {
                 onBackgroundFinished: () => { void registerTouched(); },
             });
             if (result.kind === "foreground") { await registerTouched(); }
+            const gate = { by: authorization.by };
             if (result.kind === "refused") {
-                emitResult("blocked", { reason: result.text });
+                emitResult("blocked", { reason: result.text, gate });
             } else if (result.kind === "background") {
-                emitResult("background", { taskId: result.taskId, logPath: result.logPath });
+                emitResult("background", { taskId: result.taskId, logPath: result.logPath, gate });
             } else {
                 const line = finishLine(result.summary, result.timeoutMs);
                 emitResult(line === "completed" ? "completed" : "error", {
@@ -113,6 +114,7 @@ export function createShellTool(opts: ShellToolOptions) {
                     finish: line,
                     output: tailCap(result.summary.output, UI_OUTPUT_CAP),
                     outputFile: result.outputFile,
+                    gate,
                 });
             }
             return result.text;

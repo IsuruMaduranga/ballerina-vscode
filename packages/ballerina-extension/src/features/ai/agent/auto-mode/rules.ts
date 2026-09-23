@@ -1,0 +1,129 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com/) All Rights Reserved.
+
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+
+// http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+/**
+ * Grounding the stage-2 verdict against CC's rule names (pure).
+ *
+ * Claude Code's stage-2 classifier emits `<category>Exact BLOCK Rule Name</category>`
+ * when an action matches a BLOCK rule. CC itself discards that and shows a fixed
+ * "Blocked by classifier"; we instead validate the category against an index of
+ * the rule names actually present in the embedded ruleset, and derive the tier
+ * (hard vs soft) from which section the name was found in — never from a field
+ * the model chose freely.
+ *
+ * A block citing a category that does not exist is still a block, but tagged
+ * `unmatched`, so a hallucinated name cannot borrow a real HARD rule's authority.
+ * The rule's own name is what the user sees; the model's wording is kept as
+ * commentary that is never mistaken for fact. This is decision 1 in
+ * docs/decisions/auto-mode.md, re-expressed against CC's category scheme in
+ * place of our old H1/S4/A2 ids.
+ */
+
+export type BlockTier = "hard_deny" | "soft_deny";
+
+export interface IndexedRule {
+    /** The rule's exact name as it appears in the ruleset (e.g. "Git Destructive"). */
+    name: string;
+    tier: BlockTier;
+}
+
+export interface RuleIndex {
+    rules: IndexedRule[];
+    /** Keyed by normalized name, for case/whitespace-insensitive lookup. */
+    byName: Map<string, IndexedRule>;
+}
+
+/** Section headings in CC's ruleset that bound the block-rule lists. */
+const HARD_HEADING = "## HARD BLOCK";
+const SOFT_HEADING = "## SOFT BLOCK";
+const ALLOW_HEADING = "## ALLOW (exceptions)";
+
+/** Compare names ignoring case, surrounding punctuation, and whitespace runs. */
+export function normalizeName(value: string): string {
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .replace(/[.,:;]+$/, "");
+}
+
+/**
+ * The rule name at the head of a top-level bullet line, or undefined if the line
+ * is not a rule entry. A rule line looks like `- Name [named+specifics …]: text`
+ * or `- Name: text`; the name is what precedes the first ` [` qualifier or `:`.
+ * Indented lines (sub-bullets) and non-bullet prose are ignored.
+ */
+function ruleNameFromLine(line: string): string | undefined {
+    if (!line.startsWith("- ")) return undefined; // top-level bullets only
+    const body = line.slice(2);
+    // Cut at the first " [" (the [named+specifics …] qualifier) or the first ":".
+    const bracket = body.indexOf(" [");
+    const colon = body.indexOf(":");
+    let end = body.length;
+    if (bracket >= 0) end = Math.min(end, bracket);
+    if (colon >= 0) end = Math.min(end, colon);
+    const name = body.slice(0, end).replace(/\*/g, "").trim();
+    return name.length > 0 ? name : undefined;
+}
+
+/** The text between two markers (exclusive), or "" if the bounds are missing. */
+function sliceSection(text: string, from: string, to: string): string {
+    const start = text.indexOf(from);
+    if (start < 0) return "";
+    const end = text.indexOf(to, start + from.length);
+    return text.slice(start + from.length, end < 0 ? text.length : end);
+}
+
+function collectRules(section: string, tier: BlockTier, out: IndexedRule[], byName: Map<string, IndexedRule>): void {
+    for (const line of section.split("\n")) {
+        const name = ruleNameFromLine(line);
+        if (!name) continue;
+        const nameKey = normalizeName(name);
+        if (byName.has(nameKey)) continue; // a name appearing in two sections keeps its first (HARD) tier
+        const rule: IndexedRule = { name, tier };
+        out.push(rule);
+        byName.set(nameKey, rule);
+        // Also key the FULL line text (when it differs), so a verdict quoting the
+        // whole rule line still grounds. Built-in and user-appended lines get this
+        // uniformly — user extras especially need it, since they have no short
+        // `Name:` head and may contain `*`s that the derived name strips.
+        const fullKey = normalizeName(line.slice(2));
+        if (fullKey && fullKey !== nameKey && !byName.has(fullKey)) byName.set(fullKey, rule);
+    }
+}
+
+/**
+ * Parse the block-rule names out of the embedded ruleset (user rule extras
+ * included — buildRuleset has already appended them into these sections, so
+ * they are indexed by the same scan as the built-ins). HARD BLOCK names win a
+ * tie over SOFT (a HARD rule must never be downgraded by a same-named soft
+ * one). ALLOW names are not block categories; they are intentionally not
+ * indexed, so a block citing an allow name lands as `unmatched` rather than a
+ * real block.
+ */
+export function buildCategoryIndex(ruleset: string): RuleIndex {
+    const rules: IndexedRule[] = [];
+    const byName = new Map<string, IndexedRule>();
+    collectRules(sliceSection(ruleset, HARD_HEADING, SOFT_HEADING), "hard_deny", rules, byName);
+    collectRules(sliceSection(ruleset, SOFT_HEADING, ALLOW_HEADING), "soft_deny", rules, byName);
+    return { rules, byName };
+}
+
+/** Look up a category the classifier emitted. undefined ⇒ not a known BLOCK rule. */
+export function groundCategory(index: RuleIndex, category: string | undefined): IndexedRule | undefined {
+    if (!category) return undefined;
+    return index.byName.get(normalizeName(category));
+}

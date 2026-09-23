@@ -122,6 +122,32 @@ function getStatus(isResult: boolean, toolName: string | undefined, toolOutput: 
     return "error";
 }
 
+/** Who let a shell command run, as a short suffix ("screened" by auto mode, "allowed by you"). */
+function shellGateSuffix(toolOutput: any): string {
+    switch (toolOutput?.gate?.by) {
+        case "classifier": return " · screened";
+        case "user": return " · allowed by you";
+        default: return "";
+    }
+}
+
+function shellStatusLabel(toolOutput: any): string {
+    const s = toolOutput?.status;
+    if (s === "blocked") {
+        switch (toolOutput?.gate?.by) {
+            case "classifier": return toolOutput?.gate?.rule ? `Blocked: ${toolOutput.gate.rule}` : "Blocked by auto mode";
+            case "timeout": return "Not screened (timed out)";
+            case "user": return "Declined";
+            default: return "Not run";
+        }
+    }
+    const suffix = shellGateSuffix(toolOutput);
+    if (s === "completed") return `Completed${suffix}`;
+    if (s === "background") return `Running in background${suffix}`;
+    const finish = typeof toolOutput?.finish === "string" ? toolOutput.finish.charAt(0).toUpperCase() + toolOutput.finish.slice(1) : "Failed";
+    return `${finish}${suffix}`;
+}
+
 function getStatusLabel(isResult: boolean, toolName: string | undefined, toolOutput: any): string {
     if (!isResult) return "Running...";
     const s = toolOutput?.status;
@@ -132,10 +158,7 @@ function getStatusLabel(isResult: boolean, toolName: string | undefined, toolOut
         return "Failed";
     }
     if (toolName === "shell") {
-        if (s === "completed") return "Completed";
-        if (s === "background") return "Running in background";
-        if (s === "blocked") return "Not run";
-        return typeof toolOutput?.finish === "string" ? toolOutput.finish.charAt(0).toUpperCase() + toolOutput.finish.slice(1) : "Failed";
+        return shellStatusLabel(toolOutput);
     }
     if (toolName === "runTests") {
         return toolOutput?.summary ?? "Tests completed";

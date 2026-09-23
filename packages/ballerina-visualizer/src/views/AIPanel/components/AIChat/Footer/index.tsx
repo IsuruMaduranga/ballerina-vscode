@@ -277,6 +277,8 @@ type FooterProps = {
     onChangeAgentMode?: (mode: AgentMode) => void;
     isAutoApproveEnabled?: boolean;
     onDisableAutoApprove?: () => void;
+    shellMode?: "auto" | "ask";
+    onToggleShellMode?: () => void;
     disabled?: boolean;
     contextUsage?: { inputTokens: number; percentage: number; breakdown?: { systemInstructions: number; toolDefinitions: number; reservedOutput: number; files: number; messages: number; toolResults: number } } | null;
     mcpToolsEnabled?: boolean;
@@ -304,6 +306,8 @@ const Footer: React.FC<FooterProps> = ({
     onChangeAgentMode,
     isAutoApproveEnabled,
     onDisableAutoApprove,
+    shellMode,
+    onToggleShellMode,
     disabled,
     contextUsage,
     mcpToolsEnabled,
@@ -339,6 +343,8 @@ const Footer: React.FC<FooterProps> = ({
                 onChangeAgentMode={onChangeAgentMode}
                 isAutoApproveEnabled={isAutoApproveEnabled}
                 onDisableAutoApprove={onDisableAutoApprove}
+                shellMode={shellMode}
+                onToggleShellMode={onToggleShellMode}
                 disabled={disabled}
                 contextUsage={contextUsage}
                 mcpToolsEnabled={mcpToolsEnabled}

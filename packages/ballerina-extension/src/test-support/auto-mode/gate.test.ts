@@ -219,10 +219,10 @@ describe("matchSessionRule: what a granted rule covers", () => {
     });
 });
 
-describe("authorizeShellCommand: the banner round trip", () => {
+describe("authorizeShellCommand in ask mode: the banner round trip", () => {
     const run = async (command: string, answer: ShellApprovalAnswer | Error, store = new SessionRuleStore()) => {
         const prompts: ShellApprovalPrompt[] = [];
-        const result = await authorizeShellCommand(input(command, store.get("t")), {
+        const result = await authorizeShellCommand(input(command, store.get("t")), "ask", {
             ask: async (prompt) => {
                 prompts.push(prompt);
                 if (answer instanceof Error) { throw answer; }
@@ -235,13 +235,13 @@ describe("authorizeShellCommand: the banner round trip", () => {
 
     it("runs a pre-gate safe command without asking", async () => {
         const { result, prompts } = await run("ls src", "deny");
-        expect(result).toEqual({ allowed: true, mayWrite: false });
+        expect(result).toEqual({ allowed: true, mayWrite: false, by: "pre-gate" });
         expect(prompts).toHaveLength(0);
     });
 
     it("returns the denial text to the model when the user declines", async () => {
         const { result, prompts } = await run("bal build", "deny");
-        expect(result).toEqual({ allowed: false, text: deniedText("bal build") });
+        expect(result).toEqual({ allowed: false, text: deniedText("bal build"), by: "user" });
         expect(prompts[0].command).toBe("bal build");
         expect(prompts[0].grant?.rule).toEqual({ kind: "prefix", command: "bal build" });
     });
@@ -249,7 +249,7 @@ describe("authorizeShellCommand: the banner round trip", () => {
     it("scans for touched files after a pre-gate safe in-workspace redirect", async () => {
         const { result, prompts } = await run("echo hi > a.txt", "deny");
         expect(prompts).toHaveLength(0);
-        expect(result).toEqual({ allowed: true, mayWrite: true });
+        expect(result).toEqual({ allowed: true, mayWrite: true, by: "pre-gate" });
     });
 
     it("denies when the prompt fails", async () => {
@@ -259,7 +259,7 @@ describe("authorizeShellCommand: the banner round trip", () => {
 
     it("allows once without storing a rule", async () => {
         const { result, store } = await run("bal build", "allow");
-        expect(result).toEqual({ allowed: true, mayWrite: true });
+        expect(result).toEqual({ allowed: true, mayWrite: true, by: "user" });
         expect(store.get("t")).toHaveLength(0);
     });
 
@@ -267,13 +267,13 @@ describe("authorizeShellCommand: the banner round trip", () => {
         const { store } = await run("bal build", "allow-session");
         expect(store.get("t")).toEqual([{ kind: "prefix", command: "bal build" }]);
         const second = await run("bal build --offline", "deny", store);
-        expect(second.result).toEqual({ allowed: true, mayWrite: true });
+        expect(second.result).toEqual({ allowed: true, mayWrite: true, by: "session-rule" });
         expect(second.prompts).toHaveLength(0);
     });
 
     it("stores nothing on allow-session when no rule was offered", async () => {
         const { result, store } = await run("rm -rf build", "allow-session");
-        expect(result).toEqual({ allowed: true, mayWrite: true });
+        expect(result).toEqual({ allowed: true, mayWrite: true, by: "user" });
         expect(store.get("t")).toHaveLength(0);
     });
 });
