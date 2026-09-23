@@ -52,6 +52,7 @@ import {
     QuotaRequestResult,
     OpenFileDiffRequest,
     WebToolApprovalRequest,
+    ShellApprovalResponse,
     CompactConversationRequest,
     CompactConversationResponse,
     PromptEnhancementRequest,
@@ -149,6 +150,7 @@ export const requestQuota: RequestType<QuotaRequestParams, QuotaRequestResult> =
 export const openFileDiff: NotificationType<OpenFileDiffRequest> = { method: `${_preFix}/openFileDiff` };
 export const approveWebTool: RequestType<WebToolApprovalRequest, void> = { method: `${_preFix}/approveWebTool` };
 export const declineWebTool: RequestType<WebToolApprovalRequest, void> = { method: `${_preFix}/declineWebTool` };
+export const respondShellApproval: RequestType<ShellApprovalResponse, void> = { method: `${_preFix}/respondShellApproval` };
 export const compactConversation: RequestType<CompactConversationRequest, CompactConversationResponse> = { method: `${_preFix}/compactConversation` };
 export const getShowContextUsage: RequestType<void, boolean> = { method: `${_preFix}/getShowContextUsage` };
 export const enhancePrompt: RequestType<PromptEnhancementRequest, PromptEnhancementResponse> = { method: `${_preFix}/enhancePrompt` };

@@ -109,7 +109,7 @@ type MiniTail =
  * Most of these have an explicit branch in the panel's `handleChatNotify` that only
  * touches local UI state (`usage_metrics`, `diagnostics`, `messages`,
  * `intermediary_state`, `generated_sources`, `compaction_start`/`compaction_end`,
- * `config_change`, and `web_tool_approval_request`, which is banner-only there too).
+ * `config_change`, and the banner-only `web_tool_approval_request` / `shell_approval_request`).
  * Three are safe for a different reason, worth knowing before relying on this list:
  *  - `evals_tool_result` never reaches any webview — `features/ai/utils/events.ts`
  *    drops it before dispatch.
@@ -145,6 +145,7 @@ type UnmodelledNotifyType =
     | "generated_sources"
     | "plan_updated"
     | "web_tool_approval_request"
+    | "shell_approval_request"
     | "compaction_start"
     | "compaction_end"
     | "config_change"

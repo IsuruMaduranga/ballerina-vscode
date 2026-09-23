@@ -48,6 +48,7 @@ import { GenerationType } from '../utils/libs/libraries';
 import { createToolRegistryParts, describeTools, isDeferredTool } from './tool-registry';
 import { listAllSkills } from './skills/context';
 import { AgentPrefixState, dropReasoning, hashPrefixBase, historyForRequest, planTurnPrefix, previousPrefixState, TurnPrefix, turnLeadMessages } from './prefix-state';
+import { shellRunSetup } from './shell/shell-session';
 
 import { liveMcpToolDefinitions, refreshMcpClientManager } from './mcp';
 import { getProjectSource } from '../utils/project/temp-project';
@@ -483,6 +484,9 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             // Refresh before building the tool registry so it picks up mid-session mcp.json edits.
             await refreshMcpClientManager();
 
+            // The shell tool's scratchpad and gate roots, shared by the prompt and the tool registry.
+            const shell = shellRunSetup(projectRootPath, threadId);
+
             // Create tools: the built-ins first, since the prefix base is hashed over them.
             const toolRegistry = createToolRegistryParts({
                 eventHandler: this.config.eventHandler,
@@ -500,6 +504,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                 webSearchEnabled,
                 ctx: this.config.executionContext,
                 specContext: this.buildSpecContext(threadId),
+                shell,
                 // TODO(auto-memory): temporarily disabled for this release.
                 // autoMemoryEnabled: isMemoryEnabled(),
             });

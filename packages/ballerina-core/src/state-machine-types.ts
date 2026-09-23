@@ -439,6 +439,7 @@ export type ChatNotify = (
     | TaskApprovalRequest
     | PlanApprovalResolved
     | WebToolApprovalEvent
+    | ShellApprovalEvent
     | GeneratedSourcesEvent
     | ConnectorGenerationNotification
     | ConfigurationCollectionEvent
@@ -648,6 +649,21 @@ export interface WebToolApprovalEvent {
     requestId: string;
     toolName: "web_search" | "web_fetch";
     content: string;
+}
+
+/** Ask mode's banner for a shell command the gate could not clear (design §10 of the shell-tool feature). */
+export interface ShellApprovalEvent {
+    type: "shell_approval_request";
+    requestId: string;
+    /** The shell tool the command is for (`shell` on macOS / Linux). */
+    toolName: string;
+    command: string;
+    /** The model's short summary of the command, when it gave one. */
+    description?: string;
+    /** Why the gate did not clear it, one line each. */
+    reasons: string[];
+    /** The label of the "allow for this session" option; absent when none is offered. */
+    sessionRuleLabel?: string;
 }
 
 export interface GeneratedSourcesEvent {

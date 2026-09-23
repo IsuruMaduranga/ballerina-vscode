@@ -55,7 +55,7 @@ import { ConfigurationCollectorSegment } from "../ConfigurationCollectorSegment"
 import CheckpointSeparator from "../CheckpointSeparator";
 import FollowupSuggestions from "../FollowupSuggestions";
 import { Attachment, AttachmentStatus, SkillEnableStage, SkillEntry, TaskApprovalRequest } from "@wso2/ballerina-core";
-import type { ClarifyEvent, ConfigurationCollectionEvent, ConnectorGenerationNotification } from "@wso2/ballerina-core";
+import type { ClarifyEvent, ConfigurationCollectionEvent, ConnectorGenerationNotification, ShellApprovalEvent } from "@wso2/ballerina-core";
 
 import { AIChatView, Header, HeaderButtons, ChatMessage, TurnGroup, AuthProviderChip, UsageBadge, UsageRefreshButton, ApprovalOverlay, OverlayMessage, OverlayCloseButton, JumpToBottomButton } from "../../styles";
 import { SessionHistoryDropdown } from "../SessionHistory";
@@ -469,6 +469,7 @@ const AIChat: React.FC = () => {
         toolName: "web_search" | "web_fetch";
         content: string;
     } | null>(null);
+    const [shellApprovalRequest, setShellApprovalRequest] = useState<ShellApprovalEvent | null>(null);
 
     const [currentFileArray, setCurrentFileArray] = useState<SourceFile[]>([]);
     const [codeContext, setCodeContext] = useState<CodeContext | undefined>(undefined);
@@ -1571,6 +1572,13 @@ const AIChat: React.FC = () => {
                 content: response.content,
             });
 
+        } else if (type === "shell_approval_request") {
+            // Banner-only, like the web tool banner: the tool row carries the command and its outcome.
+            if (isResolvedReplayedPrompt(response.requestId)) {
+                return;
+            }
+            setShellApprovalRequest(response);
+
         } else if (type === "intermediary_state") {
             const state = response.state;
             if ("serviceName" in state && "documentation" in state) {
@@ -1682,6 +1690,7 @@ const AIChat: React.FC = () => {
         } else if (type === "stop") {
             console.log("Received stop signal");
             setWebToolApprovalRequest(null);
+            setShellApprovalRequest(null);
             setApprovalRequest(null);
             setIsCompacting(false);
             setIsCodeLoading(false);
@@ -1700,6 +1709,7 @@ const AIChat: React.FC = () => {
             abortHandledRef.current = true;
             activeScaffoldKeyRef.current = null;
             setWebToolApprovalRequest(null);
+            setShellApprovalRequest(null);
             setApprovalRequest(null);
             setMessages(prevMessages => {
                 const msgs = [...prevMessages];
@@ -2624,6 +2634,12 @@ const AIChat: React.FC = () => {
         setWebToolApprovalRequest(null);
     };
 
+    const respondToShellApproval = async (decision: "allow" | "deny" | "allow-session") => {
+        if (!shellApprovalRequest) return;
+        await rpcClient.getAiPanelRpcClient().respondShellApproval({ requestId: shellApprovalRequest.requestId, decision });
+        setShellApprovalRequest(null);
+    };
+
     async function processLLMDiagnostics() {
         let response: LLMDiagnostics = await rpcClient.getAiPanelRpcClient().getDriftDiagnosticContents();
 
@@ -3167,6 +3183,18 @@ const AIChat: React.FC = () => {
                                 content={webToolApprovalRequest.content}
                                 onAllow={handleWebToolAllow}
                                 onDeny={handleWebToolDeny}
+                                onStop={handleStop}
+                            />
+                        ) : shellApprovalRequest ? (
+                            <CommonApprovalFooter
+                                type="shell_command"
+                                command={shellApprovalRequest.command}
+                                description={shellApprovalRequest.description}
+                                reasons={shellApprovalRequest.reasons}
+                                sessionRuleLabel={shellApprovalRequest.sessionRuleLabel}
+                                onAllow={() => respondToShellApproval("allow")}
+                                onAllowSession={() => respondToShellApproval("allow-session")}
+                                onDeny={() => respondToShellApproval("deny")}
                                 onStop={handleStop}
                             />
                         ) : approvalRequest ? (

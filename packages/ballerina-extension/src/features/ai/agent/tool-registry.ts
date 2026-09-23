@@ -43,6 +43,12 @@ import { createSubagentTool } from './tools/subagent-tool';
 import { createKillTaskTool, createTaskOutputTool } from './tools/task-tools';
 import { buildRunKey, KILL_TASK_TOOL_NAME, SUBAGENT_TOOL_NAME, SubagentRunContext, TASK_OUTPUT_TOOL_NAME } from './subagents/types';
 import { withBackgroundNotifications } from './background/registry';
+import { createShellTool, SHELL_TOOL_NAME } from './tools/shell-tool';
+import { authorizeShellCommand, sessionRuleStore } from './auto-mode/gate';
+import type { ShellRunSetup } from './shell/shell-session';
+import { registerShellTouchedFiles } from './tools/shell-touched-files';
+import { approvalManager } from '../state/ApprovalManager';
+import { v4 as uuidv4 } from 'uuid';
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
 import { createConfigCollectorTool, CONFIG_COLLECTOR_TOOL } from './tools/config-collector';
 import { createTestRunnerTool, TEST_RUNNER_TOOL_NAME } from './tools/test-runner';
@@ -89,9 +95,52 @@ export interface ToolRegistryOptions {
     ctx: ExecutionContext;
     /** The thread's attachments and user text; the connector generator reads a supplied spec from them. */
     specContext?: SpecContext;
+    /** `shell/shell-session.ts shellRunSetup` for this run; no shell tool without it. */
+    shell?: ShellRunSetup;
     // TODO(auto-memory): temporarily disabled for this release.
     // /** When true, registers save_memory and consolidate_memories tools in the main agent registry. */
     // autoMemoryEnabled?: boolean;
+}
+
+/**
+ * The bash tool behind the ask-mode gate (`auto-mode/gate.ts`): commands the
+ * gate cannot clear go to the approval banner, and a rule granted there covers
+ * later calls in the same thread.
+ */
+function createGatedShellTool(
+    shell: ShellRunSetup,
+    eventHandler: CopilotEventHandler,
+    runKey: string,
+    modifiedFiles: string[],
+    allModifiedFiles: Set<string>,
+) {
+    return createShellTool({
+        eventHandler,
+        cwd: shell.cwd,
+        runKey,
+        scratchpadDir: shell.scratchpadDir,
+        onFilesTouched: (touched) => registerShellTouchedFiles(shell.cwd, touched, modifiedFiles, allModifiedFiles),
+        authorize: ({ command, description }) => authorizeShellCommand(
+            {
+                command,
+                cwd: shell.cwd,
+                home: shell.home,
+                readableRoots: shell.readableRoots,
+                writableRoots: shell.writableRoots,
+                sessionRules: sessionRuleStore.get(runKey),
+            },
+            {
+                ask: (prompt) => approvalManager.requestShellApproval(`shell-${uuidv4()}`, {
+                    toolName: SHELL_TOOL_NAME,
+                    command: prompt.command,
+                    description,
+                    reasons: prompt.reasons,
+                    sessionRuleLabel: prompt.grant?.label,
+                }, eventHandler),
+                grantRule: (rule) => sessionRuleStore.add(runKey, rule),
+            },
+        ),
+    });
 }
 
 /**
@@ -220,6 +269,7 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
         [CLARIFY_TOOL]: createClarifyTool(eventHandler),
         [SKILL_TOOL_NAME]: createSkillTool(REGISTERED_SKILLS, projectRootPath, eventHandler),
         [TOOL_SEARCH_TOOL_NAME]: createToolSearchTool(() => deferredCatalog(), eventHandler),
+        ...(opts.shell ? { [SHELL_TOOL_NAME]: createGatedShellTool(opts.shell, eventHandler, subagentCtx.runKey, modifiedFiles, allModifiedFiles) } : {}),
         // TODO(auto-memory): memory tools temporarily disabled for this release — restore once the memory feature is refined.
         // // Memory tools — registered only when auto-memory is enabled and a workspace root is known
         // ...(autoMemoryEnabled && projectRootPath ? {

@@ -57,6 +57,18 @@ export interface ClarifyResponse {
     answers?: Array<{ question: string; answers: string[] }>;
 }
 
+/** The user's answer to a shell command banner. */
+export type ShellApprovalDecision = "allow" | "deny" | "allow-session";
+
+/** What the shell command banner shows (auto-mode/gate.ts ShellApprovalPrompt, flattened for the UI). */
+export interface ShellApprovalContent {
+    toolName: string;
+    command: string;
+    description?: string;
+    reasons: string[];
+    sessionRuleLabel?: string;
+}
+
 export interface SkillEnableResponse {
     enabled: boolean;
 }
@@ -107,6 +119,7 @@ export class ApprovalManager {
     private connectorSpecs = new Map<string, PromiseResolver<ConnectorSpecResponse>>();
     private configurationRequests = new Map<string, PromiseResolver<ConfigurationResponse>>();
     private webToolApprovals = new Map<string, PromiseResolver<{ approved: boolean }>>();
+    private shellApprovals = new Map<string, PromiseResolver<ShellApprovalDecision>>();
     private clarifyRequests = new Map<string, PromiseResolver<ClarifyResponse>>();
     private skillEnableRequests = new Map<string, PromiseResolver<SkillEnableResponse>>();
     private skillEnableIds = new Map<string, string>();
@@ -532,6 +545,51 @@ export class ApprovalManager {
     }
 
     // ============================================
+    // Shell Command Approval
+    // ============================================
+
+    /**
+     * Ask the user whether a shell command the gate could not clear may run.
+     * Serialised through the approval queue like the web tool banner. A timeout,
+     * abort or missing answer resolves as "deny".
+     */
+    requestShellApproval(
+        requestId: string,
+        content: ShellApprovalContent,
+        eventHandler: CopilotEventHandler,
+    ): Promise<ShellApprovalDecision> {
+        return new Promise((resolve) => {
+            const timeoutId = setTimeout(() => {
+                this.shellApprovals.delete(requestId);
+                this._advanceApprovalQueue(requestId);
+                resolve("deny");
+            }, this.DEFAULT_TIMEOUT_MS);
+
+            this.shellApprovals.set(requestId, { resolve, reject: () => resolve("deny"), timeoutId });
+
+            this.approvalQueue.push({
+                requestId,
+                emit: () => eventHandler({ type: "shell_approval_request", requestId, ...content }),
+            });
+
+            this._flushApprovalQueue();
+        });
+    }
+
+    /** Resolve a pending shell command approval (called by the RPC handler when the user answers). */
+    resolveShellApproval(requestId: string, decision: ShellApprovalDecision): void {
+        const resolver = this.shellApprovals.get(requestId);
+        if (!resolver) {
+            console.warn(`[ApprovalManager] No pending shell approval for request: ${requestId}`);
+            return;
+        }
+        if (resolver.timeoutId) { clearTimeout(resolver.timeoutId); }
+        resolver.resolve(decision);
+        this.shellApprovals.delete(requestId);
+        this._advanceApprovalQueue(requestId);
+    }
+
+    // ============================================
     // Clarify Tool
     // ============================================
 
@@ -682,6 +740,14 @@ export class ApprovalManager {
             resolver.resolve({ approved: false });
         }
         this.webToolApprovals.clear();
+
+        for (const [, resolver] of this.shellApprovals.entries()) {
+            if (resolver.timeoutId) {
+                clearTimeout(resolver.timeoutId);
+            }
+            resolver.resolve("deny");
+        }
+        this.shellApprovals.clear();
         this.approvalQueue = [];
         this.approvalQueueActive = false;
 
@@ -741,6 +807,7 @@ export class ApprovalManager {
             ...this.connectorSpecs.keys(),
             ...this.configurationRequests.keys(),
             ...this.webToolApprovals.keys(),
+            ...this.shellApprovals.keys(),
             ...this.clarifyRequests.keys(),
             ...this.skillEnableRequests.keys(),
         ];

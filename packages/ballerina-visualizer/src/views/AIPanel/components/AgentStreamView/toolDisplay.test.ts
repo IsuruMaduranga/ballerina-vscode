@@ -26,6 +26,7 @@
  */
 
 import {
+    COMMAND_OUTPUT_TOOLS,
     getFileName,
     getToolCallDisplay,
     getToolIcon,
@@ -193,5 +194,22 @@ describe("subagent tool rows", () => {
         expect(getToolResultDisplay("kill_task", { status: "killed" })).toEqual({ label: "Background task stopped" });
         expect(getToolIcon("task_output")).toBe("codicon-clock");
         expect(getToolIcon("Subagent")).toBe("codicon-package");
+    });
+});
+
+describe("shell tool rows", () => {
+    it("names the description, else the command", () => {
+        expect(getToolCallDisplay("shell", { command: "bal build", description: "Build the package" })).toEqual({ label: "Running:", detail: "Build the package" });
+        expect(getToolCallDisplay("shell", { command: "bal build" })).toEqual({ label: "Running:", detail: "bal build" });
+        expect(getToolCallDisplay("shell", { command: "bal run", run_in_background: true })).toEqual({ label: "Starting in background:", detail: "bal run" });
+    });
+
+    it("words each outcome", () => {
+        expect(getToolResultDisplay("shell", { status: "completed", command: "bal build" })).toEqual({ label: "Ran:", detail: "bal build" });
+        expect(getToolResultDisplay("shell", { status: "error", command: "bal build" })).toEqual({ label: "Command failed:", detail: "bal build" });
+        expect(getToolResultDisplay("shell", { status: "blocked", command: "rm -rf x" })).toEqual({ label: "Command not run:", detail: "rm -rf x" });
+        expect(getToolResultDisplay("shell", { status: "background", command: "bal run" })).toEqual({ label: "Running in background:", detail: "bal run" });
+        expect(getToolIcon("shell")).toBe("codicon-terminal");
+        expect(COMMAND_OUTPUT_TOOLS.has("shell")).toBe(true);
     });
 });

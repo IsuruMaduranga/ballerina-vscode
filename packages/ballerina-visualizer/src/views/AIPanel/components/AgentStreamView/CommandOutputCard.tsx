@@ -96,6 +96,7 @@ const TOOL_TITLES: Record<string, string> = {
     runTests: "Running Tests",
     getServiceLogs: "Service Logs",
     stopBallerinaService: "Stopping Service",
+    shell: "Command",
 };
 
 const TOOL_ICONS: Record<string, string> = {
@@ -103,6 +104,7 @@ const TOOL_ICONS: Record<string, string> = {
     runTests: "codicon-beaker",
     getServiceLogs: "codicon-output",
     stopBallerinaService: "codicon-debug-stop",
+    shell: "codicon-terminal",
 };
 
 function getStatus(isResult: boolean, toolName: string | undefined, toolOutput: any): "running" | "success" | "error" {
@@ -115,6 +117,7 @@ function getStatus(isResult: boolean, toolName: string | undefined, toolOutput: 
         if (s === "error") return "error";
         return "success";
     }
+    if (toolName === "shell") return s === "completed" || s === "background" ? "success" : "error";
     if (s === "completed" || s === "started" || s === "stopped" || s === "already_exited" || s === "running") return "success";
     return "error";
 }
@@ -127,6 +130,12 @@ function getStatusLabel(isResult: boolean, toolName: string | undefined, toolOut
         if (s === "completed") return "Completed";
         if (s === "timeout") return "Timed out";
         return "Failed";
+    }
+    if (toolName === "shell") {
+        if (s === "completed") return "Completed";
+        if (s === "background") return "Running in background";
+        if (s === "blocked") return "Not run";
+        return typeof toolOutput?.finish === "string" ? toolOutput.finish.charAt(0).toUpperCase() + toolOutput.finish.slice(1) : "Failed";
     }
     if (toolName === "runTests") {
         return toolOutput?.summary ?? "Tests completed";
@@ -157,10 +166,12 @@ const CommandOutputCard: React.FC<CommandOutputCardProps> = ({ toolName, toolInp
     const [expanded, setExpanded] = useState(false);
     const prevStatusRef = useRef<string | undefined>(undefined);
 
-    const title = TOOL_TITLES[toolName ?? ""] ?? "Command";
+    const shellDescription = toolName === "shell" ? (toolOutput?.description ?? toolInput?.description) : undefined;
+    const title = shellDescription || (TOOL_TITLES[toolName ?? ""] ?? "Command");
     const iconClass = TOOL_ICONS[toolName ?? ""] ?? "codicon-terminal";
     const command = toolOutput?.command ?? toolInput?.command;
-    const output = toolOutput?.output ?? toolOutput?.logs;
+    // A shell command the gate did not run shows why instead of output.
+    const output = toolOutput?.output ?? toolOutput?.logs ?? toolOutput?.reason;
     const status = getStatus(isResult, toolName, toolOutput);
     const statusLabel = getStatusLabel(isResult, toolName, toolOutput);
     const isRunning = status === "running";

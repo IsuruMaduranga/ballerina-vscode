@@ -26,7 +26,7 @@
  * pure mapping can be unit-tested without a DOM. The visualizer package's jsdom
  * environment is currently broken; tests here run under `--env=node`.
  */
-export const COMMAND_OUTPUT_TOOLS = new Set(["runBallerinaPackage", "runTests", "getServiceLogs", "stopBallerinaService"]);
+export const COMMAND_OUTPUT_TOOLS = new Set(["runBallerinaPackage", "runTests", "getServiceLogs", "stopBallerinaService", "shell"]);
 
 // ── Tool icon mapping ─────────────────────────────────────────────────────────
 
@@ -46,6 +46,7 @@ const TOOL_ICON_MAP: Record<string, ToolIconEntry> = {
     runBallerinaPackage:           { loading: "codicon-play" },
     getServiceLogs:                { loading: "codicon-output" },
     stopBallerinaService:          { loading: "codicon-debug-stop" },
+    shell:                         { loading: "codicon-terminal" },
     getCompilationErrors:          { loading: "codicon-pulse", done: "codicon-pass-filled" },
     TaskWrite:                     { loading: "codicon-checklist" },
     ConfigCollector:               { loading: "codicon-settings-gear" },
@@ -123,6 +124,17 @@ export interface ToolCallDisplay {
     detail?: string;
 }
 
+/** A shell row names the model's description, else the command itself. */
+function shellWhat(payload: any): string {
+    const description = typeof payload?.description === "string" ? payload.description.trim() : "";
+    if (description) return description;
+    return typeof payload?.command === "string" ? payload.command : "command";
+}
+
+function shellCallDisplay(toolInput: any): ToolCallDisplay {
+    return { label: toolInput?.run_in_background ? "Starting in background:" : "Running:", detail: shellWhat(toolInput) };
+}
+
 export function getToolCallDisplay(toolName: string | undefined, toolInput: any): ToolCallDisplay {
     if (toolName) {
         const mcp = parseMcpName(toolName);
@@ -155,6 +167,7 @@ export function getToolCallDisplay(toolName: string | undefined, toolInput: any)
         case "runBallerinaPackage": return { label: `Running ${toolInput?.runType === "service" ? "service" : "program"}...` };
         case "getServiceLogs": return { label: "Fetching logs..." };
         case "stopBallerinaService": return { label: "Stopping service..." };
+        case "shell": return shellCallDisplay(toolInput);
         case "web_search": return { label: toolInput?.query ? "Searching the web:" : "Searching the web...", detail: toolInput?.query };
         case "web_fetch":  return { label: toolInput?.url ? "Fetching from web:" : "Fetching from web...", detail: toolInput?.url };
         case "invoke_skill": return { label: toolInput?.skillName ? `Loading skill: ${toolInput.skillName}` : "Loading skill..." };
@@ -224,6 +237,15 @@ export function getToolResultDisplay(toolName: string | undefined, toolOutput: a
         case "getServiceLogs": {
             const status = toolOutput?.status ?? "running";
             return { label: status === "exited" ? "Service exited" : status === "not_found" ? "Service not found" : "Logs retrieved" };
+        }
+        case "shell": {
+            const what = shellWhat(toolOutput);
+            switch (toolOutput?.status) {
+                case "blocked": return { label: "Command not run:", detail: what };
+                case "background": return { label: "Running in background:", detail: what };
+                case "error": return { label: "Command failed:", detail: what };
+                default: return { label: "Ran:", detail: what };
+            }
         }
         case "stopBallerinaService": {
             const status = toolOutput?.status ?? "stopped";

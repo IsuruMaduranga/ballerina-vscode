@@ -68,6 +68,41 @@ type WebToolProps = {
     onStop: () => void;
 };
 
+type ShellCommandProps = {
+    type: "shell_command";
+    command: string;
+    description?: string;
+    reasons: string[];
+    /** The "allow for this session" option's label; the option is hidden without one. */
+    sessionRuleLabel?: string;
+    onAllow: () => void;
+    onAllowSession: () => void;
+    onDeny: () => void;
+    onStop: () => void;
+};
+
+const ShellCommandText = styled.pre`
+    margin: 0;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: var(--vscode-textCodeBlock-background);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-editor-font-family);
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 160px;
+    overflow-y: auto;
+`;
+
+const ShellReasons = styled.ul`
+    margin: 0;
+    padding-left: 18px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-font-family);
+`;
+
 type SkillEnableProps = {
     type: "skill_enable";
     skillName: string;
@@ -76,7 +111,7 @@ type SkillEnableProps = {
     onStop: () => void;
 };
 
-type CommonApprovalFooterProps = PlanCompletionProps | WebToolProps | SkillEnableProps;
+type CommonApprovalFooterProps = PlanCompletionProps | WebToolProps | ShellCommandProps | SkillEnableProps;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -108,6 +143,39 @@ const CommonApprovalFooter: React.FC<CommonApprovalFooterProps> = (props) => {
                         <FooterDivider />
                         <WebToolActions>
                             <ActionButton onClick={onAllow}>Allow</ActionButton>
+                            <ActionButton variant="secondary" onClick={onDeny}>Deny</ActionButton>
+                        </WebToolActions>
+                    </FooterBox>
+                </AmbientFrame>
+            </FooterContainer>
+        );
+    }
+
+    if (props.type === "shell_command") {
+        const { command, description, reasons, sessionRuleLabel, onAllow, onAllowSession, onDeny } = props;
+        return (
+            <FooterContainer>
+                <AmbientFrame $variant="composer" $state="awaiting-input">
+                    <FooterBox>
+                        <FooterHeaderRow>
+                            <WebToolHeader>
+                                <span className="codicon codicon-terminal" />
+                                {description ? `Run a command: ${description}` : "Run a command?"}
+                            </WebToolHeader>
+                            <StopControl onStop={onStop} />
+                        </FooterHeaderRow>
+                        <ShellCommandText>{command}</ShellCommandText>
+                        {reasons.length > 0 && (
+                            <ShellReasons>
+                                {reasons.slice(0, 3).map((reason) => <li key={reason}>{reason}</li>)}
+                            </ShellReasons>
+                        )}
+                        <FooterDivider />
+                        <WebToolActions>
+                            <ActionButton onClick={onAllow}>Allow</ActionButton>
+                            {sessionRuleLabel && (
+                                <ActionButton variant="secondary" onClick={onAllowSession}>{sessionRuleLabel}</ActionButton>
+                            )}
                             <ActionButton variant="secondary" onClick={onDeny}>Deny</ActionButton>
                         </WebToolActions>
                     </FooterBox>

@@ -620,6 +620,12 @@ export interface WebToolApprovalRequest {
     requestId: string;
 }
 
+export interface ShellApprovalResponse {
+    requestId: string;
+    /** `allow-session` also stores the offered session rule. */
+    decision: "allow" | "deny" | "allow-session";
+}
+
 export interface ClarifyAnswerRequest {
     requestId: string;
     answers: Array<{ question: string; answers: string[] }>;

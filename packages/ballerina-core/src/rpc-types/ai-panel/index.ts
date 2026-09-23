@@ -50,6 +50,7 @@ import {
     QuotaRequestResult,
     OpenFileDiffRequest,
     WebToolApprovalRequest,
+    ShellApprovalResponse,
     CompactConversationRequest,
     CompactConversationResponse,
     PromptEnhancementRequest,

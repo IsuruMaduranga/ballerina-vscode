@@ -106,3 +106,10 @@ describe('subagent wording on the status line', () => {
         expect(describeToolResultProgress({ toolName: 'runTests', partial: true, toolOutput: {} })).toBe(describeToolCall('runTests', {}));
     });
 });
+
+describe('shell wording on the status line', () => {
+    it('names the description, else says a command is running', () => {
+        expect(describeToolCall('shell', { command: 'bal build', description: 'Build the package' })).toBe('Running: Build the package');
+        expect(describeToolCall('shell', { command: 'bal build' })).toBe('Running a command');
+    });
+});

@@ -77,6 +77,10 @@ export function describeToolCall(toolName: string, toolInput?: any): string {
         }
         case 'kill_task':
             return 'Stopping a background task';
+        case 'shell': {
+            const what = typeof toolInput?.description === 'string' && toolInput.description.trim() ? toolInput.description.trim() : '';
+            return what ? `Running: ${what}` : 'Running a command';
+        }
         case 'ConnectorGeneratorTool':
             return 'Generating a connector';
         case 'ConfigCollector':

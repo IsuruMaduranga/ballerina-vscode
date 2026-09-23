@@ -133,6 +133,7 @@ class AgentStatusManager {
                 break;
             case 'clarify_event':
             case 'web_tool_approval_request':
+            case 'shell_approval_request':
             case 'configuration_collection_event':
             case 'skill_enable_event':
                 this.update({ state: 'awaiting-input', label: 'Waiting for your input' });

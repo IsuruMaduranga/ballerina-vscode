@@ -57,6 +57,8 @@ import {
     ClarifyCancelRequest,
     approveWebTool,
     declineWebTool,
+    respondShellApproval,
+    ShellApprovalResponse,
     submitClarifyAnswer,
     cancelClarify,
     abortAIGeneration,
@@ -401,6 +403,10 @@ export class AiPanelRpcClient implements AIPanelAPI {
 
     declineWebTool(params: WebToolApprovalRequest): Promise<void> {
         return this._messenger.sendRequest(declineWebTool, HOST_EXTENSION, params);
+    }
+
+    respondShellApproval(params: ShellApprovalResponse): Promise<void> {
+        return this._messenger.sendRequest(respondShellApproval, HOST_EXTENSION, params);
     }
 
     compactConversation(params: CompactConversationRequest): Promise<CompactConversationResponse> {

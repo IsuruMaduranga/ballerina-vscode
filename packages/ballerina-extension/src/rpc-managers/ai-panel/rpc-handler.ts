@@ -93,6 +93,8 @@ import {
     updateRequirementSpecification,
     approveWebTool,
     declineWebTool,
+    respondShellApproval,
+    ShellApprovalResponse,
     WebToolApprovalRequest,
     QuotaRequestParams,
     getUsage,
@@ -222,6 +224,7 @@ export function registerAiPanelRpcHandlers(messenger: Messenger) {
     messenger.onNotification(openFileDiff, (args: OpenFileDiffRequest) => rpcManger.openFileDiff(args));
     messenger.onRequest(approveWebTool, (args: WebToolApprovalRequest) => rpcManger.approveWebTool(args));
     messenger.onRequest(declineWebTool, (args: WebToolApprovalRequest) => rpcManger.declineWebTool(args));
+    messenger.onRequest(respondShellApproval, (args: ShellApprovalResponse) => rpcManger.respondShellApproval(args));
     messenger.onRequest(compactConversation, (args: CompactConversationRequest) => rpcManger.compactConversation(args));
     messenger.onRequest(getShowContextUsage, () => rpcManger.getShowContextUsage());
 
