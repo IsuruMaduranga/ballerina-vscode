@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The Windows `powershell` tool (Phase B2): which tool a platform gets, how
+ * The Windows `powershell` tool: which tool a platform gets, how
  * PowerShell resolves, its guards (pincer-agent `powershell-guards.test.ts`,
  * `3b290c8`), its description, its gate branch and session rules, the
  * Windows roots on the sensitive list, and a live run through a real `pwsh`
@@ -222,7 +222,7 @@ describe("the gate's PowerShell branch", () => {
     });
 });
 
-describe("Windows roots on the sensitive list (design §7 restriction 4)", () => {
+describe("Windows roots on the sensitive list", () => {
     it("covers the Windows directory and AppData, except the temp directory holding the scratchpad", () => {
         for (const path of ["C:\\Windows\\System32\\config\\SAM", "c:/windows/win.ini", "C:\\Users\\u\\AppData\\Roaming\\gh\\hosts.yml", "C:\\Users\\u\\AppData\\Local\\Google\\Chrome\\User Data", "C:\\Users\\u\\AppData\\LocalLow\\x"]) {
             expectLabeled(isSensitivePath(path), path).toBe(true);

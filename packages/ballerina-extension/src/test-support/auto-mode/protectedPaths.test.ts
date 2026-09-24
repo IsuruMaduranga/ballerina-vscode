@@ -67,7 +67,7 @@ describe("isProtectedPath", () => {
         expect(isProtectedPath(".claude/settings.local.json")).toBe(true);
     });
 
-    it("protects the WSO2 Integrator Copilot's own configuration and AGENTS.md (design §7)", () => {
+    it("protects the WSO2 Integrator Copilot's own configuration and AGENTS.md", () => {
         for (const path of [
             ".copilot/skills.config.json",
             ".agents/skills/my-skill/SKILL.md",
@@ -89,7 +89,7 @@ describe("isProtectedPath", () => {
         expect(isProtectedPath(".vscode/x")).toBe(true);
     });
 
-    it("protects a .git file, the gitlink that retargets git (pincer SECURITY-REVIEW-2026-09-23 H2)", () => {
+    it("protects a .git file, the gitlink that retargets git", () => {
         // `gitdir: <path>` written into a subdirectory points `git -C sub …` at any repository.
         expect(isProtectedPath("sub/.git")).toBe(true);
         expect(isProtectedPath(".git/x")).toBe(true);
@@ -110,7 +110,7 @@ describe("isProtectedPath", () => {
     });
 });
 
-describe("run-at-login locations (PERMISSIONS-REVIEW-2026-09-05 M7)", () => {
+describe("run-at-login locations", () => {
     it("protects launchd agents, fish config and ~/.local/bin", () => {
         for (const path of [
             "/Users/x/Library/LaunchAgents/com.evil.plist",

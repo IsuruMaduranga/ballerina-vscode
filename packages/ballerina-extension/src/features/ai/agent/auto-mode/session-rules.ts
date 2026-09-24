@@ -219,7 +219,7 @@ export function addSessionRule(rules: readonly SessionRule[], rule: SessionRule)
 }
 
 // ---------------------------------------------------------------------------
-// PowerShell (Phase B2)
+// PowerShell
 
 /**
  * Cmdlets that delete, stop, overwrite state or run other code; no session

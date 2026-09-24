@@ -40,7 +40,7 @@ afterEach(() => {
 const analyze = (command: string) => analyzeShellCommand({ command, cwd, home });
 
 describe("parseCommand", () => {
-    it("splits on unspaced metacharacters (review finding N4)", () => {
+    it("splits on unspaced metacharacters", () => {
         // `cmd>file` and `a|b` hid the real command/target from the original tokenizer.
         const { segments } = parseCommand("echo hi>out.txt");
         expect(segments).toHaveLength(1);
@@ -51,7 +51,7 @@ describe("parseCommand", () => {
         expect(piped.segments.map((s) => s.tokens[0].value)).toEqual(["cat", "wc"]);
     });
 
-    it("decodes ANSI-C quoting (review finding N1)", () => {
+    it("decodes ANSI-C quoting", () => {
         // `cat $'/tmp/.kube/config'` classified as safe upstream because the token
         // kept its leading `$` and so never looked like a path.
         const { segments } = parseCommand("cat $'\\x2e\\x2ekube'");
@@ -63,7 +63,7 @@ describe("parseCommand", () => {
         expect(segments[0].redirects).toEqual([]);
     });
 
-    it("reads >| as a write redirect (review finding N10)", () => {
+    it("reads >| as a write redirect", () => {
         const { segments } = parseCommand("echo x >| out.txt");
         expect(segments[0].redirects).toEqual(["out.txt"]);
     });
@@ -130,7 +130,7 @@ describe("analyzeShellCommand fast path", () => {
         });
     });
 
-    describe("reads outside the working directory (PERMISSIONS-REVIEW-2026-09-05 H2)", () => {
+    describe("reads outside the working directory", () => {
         it("escalates a read-only command whose path operand resolves outside the cwd", () => {
             for (const command of ["cat ~/x", "head -c 100 /etc/hosts", "ls ..", "ls /", "tail -n 5 ../other/log", "wc -l /var/log/x", "find /etc -name x", "rg pattern /Users/x/other", "jq . /etc/x.json", "stat ~/Library/foo", "du -sh ~"]) {
                 const ev = analyze(command);
@@ -209,7 +209,7 @@ describe("analyzeShellCommand fast path", () => {
 });
 
 describe("analyzeShellCommand escalation (the review's bypasses)", () => {
-    it("peels transparent wrappers and names the real command (N5)", () => {
+    it("peels transparent wrappers and names the real command", () => {
         // `env rm -rf ~/Desktop` classified as a harmless `env` upstream.
         const evidence = analyze("env rm -rf /tmp/whatever");
         expect(evidence.verdict).toBe("escalate");
@@ -221,30 +221,30 @@ describe("analyzeShellCommand escalation (the review's bypasses)", () => {
         expect(analyze(`${wrapper} rm -rf /tmp/x`).commands).toContain("rm");
     });
 
-    it("treats bare .. as a path (N2)", () => {
+    it("treats bare .. as a path", () => {
         const evidence = analyze("rm -rf ..");
         expect(evidence.verdict).toBe("escalate");
         expect(evidence.writes.some((write) => write.outsideCwd)).toBe(true);
     });
 
-    it("escalates archive and sync tools with their destination (N6)", () => {
+    it("escalates archive and sync tools with their destination", () => {
         const evidence = analyze("rsync -av ./ /tmp/elsewhere");
         expect(evidence.verdict).toBe("escalate");
         expect(evidence.writes.some((write) => write.token === "/tmp/elsewhere" && write.outsideCwd)).toBe(true);
     });
 
-    it("catches find actions that execute or write (N7)", () => {
+    it("catches find actions that execute or write", () => {
         for (const action of ["-delete", "-exec rm {} ;", "-ok rm {} ;", "-fprintf out %p"]) {
             expectLabeled(analyze(`find . -name x ${action}`).verdict, action).toBe("escalate");
         }
     });
 
-    it("escalates script interpreters, whose programs it cannot read (N8)", () => {
+    it("escalates script interpreters, whose programs it cannot read", () => {
         expect(analyze("awk 'BEGIN{print > \"/tmp/x\"}'").verdict).toBe("escalate");
         expect(analyze("sed -i s/a/b/ file").verdict).toBe("escalate");
     });
 
-    it("defaults git to deny by subcommand (N11)", () => {
+    it("defaults git to deny by subcommand", () => {
         // The upstream list enumerated mutating subcommands and allowed the rest,
         // so git rm / mv / archive / config all passed unchecked.
         for (const subcommand of ["rm secret.yaml", "mv a b", "archive HEAD", "config user.name x", "update-ref HEAD x"]) {
@@ -252,13 +252,13 @@ describe("analyzeShellCommand escalation (the review's bypasses)", () => {
         }
     });
 
-    it("escalates git -c, which can turn a read into code execution (F1)", () => {
+    it("escalates git -c, which can turn a read into code execution", () => {
         const evidence = analyze("git -c protocol.ext.allow=always clone ext::sh x");
         expect(evidence.verdict).toBe("escalate");
         expect(evidence.notes.some((note) => note.includes("code execution"))).toBe(true);
     });
 
-    it("finds credential paths named by any token, sliced or not (N12, N13)", () => {
+    it("finds credential paths named by any token, sliced or not", () => {
         for (const command of ["cat ~/.aws/credentials", "cat ~/.m2/settings.xml", "cd .kube", "cat /proc/self/environ"]) {
             const evidence = analyze(command);
             expectLabeled(evidence.verdict, command).toBe("escalate");
@@ -266,13 +266,13 @@ describe("analyzeShellCommand escalation (the review's bypasses)", () => {
         }
     });
 
-    it("tracks cd, so later relative paths are not read against the original cwd (F6)", () => {
+    it("tracks cd, so later relative paths are not read against the original cwd", () => {
         const evidence = analyze("cd /tmp && cat x");
         expect(evidence.verdict).toBe("escalate");
         expect(evidence.notes.some((note) => note.includes("changes directory"))).toBe(true);
     });
 
-    it("reports the original token, never an expanded value (N18)", () => {
+    it("reports the original token, never an expanded value", () => {
         // The upstream PowerShell path echoed expanded $env: values into its block
         // message, leaking the secret the block existed to protect.
         const evidence = analyze("cat $SECRET_PATH/.ssh/id_rsa");
@@ -280,13 +280,13 @@ describe("analyzeShellCommand escalation (the review's bypasses)", () => {
         expect(evidence.verdict).toBe("escalate");
     });
 
-    it("flags in-project paths whose contents execute later (N20)", () => {
+    it("flags in-project paths whose contents execute later", () => {
         const evidence = analyze("echo x > .git/hooks/pre-commit");
         expect(evidence.verdict).toBe("escalate");
         expect(evidence.executionPrimitives.length).toBeGreaterThan(0);
     });
 
-    it("resolves a dangling symlink leaf instead of trusting its literal path (N9)", () => {
+    it("resolves a dangling symlink leaf instead of trusting its literal path", () => {
         // Turn 1 creates an in-project link to somewhere outside; turn 2 writes
         // through it. Upstream resolved the write to <project>/link and allowed it.
         const outside = join(cwd, "..", "outside-target");
@@ -318,7 +318,7 @@ describe("analyzeShellCommand escalation (the review's bypasses)", () => {
         expect(analyze("ls > /dev/null").writes).toHaveLength(0);
     });
 
-    it("escalates every segment of a compound command, not just the first (N14)", () => {
+    it("escalates every segment of a compound command, not just the first", () => {
         // The PowerShell analogue short-circuited its catch-all once any segment
         // looked like a benign tmp write, letting a later segment launch anything.
         const evidence = analyze("touch /tmp/x; frobnicate --launch");
@@ -485,7 +485,7 @@ describe("containment signal for the recoverability gate (Phase 2)", () => {
     });
 });
 
-describe("runtime protected dirs (PERMISSIONS-REVIEW-2026-09-05 M7)", () => {
+describe("runtime protected dirs", () => {
     it("escalates a redirect into a runtime-protected dir when the caller passes it, and stays safe otherwise", () => {
         const agentDir = join(home, ".pi", "agent"); // pincer's example: any directory known only at runtime
         mkdirSync(join(agentDir, "extensions"), { recursive: true });

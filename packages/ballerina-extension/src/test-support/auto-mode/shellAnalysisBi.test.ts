@@ -51,7 +51,7 @@ const analyze = (command: string, extra: Partial<AnalyzeInput> = {}) => analyzeS
 const verdict = (command: string, extra: Partial<AnalyzeInput> = {}) => analyze(command, extra).verdict;
 const gitInit = () => execFileSync("git", ["init", "-q"], { cwd });
 
-describe("design §6: every probe against pincer 5059966 now escalates", () => {
+describe("every probe against pincer 5059966 now escalates", () => {
     // Each of these returned "safe" before pincer's c1e65da; the last two run a
     // program.
     const probes = [

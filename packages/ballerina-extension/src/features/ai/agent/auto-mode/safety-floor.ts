@@ -201,7 +201,7 @@ export function powershellPathTokens(command: string, home: string): string[] {
 }
 
 /**
- * The PowerShell floor (Phase B2). There is no PowerShell write model, so it
+ * The PowerShell floor. There is no PowerShell write model, so it
  * is textual: any token resolving to a target stops the call, read or write.
  * PowerShell wildcards have no leading-dot rule.
  */

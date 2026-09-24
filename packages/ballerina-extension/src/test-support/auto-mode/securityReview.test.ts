@@ -53,7 +53,7 @@ afterEach(() => {
 
 const verdict = (command: string) => analyzeShellCommand({ command, cwd, home }).verdict;
 
-describe("H1: read-only commands are proved by their options, not their name", () => {
+describe("read-only commands are proved by their options, not their name", () => {
     it("escalates git subcommands carrying options that write, delete or run a program", () => {
         for (const command of [
             "git branch -D main",
@@ -159,7 +159,7 @@ describe("H1: read-only commands are proved by their options, not their name", (
     });
 });
 
-describe("H2: assignments and git's retargeting options escalate", () => {
+describe("assignments and git's retargeting options escalate", () => {
     it("escalates a leading assignment that is not locale or display", () => {
         for (const command of ["GIT_DIR=x git status", "GIT_CONFIG_COUNT=1 git status", "RIPGREP_CONFIG_PATH=x rg foo", "FOO=1 cat a.txt"]) {
             expectLabeled(verdict(command), command).toBe("escalate");
@@ -186,7 +186,7 @@ describe("H2: assignments and git's retargeting options escalate", () => {
     });
 });
 
-describe("H3: unmodelled writes are recorded as writes", () => {
+describe("unmodelled writes are recorded as writes", () => {
     it("records `>&word` as a write target, and fd duplication as none", () => {
         expect(parseCommand("echo x >&out.txt").segments[0].redirects).toEqual(["out.txt"]);
         expect(parseCommand("echo x >& out.txt").segments[0].redirects).toEqual(["out.txt"]);
@@ -196,7 +196,7 @@ describe("H3: unmodelled writes are recorded as writes", () => {
 
 });
 
-describe("M1/M2: operands are judged where bash resolves them", () => {
+describe("operands are judged where bash resolves them", () => {
     posixOnly("escalates a bare name that is a symlink out of the project", () => {
         writeFileSync(join(root, "outside.txt"), "secret");
         symlinkSync(join(root, "outside.txt"), join(cwd, "notes"));
@@ -229,7 +229,7 @@ describe("M1/M2: operands are judged where bash resolves them", () => {
     });
 });
 
-describe("M3: jq's env builtin", () => {
+describe("jq's env builtin", () => {
     it("escalates a jq program that reads the environment", () => {
         expect(verdict("jq -n env")).toBe("escalate");
         expect(verdict("jq -n 'env.HOME'")).toBe("escalate");
@@ -237,7 +237,7 @@ describe("M3: jq's env builtin", () => {
     });
 });
 
-describe("M5: harness git ignores the checkout's fsmonitor", () => {
+describe("harness git ignores the checkout's fsmonitor", () => {
     posixOnly("does not run core.fsmonitor from the checkout's config", async () => {
         execFileSync("git", ["init", "-q"], { cwd });
         const marker = join(root, "fsmonitor-ran");
@@ -262,7 +262,7 @@ describe("M5: harness git ignores the checkout's fsmonitor", () => {
     });
 });
 
-describe("M5: every harness git call carries HARNESS_GIT_CONFIG", () => {
+describe("every harness git call carries HARNESS_GIT_CONFIG", () => {
     it("finds no git spawn in the agent's modules without the hardening", () => {
         const files: string[] = [];
         const walk = (dir: string) => {

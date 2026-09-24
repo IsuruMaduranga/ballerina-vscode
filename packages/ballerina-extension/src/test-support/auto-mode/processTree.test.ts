@@ -22,8 +22,8 @@
  * Detached spawn + group kill ends the whole tree, so `close` fires promptly.
  *
  * The Copilot's bash tool is `/bin/bash` on macOS and Linux only; Windows has
- * no bash tool here, so the suite is skipped there until Phase B2 adds the
- * PowerShell twin (pincer's Windows assertions time `waitForChildExit`,
+ * no bash tool here, so the suite is skipped there; the PowerShell path has its own
+ * suites (pincer's Windows assertions time `waitForChildExit`,
  * because `close` can stay pending after a killed tree is gone).
  */
 import { spawn } from "child_process";

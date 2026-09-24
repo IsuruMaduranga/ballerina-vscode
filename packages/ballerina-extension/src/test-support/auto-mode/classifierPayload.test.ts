@@ -148,7 +148,7 @@ describe("parseStage2", () => {
         ).toBe("allow");
     });
 
-    it("accepts a verbatim quote the model wrapped in quotation marks or ellipses (2026-09-05 H4)", () => {
+    it("accepts a verbatim quote the model wrapped in quotation marks or ellipses", () => {
         // Live probes on Haiku returned <intent>"…"</intent> for a quote that WAS
         // verbatim; the bare substring test rejected it and turned a legitimate
         // allow into a soft block.
