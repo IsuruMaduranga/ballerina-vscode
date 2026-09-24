@@ -15,15 +15,14 @@
 // under the License.
 
 import * as path from 'path';
-import * as crypto from 'crypto';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { CopilotEventHandler } from '../../utils/events';
 import { extension } from '../../../../BalExtensionContext';
 import { RunningServicesManager, spawnProcess, killProcessGroup } from './running-service-manager';
 import { DIAGNOSTICS_TOOL_NAME } from './diagnostics';
-import { BALLERINA_GET_LOGS_TOOL_NAME } from './ballerina-get-logs';
-import { BALLERINA_STOP_TOOL_NAME } from './ballerina-stop';
+import { KILL_TASK_TOOL_NAME, TASK_OUTPUT_TOOL_NAME } from '../subagents/types';
+import { newServiceTaskId } from './service-task';
 import { resolvePackageBasePath } from './path-utils';
 import { getRunCommand } from '../../../project/cmds/cmd-runner';
 
@@ -49,7 +48,7 @@ export function createBallerinaRunTool(
 **Prerequisites:** The project must compile cleanly. Fix the compiler errors your edits reported first; if an edit's errors were not checked, run \`${DIAGNOSTICS_TOOL_NAME}\` first.
 
 **Modes:**
-- \`service\`: Starts a long-running service. Returns immediately with a \`taskId\`. Use \`${BALLERINA_GET_LOGS_TOOL_NAME}\` to check output and \`${BALLERINA_STOP_TOOL_NAME}\` to stop it.
+- \`service\`: Starts a long-running service and returns once it is ready, with a \`taskId\`. Read its later output with \`${TASK_OUTPUT_TOOL_NAME}\` (each call returns only the new output) and stop it with \`${KILL_TASK_TOOL_NAME}\`. The service keeps running after your turn so the user can try it.
 - \`main\`: Runs a main function to completion. Waits for the program to exit and returns its output.
 
 **Timeout for main programs:** Always set a generous timeout based on the code complexity (e.g., loops, delays, data processing). The default 120s is a safe choice — do not use small timeouts unless the program is trivially simple.
@@ -105,7 +104,7 @@ export async function executeRun(
 
     const balCmd = extension.ballerinaExtInstance.getBallerinaCmd();
     const runCmd = getRunCommand();
-    const taskId = crypto.randomUUID().slice(0, 4);
+    const taskId = newServiceTaskId();
     const packageName = input.packagePath || path.basename(tempProjectPath);
 
     const logs: string[] = [];
@@ -145,11 +144,13 @@ export async function executeRun(
             };
         }
 
+        // The startup output is returned here, so the next read starts after it.
+        service.logCursor = service.logs.length;
         return {
             status: "started",
             taskId,
             output: readyResult.logs,
-            message: `Service is running. Use ${BALLERINA_GET_LOGS_TOOL_NAME} to check further output, ${BALLERINA_STOP_TOOL_NAME} to stop it.`,
+            message: `Service is running. Use ${TASK_OUTPUT_TOOL_NAME} with this taskId to read further output, ${KILL_TASK_TOOL_NAME} to stop it.`,
         };
     }
 

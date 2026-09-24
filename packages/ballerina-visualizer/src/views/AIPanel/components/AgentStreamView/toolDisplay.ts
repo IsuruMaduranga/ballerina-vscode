@@ -26,7 +26,23 @@
  * pure mapping can be unit-tested without a DOM. The visualizer package's jsdom
  * environment is currently broken; tests here run under `--env=node`.
  */
+// getServiceLogs and stopBallerinaService are no longer agent tools; transcripts saved before their removal
+// still carry them, and a service's task_output / kill_task renders through their cards (commandCardTool).
 export const COMMAND_OUTPUT_TOOLS = new Set(["runBallerinaPackage", "runTests", "getServiceLogs", "stopBallerinaService", "shell", "powershell"]);
+
+/**
+ * The command-card tool a transcript row renders as, or undefined for a plain row. `payload` is the row's
+ * toolInput (a call) or toolOutput (a result). A service's `task_output` renders as the service-logs card
+ * and its `kill_task` as the stop-service card, as the old dedicated tools did.
+ */
+export function commandCardTool(toolName: string | undefined, payload: any): string | undefined {
+    if (!toolName) return undefined;
+    if (COMMAND_OUTPUT_TOOLS.has(toolName)) return toolName;
+    if (payload?.kind !== "service") return undefined;
+    if (toolName === "task_output") return "getServiceLogs";
+    if (toolName === "kill_task") return "stopBallerinaService";
+    return undefined;
+}
 
 // ── Tool icon mapping ─────────────────────────────────────────────────────────
 

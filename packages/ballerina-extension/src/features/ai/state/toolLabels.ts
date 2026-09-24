@@ -56,10 +56,6 @@ export function describeToolCall(toolName: string, toolInput?: any): string {
             return 'Running tests';
         case 'runBallerinaPackage':
             return 'Running the integration';
-        case 'getServiceLogs':
-            return 'Reading service logs';
-        case 'stopBallerinaService':
-            return 'Stopping a service';
         case 'hurlRunnerTool':
             return 'Testing HTTP endpoints';
         case 'Subagent': {
@@ -70,13 +66,16 @@ export function describeToolCall(toolName: string, toolInput?: any): string {
             return what ? `${head}: ${what}` : head;
         }
         case 'task_output': {
+            if (toolInput?.kind === 'service') {
+                return 'Reading service logs';
+            }
             const what = typeof toolInput?.description === 'string' && toolInput.description.trim()
                 ? toolInput.description.trim()
                 : 'a background task';
             return toolInput?.block === false ? 'Checking a background task' : `Waiting for ${what}`;
         }
         case 'kill_task':
-            return 'Stopping a background task';
+            return toolInput?.kind === 'service' ? 'Stopping a service' : 'Stopping a background task';
         case 'shell':
         case 'powershell': {
             const what = typeof toolInput?.description === 'string' && toolInput.description.trim() ? toolInput.description.trim() : '';

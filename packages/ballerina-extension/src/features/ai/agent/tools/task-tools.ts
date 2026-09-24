@@ -16,7 +16,8 @@
 /**
  * `task_output` and `kill_task` — the background-task half of the MI Copilot's task workflow, for
  * background subagents and background shell commands alike (one id namespace, one registry:
- * `background/registry.ts`).
+ * `background/registry.ts`). They also read and stop the services `runBallerinaPackage` starts, which
+ * live outside that registry and outlive the turn (`./service-task.ts`).
  *
  * `task_output` with block=true is the wait-and-wake point: the main agent's step blocks inside this call,
  * the UI shows a waiting row, and the promise resolves the moment the task finishes.
@@ -28,6 +29,8 @@ import { CopilotEventHandler } from "../../utils/events";
 import { KILL_TASK_TOOL_NAME, TASK_OUTPUT_TOOL_NAME } from "../subagents/types";
 import { getBackgroundTask, NOTIFY_OUTPUT_CAP, removeBackgroundTask, terminatedOutput } from "../background/registry";
 import type { BackgroundTask } from "../background/types";
+import { RunningServicesManager, runningServicesManager } from "./running-service-manager";
+import { isServiceTaskId, readServiceOutput, serviceDescription, serviceNotFoundText, serviceReadText, stopServiceTask } from "./service-task";
 
 export const TASK_OUTPUT_DEFAULT_BLOCK_MS = 120_000;
 export const TASK_OUTPUT_MAX_BLOCK_MS = 600_000;
@@ -53,9 +56,11 @@ function failureDetail(task: BackgroundTask): string {
  * so a task id from another run must read as not found — otherwise a stale id in a resumed thread could reach
  * a task another turn started.
  */
-export function createTaskOutputTool(eventHandler: CopilotEventHandler, runKey: string) {
+export function createTaskOutputTool(eventHandler: CopilotEventHandler, runKey: string, services: RunningServicesManager = runningServicesManager) {
     return tool({
-        description: `Get the result of a background task (a subagent or a shell command started with run_in_background) by task id. block=true (default) waits until it completes — use this when you have no other work to do; you are woken as soon as it finishes. block=false returns the current status immediately, with a running shell command's output so far. Not for foreground runs (their result was returned inline).`,
+        description: `Get the result of a background task (a subagent or a shell command started with run_in_background) by task id. block=true (default) waits until it completes — use this when you have no other work to do; you are woken as soon as it finishes. block=false returns the current status immediately, with a running shell command's output so far. Not for foreground runs (their result was returned inline).
+
+For a service started by runBallerinaPackage (a task-service-… id), this returns the log output printed since the last read. block=true waits until the service prints something new or exits; block=false reads at once.`,
         inputSchema: z.object({
             task_id: z.string().describe("The task id returned by the tool that started the background task."),
             block: z.boolean().optional().describe("Wait for completion (default true)."),
@@ -63,6 +68,9 @@ export function createTaskOutputTool(eventHandler: CopilotEventHandler, runKey: 
         }),
         execute: async ({ task_id, block = true, timeout = TASK_OUTPUT_DEFAULT_BLOCK_MS }, options?: { toolCallId?: string; abortSignal?: AbortSignal }) => {
             const toolCallId = options?.toolCallId ?? `fallback-${Date.now()}`;
+            if (isServiceTaskId(task_id)) {
+                return readService(eventHandler, services, { task_id, block, timeout }, toolCallId, options?.abortSignal);
+            }
             const found = getBackgroundTask(task_id);
             const task = found && found.runKey === runKey ? found : undefined;
             eventHandler({
@@ -121,14 +129,17 @@ export function createTaskOutputTool(eventHandler: CopilotEventHandler, runKey: 
     });
 }
 
-export function createKillTaskTool(eventHandler: CopilotEventHandler, runKey: string) {
+export function createKillTaskTool(eventHandler: CopilotEventHandler, runKey: string, services: RunningServicesManager = runningServicesManager) {
     return tool({
-        description: "Terminate a running background task (a subagent or a shell command) by task id.",
+        description: "Terminate a running background task (a subagent or a shell command) by task id. Also stops a service started by runBallerinaPackage (a task-service-… id), for example to restart it after a code change.",
         inputSchema: z.object({
             task_id: z.string().describe("The task id to terminate."),
         }),
         execute: async ({ task_id }, options?: { toolCallId?: string }) => {
             const toolCallId = options?.toolCallId ?? `fallback-${Date.now()}`;
+            if (isServiceTaskId(task_id)) {
+                return stopService(eventHandler, services, task_id, toolCallId);
+            }
             const found = getBackgroundTask(task_id);
             const task = found && found.runKey === runKey ? found : undefined;
             eventHandler({ type: "tool_call", toolName: KILL_TASK_TOOL_NAME, toolInput: { task_id, ...taskLabel(task) }, toolCallId });
@@ -154,4 +165,45 @@ export function createKillTaskTool(eventHandler: CopilotEventHandler, runKey: st
             return `Task ${task_id} ("${task.description}") terminated.`;
         },
     });
+}
+
+/** `task_output` for a service: its new log output, shown in the UI as a service-logs card. */
+async function readService(
+    eventHandler: CopilotEventHandler,
+    services: RunningServicesManager,
+    input: { task_id: string; block: boolean; timeout: number },
+    toolCallId: string,
+    abortSignal?: AbortSignal,
+): Promise<string> {
+    const service = services.get(input.task_id);
+    const description = service ? serviceDescription(service) : undefined;
+    eventHandler({ type: "tool_call", toolName: TASK_OUTPUT_TOOL_NAME, toolInput: { task_id: input.task_id, block: input.block, kind: "service", description }, toolCallId });
+    if (!service) {
+        eventHandler({ type: "tool_result", toolName: TASK_OUTPUT_TOOL_NAME, toolOutput: { task_id: input.task_id, kind: "service", status: "not_found" }, toolCallId, failed: true });
+        return serviceNotFoundText(input.task_id);
+    }
+    const timeoutMs = Math.min(Math.max(input.timeout, 1000), TASK_OUTPUT_MAX_BLOCK_MS);
+    const read = await readServiceOutput(service, { block: input.block, timeoutMs, signal: abortSignal });
+    eventHandler({
+        type: "tool_result",
+        toolName: TASK_OUTPUT_TOOL_NAME,
+        toolOutput: { task_id: input.task_id, kind: "service", description, status: read.status, exitCode: read.exitCode, logs: read.logs },
+        toolCallId,
+    });
+    return serviceReadText(input.task_id, service, read);
+}
+
+/** `kill_task` for a service: stop it and drop it from the running-services list. */
+async function stopService(eventHandler: CopilotEventHandler, services: RunningServicesManager, taskId: string, toolCallId: string): Promise<string> {
+    const service = services.get(taskId);
+    const description = service ? serviceDescription(service) : undefined;
+    eventHandler({ type: "tool_call", toolName: KILL_TASK_TOOL_NAME, toolInput: { task_id: taskId, kind: "service", description }, toolCallId });
+    const exitCode = service?.exitCode;
+    const status = await stopServiceTask(services, taskId);
+    eventHandler({ type: "tool_result", toolName: KILL_TASK_TOOL_NAME, toolOutput: { task_id: taskId, kind: "service", description, status }, toolCallId, failed: status === "not_found" });
+    switch (status) {
+        case "not_found": return serviceNotFoundText(taskId);
+        case "already_exited": return `Service ${taskId} had already exited with code ${exitCode}.`;
+        default: return `Service ${taskId} ("${description}") stopped.`;
+    }
 }

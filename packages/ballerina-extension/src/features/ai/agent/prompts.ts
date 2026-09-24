@@ -32,7 +32,6 @@ import { getRequirementAnalysisCodeGenPrefix, getRequirementAnalysisTestGenPrefi
 import { CONCURRENCY_CODING_RULES } from "./concurrency-rules";
 import { extractResourceDocumentContent, flattenProjectToFiles } from "../utils/ai-utils";
 import { BALLERINA_RUN_TOOL_NAME } from "./tools/ballerina-run";
-import { BALLERINA_STOP_TOOL_NAME } from "./tools/ballerina-stop";
 import { getSkillsGuidanceSection } from "./skills";
 import { TOOL_SEARCH_TOOL_NAME } from "./tools/tool-search";
 import { WEB_SEARCH_TOOL_NAME, WEB_FETCH_TOOL_NAME } from "./tools/web-tools";
@@ -198,7 +197,7 @@ When generating Ballerina code strictly follow these syntax and structure guidel
 - Before asserting how a library behaves (what a validator checks by default, what a parameter defaults to, whether matching is case-sensitive), ask the Librarian to verify it from the docs. Do not infer library behaviour.
 - Prefer library functions the report lists under "Use these instead of hand-rolling" over writing that logic yourself.
 - Use subagent_type "LibraryResearcher" when the Librarian reports a gap, when a library's docs are thin, or when you need usage examples or real-world behaviour (auth quirks, rate limits, per-operation service URLs). Never web-search for first-party Ballerina API facts yourself.
-- Run a subagent with run_in_background=true only when you have independent work to do meanwhile (reading the project, scaffolding types, planning). When you run out of work, call ${TASK_OUTPUT_TOOL_NAME} with block=true — you are woken when the report is ready — instead of polling. Collect or ${KILL_TASK_TOOL_NAME} every background task before ending your turn.
+- Run a subagent with run_in_background=true only when you have independent work to do meanwhile (reading the project, scaffolding types, planning). When you run out of work, call ${TASK_OUTPUT_TOOL_NAME} with block=true — you are woken when the report is ready — instead of polling. Collect or ${KILL_TASK_TOOL_NAME} every background subagent and shell command before ending your turn. A service started with ${BALLERINA_RUN_TOOL_NAME} is the exception: it keeps running after your turn so the user can try it.
 - Each .bal file must include its own import statements for any external library references.
 - Do not import default langlibs (lang.string, lang.boolean, lang.float, lang.decimal, lang.int, lang.map).
 - For packages with dots in names, use aliases: \`import org/package.one as one;\`
@@ -294,7 +293,7 @@ In WSO2 Integrator, a Ballerina workspace is called a **project** and a Ballerin
 - The auth structure does NOT change this. Some libraries expose the OAuth config via a directly-named type (e.g. \`oauth2:OAuth2RefreshTokenGrantConfig\`); others wrap it inside the connector's own config record (e.g. a \`ConnectionConfig\` whose \`auth\` field carries the credentials). Both are grouped the same way — look at the credential fields, not where they sit.
 - You do NOT decide which (library, shape) combinations are actually managed — the tool verifies each against the managed registry and silently downgrades unsupported ones to manual entry. So emit a group for ANY connector credential that fits one of the two shapes; grouping a candidate that turns out to be unsupported is harmless. That tolerance covers the library and shape only — every mapped name must be a configurable that already exists in source, spelled exactly as declared. Only leave TRULY non-connector secrets (e.g. a database password, or a standalone API key not tied to any connector) in \`variables\`.
 - Use one managedConnections entry per connector instance (repeat the same library for two clients of it), and put each configurable in EXACTLY ONE place — never list the same name in both a group and \`variables\`.
-- You can call ${BALLERINA_STOP_TOOL_NAME} when you need to restart a service (e.g. after code changes) or when the user explicitly asks to stop it.
+- A service started with ${BALLERINA_RUN_TOOL_NAME} returns a taskId. Read its later log output with ${TASK_OUTPUT_TOOL_NAME} on that taskId (each call returns only the new output). Stop it with ${KILL_TASK_TOOL_NAME} when you need to restart it (e.g. after code changes) or when the user explicitly asks to stop it.
 
 ## Test Runner
 When running tests:

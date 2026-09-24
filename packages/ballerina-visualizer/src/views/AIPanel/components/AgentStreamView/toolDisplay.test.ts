@@ -27,6 +27,7 @@
 
 import {
     COMMAND_OUTPUT_TOOLS,
+    commandCardTool,
     getFileName,
     getToolCallDisplay,
     getToolIcon,
@@ -211,5 +212,23 @@ describe("shell tool rows", () => {
         expect(getToolResultDisplay("shell", { status: "background", command: "bal run" })).toEqual({ label: "Running in background:", detail: "bal run" });
         expect(getToolIcon("shell")).toBe("codicon-terminal");
         expect(COMMAND_OUTPUT_TOOLS.has("shell")).toBe(true);
+    });
+});
+
+describe("commandCardTool", () => {
+    it("renders a service's task_output and kill_task as the service cards", () => {
+        expect(commandCardTool("task_output", { kind: "service", task_id: "task-service-0123abcd" })).toBe("getServiceLogs");
+        expect(commandCardTool("kill_task", { kind: "service", status: "stopped" })).toBe("stopBallerinaService");
+    });
+
+    it("keeps the command tools, including the removed service tools in saved transcripts", () => {
+        expect(commandCardTool("shell", {})).toBe("shell");
+        expect(commandCardTool("getServiceLogs", undefined)).toBe("getServiceLogs");
+    });
+
+    it("leaves other task rows and unknown tools as plain rows", () => {
+        expect(commandCardTool("task_output", { kind: "shell" })).toBeUndefined();
+        expect(commandCardTool("kill_task", undefined)).toBeUndefined();
+        expect(commandCardTool(undefined, { kind: "service" })).toBeUndefined();
     });
 });

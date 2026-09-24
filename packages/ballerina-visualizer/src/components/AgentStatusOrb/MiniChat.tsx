@@ -183,9 +183,9 @@ function describeTool(toolName: string, toolInput: any): string {
         case "Subagent":
             return `Consulting the ${subagentName(toolInput)}`;
         case "task_output":
-            return "Waiting for a background task";
+            return toolInput?.kind === "service" ? "Reading service logs" : "Waiting for a background task";
         case "kill_task":
-            return "Stopping a background task";
+            return toolInput?.kind === "service" ? "Stopping a service" : "Stopping a background task";
         case "web_search":
             return "Searching the web";
         case "web_fetch":

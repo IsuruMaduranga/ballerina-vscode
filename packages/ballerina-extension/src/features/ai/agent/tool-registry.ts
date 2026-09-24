@@ -57,8 +57,6 @@ import {
     MIGRATION_SOURCE_READ_TOOL,
 } from './tools/migration-source-reader';
 import { createBallerinaRunTool, BALLERINA_RUN_TOOL_NAME } from './tools/ballerina-run';
-import { createBallerinaGetLogsTool, BALLERINA_GET_LOGS_TOOL_NAME } from './tools/ballerina-get-logs';
-import { createBallerinaStopTool, BALLERINA_STOP_TOOL_NAME } from './tools/ballerina-stop';
 import { RunningServicesManager } from './tools/running-service-manager';
 import { createHurlTool, HURL_TOOL_NAME } from './tools/hurl-tool';
 import { createWebSearchTool, WEB_SEARCH_TOOL_NAME, createWebFetchTool, WEB_FETCH_TOOL_NAME } from './tools/web-tools';
@@ -133,8 +131,6 @@ const DEFERRED_BUILT_IN_TOOLS: ReadonlySet<string> = new Set([
     WEB_SEARCH_TOOL_NAME,
     WEB_FETCH_TOOL_NAME,
     HURL_TOOL_NAME,
-    BALLERINA_GET_LOGS_TOOL_NAME,
-    BALLERINA_STOP_TOOL_NAME,
     KILL_TASK_TOOL_NAME,
 ]);
 
@@ -205,8 +201,8 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
             threadId || 'default'
         ),
         [SUBAGENT_TOOL_NAME]: createSubagentTool(subagentCtx),
-        [TASK_OUTPUT_TOOL_NAME]: createTaskOutputTool(eventHandler, subagentCtx.runKey),
-        [KILL_TASK_TOOL_NAME]: createKillTaskTool(eventHandler, subagentCtx.runKey),
+        [TASK_OUTPUT_TOOL_NAME]: createTaskOutputTool(eventHandler, subagentCtx.runKey, opts.runningServices),
+        [KILL_TASK_TOOL_NAME]: createKillTaskTool(eventHandler, subagentCtx.runKey, opts.runningServices),
         [CONNECTOR_GENERATOR_TOOL]: createConnectorGeneratorTool(
             eventHandler,
             tempProjectPath,
@@ -244,8 +240,6 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
         } : {}),
         [HURL_TOOL_NAME]: createHurlTool(eventHandler),
         [BALLERINA_RUN_TOOL_NAME]: createBallerinaRunTool(tempProjectPath, opts.runningServices, eventHandler),
-        [BALLERINA_GET_LOGS_TOOL_NAME]: createBallerinaGetLogsTool(opts.runningServices, eventHandler),
-        [BALLERINA_STOP_TOOL_NAME]: createBallerinaStopTool(opts.runningServices, eventHandler),
         [WEB_SEARCH_TOOL_NAME]: createWebSearchTool(eventHandler, webSearchEnabled),
         [WEB_FETCH_TOOL_NAME]: createWebFetchTool(eventHandler, webSearchEnabled),
         [CLARIFY_TOOL]: createClarifyTool(eventHandler),

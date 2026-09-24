@@ -49,7 +49,7 @@ import {
 import { StreamEntry, StreamItem } from "./types";
 
 import {
-    COMMAND_OUTPUT_TOOLS,
+    commandCardTool,
     getToolCallDisplay,
     getToolIcon,
     getToolResultDisplay,
@@ -124,8 +124,9 @@ function renderItem(item: StreamItem, idx: number, streamActive: boolean, rpcCli
             if (item.toolName === "hurlRunnerTool") {
                 return <TryItCard key={idx} input={item.toolInput} rpcClient={rpcClient} />;
             }
-            if (COMMAND_OUTPUT_TOOLS.has(item.toolName ?? "")) {
-                return <CommandOutputCard key={idx} toolName={item.toolName} toolInput={item.toolInput} />;
+            const callCard = commandCardTool(item.toolName, item.toolInput);
+            if (callCard) {
+                return <CommandOutputCard key={idx} toolName={callCard} toolInput={item.toolInput} />;
             }
             const { label, detail } = getToolCallDisplay(item.toolName, item.toolInput);
             return (
@@ -144,8 +145,9 @@ function renderItem(item: StreamItem, idx: number, streamActive: boolean, rpcCli
             if (item.toolName === "hurlRunnerTool") {
                 return <TryItCard key={idx} output={item.toolOutput} rpcClient={rpcClient} />;
             }
-            if (COMMAND_OUTPUT_TOOLS.has(item.toolName ?? "")) {
-                return <CommandOutputCard key={idx} toolName={item.toolName} toolOutput={item.toolOutput} isResult={true} />;
+            const resultCard = commandCardTool(item.toolName, item.toolOutput);
+            if (resultCard) {
+                return <CommandOutputCard key={idx} toolName={resultCard} toolOutput={item.toolOutput} isResult={true} />;
             }
             const hint = item.toolOutput?.query ?? item.toolOutput?.url;
             const { label, detail } = getToolResultDisplay(item.toolName, item.toolOutput, hint);
