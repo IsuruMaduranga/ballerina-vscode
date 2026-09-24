@@ -16,12 +16,11 @@
  * under the License.
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
-import * as https from 'https';
-import { Range, TextDocument, Uri, window, workspace, WorkspaceEdit } from 'vscode';
-import { ConnectorUpgradeAdvice } from '@wso2/ballerina-core';
+import { commands, ProgressLocation, Range, TextDocument, Uri, window, workspace, WorkspaceEdit } from 'vscode';
+import { ConnectorReference, ConnectorUpgradeAdvice } from '@wso2/ballerina-core';
 import { StateMachine } from '../../stateMachine';
-import { notifyCurrentWebview } from '../../RPCLayer';
 import { runCommandWithOutput } from '../../utils/runCommand';
 import { buildOutputChannel } from '../../utils/logger';
 import { quoteShellPath } from '../../utils/config';
@@ -29,237 +28,247 @@ import { extension } from '../../BalExtensionContext';
 
 /** {@code CommandConstants.ARG_KEY_DOC_URI} on the LS side -- see PullModuleExecutor.java. */
 const ARG_KEY_DOC_URI = 'doc.uri';
+/** {@code CommandConstants.ARG_KEY_PACKAGES} on the LS side -- see PullModuleExecutor.java. */
+const ARG_KEY_PACKAGES = 'packages';
 const PULL_MODULE_COMMAND = 'PULL_MODULE';
+const EXECUTE_COMMAND_FAILURE = false;
+const RELOAD_WINDOW_COMMAND = 'workbench.action.reloadWindow';
 const BALLERINA_TOML = 'Ballerina.toml';
+const DEPENDENCIES_TOML = 'Dependencies.toml';
+const MAIN_BAL = 'main.bal';
 
-/**
- * Checks the current project for connectors used as a `service ... on <module>:Listener` whose
- * resolved version predates schema-driven trigger support, and prompts for consent to update.
- *
- * Deliberately a single, generic notice regardless of how many connectors are affected or whether any
- * of the fixes are version-boundary-crossing: naming versions/connectors here just exposes plumbing the
- * user can't act on directly, and doesn't change what they need to do (click Update).
- */
-export async function checkAndPromptConnectorUpgrades(projectPath: string): Promise<void> {
-    if (!projectPath) {
-        return;
-    }
-    let advice: ConnectorUpgradeAdvice[];
-    try {
-        const response = await StateMachine.langClient().getConnectorUpgradeAdvice({ filePath: projectPath });
-        advice = response?.advice ?? [];
-    } catch (error) {
-        console.error('>>> Error fetching connector upgrade advice', error);
-        return;
-    }
-    if (advice.length === 0) {
-        return;
-    }
+const UPGRADE_PROMPT_MESSAGE = "This project's connectors need an update to work with Service Designer.";
+const UPGRADE_PROGRESS_TITLE = 'Updating connectors';
+const PULLING_PROGRESS_MESSAGE = 'Pulling the required connector versions...';
+const UPDATING_MANIFEST_PROGRESS_MESSAGE = 'Updating Ballerina.toml...';
+const REBUILDING_PROGRESS_MESSAGE = 'Rebuilding the project...';
+const PULL_FAILED_MESSAGE = "Couldn't pull the required connector versions:";
+const MANIFEST_UPDATE_FAILED_MESSAGE = "Couldn't update the connector versions in Ballerina.toml:";
+const REBUILD_FAILED_MESSAGE = "Couldn't clean and rebuild the project. See the build output for details.";
+const RELOAD_PROMPT_MESSAGE = "This project's connectors are updated. Reload the window to finish.";
+const RELOAD_WINDOW_ACTION = 'Reload Window';
 
-    const update = 'Update';
-    const notNow = 'Not Now';
-    const selection = await window.showInformationMessage(
-        'Using the Service Designer feature requires an update.',
-        update,
-        notNow
-    );
-    if (selection === update) {
-        await pullAndBumpConnectors(advice, projectPath);
-    }
+enum BalCommand {
+    Clean = 'clean',
+    Build = 'build'
 }
 
-/**
- * Updates every connector in {@code advice}, routing each one to whichever mechanism can actually move
- * its version:
- *
- * <ul>
- * <li>Connectors with no explicit {@code Ballerina.toml} pin: a single batched, non-sticky
- * {@code PULL_MODULE} re-resolution, which floats them to a compatible newer version.</li>
- * <li>Connectors pinned via an explicit {@code Ballerina.toml} {@code [[dependency]]} entry: a plain
- * re-resolution can never move these -- an explicit pin is a hard version constraint, not something
- * sticky/non-sticky resolution governs -- so the pin itself has to change. This looks up the latest
- * version Ballerina Central actually publishes, rewrites the pin in {@code Ballerina.toml}, then runs a
- * real {@code bal build} (a fresh process, so it reads the just-written manifest cold, unlike the
- * in-process resolution above) to regenerate {@code Dependencies.toml} and pull the new bala.</li>
- * </ul>
- *
- * Which bucket a connector falls into is detected directly from {@code Ballerina.toml}'s own text --
- * callers that only know a single connector (e.g. the Service Designer's own "Update Now") don't always
- * know whether it's pinned.
- */
-export async function pullAndBumpConnectors(
-    advice: ConnectorUpgradeAdvice[],
-    projectPath: string
-): Promise<{ succeeded: ConnectorUpgradeAdvice[]; failed: ConnectorUpgradeAdvice[] }> {
-    const tomlPath = path.join(projectPath, BALLERINA_TOML);
-    const pinned: { item: ConnectorUpgradeAdvice; pin: DependencyPin }[] = [];
-    const unpinned: ConnectorUpgradeAdvice[] = [];
-
-    for (const item of advice) {
-        const pin = await findDependencyPin(tomlPath, item.orgName, item.packageName);
-        if (pin) {
-            pinned.push({ item, pin });
-        } else {
-            unpinned.push(item);
-        }
-    }
-
-    const succeeded: ConnectorUpgradeAdvice[] = [];
-    const failed: ConnectorUpgradeAdvice[] = [];
-
-    if (unpinned.length > 0) {
-        const result = await pullViaResolution(unpinned, projectPath);
-        succeeded.push(...result.succeeded);
-        failed.push(...result.failed);
-    }
-
-    if (pinned.length > 0) {
-        const result = await bumpPinnedDependencies(pinned, projectPath);
-        succeeded.push(...result.succeeded);
-        failed.push(...result.failed);
-    }
-
-    return { succeeded, failed };
+enum UpgradeAction {
+    Update = 'Update',
+    NotNow = 'Not Now'
 }
 
-/** Ordinary re-resolution: PULL_MODULE's non-sticky resolve floats unconstrained deps forward. */
-async function pullViaResolution(
-    advice: ConnectorUpgradeAdvice[],
-    projectPath: string
-): Promise<{ succeeded: ConnectorUpgradeAdvice[]; failed: ConnectorUpgradeAdvice[] }> {
-    const targetFile = advice.find((item) => item.usedInFile)?.usedInFile
-        ?? path.join(projectPath, 'main.bal');
-    const fileUri = Uri.file(path.isAbsolute(targetFile) ? targetFile : path.join(projectPath, targetFile))
-        .toString();
+const pendingReloadConnectors = new Map<string, Map<string, ConnectorReference>>();
 
-    try {
-        await StateMachine.langClient().executeCommand({
-            command: PULL_MODULE_COMMAND,
-            arguments: [{ key: ARG_KEY_DOC_URI, value: fileUri }]
-        });
-        notifyCurrentWebview();
-        return await partitionByPostPullResolution(advice, projectPath);
-    } catch (error) {
-        console.error('>>> Connector upgrade pull failed', error);
-        window.showErrorMessage(
-            `Failed to update connector${advice.length > 1 ? 's' : ''}: ` +
-            `${advice.map((item) => item.moduleName).join(', ')}.`
-        );
-        return { succeeded: [], failed: advice };
-    }
-}
-
-/**
- * A single PULL_MODULE/{@code bal build} re-resolves the whole project at once, so a partial outcome
- * (e.g. one connector floats to a compatible version while another has none published yet) can't be
- * told apart from a full success just because the command itself didn't throw. Re-fetches the advice
- * list and treats whichever of `advice`'s items are still reported back as unsupported as failed --
- * everything else is taken as having actually resolved.
- */
-async function partitionByPostPullResolution(
-    advice: ConnectorUpgradeAdvice[],
-    projectPath: string
-): Promise<{ succeeded: ConnectorUpgradeAdvice[]; failed: ConnectorUpgradeAdvice[] }> {
-    try {
-        const response = await StateMachine.langClient().getConnectorUpgradeAdvice({ filePath: projectPath });
-        const stillUnsupported = new Set(
-            (response?.advice ?? []).map((item) => connectorKey(item.orgName, item.moduleName))
-        );
-        return {
-            succeeded: advice.filter((item) => !stillUnsupported.has(connectorKey(item.orgName, item.moduleName))),
-            failed: advice.filter((item) => stillUnsupported.has(connectorKey(item.orgName, item.moduleName)))
-        };
-    } catch (error) {
-        // Couldn't re-verify -- fall back to trusting the pull rather than reporting a false failure
-        // for connectors we have no evidence actually failed.
-        console.error('>>> Error re-checking connector upgrade advice after pull', error);
-        return { succeeded: advice, failed: [] };
-    }
-}
-
-function connectorKey(orgName: string, moduleName: string): string {
-    return `${orgName}/${moduleName}`;
-}
-
-/**
- * Bumps every pinned connector's {@code Ballerina.toml} entry to Central's latest published version in
- * one batched edit, then runs a single real {@code bal build} to regenerate {@code Dependencies.toml}
- * for all of them at once.
- */
-async function bumpPinnedDependencies(
-    pinned: { item: ConnectorUpgradeAdvice; pin: DependencyPin }[],
-    projectPath: string
-): Promise<{ succeeded: ConnectorUpgradeAdvice[]; failed: ConnectorUpgradeAdvice[] }> {
-    const succeeded: ConnectorUpgradeAdvice[] = [];
-    const failed: ConnectorUpgradeAdvice[] = [];
-    const edit = new WorkspaceEdit();
-    const toBuild: ConnectorUpgradeAdvice[] = [];
-
-    for (const { item, pin } of pinned) {
-        const latestVersion = await getLatestPackageVersion(item.orgName, item.packageName);
-        if (!latestVersion) {
-            console.error(`>>> Failed to look up the latest version of ${item.moduleName} on Central`);
-            failed.push(item);
-            continue;
-        }
-        edit.replace(pin.document.uri, pin.versionRange, latestVersion);
-        toBuild.push(item);
-    }
-
-    if (toBuild.length === 0) {
-        reportFailures(failed);
-        return { succeeded, failed };
-    }
-
-    const applied = await workspace.applyEdit(edit);
-    if (!applied) {
-        console.error('>>> Failed to apply Ballerina.toml edits for connector upgrade');
-        failed.push(...toBuild);
-        reportFailures(failed);
-        return { succeeded, failed };
-    }
-    // All edited documents are the same Ballerina.toml; saving any one of the pin's documents saves it.
-    await pinned[0].pin.document.save();
-
-    const rebuilt = await rebuildProject(projectPath);
-    if (!rebuilt) {
-        failed.push(...toBuild);
-        reportFailures(failed);
-        return { succeeded, failed };
-    }
-
-    await StateMachine.langClient().resolveMissingDependencies({
-        documentIdentifier: { uri: Uri.file(projectPath).toString() }
-    });
-    notifyCurrentWebview();
-    const resolution = await partitionByPostPullResolution(toBuild, projectPath);
-    succeeded.push(...resolution.succeeded);
-    failed.push(...resolution.failed);
-    reportFailures(resolution.failed);
-    return { succeeded, failed };
-}
-
-function reportFailures(failed: ConnectorUpgradeAdvice[]): void {
-    if (failed.length === 0) {
-        return;
-    }
-    window.showErrorMessage(
-        `Failed to update connector${failed.length > 1 ? 's' : ''}: ` +
-        `${failed.map((item) => item.moduleName).join(', ')}.`
-    );
-}
-
-/** Runs a real `bal build` (a fresh process, unlike PULL_MODULE's in-process resolve) to pick up an
- * on-disk Ballerina.toml edit and regenerate Dependencies.toml from it. */
-async function rebuildProject(projectPath: string): Promise<boolean> {
-    const buildCommand = `${quoteShellPath(extension.ballerinaExtInstance.getBallerinaCmd())} build`;
-    const result = await runCommandWithOutput(buildCommand, projectPath, buildOutputChannel);
-    return result.success;
+interface PackageCoordinate {
+    org: string;
+    name: string;
+    version: string;
 }
 
 interface DependencyPin {
     document: TextDocument;
     versionRange: Range;
+}
+
+/**
+ * Checks the current project for connectors used as a `service ... on <module>:Listener` whose
+ * resolved version predates schema-driven trigger support, and prompts for consent to update.
+ */
+export async function checkAndPromptConnectorUpgrades(projectPath: string): Promise<void> {
+    if (!projectPath) {
+        return;
+    }
+    const advice = await fetchUpgradeAdvice(projectPath);
+    if (advice.length === 0) {
+        return;
+    }
+    const selection = await window.showInformationMessage(
+        UPGRADE_PROMPT_MESSAGE,
+        UpgradeAction.Update,
+        UpgradeAction.NotNow
+    );
+    if (selection === UpgradeAction.Update) {
+        await upgradeConnectors(advice, projectPath, true);
+    }
+}
+
+/** The connectors of {@code projectPath} upgraded in this session that still wait for a window reload. */
+export function getPendingReloadConnectors(projectPath: string): ConnectorReference[] {
+    return Array.from(pendingReloadConnectors.get(projectPath)?.values() ?? []);
+}
+
+/**
+ * Upgrades every connector in {@code advice} to its minimum supported version:
+ *
+ * <ol>
+ * <li>Pulls the exact required versions through {@code PULL_MODULE}. A plain re-resolution pulls nothing,
+ * since an older bala of each connector is already cached.</li>
+ * <li>Raises explicit {@code Ballerina.toml} {@code [[dependency]]} pins to the pulled versions.</li>
+ * <li>When a {@code Dependencies.toml} exists, removes it and runs {@code bal build} to regenerate it,
+ * since the locked versions would otherwise keep winning over the pulled ones.</li>
+ * </ol>
+ *
+ * With {@code promptReload}, the upgraded connectors are recorded as waiting for a reload and the user is
+ * asked to reload the window so every open view is rebuilt against the new versions.
+ *
+ * @returns whether the upgrade completed
+ */
+export async function upgradeConnectors(
+    advice: ConnectorUpgradeAdvice[],
+    projectPath: string,
+    promptReload: boolean
+): Promise<boolean> {
+    if (advice.length === 0) {
+        return false;
+    }
+    const upgraded = await window.withProgress(
+        { location: ProgressLocation.Notification, title: UPGRADE_PROGRESS_TITLE },
+        async (progress) => {
+            progress.report({ message: PULLING_PROGRESS_MESSAGE });
+            if (!(await pullExactVersions(advice, projectPath))) {
+                reportFailure(PULL_FAILED_MESSAGE, advice);
+                return false;
+            }
+
+            progress.report({ message: UPDATING_MANIFEST_PROGRESS_MESSAGE });
+            if (!(await raiseDependencyPins(advice, projectPath))) {
+                reportFailure(MANIFEST_UPDATE_FAILED_MESSAGE, advice);
+                return false;
+            }
+
+            const dependenciesToml = path.join(projectPath, DEPENDENCIES_TOML);
+            if (fs.existsSync(dependenciesToml)) {
+                progress.report({ message: REBUILDING_PROGRESS_MESSAGE });
+                if (!(await regenerateDependenciesToml(dependenciesToml, projectPath))) {
+                    window.showErrorMessage(REBUILD_FAILED_MESSAGE);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    );
+    if (upgraded && promptReload) {
+        markPendingReload(advice, projectPath);
+        promptWindowReload();
+    }
+    return upgraded;
+}
+
+/**
+ * Upgrades every connector the project needs to upgrade, along with {@code requested} even if the
+ * language server no longer reports it, so a single reload covers them all.
+ */
+export async function upgradeProjectConnectors(
+    requested: ConnectorUpgradeAdvice,
+    projectPath: string
+): Promise<boolean> {
+    const advice = await fetchUpgradeAdvice(projectPath);
+    const isRequestedListed = advice.some((item) =>
+        connectorKey(item) === connectorKey(requested));
+    return upgradeConnectors(isRequestedListed ? advice : [...advice, requested], projectPath, true);
+}
+
+function markPendingReload(advice: ConnectorUpgradeAdvice[], projectPath: string): void {
+    const pending = pendingReloadConnectors.get(projectPath) ?? new Map<string, ConnectorReference>();
+    for (const item of advice) {
+        pending.set(connectorKey(item), { orgName: item.orgName, packageName: item.packageName });
+    }
+    pendingReloadConnectors.set(projectPath, pending);
+}
+
+function promptWindowReload(): void {
+    window.showInformationMessage(RELOAD_PROMPT_MESSAGE, RELOAD_WINDOW_ACTION).then((selection) => {
+        if (selection === RELOAD_WINDOW_ACTION) {
+            commands.executeCommand(RELOAD_WINDOW_COMMAND);
+        }
+    });
+}
+
+function connectorKey(connector: ConnectorReference): string {
+    return `${connector.orgName}/${connector.packageName}`;
+}
+
+async function fetchUpgradeAdvice(projectPath: string): Promise<ConnectorUpgradeAdvice[]> {
+    try {
+        const response = await StateMachine.langClient().getConnectorUpgradeAdvice({ filePath: projectPath });
+        return response?.advice ?? [];
+    } catch (error) {
+        console.error('>>> Error fetching connector upgrade advice', error);
+        return [];
+    }
+}
+
+async function pullExactVersions(advice: ConnectorUpgradeAdvice[], projectPath: string): Promise<boolean> {
+    const targetFile = advice.find((item) => item.usedInFile)?.usedInFile ?? MAIN_BAL;
+    const fileUri = Uri.file(path.isAbsolute(targetFile) ? targetFile : path.join(projectPath, targetFile))
+        .toString();
+    const packages: PackageCoordinate[] = advice.map((item) => ({
+        org: item.orgName,
+        name: item.packageName,
+        version: item.minSupportedVersion
+    }));
+    try {
+        const result = await StateMachine.langClient().executeCommand({
+            command: PULL_MODULE_COMMAND,
+            arguments: [
+                { key: ARG_KEY_DOC_URI, value: fileUri },
+                { key: ARG_KEY_PACKAGES, value: packages }
+            ]
+        });
+        return result !== EXECUTE_COMMAND_FAILURE;
+    } catch (error) {
+        console.error('>>> Connector upgrade pull failed', error);
+        return false;
+    }
+}
+
+/** Raises every explicit {@code Ballerina.toml} pin of an advised connector to its pulled version. */
+async function raiseDependencyPins(advice: ConnectorUpgradeAdvice[], projectPath: string): Promise<boolean> {
+    const tomlPath = path.join(projectPath, BALLERINA_TOML);
+    const pins = await Promise.all(advice.map(async (item) => ({
+        item,
+        pin: await findDependencyPin(tomlPath, item.orgName, item.packageName)
+    })));
+    const pinned = pins.filter((entry): entry is { item: ConnectorUpgradeAdvice; pin: DependencyPin } =>
+        entry.pin !== undefined);
+    if (pinned.length === 0) {
+        return true;
+    }
+    const edit = new WorkspaceEdit();
+    for (const { item, pin } of pinned) {
+        edit.replace(pin.document.uri, pin.versionRange, item.minSupportedVersion);
+    }
+    if (!(await workspace.applyEdit(edit))) {
+        console.error('>>> Failed to apply Ballerina.toml edits for connector upgrade');
+        return false;
+    }
+    return pinned[0].pin.document.save();
+}
+
+/**
+ * Removes the stale lock file, then runs {@code bal clean} and a real {@code bal build} so the lock file and
+ * build artifacts are regenerated from the pulled versions.
+ */
+async function regenerateDependenciesToml(dependenciesToml: string, projectPath: string): Promise<boolean> {
+    try {
+        await fs.promises.rm(dependenciesToml);
+    } catch (error) {
+        console.error('>>> Failed to remove Dependencies.toml', error);
+        return false;
+    }
+    const ballerinaCmd = quoteShellPath(extension.ballerinaExtInstance.getBallerinaCmd());
+    const clean = await runCommandWithOutput(`${ballerinaCmd} ${BalCommand.Clean}`, projectPath, buildOutputChannel);
+    if (!clean.success) {
+        return false;
+    }
+    await runCommandWithOutput(`${ballerinaCmd} ${BalCommand.Build}`, projectPath, buildOutputChannel);
+    return fs.existsSync(dependenciesToml);
+}
+
+function reportFailure(message: string, advice: ConnectorUpgradeAdvice[]): void {
+    window.showErrorMessage(`${message} ${advice.map((item) => item.moduleName).join(', ')}.`);
 }
 
 /**
@@ -300,81 +309,4 @@ async function findDependencyPin(
         };
     }
     return undefined;
-}
-
-const CENTRAL_REQUEST_TIMEOUT_MS = 10_000;
-
-/** The latest version Ballerina Central publishes for `orgName/packageName`, or `undefined` on failure. */
-function getLatestPackageVersion(orgName: string, packageName: string): Promise<string | undefined> {
-    return new Promise((resolve) => {
-        let settled = false;
-        const settle = (value: string | undefined) => {
-            if (!settled) {
-                settled = true;
-                resolve(value);
-            }
-        };
-
-        const req = https.request({
-            hostname: 'api.central.ballerina.io',
-            path: `/2.0/registry/packages/${encodeURIComponent(orgName)}/${encodeURIComponent(packageName)}`,
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
-        }, (res) => {
-            let body = '';
-            res.on('data', (chunk) => { body += chunk; });
-            res.on('end', () => {
-                if (res.statusCode !== 200) {
-                    settle(undefined);
-                    return;
-                }
-                try {
-                    const versions: string[] = JSON.parse(body);
-                    if (!Array.isArray(versions) || versions.length === 0) {
-                        settle(undefined);
-                        return;
-                    }
-                    settle(versions.reduce((latest, current) =>
-                        compareSemver(current, latest) > 0 ? current : latest));
-                } catch {
-                    settle(undefined);
-                }
-            });
-        });
-        req.setTimeout(CENTRAL_REQUEST_TIMEOUT_MS, () => req.destroy());
-        req.on('error', () => settle(undefined));
-        req.end();
-    });
-}
-
-/**
- * Numeric (not lexical) semver comparison, so "1.10.0" correctly outranks "1.9.0". A `-`-suffixed
- * pre-release (e.g. "2.0.0-beta") always ranks below its own base release ("2.0.0") -- without this,
- * splitting "0-beta" on "." and parsing it as a number silently truncates to "0", so the pre-release
- * would tie with its base release and could incorrectly win a `reduce` for "latest".
- */
-function compareSemver(a: string, b: string): number {
-    const [aBase, aPreRelease] = splitPreRelease(a);
-    const [bBase, bPreRelease] = splitPreRelease(b);
-    const partsOf = (v: string) => v.split('.').map((part) => Number.parseInt(part, 10) || 0);
-    const pa = partsOf(aBase);
-    const pb = partsOf(bBase);
-    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-        const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-        if (diff !== 0) {
-            return diff;
-        }
-    }
-    if (aPreRelease && !bPreRelease) {
-        return -1;
-    }
-    if (!aPreRelease && bPreRelease) {
-        return 1;
-    }
-    return 0;
-}
-
-function splitPreRelease(version: string): [string, string | undefined] {
-    const dashIndex = version.indexOf('-');
-    return dashIndex === -1 ? [version, undefined] : [version.slice(0, dashIndex), version.slice(dashIndex + 1)];
 }
