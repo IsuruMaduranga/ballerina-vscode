@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * Which one shell tool this platform gets (design §6, owner 2026-09-23), cut
+ * Which one shell tool this platform gets (owner, 2026-09-23), cut
  * down from pincer-agent `extensions/powershell/policy.ts`: never two.
  *
  * - Windows: `powershell` when a PowerShell resolves, else no shell tool and a

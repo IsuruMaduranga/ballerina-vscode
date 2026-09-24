@@ -47,7 +47,7 @@ export function transcriptToolName(tool: string): string {
  * output, so it does not weaken the results-stripped isolation boundary — and
  * without it the classifier could not see that the rules had already refused
  * this class of action, so it cleared an equivalent-effect retry on the user's
- * original intent (WEAK-MODEL-REVIEW-2026-09-06 H2).
+ * original intent.
  */
 export type TranscriptEntry =
     | { kind: "user"; text: string }

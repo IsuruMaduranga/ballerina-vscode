@@ -20,7 +20,7 @@
  *
  * Two fixes over the sandbox this derives from:
  *
- * 1. **The symlink leaf is inspected** (review finding N9). The original's
+ * 1. **The symlink leaf is inspected.** The original's
  *    ENOENT fallback joined literal basenames onto the nearest resolved
  *    ancestor without ever lstat-ing the leaf, so `ln -s /outside/x link`
  *    followed by `echo hi > link` resolved to `<project>/link` — inside the
@@ -75,7 +75,7 @@ export function resolveForContainment(target: string): string | undefined {
 
     // The leaf may be a dangling symlink: realpath fails on it, but writes still
     // follow it. Read the link and resolve its target instead of assuming the
-    // literal path (N9).
+    // literal path.
     try {
         const stats = lstatSync(absolute);
         if (stats.isSymbolicLink()) {
@@ -111,8 +111,7 @@ export function isWithin(base: string, target: string): boolean {
  * Expand a leading `~`, then resolve relative to `cwd`. Kept separate from
  * resolveForContainment so callers can report the *original* token in messages:
  * a resolved path can embed an expanded environment-variable value, and echoing
- * that back to the model leaks the secret it was meant to protect (review
- * finding N18).
+ * that back to the model leaks the secret it was meant to protect.
  */
 export function toAbsolute(cwd: string, token: string, home: string): string {
     if (token === "~") { return home; }

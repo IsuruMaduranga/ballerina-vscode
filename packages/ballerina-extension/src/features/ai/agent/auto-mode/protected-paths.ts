@@ -17,7 +17,7 @@
  * Protected paths (pure) — Claude Code's list of paths whose *writes* are never
  * auto-approved, in any mode except bypassPermissions. Ported from pincer-agent
  * `extensions/permissions/protected-paths.ts` (tip `5059966`, re-synced to `2602e3c`) with BI's own
- * agent-configuration paths in place of One Code's (design §7).
+ * agent-configuration paths in place of One Code's.
  *
  * These are not "secret" paths (that list lives in `auto-mode/sensitive.ts` and
  * is about credentials). These are paths that configure the tooling: a write to
@@ -48,7 +48,7 @@ const PROTECTED_DIRS = [
     // into the prompt on demand).
     ".copilot",
     ".agents",
-    // Run-at-login and on-PATH locations (pincer PERMISSIONS-REVIEW-2026-09-05 M7): a
+    // Run-at-login and on-PATH locations: a
     // launchd agent plist runs at the next login, a fish config at the next
     // shell, and `~/.local/bin` is where the `pi` shim and user tools live.
     // Lowercase — segments are compared case-folded.
@@ -67,7 +67,7 @@ const PROTECTED_DIR_EXCEPTIONS: string[] = [];
 const PROTECTED_FILES = new Set([
     // A `.git` FILE is a gitlink (`gitdir: <path>`): written into a subdirectory
     // it points an in-project `git -C sub …` at any repository, and that
-    // repository's config (pincer SECURITY-REVIEW-2026-09-23 H2). The `.git`
+    // repository's config. The `.git`
     // directory is covered by PROTECTED_DIRS; this covers the file form.
     ".git",
     ".gitconfig",
@@ -109,10 +109,10 @@ const PROTECTED_FILES = new Set([
     ".claude.json",
     // Claude Code's managed (organisation) settings: the highest-authority
     // permission and auto-mode configuration. Protected in every mode, not only
-    // where the auto-mode safety floor covers it (review P9).
+    // where the auto-mode safety floor covers it.
     "managed-settings.json",
     // Injected into every turn's prompt (agents-md/index.ts), so a write to it
-    // steers the agent (design §7).
+    // steers the agent.
     "agents.md",
 ]);
 

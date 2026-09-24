@@ -25,7 +25,7 @@
  * honours the checkout's own `.git/config`, and `core.fsmonitor` there names a
  * program that `status` and other index reads run — so a directory whose
  * `.git` came from an archive or a copied tree would run it the moment the
- * gate inspects it, before any prompt (SECURITY-REVIEW-2026-09-23 M5).
+ * gate inspects it, before any prompt.
  * `--no-optional-locks` stops `status` rewriting the index, which would run the
  * checkout's `post-index-change` hook. The model's own git commands are judged
  * by the permission gate instead (auto-mode/git-checkout-programs.ts).

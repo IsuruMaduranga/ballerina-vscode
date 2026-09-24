@@ -26,8 +26,7 @@
  * or a `%G?` format, a pager. `status` also rewrites the index opportunistically,
  * which runs a `post-index-change` hook. A directory whose `.git` came from an
  * archive, a synced folder or a copied tree can carry any of these, so a git
- * read there is not provably read-only and goes to the classifier (PR #8
- * review; SECURITY-REVIEW-2026-09-23's folder-trust residual).
+ * read there is not provably read-only and goes to the classifier.
  *
  * Only repository-scoped files are read: the checkout's `config`, its
  * `config.worktree`, every submodule's config, and the hooks

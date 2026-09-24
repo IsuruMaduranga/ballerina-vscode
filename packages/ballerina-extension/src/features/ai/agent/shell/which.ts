@@ -33,7 +33,7 @@ export function whichOnPath(command: string, env: NodeJS.ProcessEnv, platform: s
     // (`tsserver`, a POSIX sh script for Git Bash; `tsserver.cmd`; `tsserver.ps1`)
     // and the extensionless one is not a Windows executable — CreateProcess
     // refuses it with ENOENT, which is what every npm-installed language server
-    // did on a real Windows machine until 2026-09-19 (pincer findings §22).
+    // did on a real Windows machine until 2026-09-19.
     const pathext = platform === "win32" ? (envVar(env, "PATHEXT") ?? ".EXE;.CMD;.BAT").split(";").filter(Boolean) : [];
     const hasPathext = pathext.some((ext) => command.toLowerCase().endsWith(ext.toLowerCase()));
     const extensions = platform === "win32" ? (hasPathext ? ["", ...pathext] : [...pathext, ""]) : [""];

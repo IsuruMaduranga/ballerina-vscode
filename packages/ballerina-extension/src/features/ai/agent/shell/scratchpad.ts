@@ -16,7 +16,7 @@
 
 /**
  * The thread's scratchpad: a temp-files directory the system prompt points the
- * agent at, instead of `/tmp` or the user's project (design §8). The shape
+ * agent at, instead of `/tmp` or the user's project. The shape
  * follows Claude Code's (`<tmp>/<owner>/<project-slug>/<session-id>/scratchpad`)
  * as pincer-agent's `extensions/lib/scratchpad.ts` (tip `2602e3c`) builds it,
  * with the WSO2 Integrator Copilot's own owner segment, so a machine running

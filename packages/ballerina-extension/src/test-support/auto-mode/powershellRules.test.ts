@@ -232,7 +232,7 @@ describe("powershellReadOnly with roots (absolute paths judged by containment, 2
 
 describe("BI: subexpressions and splats are never read-only", () => {
     // PowerShell runs a parenthesised pipeline in argument mode; both of these delete the
-    // file (working-docs findings/powershell.md). pincer's check at 3b290c8 cleared them.
+    // file. pincer's check at 3b290c8 cleared them.
     const refused = [
         "Get-Content (Remove-Item a.txt)",
         "Write-Output (New-Item -Path x -ItemType File)",

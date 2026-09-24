@@ -16,14 +16,14 @@
 /**
  * The one sensitive-path denylist (pure). Ported from pincer-agent
  * `extensions/auto-mode/sensitive.ts` (tip `5059966`) with BI's `Config.toml`
- * added (design §7).
+ * added.
  *
  * The upstream sandbox this is derived from kept three divergent copies of this
  * list (one for the shell classifier, one for file tools, one for PowerShell);
  * they drifted, and the drift *was* the vulnerability — the shell path blocked
- * `~/.kube/config` while the file path did not (review findings F3, F10, N13,
- * N25). There is exactly one list here, it is case-folded, and every consumer
- * calls these functions rather than re-deriving membership.
+ * `~/.kube/config` while the file path did not. There is exactly one list
+ * here, it is case-folded, and every consumer calls these functions rather
+ * than re-deriving membership.
  */
 
 import { basename } from "path";
@@ -55,7 +55,7 @@ const SENSITIVE_DIR_PAIRS = [
     [".local", "share"],
     [".huggingface", "token"],
     ["library", "keychains"], // macOS keychain databases
-    [".ballerina", "settings.toml"], // Ballerina Central access token (design §7)
+    [".ballerina", "settings.toml"], // Ballerina Central access token
 ] as const;
 
 const SENSITIVE_BASENAMES = new Set([
@@ -94,7 +94,7 @@ const SENSITIVE_BASENAMES = new Set([
 ]);
 
 /**
- * Windows roots (design §7 restriction 4, BI): the Windows directory, and the
+ * Windows roots (a BI addition): the Windows directory, and the
  * per-user AppData trees where credential stores, browser profiles and tool
  * tokens live. `AppData\Local\Temp` is carved out: it is `%TEMP%`, which
  * holds the thread's scratchpad, and a rule covering it would send every
@@ -111,8 +111,8 @@ function isSensitiveWindowsPath(folded: string, segments: string[]): boolean {
 
 /**
  * Filesystem roots that expose process state — `/proc/self/environ` hands over
- * every environment variable, which defeats any path-based secret protection
- * (review finding N23). Anything under these is sensitive regardless of name.
+ * every environment variable, which defeats any path-based secret protection.
+ * Anything under these is sensitive regardless of name.
  */
 const SENSITIVE_ROOTS = ["/proc", "/sys"];
 
@@ -161,8 +161,8 @@ export function isSensitivePath(candidate: string): boolean {
 
 /**
  * Paths inside the project that are code-execution primitives: writing them
- * plants code that runs later without any further approval (review finding
- * N20 — `.git/hooks/pre-commit` fires on the next commit, `.git/config` can
+ * plants code that runs later without any further approval
+ * (`.git/hooks/pre-commit` fires on the next commit, `.git/config` can
  * carry an `[alias]` shelling out). Containment inside the working directory
  * says nothing about whether a write is safe, so these are called out as
  * evidence for the classifier even when they are in-project.

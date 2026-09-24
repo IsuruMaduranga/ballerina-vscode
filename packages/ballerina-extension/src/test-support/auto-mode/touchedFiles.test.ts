@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The touched-file scan around a shell command (design §9), against real
+ * The touched-file scan around a shell command, against real
  * commands: an in-place `sed -i`, a `git checkout --`, a new package, a delete.
  */
 

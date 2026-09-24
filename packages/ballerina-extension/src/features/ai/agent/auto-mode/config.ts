@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The user's auto-mode customization (design §3, Phase B), read from one
+ * The user's auto-mode customization, read from one
  * user-level file: `~/.ballerina/copilot/auto-mode.json`. Never from the
  * workspace: a checked-in file could otherwise hand the agent classifier
  * permissions, and the file itself is a safety-floor target.

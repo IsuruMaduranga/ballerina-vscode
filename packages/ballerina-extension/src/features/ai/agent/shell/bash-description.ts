@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The bash tool's description (design §9): which shell the model is writing
+ * The bash tool's description: which shell the model is writing
  * for, when a purpose-built tool is the better choice, one-line reads, the
  * scratchpad, background runs and git safety, in BI's own words. Tool names
  * are spelled out rather than imported, so this stays a leaf the Jest suite

@@ -69,7 +69,7 @@ export function resetShellGateState(threadKey: string): void {
 /**
  * The classifier's model call: thinking disabled, our own retries only, and
  * the system prompt (the ruleset) cached for an hour, since classifier calls
- * are sporadic and the prefix is stable for the whole session (design §4).
+ * are sporadic and the prefix is stable for the whole session.
  */
 export const classifierModelCall: ClassifierModelCall = async ({ system, user, maxOutputTokens, abortSignal }) => {
     const model = await getAnthropicClient(ANTHROPIC_SONNET);

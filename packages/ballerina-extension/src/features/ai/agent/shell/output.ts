@@ -30,7 +30,7 @@ const ANSI_ESCAPE_RE = /\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|
 // eslint-disable-next-line no-control-regex
 const STRAY_CONTROL_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
 
-/** Rolling cap on the output kept in memory per process (design §9: ~256 KB). */
+/** Rolling cap on the output kept in memory per process (~256 KB). */
 export const MAX_PROCESS_OUTPUT_CHARS = 256 * 1024;
 
 export const EMPTY_OUTPUT_MARKER = "(no output — the command wrote nothing to stdout or stderr)";

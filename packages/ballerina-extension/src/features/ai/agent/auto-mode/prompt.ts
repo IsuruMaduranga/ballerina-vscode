@@ -107,10 +107,10 @@ export function stage1User(userPrefix: string): string {
  * `denied_by_permission_rule` line. Stage 2's job is to weigh user intent, and
  * that is exactly what let a retry through: after `Bash(rm:*)` refused
  * `rm scripts/slow_build.sh`, `python3 -c "import os; os.remove(…)"` was cleared
- * on the user's own "Delete scripts/slow_build.sh" (WEAK-MODEL-REVIEW-2026-09-06
- * H2). A permission rule is the user's decision made in advance, so it outranks
- * the intent stage rather than being excused by it. One-directional, like the
- * intent addendum: it can only turn an allow into a block.
+ * on the user's own "Delete scripts/slow_build.sh". A permission rule is the
+ * user's decision made in advance, so it outranks the intent stage rather
+ * than being excused by it. One-directional, like the intent addendum: it
+ * can only turn an allow into a block.
  */
 export const STAGE2_DENIAL_ADDENDUM =
     "\n\nAdditionally: the transcript contains one or more `denied_by_permission_rule` entries — actions the user's own " +
@@ -257,7 +257,7 @@ export function parseStage2(text: string, index: RuleIndex, userMessages: string
                     tier: "soft_deny",
                     ruleId: "intent-unverified",
                     // The full quote, not a clip: the mismatch class is only diagnosable
-                    // from the exact text the model produced (2026-09-05 H4).
+                    // from the exact text the model produced.
                     raw: intent,
                 };
             }

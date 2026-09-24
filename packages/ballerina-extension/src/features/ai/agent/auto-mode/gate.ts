@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The permission gate for one shell call (design §2, §3):
+ * The permission gate for one shell call:
  *
  *   safety floor → pre-gate → git recoverability →
  *     ask mode:  a session rule the user granted → the approval banner
@@ -97,7 +97,7 @@ export type ShellGateDecision =
     | { outcome: "ask"; reasons: string[]; grant?: SessionRuleGrant; floor?: true; evidence?: ShellEvidence };
 
 /**
- * Decide one PowerShell command (design §6): the textual floor, then the
+ * Decide one PowerShell command: the textual floor, then the
  * read-only allowlist as the only pre-gate. There is no containment fast path
  * and no recoverability judge, so an in-workspace `Remove-Item` is judged,
  * never cleared deterministically.

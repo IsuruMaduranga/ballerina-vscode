@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * Which workspace files a shell command changed (design §9). Shell edits
+ * Which workspace files a shell command changed. Shell edits
  * bypass `persistLiveEdit`, so the shell tool stats the workspace before and
  * after a command that may write, and the caller registers each changed file
  * the way the file tools register theirs (`tools/shell-touched-files.ts`).

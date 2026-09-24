@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The ask-mode gate (design §3) and its session rules (design §10): which
+ * The ask-mode gate and its session rules: which
  * layer clears a command, what the banner is asked, and what a granted rule
  * covers afterwards.
  */

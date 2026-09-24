@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The safety floor with BI's targets (design §7): gate-control files, the
+ * The safety floor with BI's targets: gate-control files, the
  * Copilot's own state, and Config.toml. Modelled on pincer-agent's
  * `auto-mode-safety-floor.test.ts` and `safety-floor-powershell.test.ts`.
  */

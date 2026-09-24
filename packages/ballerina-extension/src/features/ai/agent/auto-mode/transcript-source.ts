@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * Where the classifier's transcript comes from (design §4): the thread's
+ * Where the classifier's transcript comes from: the thread's
  * stored generations. Each contributes its `userPrompt`, which is the text the
  * user typed (the RPC `usecase`), never the assembled user message that
  * carries the whole codebase dump, and then the tool calls in its model

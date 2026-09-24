@@ -19,7 +19,7 @@
  *
  * The rule shape is Bash's — `PowerShell(git status:*)`, wildcards, a bare
  * `PowerShell` — but the command line is PowerShell's, so three things differ
- * (findings §22, the reconstructed `PowerShellTool/powershellPermissions.ts`):
+ * (from the reconstructed `PowerShellTool/powershellPermissions.ts`):
  *
  * - **Alias canonicalization.** `ls`, `dir`, `gci` are all `Get-ChildItem`;
  *   `rm`, `del`, `ri` are all `Remove-Item`. A rule and a command are compared
@@ -44,7 +44,7 @@
  * containment by shape: a read of an absolute, `~`, drive-lettered, UNC or
  * `..` path is not auto-cleared (UNC paths always ask in CC). Anything the
  * check cannot vouch for is simply "not read-only", which costs a classifier
- * call or a prompt, never a bypass — docs/decisions/windows.md.
+ * call or a prompt, never a bypass.
  *
  * Ported from pincer-agent `extensions/permissions/powershell-rules.ts`
  * (`3b290c8`). BI changes:
@@ -52,9 +52,9 @@
  *   check and count as injection syntax for session rules. In argument mode
  *   PowerShell runs a parenthesised pipeline, so pincer's check cleared
  *   `Get-Content (Remove-Item a.txt)`, which deletes the file (verified
- *   2026-09-24 against PowerShell 7.6.6, working-docs findings/powershell.md).
+ *   2026-09-24 against PowerShell 7.6.6).
  * - a `git` statement is read-only when the bash pre-gate's hardened git
- *   check clears it (design §6), with the words re-quoted so bash and
+ *   check clears it, with the words re-quoted so bash and
  *   PowerShell see the same arguments.
  */
 
@@ -375,9 +375,9 @@ export function powershellMatchForms(command: string, depth = 0): string[] {
 // Read-only allowlist
 
 /**
- * The read-only cmdlet sets in the 2.1.276 binary (findings §22), plus the
- * neutral output pair, plus — One Code's addition (2026-09-19, user decision,
- * docs/decisions/windows.md) — the pure in-process pipeline cmdlets a
+ * The read-only cmdlet sets in the 2.1.276 binary, plus the
+ * neutral output pair, plus — One Code's addition (2026-09-19, user decision)
+ * — the pure in-process pipeline cmdlets a
  * read-only line is piped through: they shape objects already in memory and
  * touch neither disk nor network. `Where-Object`/`ForEach-Object` are NOT
  * here: they take script blocks, which the check refuses anyway. Claude Code's
@@ -558,7 +558,7 @@ export function powershellReadOnly(command: string, opts?: PowerShellReadOnlyOpt
             // `-Path:value` binds its value in the same word; until 2026-09-23 the
             // whole word was skipped as a parameter name, so `Get-Content
             // -Path:~/.ssh/id_rsa` and a UNC `-LiteralPath:\\host\share` passed
-            // (SECURITY-REVIEW-2026-09-23 H5). The bound value is a path like any other.
+            // unnoticed. The bound value is a path like any other.
             const colon = token.startsWith("-") ? token.indexOf(":") : -1;
             const value = token.startsWith("-") ? (colon > 0 ? token.slice(colon + 1) : "") : token;
             if (!value) { continue; }
@@ -569,8 +569,8 @@ export function powershellReadOnly(command: string, opts?: PowerShellReadOnlyOpt
             // By shape (UNC, ~, PSDrive, ..) a token is never vouched for. An absolute
             // path is read-only only when it resolves inside the working directory or
             // a harness session dir (2026-09-19: /doctor's transcript scan on Windows
-            // spelled `<agentDir>\sessions\…` and was classified —
-            // docs/decisions/auto-mode.md); a comma list is judged part by part.
+            // spelled `<agentDir>\sessions\…` and was classified); a comma list
+            // is judged part by part.
             if (pathOutsideRoots(value, opts, roots)) { return { readOnly: false, reason: "a path outside the working directory" }; }
         }
     }

@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The two-stage classifier call (design §4), from pincer-agent
+ * The two-stage classifier call, from pincer-agent
  * `extensions/auto-mode/classifier.ts` (`3b290c8`) without its candidate
  * chain: the WSO2 Integrator Copilot has one model per login method, so the
  * caller supplies the one model call (`ClassifierModelCall`, Sonnet 5 through

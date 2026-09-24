@@ -20,8 +20,8 @@
  * nothing else. Until 2026-09-23 it proved that from the command's NAME and
  * never looked at the options: `git diff --output=f` wrote a file, `git grep
  * -O<prog>` and `rg --pre=<prog>` ran a program, `git branch -D` deleted a
- * branch, and `uniq in out` overwrote `out`, all fast-pathed as reads
- * (SECURITY-REVIEW-2026-09-23 H1). Each read-only command now has an explicit
+ * branch, and `uniq in out` overwrote `out`, all fast-pathed as reads.
+ * Each read-only command now has an explicit
  * table of the options it may carry; an option that is not in the table
  * escalates. A missing entry costs one classifier call, never a bypass.
  *

@@ -16,8 +16,8 @@
 
 /**
  * The directories a read-only shell command may read besides the working
- * directory without the classifier (design §7, confirmed by the owner
- * 2026-09-23). Both pre-gates take this list (`shell-analysis.ts`
+ * directory without the classifier (confirmed by the owner 2026-09-23).
+ * Both pre-gates take this list (`shell-analysis.ts`
  * `readableRoots`, the PowerShell check). It widens reads only: writes and
  * deletes never consult it, and the sensitive list still applies inside it.
  *

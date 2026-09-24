@@ -651,7 +651,7 @@ export interface WebToolApprovalEvent {
     content: string;
 }
 
-/** Ask mode's banner for a shell command the gate could not clear (design §10 of the shell-tool feature). */
+/** Ask mode's banner for a shell command the gate could not clear. */
 export interface ShellApprovalEvent {
     type: "shell_approval_request";
     requestId: string;

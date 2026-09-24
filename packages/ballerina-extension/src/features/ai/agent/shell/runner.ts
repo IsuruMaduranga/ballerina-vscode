@@ -17,7 +17,7 @@
  * The one process runner: every child the Copilot starts — the shell tool's commands, `bal run`,
  * `bal test` — goes through `spawnLaunch`, and every run the Copilot waits on through `startProcess`.
  * The shape is pincer-agent's `extensions/bash/background.ts` and `lib/shell-spawn.ts` (tip `5059966`),
- * without pi (design §9):
+ * without pi:
  *
  * - `shell: false`, an argv array, `windowsHide`. A `.bat`/`.cmd` (`bal.bat`) reaches here already wrapped
  *   by `commandLaunch`; a shell command already wrapped by `shellLaunch`.

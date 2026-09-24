@@ -68,7 +68,7 @@ const DISPOSE_TIMEOUT_MS = 2_000;
  * (`/Applications/WSO2 Integrator.app/.../bin/bal`) is one argv element, so it
  * needs no quoting. On Windows `bal` is `bal.bat`, which Node refuses to spawn
  * without a shell; `commandLaunch` starts it through `cmd.exe /d /s /c` with
- * the line quoted once (design §9 of the shell-tool feature).
+ * the line quoted once.
  */
 export function spawnProcess(
     command: string,

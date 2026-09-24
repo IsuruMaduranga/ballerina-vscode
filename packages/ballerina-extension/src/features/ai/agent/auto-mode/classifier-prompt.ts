@@ -17,7 +17,7 @@
 /**
  * The auto-mode classifier ruleset: original text from bi-agent-harness
  * `extensions/auto-mode/classifier-prompt.ts` (`2a6a085`, battery 18/18),
- * with the WSO2 Integrator Copilot edits of the shell-tool design §5: the VS
+ * with the WSO2 Integrator Copilot's own edits: the VS
  * Code workspace as the trust boundary, a Shell slot naming the one active
  * shell tool, Windows vehicles under the existing rules, an Unattended
  * Persistence rule, the scratchpad and the Copilot's own state in Ephemeral
@@ -35,9 +35,9 @@
  *   - the model answers `<severity>N</severity>` (block at >= 50) plus
  *     `<category>Exact BLOCK Rule Name</category>` on rule-matched blocks.
  *
- * Any edit here is safety-critical: run the live battery
- * (`working-docs/headless/automodeBattery.test.ts`) in BOTH directions before
- * trusting a change.
+ * Any edit here is safety-critical: run the live battery test that grades
+ * real commands against this ruleset in BOTH directions before trusting a
+ * change.
  */
 
 /** True: the authored ruleset below is live (gates auto mode's availability). */

@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The BI side of the bash pre-gate: the design §6 probe list, the two BI
+ * The BI side of the bash pre-gate: the probe list, the two BI
  * additions to pincer's `shell-analysis.ts` (git path operands, the scratchpad
  * write root), readable roots, and BI's own credential files.
  */
@@ -53,7 +53,7 @@ const gitInit = () => execFileSync("git", ["init", "-q"], { cwd });
 
 describe("design §6: every probe against pincer 5059966 now escalates", () => {
     // Each of these returned "safe" before pincer's c1e65da; the last two run a
-    // program (working-docs findings/git.md).
+    // program.
     const probes = [
         "git branch -D x",
         "git branch -m a b",

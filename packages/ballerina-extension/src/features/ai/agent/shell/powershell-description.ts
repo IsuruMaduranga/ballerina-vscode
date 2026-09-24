@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The `powershell` tool's description (design §9, owner 2026-09-19): the same
+ * The `powershell` tool's description (owner, 2026-09-19): the same
  * sections and coverage as Claude Code's captured description (the edition
  * slot, PowerShell syntax, the Unix commands PowerShell lacks, exit codes,
  * interactive commands, multi-line strings, usage and git safety), written in

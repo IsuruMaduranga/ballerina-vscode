@@ -18,7 +18,7 @@
  * What one agent run needs to offer the shell tool, resolved once at run
  * start and shared by the system prompt and the tool registry: the workspace
  * root the shell runs in, the thread's scratchpad (created here), and the
- * gate's readable and writable roots (design §7, §8).
+ * gate's readable and writable roots.
  *
  * One shell tool per platform (`shell-policy.ts`): bash on macOS and Linux,
  * PowerShell on Windows, and none on a Windows machine with no PowerShell.

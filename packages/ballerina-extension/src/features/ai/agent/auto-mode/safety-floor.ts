@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * The safety floor (design §3 step 1, §7): a deterministic check that sends a
+ * The safety floor: a deterministic check that sends a
  * shell command to the user whatever mode is on, because it touches what the
  * gate is made of or what the WSO2 Integrator Copilot keeps for itself. A
  * floor hit never reaches the classifier and never gets a session rule.
