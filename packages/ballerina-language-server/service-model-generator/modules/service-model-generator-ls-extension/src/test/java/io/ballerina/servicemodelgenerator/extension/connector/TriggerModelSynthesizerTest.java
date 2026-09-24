@@ -477,6 +477,35 @@ public class TriggerModelSynthesizerTest {
                         + "despite its own declared presence being \"optional\"");
     }
 
+    /** A string-literal identifier is rendered as a {@code STRING_LITERAL} field, not a plain identifier. */
+    @Test
+    public void testStringLiteralIdentifierUsesStringLiteralField() {
+        IdentifierSpec identifier = new IdentifierSpec(
+                IdentifierSpec.PRESENCE_REQUIRED, List.of(IdentifierSpec.FORM_STRING_LITERAL));
+        TriggerMetadataModel.Listener listener = new TriggerMetadataModel.Listener(
+                "$listener", "Listens for events.", new TypeRef("Listener", null), null,
+                List.of("$service"), false, null, null, null);
+        TriggerMetadataModel.ServiceType serviceType = new TriggerMetadataModel.ServiceType(
+                "$service", "A service.", new TypeRef("Service", null), null, false, false,
+                null, identifier, null, null);
+        TriggerMetadataModel authoring = new TriggerMetadataModel(
+                "v1.0", List.of(listener), List.of(serviceType), null, null);
+
+        TriggerLibraryFacts.Listener listenerFacts = new TriggerLibraryFacts.Listener("Listener", List.of());
+        TriggerLibraryFacts facts = new TriggerLibraryFacts(List.of(listenerFacts), List.of(), List.of());
+        Listener listenerModel = listenerModel(Map.of());
+
+        TriggerUISchemaModel model = TriggerModelSynthesizer.synthesize(authoring, facts, listenerModel, "1",
+                "RabbitMQ", null, "event", "ballerinax", "rabbitmq", "rabbitmq", "3.6.0").orElseThrow();
+
+        TriggerUISchemaModel.Property property = model.initProperties().get("identifier");
+        Assert.assertNotNull(property, "a required identifier must be rendered in the init form");
+        Assert.assertEquals(property.codedata().type(), "STRING_LITERAL");
+        Assert.assertEquals(property.types().get(0).fieldType(), "STRING_LITERAL");
+        Assert.assertEquals(property.metadata().label(), "Service Identifier");
+        Assert.assertEquals(property.placeholder(), "\"\"");
+    }
+
     @Test
     public void testDottedModuleNameAnnotationUsesNaturalPrefix() {
         TriggerMetadataModel.Listener listener = new TriggerMetadataModel.Listener(
@@ -1218,14 +1247,14 @@ public class TriggerModelSynthesizerTest {
         return SchemaDrivenSourceGenerator.buildServiceBlockForTrigger(initModel, model);
     }
 
-    /** A {@code stringLiteral} identifier (gRPC's service name) is asked for as text and emitted quoted. */
+    /** A {@code stringLiteral} identifier (gRPC's service name) is asked for as a string literal and emitted as is. */
     @Test
     public void testStringLiteralIdentifierIsEmitted() throws Exception {
         TriggerUISchemaModel model = synthesizeWithIdentifier(IdentifierSpec.FORM_STRING_LITERAL);
         TriggerUISchemaModel.Property identifier = model.initProperties().get("identifier");
         Assert.assertEquals(identifier.codedata().type(), "STRING_LITERAL");
-        Assert.assertEquals(identifier.types().get(0).fieldType(), "TEXT");
-        Assert.assertEquals(identifier.types().get(1).fieldType(), "EXPRESSION");
+        Assert.assertEquals(identifier.types().size(), 1);
+        Assert.assertEquals(identifier.types().get(0).fieldType(), "STRING_LITERAL");
         Assert.assertFalse(identifier.optional());
 
         String block = emitWithIdentifier(model, "\"helloworld.Greeter\"");

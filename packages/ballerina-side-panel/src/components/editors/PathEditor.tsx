@@ -20,7 +20,12 @@ import React, { useCallback, useEffect, useState } from "react";
 import { FormField } from "../Form/types";
 import { TextField } from "@wso2/ui-toolkit";
 import { useFormContext } from "../../context";
-import { parseBasePath, parseResourceActionPath, parseResourceFunctionPath } from "../../utils/path-validations";
+import {
+    parseBasePath,
+    parseResourceActionPath,
+    parseResourceFunctionPath,
+    parseServiceStringLiteral
+} from "../../utils/path-validations";
 import { buildRequiredRule, capitalize } from "./utils";
 import { buildValidate } from "../Form/validationRules";
 import { dedupeMessages } from "../Form/DiagnosticsStore";
@@ -42,6 +47,7 @@ export function PathEditor(props: PathEditorProps) {
     const validatePath = useCallback(debounce((value: string) => {
         const response = field.type === "SERVICE_PATH" ? parseBasePath(value)
             : field.type === "RESOURCE_PATH" ? parseResourceFunctionPath(value)
+            : field.type === "STRING_LITERAL" ? parseServiceStringLiteral(value)
             : parseResourceActionPath(value);
         if (response.errors.length > 0) {
             setPathErrorMsg(response.errors[0].message);
