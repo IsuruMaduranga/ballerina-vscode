@@ -52,8 +52,6 @@ export function describeToolCall(toolName: string, toolInput?: any): string {
             return file ? `Reading ${file}` : 'Reading files';
         case 'getCompilationErrors':
             return 'Checking for errors';
-        case 'runBallerinaPackage':
-            return 'Running the integration';
         case 'hurlRunnerTool':
             return 'Testing HTTP endpoints';
         case 'Subagent': {

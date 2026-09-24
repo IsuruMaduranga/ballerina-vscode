@@ -55,7 +55,9 @@ import {
     MIGRATION_SOURCE_LIST_TOOL,
     MIGRATION_SOURCE_READ_TOOL,
 } from './tools/migration-source-reader';
-import { createBallerinaRunTool, BALLERINA_RUN_TOOL_NAME } from './tools/ballerina-run';
+import { startShellService } from './tools/ballerina-run';
+import { withBalOnPath } from './shell/bal-run';
+import { extension } from '../../../BalExtensionContext';
 import { RunningServicesManager } from './tools/running-service-manager';
 import { createHurlTool, HURL_TOOL_NAME } from './tools/hurl-tool';
 import { createWebSearchTool, WEB_SEARCH_TOOL_NAME, createWebFetchTool, WEB_FETCH_TOOL_NAME } from './tools/web-tools';
@@ -111,6 +113,8 @@ function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, r
         runKey,
         scratchpadDir: shell.scratchpadDir,
         onFilesTouched: (touched) => registerShellTouchedFiles(shell.cwd, touched, opts.modifiedFiles, opts.allModifiedFiles),
+        startService: (start) => startShellService(start, opts.runningServices),
+        env: withBalOnPath(process.env, extension.ballerinaExtInstance?.getBallerinaCmd()),
         authorize: createShellAuthorizer({
             shell,
             mode: opts.shellMode ?? 'auto',
@@ -237,7 +241,6 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
             [MIGRATION_SOURCE_READ_TOOL]: createMigrationSourceReadTool(eventHandler, migrationSourcePath),
         } : {}),
         [HURL_TOOL_NAME]: createHurlTool(eventHandler),
-        [BALLERINA_RUN_TOOL_NAME]: createBallerinaRunTool(tempProjectPath, opts.runningServices, eventHandler),
         [WEB_SEARCH_TOOL_NAME]: createWebSearchTool(eventHandler, webSearchEnabled),
         [WEB_FETCH_TOOL_NAME]: createWebFetchTool(eventHandler, webSearchEnabled),
         [CLARIFY_TOOL]: createClarifyTool(eventHandler),

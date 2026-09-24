@@ -70,6 +70,8 @@ import {
     traceAnimationChanged,
     TraceAnimationEvent,
     runningServicesChanged,
+    backgroundTaskWake,
+    BackgroundTaskWake,
     RunningServiceInfo,
     mcpServersChanged,
     McpServerStatusDTO,
@@ -119,6 +121,7 @@ export class BallerinaRpcClient {
     private _platformExt: PlatformExtRpcClient;
     private _identifierUpdatedCallbacks = new Set<(response: ProjectStructureArtifactResponse[]) => void>();
     private _runningServicesChangedCallbacks = new Set<(services: RunningServiceInfo[]) => void>();
+    private _backgroundTaskWakeCallbacks = new Set<(wake: BackgroundTaskWake) => void>();
     private _mcpServersChangedCallbacks = new Set<(servers: McpServerStatusDTO[]) => void>();
     private _mcpLoadErrorsChangedCallbacks = new Set<(errors: McpLoadErrorsDTO) => void>();
     private _agentsMdFileInfoChangedCallbacks = new Set<(state: AgentsMdFileInfoDTO) => void>();
@@ -153,6 +156,9 @@ export class BallerinaRpcClient {
         });
         this.messenger.onNotification(runningServicesChanged, (services: RunningServiceInfo[]) => {
             this._runningServicesChangedCallbacks.forEach((callback) => callback(services));
+        });
+        this.messenger.onNotification(backgroundTaskWake, (wake: BackgroundTaskWake) => {
+            this._backgroundTaskWakeCallbacks.forEach((callback) => callback(wake));
         });
         this.messenger.onNotification(mcpServersChanged, (servers: McpServerStatusDTO[]) => {
             this._mcpServersChangedCallbacks.forEach((callback) => callback(servers));
@@ -383,6 +389,13 @@ export class BallerinaRpcClient {
         this._runningServicesChangedCallbacks.add(callback);
         return () => {
             this._runningServicesChangedCallbacks.delete(callback);
+        };
+    }
+
+    onBackgroundTaskWake(callback: (wake: BackgroundTaskWake) => void): () => void {
+        this._backgroundTaskWakeCallbacks.add(callback);
+        return () => {
+            this._backgroundTaskWakeCallbacks.delete(callback);
         };
     }
 

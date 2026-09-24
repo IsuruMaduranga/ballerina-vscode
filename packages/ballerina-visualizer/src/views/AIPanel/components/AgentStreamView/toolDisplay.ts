@@ -26,16 +26,11 @@
  * pure mapping can be unit-tested without a DOM. The visualizer package's jsdom
  * environment is currently broken; tests here run under `--env=node`.
  */
-// runTests, getServiceLogs and stopBallerinaService are no longer agent tools; transcripts saved before their
-// removal still carry them, and a service's task_output / kill_task renders through the last two's cards
-// (commandCardTool).
+// runBallerinaPackage, runTests, getServiceLogs and stopBallerinaService are no longer agent tools; transcripts
+// saved before their removal still carry them, and a service's task_output / kill_task renders through the
+// last two's cards (commandCardTool). A service now starts as a background `bal run` through the shell.
 export const COMMAND_OUTPUT_TOOLS = new Set(["runBallerinaPackage", "runTests", "getServiceLogs", "stopBallerinaService", "shell", "powershell"]);
 
-/**
- * The command-card tool a transcript row renders as, or undefined for a plain row. `payload` is the row's
- * toolInput (a call) or toolOutput (a result). A service's `task_output` renders as the service-logs card
- * and its `kill_task` as the stop-service card, as the old dedicated tools did.
- */
 /** Whether a tool call runs the test suite: a `bal test` through the shell, or the removed runTests tool. */
 export function isTestRun(toolName: string | undefined, payload: any): boolean {
     if (toolName === "runTests") return true;
@@ -44,6 +39,11 @@ export function isTestRun(toolName: string | undefined, payload: any): boolean {
     return /(^|[\s;&|(])bal(\.bat)?\s+test\b/.test(command);
 }
 
+/**
+ * The command-card tool a transcript row renders as, or undefined for a plain row. `payload` is the row's
+ * toolInput (a call) or toolOutput (a result). A service's `task_output` renders as the service-logs card
+ * and its `kill_task` as the stop-service card, as the old dedicated tools did.
+ */
 export function commandCardTool(toolName: string | undefined, payload: any): string | undefined {
     if (!toolName) return undefined;
     if (COMMAND_OUTPUT_TOOLS.has(toolName)) return toolName;
@@ -271,6 +271,7 @@ export function getToolResultDisplay(toolName: string | undefined, toolOutput: a
             switch (toolOutput?.status) {
                 case "blocked": return { label: "Command not run:", detail: what };
                 case "background": return { label: "Running in background:", detail: what };
+                case "service": return { label: "Service started:", detail: what };
                 case "error": return { label: "Command failed:", detail: what };
                 default: return { label: "Ran:", detail: what };
             }

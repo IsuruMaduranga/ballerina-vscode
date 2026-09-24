@@ -169,7 +169,13 @@ import { Messenger } from "vscode-messenger";
 import { AiPanelRpcManager } from "./rpc-manager";
 import { sendConfigChangeNotification } from "../../features/ai/utils/ai-utils";
 import { runningServicesManager } from "../../features/ai/agent/tools/running-service-manager";
-import { notifyRunningServicesChanged } from "../../RPCLayer";
+import { onBackgroundTasksChanged } from "../../features/ai/agent/background/registry";
+import { runningProcessList } from "../../features/ai/agent/background/running-list";
+import { setBackgroundWakeSender } from "../../features/ai/agent/background/wake-host";
+import { notifyBackgroundTaskWake, notifyRunningServicesChanged } from "../../RPCLayer";
+import { AiPanelWebview } from "../../views/ai-panel/webview";
+
+let unsubscribeRunningList: (() => void) | undefined;
 
 export function registerAiPanelRpcHandlers(messenger: Messenger) {
     const rpcManger = new AiPanelRpcManager();
@@ -275,8 +281,19 @@ export function registerAiPanelRpcHandlers(messenger: Messenger) {
     // messenger.onRequest(clearMemory, (args: ClearMemoryRequest) => rpcManger.clearMemory(args));
     // messenger.onNotification(openMemoryFiles, (args: OpenMemoryRequest) => rpcManger.openMemoryFiles(args));
 
-    // Push updates to the webview whenever the set of running services changes.
-    runningServicesManager.onChange = (services) => {
-        notifyRunningServicesChanged(services);
-    };
+    // Push the running chip's list whenever a service or a chat's background command starts or ends.
+    const pushRunningList = () => notifyRunningServicesChanged(runningProcessList(runningServicesManager));
+    runningServicesManager.onChange = pushRunningList;
+    // Replaced, not added, if the handlers are registered again.
+    unsubscribeRunningList?.();
+    unsubscribeRunningList = onBackgroundTasksChanged(pushRunningList);
+
+    // A finished background command wakes its idle chat through the AI panel's webview.
+    setBackgroundWakeSender((wake) => {
+        if (!AiPanelWebview.currentPanel) {
+            return false;
+        }
+        notifyBackgroundTaskWake(wake);
+        return true;
+    });
 }

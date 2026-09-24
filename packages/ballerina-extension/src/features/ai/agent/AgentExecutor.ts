@@ -465,7 +465,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                 return getUserPrompt(params, tempProjectPath, turnProjects, webSearchEnabled, agentsMd.text, {
                     omitCodebaseDump: this.config.toolOptions?.omitCodebaseDump,
                     codebaseMapText: this.config.toolOptions?.codebaseMapText,
-                });
+                }, this.config.toolOptions?.taskNotice);
             };
             const userMessageContent = buildTurnPrompt(projects, await prepareAgentsMdForTurn(workspaceId || '', threadId));
 

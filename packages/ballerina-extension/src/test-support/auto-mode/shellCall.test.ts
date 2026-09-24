@@ -23,9 +23,10 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
-    cleanupRunningBackgroundTasks,
     getBackgroundTask,
+    listBackgroundTasks,
     resetBackgroundTasksForTests,
+    stopAllBackgroundTasks,
 } from "../../features/ai/agent/background/registry";
 import type { BackgroundShell } from "../../features/ai/agent/background/types";
 import { bashToolDescription } from "../../features/ai/agent/shell/bash-description";
@@ -44,7 +45,7 @@ beforeEach(() => {
     scratchpad = join(root, "scratchpad");
 });
 afterEach(() => {
-    cleanupRunningBackgroundTasks();
+    stopAllBackgroundTasks();
     resetBackgroundTasksForTests();
     rmSync(root, { recursive: true, force: true });
 });
@@ -183,7 +184,7 @@ describe("runShellCall: background", () => {
         expect(task.finishDetail).toContain("timed out");
     });
 
-    it("stops the task when the run aborts", async () => {
+    it("keeps the task running when the run aborts: it outlives the turn", async () => {
         const controller = new AbortController();
         const result = await runShellCall(
             { command: "setTimeout(() => {}, 30000)", run_in_background: true },
@@ -192,8 +193,34 @@ describe("runShellCall: background", () => {
         if (result.kind !== "background") { throw new Error(result.kind); }
         const task = getBackgroundTask(result.taskId) as BackgroundShell;
         controller.abort();
-        await until(() => task.completed);
-        expect(task.finishStatus).toBe("killed");
+        await new Promise((r) => setTimeout(r, 300));
+        expect(task.completed).toBe(false);
+    });
+
+    it("starts a background `bal run` as a service through startService, not as a chat task", async () => {
+        const starts: { cwd: string; packagePath: string }[] = [];
+        const result = await runShellCall(
+            { command: "cd pkg && bal run", run_in_background: true, description: "Start the service" },
+            nodeCtx({
+                startService: async ({ cwd, packagePath }) => {
+                    starts.push({ cwd, packagePath });
+                    return { kind: "started", taskId: "task-service-0000aaaa", output: "Running executable\n" };
+                },
+            }),
+        );
+        expect(result.kind).toBe("service");
+        expect(starts).toEqual([{ cwd: root, packagePath: join(root, "pkg") }]);
+        expect(result.text).toContain("Service task-service-0000aaaa is running (Start the service)");
+        expect(result.text).toContain("Startup output:\nRunning executable");
+        expect(listBackgroundTasks()).toHaveLength(0);
+    });
+
+    it("reports a service that exited before it was ready", async () => {
+        const result = await runShellCall(
+            { command: "bal run", run_in_background: true },
+            nodeCtx({ startService: async () => ({ kind: "failed", exitCode: 1, output: "error: compilation failed", timedOut: false }) }),
+        );
+        expect(result.text).toBe("The service exited with code 1 before it was ready.\n\nerror: compilation failed");
     });
 });
 
@@ -212,7 +239,7 @@ describe("runShellCall: bash", () => {
 describe("bash tool description", () => {
     it("covers what the design asks of it, in BI's names", () => {
         const text = bashToolDescription();
-        for (const part of ["/bin/bash", "workspace root", "one plain command per call", "scratchpad", "600000", "run_in_background: true", "task_output", "kill_task", "runBallerinaPackage", "getCompilationErrors", "--no-verify"]) {
+        for (const part of ["/bin/bash", "workspace root", "one plain command per call", "scratchpad", "600000", "run_in_background: true", "task_output", "kill_task", "task-service-", "getCompilationErrors", "--no-verify"]) {
             expectLabeled(text.includes(part), part).toBe(true);
         }
         expect(text).not.toMatch(/Claude|monitor|task_stop|pi\b/);

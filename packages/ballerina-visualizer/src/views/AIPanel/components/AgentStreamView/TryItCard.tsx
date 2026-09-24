@@ -469,7 +469,8 @@ const TryItCard: React.FC<TryItCardProps> = ({ input, output, rpcClient }) => {
         try {
             if (services.length > 0) {
                 const currentServices:RunningServiceInfo[] = await rpcClient.getAiPanelRpcClient().getRunningServices();
-                const activeServices = currentServices.filter((s) => !s.exited);
+                // The list also carries the chat's background commands; only services can serve the request.
+                const activeServices = currentServices.filter((s) => !s.exited && s.kind !== "shell");
                 const initialPackagePaths = Array.from(new Set(services.map(s => normalizeProjectPath(s.packagePath))));
                 const stoppedServices: RunningServiceTarget[] = [];
                 for (const initialPath of initialPackagePaths) {

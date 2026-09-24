@@ -20,7 +20,8 @@ import React, { useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
 import { keyframes } from "@emotion/react";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
-import { AgentRunStatus, ChatNotify, GetRunStatusResponse, UIChatMessage } from "@wso2/ballerina-core";
+import { AgentRunStatus, ChatNotify, GetRunStatusResponse, parseTaskNotification, UIChatMessage } from "@wso2/ballerina-core";
+import { taskNoticeSummaries } from "../../views/AIPanel/components/AIChat/utils/taskNotice";
 import { Codicon, Icon } from "@wso2/ui-toolkit";
 import MarkdownRenderer from "../../views/AIPanel/components/MarkdownRenderer";
 import CodeContextCard from "../../views/AIPanel/components/CodeContextCard";
@@ -170,8 +171,6 @@ function describeTool(toolName: string, toolInput: any): string {
             return file ? `Reading ${file}` : "Reading files";
         case "getCompilationErrors":
             return "Checking for compilation errors";
-        case "runBallerinaPackage":
-            return "Running the integration";
         case "TaskWrite":
             return "Updating the plan";
         case "Clarify":
@@ -680,7 +679,9 @@ function renderTranscript(msgs: MiniMsg[], streaming: boolean): React.ReactNode[
     const nodes: React.ReactNode[] = [];
     msgs.forEach((m, mi) => {
         if (m.role === "user") {
-            nodes.push(<UserBubble key={`u-${mi}`}>{m.content}</UserBubble>);
+            // A turn the host started for a finished background task reads as a notice, not the user's words.
+            const notice = parseTaskNotification(m.content);
+            nodes.push(<UserBubble key={`u-${mi}`}>{notice ? taskNoticeSummaries(notice).join("\n") : m.content}</UserBubble>);
             return;
         }
         const entries = parseStream(m.content);

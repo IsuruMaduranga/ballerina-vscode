@@ -365,7 +365,7 @@ export class AiPanelRpcClient implements AIPanelAPI {
         return this._messenger.sendRequest(restoreCheckpoint, HOST_EXTENSION, params);
     }
 
-    clearChat(): Promise<void> {
+    clearChat(): Promise<boolean> {
         return this._messenger.sendRequest(clearChat, HOST_EXTENSION);
     }
 

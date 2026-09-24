@@ -120,6 +120,8 @@ export interface AICommandConfig<TParams = any> {
         failWhenCompactionUnavailable?: boolean;
         /** What the API does with thinking whose prompt prefix changed; tests use 'error' to catch any rewrite. Default 'drop_block'. */
         prefixMismatchBehavior?: 'error' | 'drop_block';
+        /** Background-task completions the chat has not been told about, framed; sent after the user's query. */
+        taskNotice?: string;
     };
 
     /**
@@ -230,10 +232,10 @@ export abstract class AICommandExecutor<TParams = any> {
         } finally {
             // Stage 6: Always clear active execution on completion (success or error)
             chatStateStorage.clearActiveExecution(projectRootPath, threadId);
-            // Background tasks (subagents, shell commands) belong to the run: nothing keeps working between turns.
+            // Background subagents belong to the run; background shell commands outlive it (background/registry.ts).
             const killed = cleanupRunningBackgroundTasks(buildRunKey(projectRootPath, threadId));
             if (killed > 0) {
-                console.log(`[AICommandExecutor] Terminated ${killed} background task(s) at run end`);
+                console.log(`[AICommandExecutor] Terminated ${killed} background subagent(s) at run end`);
             }
             // Mark the run ended (buffer kept so an in-flight poll can still pick
             // up a terminal event).

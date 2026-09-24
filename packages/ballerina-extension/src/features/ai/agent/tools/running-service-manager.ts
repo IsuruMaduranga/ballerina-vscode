@@ -19,7 +19,7 @@ import { system32Path } from '../auto-mode/shared-paths';
 import { commandLaunch } from '../shell/command-launch';
 import { stripAnsiAndControl } from '../shell/output';
 import { waitForChildExit } from '../shell/process-tree';
-import { spawnLaunch } from '../shell/runner';
+import { type ProcessLaunch, spawnLaunch } from '../shell/runner';
 
 const isWindows = process.platform === 'win32';
 
@@ -76,9 +76,18 @@ export function spawnProcess(
     cwd: string,
     logs: string[]
 ): { process: child_process.ChildProcess } {
-    const launch = commandLaunch(stripSurroundingQuotes(command), args, process.env);
+    return spawnLaunchedProcess(commandLaunch(stripSurroundingQuotes(command), args, process.env), cwd, logs);
+}
+
+/** `spawnProcess` for a launch already built: the shell tool's `bal run` (`bash -c …`, PowerShell). */
+export function spawnLaunchedProcess(
+    launch: ProcessLaunch,
+    cwd: string,
+    logs: string[],
+    env?: NodeJS.ProcessEnv
+): { process: child_process.ChildProcess } {
     // stdin stays a pipe, as it always has for `bal run` (a program reading stdin blocks rather than seeing EOF).
-    const proc = spawnLaunch(launch, { cwd, stdin: 'pipe' });
+    const proc = spawnLaunch(launch, { cwd, env, stdin: 'pipe' });
 
     const handleData = (data: string | Buffer) => {
         logs.push(stripAnsiAndControl(data.toString()));
@@ -276,6 +285,7 @@ export class RunningServicesManager {
     getAll(): RunningServiceInfo[] {
         return Array.from(this.services.values()).map((s) => ({
             taskId: s.taskId,
+            kind: 'service' as const,
             packagePath: s.packagePath,
             startedAt: s.startedAt,
             exited: s.exited,

@@ -153,7 +153,7 @@ describe("powershellToolDescription", () => {
 
     it("steers to BI's tools, background runs, the scratchpad and one-line reads", () => {
         const text = powershellToolDescription("core");
-        for (const needle of ["file_read", "getCompilationErrors", "runBallerinaPackage", "task_output", "kill_task", "scratchpad", "one plain command per call", "$LASTEXITCODE", "@'"]) {
+        for (const needle of ["file_read", "getCompilationErrors", "task-service-", "task_output", "kill_task", "scratchpad", "one plain command per call", "$LASTEXITCODE", "@'"]) {
             expectLabeled(text.includes(needle), needle).toBe(true);
         }
         expect(text).not.toMatch(/\bbash is also available\b/i);

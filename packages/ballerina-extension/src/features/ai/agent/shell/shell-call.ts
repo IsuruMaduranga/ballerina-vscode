@@ -28,12 +28,14 @@
  * caller authorizes a command before calling `runShellCall`.
  */
 
-import { mkdirSync, writeFileSync } from "fs";
+import { writeFileSync } from "fs";
 import { join } from "path";
 import { generateTaskId } from "../background/types";
 import { startBackgroundShell } from "./background";
 import { tailCap } from "./output";
-import { clampTimeoutMs, finishLine, type RunSummary, runProcess } from "./runner";
+import { balRunDirectory } from "./bal-run";
+import { ensureScratchpadDir } from "./scratchpad";
+import { clampTimeoutMs, finishLine, type ProcessLaunch, type RunSummary, runProcess } from "./runner";
 import { shellLaunch, type ShellSpawn } from "./shell-spawn";
 
 /** Claude Code's default for a foreground call without a `timeout`. */
@@ -71,29 +73,35 @@ export interface ShellCallContext {
     /** The run the call belongs to (`subagents/types.ts buildRunKey`). */
     runKey: string;
     toolCallId: string;
-    /** The run's abort signal: it stops a foreground command and every background task the run started. */
+    /** The run's abort signal: it stops a foreground command. A background command outlives the run. */
     signal?: AbortSignal;
     /** The thread's scratchpad (`shell/scratchpad.ts`): task logs and spilled output go under it. */
     scratchpadDir?: string;
     /** Called once when a background command finishes on its own (the touched-file scan). */
     onBackgroundFinished?: () => void;
+    /**
+     * Starts a background `bal run` as a service (`tools/ballerina-run.ts startShellService`). Without it,
+     * such a command is an ordinary background task.
+     */
+    startService?: (start: { launch: ProcessLaunch; cwd: string; env?: NodeJS.ProcessEnv; packagePath: string }) => Promise<ServiceStartResult>;
 }
+
+/** How a background `bal run` started as a service went. */
+export type ServiceStartResult =
+    | { kind: "started"; taskId: string; output: string }
+    | { kind: "failed"; exitCode: number; output: string; timedOut: boolean };
 
 export type ShellCallResult =
     | { kind: "refused"; text: string }
     | { kind: "foreground"; text: string; summary: RunSummary; timeoutMs: number; outputFile?: string }
-    | { kind: "background"; text: string; taskId: string; logPath?: string };
+    | { kind: "background"; text: string; taskId: string; logPath?: string }
+    | { kind: "service"; text: string; start: ServiceStartResult; packagePath: string };
 
 /** `<scratchpad>/tasks/<taskId>/output.log`, its directory created; undefined without a scratchpad or when it cannot be created. */
 export function taskLogPath(scratchpadDir: string | undefined, taskId: string): string | undefined {
     if (!scratchpadDir) { return undefined; }
-    try {
-        const dir = join(scratchpadDir, "tasks", taskId);
-        mkdirSync(dir, { recursive: true });
-        return join(dir, "output.log");
-    } catch {
-        return undefined;
-    }
+    const dir = ensureScratchpadDir(join(scratchpadDir, "tasks", taskId));
+    return dir ? join(dir, "output.log") : undefined;
 }
 
 /**
@@ -123,6 +131,24 @@ export function backgroundStartText(label: string, taskId: string, description: 
         "You will be told when it finishes, in a <system-reminder> on a later tool result, so you do not need to wait or poll; keep working. " +
         (logPath ? `Its output so far is in ${logPath}. ` : "Read its output so far with task_output. ") +
         "If your next step cannot go on without the result, call task_output with block: true. Stop it with kill_task."
+    );
+}
+
+/** The text returned when a background `bal run` was started as a service. */
+export function serviceStartText(description: string, packagePath: string, start: ServiceStartResult): string {
+    const output = tailCap(start.output, FOREGROUND_OUTPUT_CAP).trim();
+    if (start.kind === "failed") {
+        const why = start.timedOut
+            ? "The service did not become ready within 60 seconds, so it was stopped."
+            : `The service exited with code ${start.exitCode} before it was ready.`;
+        return `${why}\n\n${output || "(no output)"}`;
+    }
+    return (
+        `Service ${start.taskId} is running (${description}) in ${packagePath}.\n\n` +
+        "It keeps running after your turn and in the user's other chats of this project. " +
+        "Read its later output with task_output (each call returns only the new output). " +
+        "Stop it with kill_task before you start it again, for example after a code change, or when the user asks.\n\n" +
+        `Startup output:\n${output}`
     );
 }
 
@@ -156,7 +182,15 @@ export async function runShellCall(params: ShellCallParams, ctx: ShellCallContex
         return { kind: "foreground", text: foregroundText(summary, timeoutMs, spill), summary, timeoutMs, outputFile: spill?.path };
     }
 
-    // A background task has no default timeout: it runs until it ends, kill_task, or the run ends.
+    // A background `bal run` is a service: project-wide, kept across chats, listed in the running chip.
+    const servicePath = ctx.startService ? balRunDirectory(params.command, ctx.cwd) : undefined;
+    if (servicePath !== undefined) {
+        const start = await ctx.startService({ launch, cwd: ctx.cwd, env: ctx.env, packagePath: servicePath });
+        return { kind: "service", text: serviceStartText(description, servicePath, start), start, packagePath: servicePath };
+    }
+
+    // A background task has no default timeout: it runs until it ends or something stops it (kill_task,
+    // the user, a chat change, VS Code closing). It is not tied to the run's signal.
     const taskId = generateTaskId("shell");
     const logPath = taskLogPath(ctx.scratchpadDir, taskId);
     const started = startBackgroundShell({
@@ -171,8 +205,7 @@ export async function runShellCall(params: ShellCallParams, ctx: ShellCallContex
         env: ctx.env,
         timeoutMs: clampTimeoutMs(params.timeout),
         logPath,
-        runSignal: ctx.signal,
-        onFinished: ctx.onBackgroundFinished ? () => ctx.onBackgroundFinished() : undefined,
+        onFinished: ctx.onBackgroundFinished,
     });
     if (started.kind === "full") { return { kind: "refused", text: started.reason }; }
     return { kind: "background", text: backgroundStartText(ctx.label, taskId, description, logPath), taskId, logPath };

@@ -15,17 +15,18 @@
 // under the License.
 /**
  * A shell command run in the background (`run_in_background: true`): started through the runner,
- * registered on the shared background registry, collected with `task_output`, stopped with `kill_task`,
- * and ended with its run (pincer-agent `extensions/bash/background.ts` + `lib/shell-tool.ts`, tip
- * `5059966`, on BI's registry instead of pi's).
+ * registered on the shared background registry, collected with `task_output` and stopped with `kill_task`
+ * (pincer-agent `extensions/bash/background.ts` + `lib/shell-tool.ts`, tip `5059966`, on BI's registry
+ * instead of pi's).
  *
- * The task's own `AbortController` stops the process tree. It is linked to the run's signal, so an
- * aborted generation ends every background command it started; `kill_task` and run-end cleanup abort it
- * directly. Completion fills `output`, `exitCode` and `finishStatus` once and is then reported by the
- * registry's `<system-reminder>` drain, unless `task_output` delivered it first.
+ * The task's own `AbortController` stops the process tree. It is not linked to the run: the command
+ * outlives the turn, and an aborted turn leaves it running, as in Claude Code. `kill_task`, the user
+ * (the chip, a chat change) and VS Code closing stop it (`background/registry.ts stopShellTask`).
+ * Completion fills `output`, `exitCode` and `finishStatus` once and is then reported to the chat: the
+ * `<system-reminder>` drain, `task_output`, or a turn of its own (`background/wake.ts`).
  */
 
-import { ensureBackgroundCapacity, registerBackgroundTask } from "../background/registry";
+import { backgroundTaskFinished, ensureBackgroundCapacity, registerBackgroundTask } from "../background/registry";
 import { type BackgroundShell, generateTaskId } from "../background/types";
 import { type ProcessLaunch, type RunSummary, shellFinish, startProcess } from "./runner";
 
@@ -45,12 +46,8 @@ export interface StartBackgroundShellOptions {
     timeoutMs?: number;
     /** Where to spool the full output; named in the completion notice. */
     logPath?: string;
-    /** The run's abort signal. */
-    runSignal?: AbortSignal;
-    /** Called once when the command finishes on its own (not after a run-end or `kill_task` stop). */
+    /** Called once when the command finishes on its own (not after it was stopped from outside). */
     onFinished?: (task: BackgroundShell, summary: RunSummary) => void;
-    /** Reported synchronously by run-end cleanup, inside the run that owns the task. */
-    onRunEnd?: () => void;
 }
 
 export type StartBackgroundShellResult =
@@ -62,16 +59,6 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
     if (capacity.kind === "full") { return capacity; }
 
     const abortController = new AbortController();
-    let unlinkRunSignal: (() => void) | undefined;
-    if (opts.runSignal) {
-        if (opts.runSignal.aborted) {
-            abortController.abort(opts.runSignal.reason);
-        } else {
-            const onRunAbort = () => abortController.abort(opts.runSignal.reason);
-            opts.runSignal.addEventListener("abort", onRunAbort, { once: true });
-            unlinkRunSignal = () => opts.runSignal.removeEventListener("abort", onRunAbort);
-        }
-    }
 
     const running = startProcess(opts.launch, {
         cwd: opts.cwd,
@@ -86,6 +73,7 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
         id: opts.id ?? generateTaskId("shell"),
         toolName: opts.toolName,
         command: opts.command,
+        cwd: opts.cwd,
         description: opts.description,
         runKey: opts.runKey,
         toolCallId: opts.toolCallId,
@@ -99,14 +87,12 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
         logPath: opts.logPath,
         exitCode: null,
         peek: () => running.output(),
-        onRunEnd: opts.onRunEnd,
     };
     registerBackgroundTask(task);
 
     running.finished.then((summary) => {
-        unlinkRunSignal?.();
-        // Ended from outside (run end, kill_task): that path already completed the entry and reported it.
-        if (task.runEnded || task.completed) { return; }
+        // Ended from outside (kill_task, the user, a chat change): that path already completed the entry.
+        if (task.completed) { return; }
         const { status, detail } = shellFinish(summary, opts.timeoutMs);
         task.output = summary.output;
         task.exitCode = summary.exitCode;
@@ -117,6 +103,7 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
         task.completedAt = new Date();
         task.completed = true;
         opts.onFinished?.(task, summary);
+        backgroundTaskFinished(task);
     });
 
     return { kind: "started", task };

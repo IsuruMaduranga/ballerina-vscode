@@ -84,6 +84,7 @@ export * from "./rpc-types/persist-diagram/rpc-type";
 export * from "./rpc-types/ai-panel";
 export * from "./rpc-types/ai-panel/rpc-type";
 export * from "./rpc-types/ai-panel/interfaces";
+export * from "./rpc-types/ai-panel/task-notification";
 export * from "./rpc-types/data-mapper";
 export * from "./rpc-types/data-mapper/rpc-type";
 export * from "./rpc-types/test-manager";

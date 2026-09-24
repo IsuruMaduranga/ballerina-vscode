@@ -241,7 +241,7 @@ const RunningServicesChip: React.FC<RunningServicesChipProps> = ({ services, onS
         <ChipWrapper onMouseEnter={scheduleShow} onMouseLeave={scheduleHide}>
             <Chip
                 type="button"
-                title={`${activeCount} running service${activeCount === 1 ? "" : "s"}`}
+                title={`${activeCount} running in the background`}
                 onClick={toggleVisible}
             >
                 <span className="codicon codicon-play" style={{ fontSize: 11 }} />
@@ -250,24 +250,27 @@ const RunningServicesChip: React.FC<RunningServicesChipProps> = ({ services, onS
 
             {visible && (
                 <Popup onMouseEnter={scheduleShow} onMouseLeave={scheduleHide}>
-                    <PopupTitle>Running services</PopupTitle>
+                    <PopupTitle>Running in the background</PopupTitle>
                     {services.map((service) => {
                         const uptime = formatUptime(service.startedAt, now);
+                        // A chat's background command, or (kind absent from older hosts) a service.
+                        const isCommand = service.kind === "shell";
                         const status = service.exited
                             ? `Exited (${service.exitCode})`
-                            : `Running · ${uptime}`;
+                            : `${isCommand ? "Command" : "Service"} · Running · ${uptime}`;
+                        const name = isCommand && service.description ? service.description : packageBasename(service.packagePath);
                         return (
                             <ServiceRow key={service.taskId}>
                                 <RunningDot exited={service.exited} />
                                 <ServiceMeta>
-                                    <ServiceName title={service.packagePath}>
-                                        {packageBasename(service.packagePath)}
+                                    <ServiceName title={isCommand ? service.description : service.packagePath}>
+                                        {name}
                                     </ServiceName>
                                     <ServiceSubline>{status}</ServiceSubline>
                                 </ServiceMeta>
                                 <StopButton
                                     type="button"
-                                    title={service.exited ? "Already exited" : "Stop service"}
+                                    title={service.exited ? "Already exited" : isCommand ? "Stop command" : "Stop service"}
                                     disabled={service.exited}
                                     onClick={() => onStopService(service.taskId)}
                                 >

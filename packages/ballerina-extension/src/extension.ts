@@ -49,6 +49,7 @@ import { DefaultServer } from './webview-communication/DefaultServer';
 import { RPCLayer } from './RPCLayer';
 import { activateAIFeatures } from './features/ai/activator';
 import { runningServicesManager } from './features/ai/agent/tools/running-service-manager';
+import { stopAllBackgroundTasks } from './features/ai/agent/background/registry';
 import { activateTryItCommand } from './features/tryit/activator';
 import { activate as activateNPFeatures } from './features/natural-programming/activator';
 import { activateAgentChatPanel } from './views/agent-chat/activate';
@@ -368,6 +369,8 @@ async function updateCodeServerConfig() {
 export async function deactivate(): Promise<void> {
     debug('Deactive the Ballerina VS Code extension.');
 
+    // Background shell commands outlive their turn and their chat's panel; they end with VS Code.
+    stopAllBackgroundTasks();
     await runningServicesManager.dispose();
 
     if (!langClient) {

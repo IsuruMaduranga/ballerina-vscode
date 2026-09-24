@@ -211,6 +211,7 @@ describe("shell tool rows", () => {
         expect(getToolResultDisplay("shell", { status: "error", command: "bal build" })).toEqual({ label: "Command failed:", detail: "bal build" });
         expect(getToolResultDisplay("shell", { status: "blocked", command: "rm -rf x" })).toEqual({ label: "Command not run:", detail: "rm -rf x" });
         expect(getToolResultDisplay("shell", { status: "background", command: "bal run" })).toEqual({ label: "Running in background:", detail: "bal run" });
+        expect(getToolResultDisplay("shell", { status: "service", command: "bal run", kind: "service" })).toEqual({ label: "Service started:", detail: "bal run" });
         expect(getToolIcon("shell")).toBe("codicon-terminal");
         expect(COMMAND_OUTPUT_TOOLS.has("shell")).toBe(true);
     });

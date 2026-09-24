@@ -14,7 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 /**
- * A service started by `runBallerinaPackage`, read and stopped through `task_output` and `kill_task`.
+ * A service — a background `bal run` from the shell tool (`tools/ballerina-run.ts startShellService`), or
+ * one the Try It card started — read and stopped through `task_output` and `kill_task`.
  *
  * Services are not background tasks: they live in the extension-wide `RunningServicesManager`, outlive
  * the turn that started them (the user tries them, and stops them from the panel), and are never stopped
@@ -22,7 +23,8 @@
  * one way to read and stop anything it started.
  */
 
-import { randomUUID } from "crypto";
+import { generateTaskId } from "../background/types";
+import { tailCap } from "../shell/output";
 import * as path from "path";
 import type { RunningService, RunningServicesManager } from "./running-service-manager";
 
@@ -32,7 +34,7 @@ export const SERVICE_OUTPUT_CAP = 30_000;
 const POLL_INTERVAL_MS = 200;
 
 export function newServiceTaskId(): string {
-    return `${SERVICE_TASK_PREFIX}${randomUUID().split("-")[0]}`;
+    return generateTaskId("service");
 }
 
 export function isServiceTaskId(id: string): boolean {
@@ -94,14 +96,11 @@ export function serviceReadText(taskId: string, service: RunningService, read: S
     if (!read.logs) {
         return `${header} No new output since the last read.`;
     }
-    const logs = read.logs.length <= SERVICE_OUTPUT_CAP
-        ? read.logs
-        : `… (earlier output truncated)\n${read.logs.slice(-SERVICE_OUTPUT_CAP)}`;
-    return `${header} New output since the last read:\n\n${logs}`;
+    return `${header} New output since the last read:\n\n${tailCap(read.logs, SERVICE_OUTPUT_CAP)}`;
 }
 
 export function serviceNotFoundText(taskId: string): string {
-    return `No service with id ${taskId}. It may have been stopped, or it exited more than 30 seconds ago. Start it again with runBallerinaPackage.`;
+    return `No service with id ${taskId}. It may have been stopped, or it exited more than 30 seconds ago. Start it again with \`bal run\` and run_in_background: true.`;
 }
 
 /** Stops a service and forgets it. An already exited service is forgotten without a kill. */

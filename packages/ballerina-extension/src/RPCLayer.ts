@@ -19,7 +19,7 @@
 import { WebviewView, WebviewPanel, window } from 'vscode';
 import { Messenger } from 'vscode-messenger';
 import { StateMachine } from './stateMachine';
-import { stateChanged, getVisualizerLocation, VisualizerLocation, projectContentUpdated, aiStateChanged, sendAIStateEvent, popupStateChanged, getPopupVisualizerState, PopupVisualizerLocation, breakpointChanged, AIMachineEventType, ArtifactData, onArtifactUpdatedNotification, onArtifactUpdatedRequest, currentThemeChanged, AIMachineSendableEvent, checkpointCaptured, CheckpointCapturedPayload, promptUpdated, approvalOverlayState, ApprovalOverlayState, onIdentifierUpdated, ProjectStructureArtifactResponse, runningServicesChanged, RunningServiceInfo, evaluationHistoryUpdated, mcpServersChanged, McpServerStatusDTO, mcpLoadErrorsChanged, McpLoadErrorsDTO, agentsMdFileInfoChanged, AgentsMdFileInfoDTO } from '@wso2/ballerina-core';
+import { stateChanged, getVisualizerLocation, VisualizerLocation, projectContentUpdated, aiStateChanged, sendAIStateEvent, popupStateChanged, getPopupVisualizerState, PopupVisualizerLocation, breakpointChanged, AIMachineEventType, ArtifactData, onArtifactUpdatedNotification, onArtifactUpdatedRequest, currentThemeChanged, AIMachineSendableEvent, checkpointCaptured, CheckpointCapturedPayload, promptUpdated, approvalOverlayState, ApprovalOverlayState, onIdentifierUpdated, ProjectStructureArtifactResponse, runningServicesChanged, RunningServiceInfo, backgroundTaskWake, BackgroundTaskWake, evaluationHistoryUpdated, mcpServersChanged, McpServerStatusDTO, mcpLoadErrorsChanged, McpLoadErrorsDTO, agentsMdFileInfoChanged, AgentsMdFileInfoDTO } from '@wso2/ballerina-core';
 import { EvaluationHistoryWebview } from './views/evaluation-history/webview';
 import { VisualizerWebview } from './views/visualizer/webview';
 import { registerVisualizerRpcHandlers } from './rpc-managers/visualizer/rpc-handler';
@@ -266,6 +266,10 @@ export function notifyApprovalOverlayState(state: ApprovalOverlayState) {
 
 export function notifyRunningServicesChanged(services: RunningServiceInfo[]) {
     RPCLayer._messenger.sendNotification(runningServicesChanged, { type: 'webview', webviewType: AiPanelWebview.viewType }, services);
+}
+
+export function notifyBackgroundTaskWake(wake: BackgroundTaskWake) {
+    RPCLayer._messenger.sendNotification(backgroundTaskWake, { type: 'webview', webviewType: AiPanelWebview.viewType }, wake);
 }
 
 export function notifyMcpServersChanged(servers: McpServerStatusDTO[]) {

@@ -169,6 +169,11 @@ import { approvalManager } from '../../features/ai/state/ApprovalManager';
 import { approvalViewManager } from '../../features/ai/state/ApprovalViewManager';
 import { chatStateStorage, isRevertible } from '../../views/ai-panel/chatStateStorage';
 import { runEventStore } from '../../features/ai/utils/run-event-store';
+import { runningChatShellTasks, stopChatShellTasks } from '../../features/ai/agent/background/registry';
+import { buildRunKey } from '../../features/ai/agent/subagents/types';
+import { resetShellGateState } from '../../features/ai/agent/tools/shell-authorizer';
+import { backgroundWake } from '../../features/ai/agent/background/wake-host';
+import { runningProcessList, stopRunningProcess } from '../../features/ai/agent/background/running-list';
 import { readDiffOriginal, restoreWorkspaceSnapshot } from '../../views/ai-panel/checkpoint/checkpointUtils';
 import {
     assertNoRestoreInProgress,
@@ -178,7 +183,7 @@ import {
     isRestoreInProgress
 } from '../../views/ai-panel/checkpoint/restore-state';
 import { runningServicesManager } from '../../features/ai/agent/tools/running-service-manager';
-import { executeRun } from "../../features/ai/agent/tools/ballerina-run";
+import { startPackageService } from "../../features/ai/agent/tools/ballerina-run";
 import { platformExtStore } from "../platform-ext/platform-store";
 
 /** Validate an MCP server config DTO. Returns an error message or null on success. */
@@ -229,6 +234,32 @@ const CONNECTION_FAILURE_MESSAGE: Record<ConnectionSettleReason, string> = {
  * The panel already disables these actions; this backstops a webview reload or a click that
  * races the turn starting.
  */
+const STOP_AND_CONTINUE = 'Stop and Continue';
+
+/**
+ * Before the user leaves a chat (New Chat, a switch, a delete): the chat's background commands stop with
+ * it, so ask first. Services (a background `bal run`) belong to the project and keep running. Returns
+ * false when the user keeps the chat.
+ */
+async function confirmStopChatTasks(projectRootPath: string, threadId: string): Promise<boolean> {
+    const runKey = buildRunKey(projectRootPath, threadId);
+    const running = runningChatShellTasks(runKey);
+    if (running.length === 0) {
+        return true;
+    }
+    const message = running.length === 1
+        ? 'A background command is still running in this chat.'
+        : `${running.length} background commands are still running in this chat.`;
+    const detail = `${running.map((task) => `• ${task.description}`).join('\n')}\n\n`
+        + 'Leaving the chat stops them. Services started with bal run keep running.';
+    const choice = await window.showWarningMessage(message, { modal: true, detail }, STOP_AND_CONTINUE);
+    if (choice !== STOP_AND_CONTINUE) {
+        return false;
+    }
+    stopChatShellTasks(runKey, 'because the user changed chats');
+    return true;
+}
+
 function refuseWhileBusy(projectRootPath: string, action: string): boolean {
     if (isResponseRunning(projectRootPath)) {
         console.warn(`[RPC] Refused ${action} — a response is still running for: ${projectRootPath}`);
@@ -887,13 +918,15 @@ User reverted the last made changes. The files have been restored to the state b
         }
     }
 
-    async clearChat(): Promise<void> {
+    async clearChat(): Promise<boolean> {
         const projectRootPath = resolveProjectRootPath();
-        if (refuseWhileBusy(projectRootPath, 'clearChat')) { return; }
+        if (refuseWhileBusy(projectRootPath, 'clearChat')) { return false; }
+        if (!await confirmStopChatTasks(projectRootPath, chatStateStorage.getActiveThreadId(projectRootPath))) { return false; }
         // Create a new thread — preserves all existing history
         const newThreadId = chatStateStorage.createNewThread(projectRootPath);
         clearCompactionDisabledWarning(projectRootPath, newThreadId);
         console.log(`[RPC] New chat started (thread: ${newThreadId}) for: ${projectRootPath}`);
+        return true;
     }
 
     async listThreads(): Promise<ThreadSummary[]> {
@@ -904,6 +937,8 @@ User reverted the last made changes. The files have been restored to the state b
     async switchThread(params: SwitchThreadRequest): Promise<boolean> {
         const projectRootPath = resolveProjectRootPath();
         if (refuseWhileBusy(projectRootPath, 'switchThread')) { return false; }
+        const activeThreadId = chatStateStorage.getActiveThreadId(projectRootPath);
+        if (params.threadId !== activeThreadId && !await confirmStopChatTasks(projectRootPath, activeThreadId)) { return false; }
         chatStateStorage.switchToThread(projectRootPath, params.threadId);
         return true;
     }
@@ -911,7 +946,12 @@ User reverted the last made changes. The files have been restored to the state b
     async deleteThread(params: DeleteThreadRequest): Promise<void> {
         const projectRootPath = resolveProjectRootPath();
         if (refuseWhileBusy(projectRootPath, 'deleteThread')) { return; }
+        if (!await confirmStopChatTasks(projectRootPath, params.threadId)) { return; }
         await chatStateStorage.deleteThread(projectRootPath, params.threadId);
+        // The thread's in-memory shell state: session rules, pause counters, denials, wake state.
+        const runKey = buildRunKey(projectRootPath, params.threadId);
+        resetShellGateState(runKey);
+        backgroundWake.forget(runKey);
     }
 
     async renameThread(params: RenameThreadRequest): Promise<void> {
@@ -1248,25 +1288,18 @@ User reverted the last made changes. The files have been restored to the state b
     }
 
     async getRunningServices(): Promise<RunningServiceInfo[]> {
-        return runningServicesManager.getAll();
+        return runningProcessList(runningServicesManager);
     }
 
     async stopRunningService(params: StopRunningServiceRequest): Promise<boolean> {
-        return runningServicesManager.stopOne(params.taskId);
+        return stopRunningProcess(runningServicesManager, params.taskId);
     }
 
     async runService(params: RunServiceRequest): Promise<boolean> {
         const { tempProjectPath, packagePath } = params;
         try {
-            const result = await executeRun(
-                {
-                    runType: "service",
-                    packagePath: packagePath,
-                },
-                tempProjectPath,
-                runningServicesManager
-            );
-            if (!result || result.status !== 'started') {
+            const result = await startPackageService(packagePath, tempProjectPath, runningServicesManager);
+            if (result.kind !== 'started') {
                 window.showErrorMessage(`Failed to start service${packagePath ? ` in package ${packagePath}` : ''}.`);
                 return false;
             }

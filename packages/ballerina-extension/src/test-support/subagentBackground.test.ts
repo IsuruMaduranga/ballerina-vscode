@@ -181,7 +181,7 @@ describe("run-end cleanup reports the abort inside the owning run", () => {
         const events: string[] = [];
         const controller = new AbortController();
         registerBackgroundTask({
-            id: "task-subagent-0000ab12", subagentType: "Librarian", description: "bg", runKey: "run-a", toolCallId: "c", startTime: new Date(),
+            kind: "subagent", id: "task-subagent-0000ab12", subagentType: "Librarian", description: "bg", runKey: "run-a", toolCallId: "c", startTime: new Date(),
             output: "", completed: false, success: null, aborted: false, abortController: controller, notified: false,
             onRunEnd: () => events.push(`aborted-reported signal=${controller.signal.aborted}`),
         });

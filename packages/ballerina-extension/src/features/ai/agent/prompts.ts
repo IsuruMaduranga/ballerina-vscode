@@ -30,7 +30,6 @@ import { DATA_BINDING_CODING_RULES } from "./data-binding-rules";
 import { getRequirementAnalysisCodeGenPrefix, getRequirementAnalysisTestGenPrefix } from "./np/prompts";
 import { CONCURRENCY_CODING_RULES } from "./concurrency-rules";
 import { extractResourceDocumentContent, flattenProjectToFiles } from "../utils/ai-utils";
-import { BALLERINA_RUN_TOOL_NAME } from "./tools/ballerina-run";
 import { getSkillsGuidanceSection } from "./skills";
 import { TOOL_SEARCH_TOOL_NAME } from "./tools/tool-search";
 import { WEB_SEARCH_TOOL_NAME, WEB_FETCH_TOOL_NAME } from "./tools/web-tools";
@@ -91,7 +90,7 @@ Before offering choices, work out what each one needs beyond the project and you
 
 # Thinking behavior
 - Ballerina is a low-resource language: your training data holds far less Ballerina than mainstream languages, and its libraries and connectors change between releases. What you remember about library APIs, connector operations and runtime behavior may therefore be incomplete or out of date. Don't work out these specifics in your head before writing code.
-- Work in a loop: form a rough plan, implement it, then refine it with the feedback available — the compiler errors each edit reports, \`bal test\` through the shell tool and ${BALLERINA_RUN_TOOL_NAME} for runtime behavior, and the Librarian's report (${SUBAGENT_TOOL_NAME}) for library signatures. When a signal is one tool call away, fetch it instead of reasoning about what it would say. When debugging, get one signal first, then narrow down.
+- Work in a loop: form a rough plan, implement it, then refine it with the feedback available — the compiler errors each edit reports, \`bal test\` and \`bal run\` through the shell tool for runtime behavior, and the Librarian's report (${SUBAGENT_TOOL_NAME}) for library signatures. When a signal is one tool call away, fetch it instead of reasoning about what it would say. When debugging, get one signal first, then narrow down.
 - Use thinking for reasoning that doesn't depend on Ballerina-specific knowledge: control-flow design, data-mapping logic, breaking a task into steps, and making sense of tool output or project source already in context.
 - Treat any Ballerina-specific conclusion you reach by thinking as a hypothesis, however confident you feel. Check it against the Librarian's report or diagnostics before relying on it.
 
@@ -196,7 +195,7 @@ When generating Ballerina code strictly follow these syntax and structure guidel
 - Before asserting how a library behaves (what a validator checks by default, what a parameter defaults to, whether matching is case-sensitive), ask the Librarian to verify it from the docs. Do not infer library behaviour.
 - Prefer library functions the report lists under "Use these instead of hand-rolling" over writing that logic yourself.
 - Use subagent_type "LibraryResearcher" when the Librarian reports a gap, when a library's docs are thin, or when you need usage examples or real-world behaviour (auth quirks, rate limits, per-operation service URLs). Never web-search for first-party Ballerina API facts yourself.
-- Run a subagent with run_in_background=true only when you have independent work to do meanwhile (reading the project, scaffolding types, planning). When you run out of work, call ${TASK_OUTPUT_TOOL_NAME} with block=true — you are woken when the report is ready — instead of polling. Collect or ${KILL_TASK_TOOL_NAME} every background subagent and shell command before ending your turn. A service started with ${BALLERINA_RUN_TOOL_NAME} is the exception: it keeps running after your turn so the user can try it.
+- Run a subagent with run_in_background=true only when you have independent work to do meanwhile (reading the project, scaffolding types, planning). When you run out of work, call ${TASK_OUTPUT_TOOL_NAME} with block=true — you are woken when the report is ready — instead of polling. Collect or ${KILL_TASK_TOOL_NAME} every background subagent before ending your turn: a subagent stops when your turn ends. Background shell commands keep running after your turn.
 - Each .bal file must include its own import statements for any external library references.
 - Do not import default langlibs (lang.string, lang.boolean, lang.float, lang.decimal, lang.int, lang.map).
 - For packages with dots in names, use aliases: \`import org/package.one as one;\`
@@ -292,12 +291,12 @@ In WSO2 Integrator, a Ballerina workspace is called a **project** and a Ballerin
 - The auth structure does NOT change this. Some libraries expose the OAuth config via a directly-named type (e.g. \`oauth2:OAuth2RefreshTokenGrantConfig\`); others wrap it inside the connector's own config record (e.g. a \`ConnectionConfig\` whose \`auth\` field carries the credentials). Both are grouped the same way — look at the credential fields, not where they sit.
 - You do NOT decide which (library, shape) combinations are actually managed — the tool verifies each against the managed registry and silently downgrades unsupported ones to manual entry. So emit a group for ANY connector credential that fits one of the two shapes; grouping a candidate that turns out to be unsupported is harmless. That tolerance covers the library and shape only — every mapped name must be a configurable that already exists in source, spelled exactly as declared. Only leave TRULY non-connector secrets (e.g. a database password, or a standalone API key not tied to any connector) in \`variables\`.
 - Use one managedConnections entry per connector instance (repeat the same library for two clients of it), and put each configurable in EXACTLY ONE place — never list the same name in both a group and \`variables\`.
-- A service started with ${BALLERINA_RUN_TOOL_NAME} returns a taskId. Read its later log output with ${TASK_OUTPUT_TOOL_NAME} on that taskId (each call returns only the new output). Stop it with ${KILL_TASK_TOOL_NAME} when you need to restart it (e.g. after code changes) or when the user explicitly asks to stop it.
+- Run a program with a main function with \`bal run\` through the shell tool, in the foreground. Start a service with \`bal run\` and run_in_background: true: the shell waits until the service is ready and returns a \`task-service-…\` id with its startup output. Make sure the project compiles cleanly (${DIAGNOSTICS_TOOL_NAME}) first. A service keeps running after your turn, and in the user's other chats of this project, so the user can try it. Read its later log output with ${TASK_OUTPUT_TOOL_NAME} on that id (each call returns only the new output). Stop it with ${KILL_TASK_TOOL_NAME} when you need to restart it (e.g. after code changes) or when the user explicitly asks to stop it.
 
 ## Test Runner
 When running tests:
 1. Tell the user what is being tested in one line.
-2. Make sure the project compiles cleanly: fix the compiler errors your edits reported, and run ${DIAGNOSTICS_TOOL_NAME} if an edit's errors were not checked. Then run \`bal test\` with the shell tool from the workspace root. Add \`--tests <name>\` to run specific test functions. You don't have to start the app with ${BALLERINA_RUN_TOOL_NAME} first: \`bal test\` builds and runs what the tests need.
+2. Make sure the project compiles cleanly: fix the compiler errors your edits reported, and run ${DIAGNOSTICS_TOOL_NAME} if an edit's errors were not checked. Then run \`bal test\` with the shell tool from the workspace root. Add \`--tests <name>\` to run specific test functions. You don't have to start the app first: \`bal test\` builds and runs what the tests need.
 3. Only if there are failures or errors, briefly mention what failed and fix them, then re-run.
 
 ${getSkillsGuidanceSection()}
@@ -331,6 +330,7 @@ export function getUserPrompt(
     webSearchEnabled: boolean,
     agentsMdBlockText?: string,
     codebase?: { omitCodebaseDump?: boolean; codebaseMapText?: string },
+    taskNotice?: string,
 ) {
     const content = [];
 
@@ -424,6 +424,14 @@ ${attachment.content}
 ${queryParts.join('\n\n')}
 </User Query>`
     });
+
+    // Background commands that finished while the chat was idle and could not wake it.
+    if (taskNotice) {
+        content.push({
+            type: 'text' as const,
+            text: taskNotice,
+        });
+    }
 
 
     content.push({

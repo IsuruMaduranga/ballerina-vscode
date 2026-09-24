@@ -194,7 +194,7 @@ function orphanReason(command: string, segments: Segment[]): string | undefined 
     const message = (via: string) =>
         `Blocked: this command detaches a process with ${via}, leaving an orphan nothing can manage — its output and exit status would be lost. ` +
         "Run it with run_in_background: true instead: it returns a task id at once, you are told when it finishes, task_output reads its output and kill_task stops it. " +
-        "To start a Ballerina service, use runBallerinaPackage. " +
+        "To start a Ballerina service, run `bal run` with run_in_background: true. " +
         "If you need shell-level parallelism inside one command, end it with `wait` so the children are reaped.";
 
     for (const seg of segments) {

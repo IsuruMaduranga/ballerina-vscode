@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import { Command, ExecutionContext, GenerateAgentCodeRequest } from "@wso2/ballerina-core";
+import { Command, ExecutionContext, frameTaskNotification, GenerateAgentCodeRequest } from "@wso2/ballerina-core";
 import { StateMachine } from "../../../stateMachine";
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
 import { assertNoRestoreInProgress, isResponseRunning } from '../../../views/ai-panel/checkpoint/restore-state';
@@ -37,6 +37,8 @@ import { markConsoleOriginThread } from "./console-summary/origin";
 import { saveUnsavedDocuments } from "../utils/project/unsaved-documents";
 import * as path from "path";
 import { window } from "vscode";
+import { backgroundWake } from "./background/wake-host";
+import { buildRunKey } from "./subagents/types";
 
 // ==================================
 // Agent Generation Functions
@@ -172,6 +174,8 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
     } | undefined;
     let claimedExecution: { projectRootPath: string; threadId: string; abortController: AbortController } | undefined;
     let executorStarted = false;
+    let runKey: string | undefined;
+    let takenTaskIds: string[] = [];
     try {
         // Always use the active thread — params.threadId is legacy/unused
         const projectRootPath = resolveProjectRootPath();
@@ -188,6 +192,14 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
         // A restore is mid-flight: it is about to truncate this thread, and finalizing below would
         // implicitly accept the very generation it is reverting.
         assertNoRestoreInProgress(projectRootPath, 'generateAgent');
+
+        // Background commands that finished since the chat's last turn: a wake turn's own notice carries
+        // some (`notificationTaskIds`); the rest ride along with this run's prompt.
+        runKey = buildRunKey(projectRootPath, threadId);
+        const origin = params.origin ?? 'user';
+        backgroundWake.runStarted(runKey, origin);
+        const { notes: heldNotes, taskIds } = backgroundWake.takePendingForRun(runKey, origin === 'task_notification' ? params.notificationTaskIds ?? [] : []);
+        takenTaskIds = taskIds;
 
         // existingTempPath makes the agent operate directly on the real project root instead of
         // AICommandExecutor creating a throwaway temp copy — file edits land live in the real
@@ -244,6 +256,12 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
         if (migrationSourcePath) {
             config.toolOptions = { ...config.toolOptions, migrationSourcePath };
         }
+        if (heldNotes.length > 0) {
+            config.toolOptions = {
+                ...config.toolOptions,
+                taskNotice: frameTaskNotification(heldNotes, origin === 'user' ? 'with-user-prompt' : 'opens-turn'),
+            };
+        }
 
         // Persist the user turn and expose its run identity before any awaited
         // telemetry/preflight work. A panel reopened during startup therefore
@@ -282,9 +300,18 @@ export async function generateAgent(params: GenerateAgentCodeRequest): Promise<b
 
         executorStarted = true;
         await new AgentExecutor(config).run();
+        backgroundWake.runEnded(runKey, config.abortController.signal.aborted);
 
         return true;
     } catch (error) {
+        // An errored turn holds notices like a stopped one: a wake would only retry into the same failure.
+        if (runKey) {
+            // A run that never started delivered nothing: its completions wait for the chat's next run.
+            if (!executorStarted) {
+                backgroundWake.returnUndelivered(takenTaskIds);
+            }
+            backgroundWake.runEnded(runKey, true);
+        }
         if (preparedRun) {
             if (!executorStarted) {
                 preparedRun.eventHandler({

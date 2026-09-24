@@ -339,6 +339,10 @@ export interface GenerateAgentCodeRequest {
     activeFilePath?: string;
     /** The scaffold turn auto-submitted from a WSO2 Integration Platform console plan. Its thread publishes console summaries. */
     consoleScaffold?: boolean;
+    /** A turn the host asked for (`backgroundTaskWake`): `usecase` is the framed notice, not the user's words. */
+    origin?: 'user' | 'task_notification';
+    /** With `origin: 'task_notification'`: the background tasks whose completions `usecase` reports. */
+    notificationTaskIds?: string[];
 }
 
 export type LibraryMode = "CORE" | "HEALTHCARE" | "ALL";
@@ -778,11 +782,18 @@ export interface OpenFileDiffRequest {
 // Running Services (long-lived processes started by the AI agent)
 // ==================================
 
-/** Serializable view of a running service tracked by the agent's RunningServicesManager. */
+/**
+ * Serializable view of a process the agent left running: a service (a background `bal run`, tracked by
+ * RunningServicesManager, project-wide) or a chat's background shell command.
+ */
 export interface RunningServiceInfo {
-    /** Unique identifier returned by the runBallerinaPackage tool. */
+    /** The task id the agent was given (`task-service-…` or `task-shell-…`). */
     taskId: string;
-    /** Filesystem path of the package being run. */
+    /** `service` when absent (older hosts). */
+    kind?: 'service' | 'shell';
+    /** A shell command's description as the agent wrote it. */
+    description?: string;
+    /** Filesystem path of the package being run; for a shell command, the directory it runs in. */
     packagePath: string;
     /** Epoch ms when the process started. */
     startedAt: number;
@@ -1012,4 +1023,13 @@ export interface AgentsMdFileInfoDTO {
     lineCount?: number;
     isEmpty?: boolean;
     hasWorkspace: boolean;
+}
+
+/** Host → AI panel: a background task of the chat finished while the chat was idle; start a turn for it. */
+export interface BackgroundTaskWake {
+    projectRootPath: string;
+    threadId: string;
+    /** The framed notice (`frameTaskNotification`, opens-turn), sent back as the run's `usecase`. */
+    text: string;
+    taskIds: string[];
 }

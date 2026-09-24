@@ -37,9 +37,11 @@ import {
     LoginMethod,
     RunningServiceInfo,
     ThreadSummary,
+    parseTaskNotification,
 } from "@wso2/ballerina-core";
 
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
+import { taskNoticeHeading, taskNoticeSummaries } from "./utils/taskNotice";
 import { Button, Codicon, Icon, Tooltip } from "@wso2/ui-toolkit";
 
 import { AIChatInputRef } from "../AIChatInput";
@@ -227,6 +229,20 @@ const CompactionNotice: React.FC<{ children: React.ReactNode }> = ({ children })
         {children}
     </CompactionNoticeContainer>
 );
+
+/** A turn the host started because a background task finished: shown as a notice, not as the user's words. */
+const TaskNotice: React.FC<{ lines: string[] }> = ({ lines }) => {
+    const summaries = taskNoticeSummaries(lines);
+    return (
+        <CompactionNoticeContainer>
+            <span className="codicon codicon-bell" role="img" />
+            <div>
+                <div>{taskNoticeHeading(summaries.length)}</div>
+                {summaries.map((line, i) => <div key={i}>{line}</div>)}
+            </div>
+        </CompactionNoticeContainer>
+    );
+};
 
 const UsageLimitNoticeContainer = styled.div`
     display: flex;
@@ -943,6 +959,26 @@ const AIChat: React.FC = () => {
             cancelled = true;
             disposeListener();
         };
+    }, [rpcClient]);
+
+    // A background command of this chat finished while the chat was idle: the host asks for a turn of its
+    // own. Started like a user message (handleSend) so the transcript, checkpoint and mode handling are the
+    // same; the host holds the notice for the next message when this panel is busy.
+    const wakeTaskIdsRef = useRef<string[] | undefined>(undefined);
+    const handleSendRef = useRef<typeof handleSend>();
+    useEffect(() => {
+        return rpcClient.onBackgroundTaskWake((wake) => {
+            if (isLoadingRef.current || wakeTaskIdsRef.current) {
+                return;
+            }
+            wakeTaskIdsRef.current = wake.taskIds;
+            // processAgentGeneration consumes the ref; clear it here too, so a send that fails before reaching
+            // it cannot block every later wake. The host keeps the notices for the chat's next run.
+            const send = handleSendRef.current?.({ input: [{ content: wake.text }], attachments: [] }) ?? Promise.resolve();
+            void send
+                .catch((error: unknown) => console.error("[AIChat] Background task wake failed:", error))
+                .finally(() => { wakeTaskIdsRef.current = undefined; });
+        });
     }, [rpcClient]);
 
     const handleStopRunningService = async (taskId: string) => {
@@ -2116,6 +2152,8 @@ const AIChat: React.FC = () => {
         await handleSendQuery(content);
     }
 
+    handleSendRef.current = handleSend;
+
     function getUserMessage(content: [string, Attachment[]]): string {
         const [message, attachments] = content;
 
@@ -2384,16 +2422,24 @@ const AIChat: React.FC = () => {
             mimeType: file?.mimeType,
         }));
 
-        const currentCodeContext = codeContextRef.current;
-        const currentHiddenContext = hiddenContextRef.current;
-        hiddenContextRef.current = undefined;
-        const consoleScaffold = consoleScaffoldRef.current;
-        consoleScaffoldRef.current = false;
+        // A wake turn (onBackgroundTaskWake) carries the host's notice; it leaves the user's pending code
+        // context, console scaffold and skill selection for the user's next message.
+        const wakeTaskIds = wakeTaskIdsRef.current;
+        wakeTaskIdsRef.current = undefined;
+        const currentCodeContext = wakeTaskIds ? undefined : codeContextRef.current;
+        const currentHiddenContext = wakeTaskIds ? undefined : hiddenContextRef.current;
+        const consoleScaffold = wakeTaskIds ? false : consoleScaffoldRef.current;
+        if (!wakeTaskIds) {
+            hiddenContextRef.current = undefined;
+            consoleScaffoldRef.current = false;
+        }
         console.log("Submitting agent prompt:", { useCase, agentMode: agentModeRef.current, codeContext: currentCodeContext, operationType, fileAttatchments });
         await rpcClient.getAiPanelRpcClient().generateAgent({
             generationId: activeRunGenerationIdRef.current,
             promptSource: 'ai-panel',
-            usecase: useCase, hiddenContext: currentHiddenContext, consoleScaffold, isPlanMode: agentModeRef.current === AgentMode.Plan, codeContext: currentCodeContext, operationType, fileAttachmentContents: fileAttatchments, shellMode
+            usecase: useCase, hiddenContext: currentHiddenContext, consoleScaffold, isPlanMode: agentModeRef.current === AgentMode.Plan, codeContext: currentCodeContext, operationType, fileAttachmentContents: fileAttatchments, shellMode,
+            origin: wakeTaskIds ? 'task_notification' : 'user',
+            notificationTaskIds: wakeTaskIds,
         });
     }
 
@@ -2418,13 +2464,17 @@ const AIChat: React.FC = () => {
     }
 
     async function handleClearChat(): Promise<void> {
+        // The host asks first when the chat's background commands would stop; false keeps the chat.
+        const cleared = await rpcClient.getAiPanelRpcClient().clearChat();
+        if (cleared === false) {
+            return;
+        }
         setMessages([]);
         repinToBottom();
         setApprovalRequest(null);
         setContextUsage(null);
         setFollowupSuggestions([]);
         setAgentMode(AgentMode.Edit);
-        await rpcClient.getAiPanelRpcClient().clearChat();
         loadThreads();
     }
 
@@ -2818,7 +2868,8 @@ const AIChat: React.FC = () => {
 
                             // Note: Cannot use useMemo here as it's inside map() callback
                             // The stateless regex implementation in splitContent() ensures no corruption during streaming
-                            const segmentedContent = splitContent(message.content);
+                            const noticeLines = isUserMessage ? parseTaskNotification(message.content) : undefined;
+                            const segmentedContent = noticeLines ? [] : splitContent(message.content);
                             return (
                                 <ChatMessage key={index}>
                                     {/* Checkpoint separator before user messages */}
@@ -2858,7 +2909,8 @@ const AIChat: React.FC = () => {
                                         );
                                     })()}
 
-                                    <MessageBody isUserMessage={isUserMessage}>
+                                    {noticeLines && <TaskNotice lines={noticeLines} />}
+                                    {!noticeLines && <MessageBody isUserMessage={isUserMessage}>
                                         {segmentedContent.map((segment, i) => {
                                             if (segment.type === SegmentType.AgentStream) {
                                                 const stream = segment.stream ?? [];
@@ -3090,7 +3142,7 @@ const AIChat: React.FC = () => {
                                                 return <MarkdownRenderer key={`markdown-${i}`} markdownContent={segment.text} />;
                                             }
                                         })}
-                                    </MessageBody>
+                                    </MessageBody>}
                                     {/* Show feedback bar for the latest assistant message once loading is complete */}
                                     {isAssistantMessage && isLatestAssistantMessage && !isLoading && !isCodeLoading && (
                                         <FeedbackBar

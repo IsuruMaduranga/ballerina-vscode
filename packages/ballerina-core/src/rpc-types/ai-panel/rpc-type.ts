@@ -60,6 +60,7 @@ import {
     ClarifyAnswerRequest,
     ClarifyCancelRequest,
     RunningServiceInfo,
+    BackgroundTaskWake,
     StopRunningServiceRequest,
     RunServiceRequest,
     GetSkillsResponse,
@@ -140,7 +141,8 @@ export const cancelManagedConnection: NotificationType<void> = { method: `${_pre
 export const getChatMessages: NotificationType<void> = { method: `${_preFix}/getChatMessages` };
 export const getCheckpoints: NotificationType<void> = { method: `${_preFix}/getCheckpoints` };
 export const restoreCheckpoint: RequestType<RestoreCheckpointRequest, void> = { method: `${_preFix}/restoreCheckpoint` };
-export const clearChat: RequestType<void, void> = { method: `${_preFix}/clearChat` };
+/** False when the user kept the chat (its background commands are still running). */
+export const clearChat: RequestType<void, boolean> = { method: `${_preFix}/clearChat` };
 export const updateChatMessage: RequestType<UpdateChatMessageRequest, void> = { method: `${_preFix}/updateChatMessage` };
 export const getActiveTempDir: RequestType<void, string> = { method: `${_preFix}/getActiveTempDir` };
 export const getRunStatus: RequestType<GetRunStatusRequest, GetRunStatusResponse> = { method: `${_preFix}/getRunStatus` };
@@ -161,6 +163,7 @@ export const getRunningServices: RequestType<void, RunningServiceInfo[]> = { met
 export const stopRunningService: RequestType<StopRunningServiceRequest, boolean> = { method: `${_preFix}/stopRunningService` };
 export const runService: RequestType<RunServiceRequest, boolean> = { method: `${_preFix}/runService` };
 export const runningServicesChanged: NotificationType<RunningServiceInfo[]> = { method: `${_preFix}/runningServicesChanged` };
+export const backgroundTaskWake: NotificationType<BackgroundTaskWake> = { method: `${_preFix}/backgroundTaskWake` };
 export const getDefaultVertexCredsPath: RequestType<void, string> = { method: `${_preFix}/getDefaultVertexCredsPath` };
 export const getSkills: RequestType<void, GetSkillsResponse> = { method: `${_preFix}/getSkills` };
 export const addSkill: RequestType<AddSkillRequest, boolean> = { method: `${_preFix}/addSkill` };

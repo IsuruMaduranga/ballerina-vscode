@@ -31,7 +31,7 @@ Each call starts a new, non-interactive bash process. There is no terminal, the 
 
 Prefer the purpose-built tools where one exists:
 - Reading, creating or changing files: file_read, file_write, file_edit and file_batch_edit. They keep the review view accurate. Do not use cat, head, tail, sed, awk or \`echo >\` for this.
-- Compile errors: getCompilationErrors. Starting a service: runBallerinaPackage, which waits until it is ready and keeps it running after your turn; read its logs with task_output and stop it with kill_task. HTTP checks against a running service: hurlRunnerTool.
+- Compile errors: getCompilationErrors. Starting a service: \`bal run\` with run_in_background: true, which waits until the service is ready and returns a task-service-… id; the service keeps running after your turn and in the user's other chats; read its logs with task_output and stop it with kill_task. HTTP checks against a running service: hurlRunnerTool.
 - Use this tool for the rest of what a terminal does: \`bal build\`, \`bal test\`, \`bal format\`, \`bal pack\`, \`bal pull\`, git, package managers, build scripts, and searching with grep, rg or find.
 
 Writing the command:
@@ -43,7 +43,7 @@ Writing the command:
 - \`description\` is a short, plain summary of what the command does, shown to the user.
 
 Long-running commands:
-- Set run_in_background: true for a command that takes longer than you want to wait. The call returns a task id at once, and you are told when the command finishes, in a <system-reminder> on a later tool result. Read its output with task_output (block: true waits for it) and stop it with kill_task. Background commands stop when your turn ends, so collect or stop each one before you finish.
+- Set run_in_background: true for a command that takes longer than you want to wait. The call returns a task id at once, and you are told when the command finishes, in a <system-reminder> on a later tool result. Read its output with task_output (block: true waits for it) and stop it with kill_task. Background commands keep running after your turn ends; if one finishes while you are idle, you get a turn of its own with the notice. They stop when the user leaves the chat or closes VS Code, so stop the ones you no longer need.
 - Do not add \`&\`, \`nohup\` or \`setsid\` to a command, and do not wait with \`sleep\` or a polling loop: those calls are refused.
 
 Git:

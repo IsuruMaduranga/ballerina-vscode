@@ -152,7 +152,7 @@ export interface AIPanelAPI {
     getChatMessages: () => Promise<UIChatMessage[]>;
     getCheckpoints: () => Promise<CheckpointInfo[]>;
     restoreCheckpoint: (params: RestoreCheckpointRequest) => Promise<void>;
-    clearChat: () => Promise<void>;
+    clearChat: () => Promise<boolean>;
     updateChatMessage: (params: UpdateChatMessageRequest) => Promise<void>;
     getActiveTempDir: () => Promise<string>;
     getRunStatus: (params: GetRunStatusRequest) => Promise<GetRunStatusResponse>;

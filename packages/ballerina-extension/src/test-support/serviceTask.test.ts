@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 /**
- * Services from runBallerinaPackage read and stopped through task_output / kill_task
+ * Services (a background `bal run`) read and stopped through task_output / kill_task
  * (tools/service-task.ts, tools/task-tools.ts): the new-output cursor, the blocking read, the stop
  * outcomes, and the events the UI renders as service cards.
  */
@@ -166,7 +166,7 @@ describe("task_output and kill_task on a service id", () => {
         const events: any[] = [];
         const out = String(await createTaskOutputTool((e) => events.push(e), "run-a", fakeManager().manager)
             .execute!({ task_id: "task-service-00000000" }, execOptions("c4")));
-        expect(out).toContain("Start it again with runBallerinaPackage.");
+        expect(out).toContain("Start it again with `bal run` and run_in_background: true.");
         expect(events[1]).toMatchObject({ failed: true, toolOutput: { status: "not_found", kind: "service" } });
     });
 });

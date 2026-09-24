@@ -17,9 +17,9 @@
 /**
  * Background shell commands on the shared registry (shell/background.ts, background/registry.ts,
  * tools/task-tools.ts) against real `node -e` children: completion notices, task_output delivery and
- * withdrawal, kill_task, run-end cleanup and the run's abort signal. Each of these fails silently in
- * production (a command that never reports, a notice repeated after task_output returned it, a process
- * outliving its turn).
+ * withdrawal, kill_task, surviving the run's end, and the stops from outside (the user, a chat change,
+ * VS Code closing). Each of these fails silently in production (a command that never reports, a notice
+ * repeated after task_output returned it, a service killed when the turn ends).
  */
 import type { ToolExecutionOptions } from "ai";
 import type { ChatNotify } from "@wso2/ballerina-core";
@@ -31,7 +31,12 @@ import {
     drainBackgroundTaskNotifications,
     getBackgroundSubagent,
     getBackgroundTask,
+    onBackgroundTaskFinished,
+    onBackgroundTasksChanged,
     resetBackgroundTasksForTests,
+    runningChatShellTasks,
+    stopAllBackgroundTasks,
+    stopChatShellTasks,
 } from "../../features/ai/agent/background/registry";
 import { startBackgroundShell, type StartBackgroundShellOptions } from "../../features/ai/agent/shell/background";
 import type { BackgroundShell } from "../../features/ai/agent/background/types";
@@ -64,7 +69,7 @@ async function until(predicate: () => boolean, limitMs = 5000): Promise<void> {
 }
 
 beforeEach(() => resetBackgroundTasksForTests());
-afterEach(() => { cleanupRunningBackgroundTasks(); resetBackgroundTasksForTests(); });
+afterEach(() => { stopAllBackgroundTasks(); resetBackgroundTasksForTests(); });
 
 describe("startBackgroundShell", () => {
     it("registers a shell task in the shared id namespace, never as a subagent", () => {
@@ -112,13 +117,21 @@ describe("startBackgroundShell", () => {
         expect(notice).toContain("(timed out after 200ms)");
     });
 
-    it("stops when the run's signal aborts", async () => {
-        const run = new AbortController();
-        const task = start("setTimeout(() => {}, 30000)", { runSignal: run.signal });
-        run.abort();
-        await until(() => task.completed);
-        expect(task.aborted).toBe(true);
-        expect(task.finishStatus).toBe("killed");
+    it("tells finish listeners about a command that finished on its own, and change listeners about every step", async () => {
+        const finished: string[] = [];
+        let changes = 0;
+        const offFinish = onBackgroundTaskFinished((t) => finished.push(t.id));
+        const offChange = onBackgroundTasksChanged(() => { changes++; });
+        try {
+            const task = start("process.exit(0)");
+            expect(changes).toBe(1);
+            await until(() => task.completed);
+            expect(finished).toEqual([task.id]);
+            expect(changes).toBe(2);
+        } finally {
+            offFinish();
+            offChange();
+        }
     });
 });
 
@@ -154,13 +167,39 @@ describe("task_output and kill_task on a shell task", () => {
         expect(drainBackgroundTaskNotifications(RUN)).toBe("");
     });
 
-    it("run-end cleanup stops a still-running command and reports it through onRunEnd", async () => {
-        const reported: string[] = [];
-        const task = start("setTimeout(() => {}, 30000)", { onRunEnd: () => reported.push("ended") });
-        expect(cleanupRunningBackgroundTasks(RUN)).toBe(1);
-        expect(reported).toEqual(["ended"]);
-        expect(task.output).toBe(`Background command ${task.id} was stopped because the main agent run ended.`);
-        expect(task.abortController.signal.aborted).toBe(true);
+    it("outlives the run: run-end cleanup leaves a shell command running", () => {
+        const task = start("setTimeout(() => {}, 30000)");
+        expect(cleanupRunningBackgroundTasks(RUN)).toBe(0);
+        expect(task.completed).toBe(false);
+        expect(task.abortController.signal.aborted).toBe(false);
+    });
+
+    it("a chat change stops the chat's commands and keeps them unreported, so its agent is told next turn", async () => {
+        const finished: string[] = [];
+        const off = onBackgroundTaskFinished((t) => finished.push(t.id));
+        try {
+            const mine = start("setTimeout(() => {}, 30000)", { description: "watch" });
+            const other = start("setTimeout(() => {}, 30000)", { runKey: "run-b" });
+            expect(runningChatShellTasks(RUN).map(t => t.id)).toEqual([mine.id]);
+            expect(stopChatShellTasks(RUN, "because the user changed chats")).toBe(1);
+            expect(mine.abortController.signal.aborted).toBe(true);
+            expect(mine.output).toBe(`Background command ${mine.id} was stopped because the user changed chats.`);
+            expect(other.completed).toBe(false);
+            expect(getBackgroundTask(mine.id)).toBe(mine);
+            expect(drainBackgroundTaskNotifications(RUN)).toContain('Background command "watch" was stopped');
+            await new Promise((r) => setTimeout(r, 300));
+            expect(finished).toEqual([]);
+        } finally {
+            off();
+        }
+    });
+
+    it("VS Code closing stops every chat's commands", () => {
+        const a = start("setTimeout(() => {}, 30000)");
+        const b = start("setTimeout(() => {}, 30000)", { runKey: "run-b" });
+        expect(stopAllBackgroundTasks()).toBe(2);
+        expect(a.output).toContain("because VS Code closed");
+        expect(b.abortController.signal.aborted).toBe(true);
     });
 
     it("keeps another run's shell task invisible", async () => {

@@ -22,7 +22,7 @@ import { bashToolDescription, SHELL_TOOL_NAME } from '../shell/bash-description'
 import { bashGuardReason } from '../shell/guards';
 import { tailCap } from '../shell/output';
 import { finishLine } from '../shell/runner';
-import { runShellCall, type ShellCallParams } from '../shell/shell-call';
+import { runShellCall, type ShellCallContext, type ShellCallParams } from '../shell/shell-call';
 import { bashSpawn, powerShellEdition, powerShellSpawn, withPowerShellUtf8 } from '../shell/shell-spawn';
 import { POWERSHELL_TOOL_NAME, powershellToolDescription } from '../shell/powershell-description';
 import { powershellGuardReason } from '../shell/powershell-guards';
@@ -58,6 +58,10 @@ export interface ShellToolOptions {
     authorize: (request: { command: string; description?: string; toolCallId: string; abortSignal?: AbortSignal }) => Promise<ShellAuthorization>;
     /** Registers files a command changed (`tools/shell-touched-files.ts`); without it no scan runs. */
     onFilesTouched?: (touched: TouchedFiles) => Promise<void>;
+    /** Starts a background `bal run` as a service (`tools/ballerina-run.ts startShellService`). */
+    startService?: ShellCallContext["startService"];
+    /** The commands' environment (`shell/bal-run.ts withBalOnPath`); the extension host's when absent. */
+    env?: NodeJS.ProcessEnv;
 }
 
 /** What differs between the two shell tools; the body is shared (`shell/shell-call.ts`). */
@@ -91,7 +95,7 @@ export function createShellTool(opts: ShellToolOptions) {
                 toolCallId,
                 toolInput: { command: input.command, description: input.description, run_in_background: background },
             });
-            const emitResult = (status: "completed" | "error" | "blocked" | "background", toolOutput: Record<string, unknown>) =>
+            const emitResult = (status: "completed" | "error" | "blocked" | "background" | "service", toolOutput: Record<string, unknown>) =>
                 opts.eventHandler({ type: "tool_result", toolName: flavour.name, toolCallId, toolOutput: { status, command: input.command, description: input.description, ...toolOutput } });
 
             const authorization = await opts.authorize({ command: input.command, description: input.description, toolCallId, abortSignal: context?.abortSignal });
@@ -120,11 +124,13 @@ export function createShellTool(opts: ShellToolOptions) {
                 guard: flavour.guard,
                 wrapCommand: flavour.wrapCommand,
                 cwd: opts.cwd,
+                env: opts.env,
                 runKey: opts.runKey,
                 toolCallId,
                 signal: context?.abortSignal,
                 scratchpadDir: opts.scratchpadDir,
                 onBackgroundFinished: () => { void registerTouched(); },
+                startService: opts.startService,
             });
             if (result.kind === "foreground") { await registerTouched(); }
             const gate = { by: authorization.by };
@@ -132,6 +138,14 @@ export function createShellTool(opts: ShellToolOptions) {
                 emitResult("blocked", { reason: result.text, gate });
             } else if (result.kind === "background") {
                 emitResult("background", { taskId: result.taskId, logPath: result.logPath, gate });
+            } else if (result.kind === "service") {
+                const { start } = result;
+                const service = { kind: "service", packagePath: result.packagePath, output: tailCap(start.output, UI_OUTPUT_CAP), gate };
+                if (start.kind === "started") {
+                    emitResult("service", { ...service, taskId: start.taskId });
+                } else {
+                    emitResult("error", { ...service, exitCode: start.exitCode });
+                }
             } else {
                 const line = finishLine(result.summary, result.timeoutMs);
                 emitResult(line === "completed" ? "completed" : "error", {

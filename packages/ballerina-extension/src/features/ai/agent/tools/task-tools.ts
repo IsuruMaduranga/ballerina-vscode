@@ -16,7 +16,7 @@
 /**
  * `task_output` and `kill_task` — the background-task half of the MI Copilot's task workflow, for
  * background subagents and background shell commands alike (one id namespace, one registry:
- * `background/registry.ts`). They also read and stop the services `runBallerinaPackage` starts, which
+ * `background/registry.ts`). They also read and stop the services a background `bal run` starts, which
  * live outside that registry and outlive the turn (`./service-task.ts`).
  *
  * `task_output` with block=true is the wait-and-wake point: the main agent's step blocks inside this call,
@@ -29,6 +29,7 @@ import { CopilotEventHandler } from "../../utils/events";
 import { KILL_TASK_TOOL_NAME, TASK_OUTPUT_TOOL_NAME } from "../subagents/types";
 import { getBackgroundTask, NOTIFY_OUTPUT_CAP, removeBackgroundTask, terminatedOutput } from "../background/registry";
 import type { BackgroundTask } from "../background/types";
+import { tailCap } from "../shell/output";
 import { RunningServicesManager, runningServicesManager } from "./running-service-manager";
 import { isServiceTaskId, readServiceOutput, serviceDescription, serviceNotFoundText, serviceReadText, stopServiceTask } from "./service-task";
 
@@ -52,15 +53,14 @@ function failureDetail(task: BackgroundTask): string {
 }
 
 /**
- * `runKey` is the run that owns the tools. Background tasks are run-scoped (`cleanupRunningBackgroundTasks`),
- * so a task id from another run must read as not found — otherwise a stale id in a resumed thread could reach
- * a task another turn started.
+ * `runKey` is the chat that owns the tools. A background task belongs to its chat, so a task id from another
+ * chat reads as not found. A service (`task-service-…`) belongs to the project and is reachable from any chat.
  */
 export function createTaskOutputTool(eventHandler: CopilotEventHandler, runKey: string, services: RunningServicesManager = runningServicesManager) {
     return tool({
         description: `Get the result of a background task (a subagent or a shell command started with run_in_background) by task id. block=true (default) waits until it completes — use this when you have no other work to do; you are woken as soon as it finishes. block=false returns the current status immediately, with a running shell command's output so far. Not for foreground runs (their result was returned inline).
 
-For a service started by runBallerinaPackage (a task-service-… id), this returns the log output printed since the last read. block=true waits until the service prints something new or exits; block=false reads at once.`,
+For a service (a task-service-… id, from a background \`bal run\`), this returns the log output printed since the last read. block=true waits until the service prints something new or exits; block=false reads at once.`,
         inputSchema: z.object({
             task_id: z.string().describe("The task id returned by the tool that started the background task."),
             block: z.boolean().optional().describe("Wait for completion (default true)."),
@@ -91,7 +91,7 @@ For a service started by runBallerinaPackage (a task-service-… id), this retur
                     const waited = waitedMs > 0 ? ` after ${Math.round(waitedMs / 1000)}s` : "";
                     const soFar = task.kind === "shell" ? task.peek() : "";
                     const interim = soFar
-                        ? `\n\nOutput so far:\n${soFar.length <= NOTIFY_OUTPUT_CAP ? soFar : `… (earlier output truncated)\n${soFar.slice(-NOTIFY_OUTPUT_CAP)}`}`
+                        ? `\n\nOutput so far:\n${tailCap(soFar, NOTIFY_OUTPUT_CAP)}`
                         : "";
                     return `Task ${task_id} ("${task.description}") is still running${waited}. Call ${TASK_OUTPUT_TOOL_NAME} again to keep waiting, or ${KILL_TASK_TOOL_NAME} to stop it.${interim}`;
                 }
@@ -131,7 +131,7 @@ For a service started by runBallerinaPackage (a task-service-… id), this retur
 
 export function createKillTaskTool(eventHandler: CopilotEventHandler, runKey: string, services: RunningServicesManager = runningServicesManager) {
     return tool({
-        description: "Terminate a running background task (a subagent or a shell command) by task id. Also stops a service started by runBallerinaPackage (a task-service-… id), for example to restart it after a code change.",
+        description: "Terminate a running background task (a subagent or a shell command) by task id. Also stops a service (a task-service-… id, from a background `bal run`), for example to restart it after a code change.",
         inputSchema: z.object({
             task_id: z.string().describe("The task id to terminate."),
         }),

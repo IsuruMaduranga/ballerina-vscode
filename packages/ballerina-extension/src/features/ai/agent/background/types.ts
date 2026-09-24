@@ -16,9 +16,9 @@
 /**
  * The background tasks the main agent can start and collect: subagents (`Subagent` with
  * `run_in_background`) and shell commands (`shell` / `powershell` with `run_in_background`). One registry
- * (`./registry`) holds both, so `task_output`, `kill_task`, run-end cleanup and the completion
- * `<system-reminder>` treat them alike. The `kind` discriminant is a string: boolean-literal unions do not
- * narrow under this package's `strictNullChecks: false`.
+ * (`./registry`) holds both, so `task_output`, `kill_task` and the completion `<system-reminder>` treat
+ * them alike; only a subagent ends with its run. The `kind` discriminant is a string: boolean-literal
+ * unions do not narrow under this package's `strictNullChecks: false`.
  */
 
 import { randomUUID } from "crypto";
@@ -43,7 +43,7 @@ interface BackgroundTaskBase {
     /** True once the completion has reached the main agent (drain reminder or task_output). */
     notified: boolean;
     /**
-     * Set by run-end cleanup. The task's own completion/abort settles later, in a turn that may already
+     * Set by run-end cleanup (subagents only). The task's own completion/abort settles later, in a turn that may already
      * belong to another run, so the starter reports the abort synchronously through `onRunEnd` and
      * ignores the late settlement.
      */
@@ -62,6 +62,8 @@ export interface BackgroundShell extends BackgroundTaskBase {
     toolName: string;
     /** The command as the model wrote it. */
     command: string;
+    /** Where it runs (the workspace root). */
+    cwd: string;
     /** The full output, spooled; named in the completion notice. */
     logPath?: string;
     exitCode: number | null;
@@ -76,8 +78,11 @@ export interface BackgroundShell extends BackgroundTaskBase {
 export type BackgroundTask = BackgroundSubagent | BackgroundShell;
 export type BackgroundTaskKind = BackgroundTask["kind"];
 
-/** Task ids share one namespace, as in the MI Copilot: `task-subagent-xxxxxxxx`, `task-shell-xxxxxxxx`. */
-export function generateTaskId(kind: BackgroundTaskKind): string {
+/**
+ * Task ids share one namespace, as in the MI Copilot: `task-subagent-xxxxxxxx`, `task-shell-xxxxxxxx`, and
+ * `task-service-xxxxxxxx` for the services `RunningServicesManager` holds (`tools/service-task.ts`).
+ */
+export function generateTaskId(kind: BackgroundTaskKind | "service"): string {
     // Node's crypto rather than the `uuid` package: uuid@14 ships ESM only, which Jest cannot load.
     return `task-${kind}-${randomUUID().split("-")[0]}`;
 }

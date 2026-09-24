@@ -119,7 +119,7 @@ function getStatus(isResult: boolean, toolName: string | undefined, toolOutput: 
         if (s === "error") return "error";
         return "success";
     }
-    if (toolName === "shell" || toolName === "powershell") return s === "completed" || s === "background" ? "success" : "error";
+    if (toolName === "shell" || toolName === "powershell") return s === "completed" || s === "background" || s === "service" ? "success" : "error";
     if (s === "completed" || s === "started" || s === "stopped" || s === "already_exited" || s === "running") return "success";
     return "error";
 }
@@ -146,6 +146,8 @@ function shellStatusLabel(toolOutput: any): string {
     const suffix = shellGateSuffix(toolOutput);
     if (s === "completed") return `Completed${suffix}`;
     if (s === "background") return `Running in background${suffix}`;
+    // A background `bal run`: started as a service, ready and kept running.
+    if (s === "service") return `Service running${suffix}`;
     const finish = typeof toolOutput?.finish === "string" ? toolOutput.finish.charAt(0).toUpperCase() + toolOutput.finish.slice(1) : "Failed";
     return `${finish}${suffix}`;
 }

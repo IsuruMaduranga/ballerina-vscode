@@ -35,6 +35,7 @@ import { resolveProjectPath } from '../../utils/project-utils';
 import { MESSAGES } from '../project';
 import { AICommandConfig } from './executors/base/AICommandExecutor';
 import { AgentExecutor } from './agent/AgentExecutor';
+import { backgroundWake } from './agent/background/wake-host';
 import {
     initMcpClientManager,
     disposeMcpClientManager,
@@ -83,6 +84,7 @@ export function activateAIFeatures(ballerinaExternalInstance: BallerinaExtension
     resetBIAuth();
     activateMcp();
     extension.context?.subscriptions.push(registerAgentsMdWatcher());
+    backgroundWake.start();
     if (extension.context) {
         agentStatusManager.init(extension.context);
         extension.context.subscriptions.push(

@@ -267,3 +267,11 @@ export function getRunCommand(): BALLERINA_COMMANDS {
     return BALLERINA_COMMANDS.RUN;
 }
 
+/**
+ * `getRunCommand()` as argv, for a spawn without a shell: its values ("run --watch") are written for a
+ * terminal line, which a shell splits.
+ */
+export function getRunArgs(): string[] {
+    return getRunCommand().split(' ');
+}
+
