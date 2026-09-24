@@ -28,6 +28,7 @@
 import {
     COMMAND_OUTPUT_TOOLS,
     commandCardTool,
+    isTestRun,
     getFileName,
     getToolCallDisplay,
     getToolIcon,
@@ -230,5 +231,21 @@ describe("commandCardTool", () => {
         expect(commandCardTool("task_output", { kind: "shell" })).toBeUndefined();
         expect(commandCardTool("kill_task", undefined)).toBeUndefined();
         expect(commandCardTool(undefined, { kind: "service" })).toBeUndefined();
+    });
+});
+
+describe("isTestRun", () => {
+    it("recognises bal test through either shell, and the removed runTests tool", () => {
+        expect(isTestRun("shell", { command: "bal test" })).toBe(true);
+        expect(isTestRun("shell", { command: "cd orders && bal test --tests testGetOrder" })).toBe(true);
+        expect(isTestRun("powershell", { command: "bal.bat test" })).toBe(true);
+        expect(isTestRun("runTests", undefined)).toBe(true);
+    });
+
+    it("ignores other commands and tools", () => {
+        expect(isTestRun("shell", { command: "bal build" })).toBe(false);
+        expect(isTestRun("shell", { command: "grep -rn 'bal test' README.md" })).toBe(false);
+        expect(isTestRun("shell", undefined)).toBe(false);
+        expect(isTestRun("file_read", { command: "bal test" })).toBe(false);
     });
 });

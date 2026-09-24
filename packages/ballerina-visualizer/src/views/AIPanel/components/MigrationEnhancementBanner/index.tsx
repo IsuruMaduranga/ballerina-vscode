@@ -54,7 +54,8 @@ export interface MigrationEnhancementBannerProps {
  *  - Stage 1: `getCompilationErrors` tool call seen → active; result present → done
  *  - Stage 2: inferred – active once stage 1 is done, done once stage 4 starts
  *  - Stage 3: inferred – active when file edits target `tests/`, done once stage 4 starts
- *  - Stage 4: `runTests` tool call seen → active; result present → done
+ *  - Stage 4: `runTests` tool call seen → active; result present → done. The migration panel tags a
+ *    shell `bal test` as `runTests` (isTestRun), so current runs and saved ones both match.
  */
 function deriveStages(messages: Array<{ role: string; content: string }>): StageInfo[] {
     const allContent = messages.map((m) => m.content).join("\n");

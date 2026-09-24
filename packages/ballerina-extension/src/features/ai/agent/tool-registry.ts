@@ -49,7 +49,6 @@ import type { ShellRunSetup } from './shell/shell-session';
 import { registerShellTouchedFiles } from './tools/shell-touched-files';
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
 import { createConfigCollectorTool, CONFIG_COLLECTOR_TOOL } from './tools/config-collector';
-import { createTestRunnerTool, TEST_RUNNER_TOOL_NAME } from './tools/test-runner';
 import {
     createMigrationSourceListTool,
     createMigrationSourceReadTool,
@@ -232,7 +231,6 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
             createReadExecute(eventHandler, tempProjectPath)
         ),
         [DIAGNOSTICS_TOOL_NAME]: createDiagnosticsTool(tempProjectPath, eventHandler, editDiagnostics),
-        [TEST_RUNNER_TOOL_NAME]: createTestRunnerTool(tempProjectPath, eventHandler),
         // Migration source tools — registered only when a source project path is available
         ...(migrationSourcePath ? {
             [MIGRATION_SOURCE_LIST_TOOL]: createMigrationSourceListTool(eventHandler, migrationSourcePath),

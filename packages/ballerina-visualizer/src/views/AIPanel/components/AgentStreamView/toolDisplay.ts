@@ -26,8 +26,9 @@
  * pure mapping can be unit-tested without a DOM. The visualizer package's jsdom
  * environment is currently broken; tests here run under `--env=node`.
  */
-// getServiceLogs and stopBallerinaService are no longer agent tools; transcripts saved before their removal
-// still carry them, and a service's task_output / kill_task renders through their cards (commandCardTool).
+// runTests, getServiceLogs and stopBallerinaService are no longer agent tools; transcripts saved before their
+// removal still carry them, and a service's task_output / kill_task renders through the last two's cards
+// (commandCardTool).
 export const COMMAND_OUTPUT_TOOLS = new Set(["runBallerinaPackage", "runTests", "getServiceLogs", "stopBallerinaService", "shell", "powershell"]);
 
 /**
@@ -35,6 +36,14 @@ export const COMMAND_OUTPUT_TOOLS = new Set(["runBallerinaPackage", "runTests", 
  * toolInput (a call) or toolOutput (a result). A service's `task_output` renders as the service-logs card
  * and its `kill_task` as the stop-service card, as the old dedicated tools did.
  */
+/** Whether a tool call runs the test suite: a `bal test` through the shell, or the removed runTests tool. */
+export function isTestRun(toolName: string | undefined, payload: any): boolean {
+    if (toolName === "runTests") return true;
+    if (toolName !== "shell" && toolName !== "powershell") return false;
+    const command = typeof payload?.command === "string" ? payload.command : "";
+    return /(^|[\s;&|(])bal(\.bat)?\s+test\b/.test(command);
+}
+
 export function commandCardTool(toolName: string | undefined, payload: any): string | undefined {
     if (!toolName) return undefined;
     if (COMMAND_OUTPUT_TOOLS.has(toolName)) return toolName;

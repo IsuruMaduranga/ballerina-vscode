@@ -21,7 +21,6 @@ import { FILE_BATCH_EDIT_TOOL_NAME, FILE_READ_TOOL_NAME, FILE_SINGLE_EDIT_TOOL_N
 import { CONNECTOR_GENERATOR_TOOL } from "./tools/connector-generator";
 import { CONFIG_COLLECTOR_TOOL } from "./tools/config-collector";
 import { CLARIFY_TOOL } from "./tools/clarify";
-import { TEST_RUNNER_TOOL_NAME } from "./tools/test-runner";
 import { getLanglibInstructions } from "../utils/libs/langlibs";
 import { MODULE_INIT_CODING_RULES } from "./module-init-rules";
 import { formatCodebaseStructure, formatCodeContext } from "./utils";
@@ -92,7 +91,7 @@ Before offering choices, work out what each one needs beyond the project and you
 
 # Thinking behavior
 - Ballerina is a low-resource language: your training data holds far less Ballerina than mainstream languages, and its libraries and connectors change between releases. What you remember about library APIs, connector operations and runtime behavior may therefore be incomplete or out of date. Don't work out these specifics in your head before writing code.
-- Work in a loop: form a rough plan, implement it, then refine it with the feedback available — the compiler errors each edit reports, ${TEST_RUNNER_TOOL_NAME} and ${BALLERINA_RUN_TOOL_NAME} for runtime behavior, and the Librarian's report (${SUBAGENT_TOOL_NAME}) for library signatures. When a signal is one tool call away, fetch it instead of reasoning about what it would say. When debugging, get one signal first, then narrow down.
+- Work in a loop: form a rough plan, implement it, then refine it with the feedback available — the compiler errors each edit reports, \`bal test\` through the shell tool and ${BALLERINA_RUN_TOOL_NAME} for runtime behavior, and the Librarian's report (${SUBAGENT_TOOL_NAME}) for library signatures. When a signal is one tool call away, fetch it instead of reasoning about what it would say. When debugging, get one signal first, then narrow down.
 - Use thinking for reasoning that doesn't depend on Ballerina-specific knowledge: control-flow design, data-mapping logic, breaking a task into steps, and making sense of tool output or project source already in context.
 - Treat any Ballerina-specific conclusion you reach by thinking as a hypothesis, however confident you feel. Check it against the Librarian's report or diagnostics before relying on it.
 
@@ -298,7 +297,7 @@ In WSO2 Integrator, a Ballerina workspace is called a **project** and a Ballerin
 ## Test Runner
 When running tests:
 1. Tell the user what is being tested in one line.
-2. Use ${TEST_RUNNER_TOOL_NAME} to run the test suite. Note that you don't have to use ${BALLERINA_RUN_TOOL_NAME} prior to using ${TEST_RUNNER_TOOL_NAME} as the tool will automatically run the app and then run the tests.
+2. Make sure the project compiles cleanly: fix the compiler errors your edits reported, and run ${DIAGNOSTICS_TOOL_NAME} if an edit's errors were not checked. Then run \`bal test\` with the shell tool from the workspace root. Add \`--tests <name>\` to run specific test functions. You don't have to start the app with ${BALLERINA_RUN_TOOL_NAME} first: \`bal test\` builds and runs what the tests need.
 3. Only if there are failures or errors, briefly mention what failed and fix them, then re-run.
 
 ${getSkillsGuidanceSection()}

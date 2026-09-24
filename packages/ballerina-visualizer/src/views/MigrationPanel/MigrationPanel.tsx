@@ -23,6 +23,7 @@ import styled from "@emotion/styled";
 import MarkdownRenderer from "../AIPanel/components/MarkdownRenderer";
 import MigrationEnhancementBanner from "../AIPanel/components/MigrationEnhancementBanner";
 import { useAssistantName } from "../../hooks/useProductMode";
+import { isTestRun } from "../AIPanel/components/AgentStreamView/toolDisplay";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Types
@@ -469,11 +470,13 @@ export function MigrationPanel() {
 
     const showBanner = session.isActive && !session.fullyEnhanced && !bannerDismissed && messages.length > 0;
 
-    // Derive simple messages array for banner stage derivation
+    // Derive simple messages array for banner stage derivation. A shell `bal test` is tagged as runTests,
+    // the name the banner's test stage looks for.
+    const bannerToolName = (name: string, payload: any) => (isTestRun(name, payload) ? "runTests" : name);
     const bannerMessages = messages.map((m) => ({
         role: m.role,
-        content: m.content + (m.toolCalls?.map((t) => ` <toolcall tool="${t.name}"/>`).join("") || "")
-            + (m.toolResults?.map((t) => ` <toolresult tool="${t.name}"/>`).join("") || ""),
+        content: m.content + (m.toolCalls?.map((t) => ` <toolcall tool="${bannerToolName(t.name, t.input)}"/>`).join("") || "")
+            + (m.toolResults?.map((t) => ` <toolresult tool="${bannerToolName(t.name, t.output)}"/>`).join("") || ""),
     }));
 
     return (

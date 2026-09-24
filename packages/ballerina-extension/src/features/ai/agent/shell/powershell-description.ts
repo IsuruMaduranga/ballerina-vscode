@@ -54,8 +54,8 @@ ${EDITION_SECTIONS[edition]}
 
 Prefer the purpose-built tools where one exists:
 - Reading, creating or changing files: file_read, file_write, file_edit and file_batch_edit. They keep the review view accurate. Do not use Get-Content, Set-Content, Out-File or Add-Content for this.
-- Compile errors: getCompilationErrors. Tests: runTests. Starting a service: runBallerinaPackage, which waits until it is ready and keeps it running after your turn; read its logs with task_output and stop it with kill_task. HTTP checks against a running service: hurlRunnerTool.
-- Use this tool for the rest of what a terminal does: \`bal build\`, \`bal format\`, \`bal pack\`, \`bal pull\`, git, package managers and build scripts.
+- Compile errors: getCompilationErrors. Starting a service: runBallerinaPackage, which waits until it is ready and keeps it running after your turn; read its logs with task_output and stop it with kill_task. HTTP checks against a running service: hurlRunnerTool.
+- Use this tool for the rest of what a terminal does: \`bal build\`, \`bal test\`, \`bal format\`, \`bal pack\`, \`bal pull\`, git, package managers and build scripts.
 
 Writing the command:
 - Keep a read-only look to one plain command per call (\`git status\`, \`Get-ChildItem resources\`, \`Select-String -Pattern Client -Path main.bal\`). A plain read runs straight away; a line that combines steps, loops or uses variables has to be checked first, which takes longer and may ask the user.

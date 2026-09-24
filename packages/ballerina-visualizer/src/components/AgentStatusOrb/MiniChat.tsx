@@ -170,8 +170,6 @@ function describeTool(toolName: string, toolInput: any): string {
             return file ? `Reading ${file}` : "Reading files";
         case "getCompilationErrors":
             return "Checking for compilation errors";
-        case "runTests":
-            return "Running tests";
         case "runBallerinaPackage":
             return "Running the integration";
         case "TaskWrite":

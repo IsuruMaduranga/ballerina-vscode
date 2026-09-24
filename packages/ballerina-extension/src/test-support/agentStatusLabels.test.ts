@@ -73,7 +73,7 @@ describe('describeToolCall', () => {
 
     it('labels non-file tools without touching the path logic', () => {
         expect(describeToolCall('getCompilationErrors')).toBe('Checking for errors');
-        expect(describeToolCall('runTests')).toBe('Running tests');
+        expect(describeToolCall('hurlRunnerTool')).toBe('Testing HTTP endpoints');
     });
 
     it('names the tool behind an MCP call, and falls back for unknown tools', () => {
@@ -103,7 +103,7 @@ describe('subagent wording on the status line', () => {
         expect(describeToolResultProgress({ toolName: 'Subagent', toolOutput: { status: 'completed', libraries: ['ballerinax/kafka'] } })).toBeUndefined();
         expect(describeToolResultProgress({ toolName: 'task_output', toolOutput: { status: 'running' } })).toBeUndefined();
         // Another tool's partial result falls back to its call wording.
-        expect(describeToolResultProgress({ toolName: 'runTests', partial: true, toolOutput: {} })).toBe(describeToolCall('runTests', {}));
+        expect(describeToolResultProgress({ toolName: 'getCompilationErrors', partial: true, toolOutput: {} })).toBe(describeToolCall('getCompilationErrors', {}));
     });
 });
 
