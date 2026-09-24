@@ -53,7 +53,7 @@ const gitInit = () => execFileSync("git", ["init", "-q"], { cwd });
 
 describe("design §6: every probe against pincer 5059966 now escalates", () => {
     // Each of these returned "safe" before pincer's c1e65da; the last two run a
-    // program (dev-docs findings/git.md).
+    // program (working-docs findings/git.md).
     const probes = [
         "git branch -D x",
         "git branch -m a b",

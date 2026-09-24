@@ -822,7 +822,7 @@ function gitCheckoutReason(args: Token[], cwd: string, home: string, seen: Map<s
  * a file on disk. `git diff` takes two paths as `--no-index` whenever one is
  * outside the work tree or no repository is found, so `git diff /etc/hosts
  * a.txt` reads `/etc/hosts` with `--no-index` never written (verified on git
- * 2.43; dev-docs findings/git.md). The others refuse a path outside the
+ * 2.43; working-docs findings/git.md). The others refuse a path outside the
  * repository, but a path outside the cwd and inside the repository is still
  * a read beyond the workspace folder.
  */

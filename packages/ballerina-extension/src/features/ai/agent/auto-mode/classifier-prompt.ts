@@ -36,7 +36,7 @@
  *     `<category>Exact BLOCK Rule Name</category>` on rule-matched blocks.
  *
  * Any edit here is safety-critical: run the live battery
- * (`dev-docs/headless/automodeBattery.test.ts`) in BOTH directions before
+ * (`working-docs/headless/automodeBattery.test.ts`) in BOTH directions before
  * trusting a change.
  */
 

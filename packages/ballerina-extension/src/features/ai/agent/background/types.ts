@@ -18,7 +18,7 @@
  * `run_in_background`) and shell commands (`shell` / `powershell` with `run_in_background`). One registry
  * (`./registry`) holds both, so `task_output`, `kill_task`, run-end cleanup and the completion
  * `<system-reminder>` treat them alike. The `kind` discriminant is a string: boolean-literal unions do not
- * narrow under this package's `strictNullChecks: false` (dev-docs findings/repo-tooling.md).
+ * narrow under this package's `strictNullChecks: false` (working-docs findings/repo-tooling.md).
  */
 
 import { randomUUID } from "crypto";

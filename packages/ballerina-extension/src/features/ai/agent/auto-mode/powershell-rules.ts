@@ -52,7 +52,7 @@
  *   check and count as injection syntax for session rules. In argument mode
  *   PowerShell runs a parenthesised pipeline, so pincer's check cleared
  *   `Get-Content (Remove-Item a.txt)`, which deletes the file (verified
- *   2026-09-24 against PowerShell 7.6.6, dev-docs findings/powershell.md).
+ *   2026-09-24 against PowerShell 7.6.6, working-docs findings/powershell.md).
  * - a `git` statement is read-only when the bash pre-gate's hardened git
  *   check clears it (design §6), with the words re-quoted so bash and
  *   PowerShell see the same arguments.
