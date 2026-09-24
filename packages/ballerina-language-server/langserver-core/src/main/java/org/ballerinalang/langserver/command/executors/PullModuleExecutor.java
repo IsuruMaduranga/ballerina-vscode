@@ -135,7 +135,8 @@ public class PullModuleExecutor implements LSCommandExecutor {
                     moduleName = arg.valueAs(String.class);
                     break;
                 case CommandConstants.ARG_KEY_PACKAGES:
-                    packages = List.of(arg.valueAs(PackageCoordinate[].class));
+                    PackageCoordinate[] requestedPackages = arg.valueAs(PackageCoordinate[].class);
+                    packages = requestedPackages == null ? List.of() : List.of(requestedPackages);
                     break;
                 default:
             }

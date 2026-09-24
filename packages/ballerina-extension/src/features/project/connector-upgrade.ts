@@ -36,6 +36,7 @@ const RELOAD_WINDOW_COMMAND = 'workbench.action.reloadWindow';
 const BALLERINA_TOML = 'Ballerina.toml';
 const DEPENDENCIES_TOML = 'Dependencies.toml';
 const MAIN_BAL = 'main.bal';
+const BACKUP_SUFFIX = '.bak';
 
 const UPGRADE_PROMPT_MESSAGE = "This project's connectors need an update to work with Service Designer.";
 const UPGRADE_PROGRESS_TITLE = 'Updating connectors';
@@ -69,6 +70,7 @@ interface PackageCoordinate {
 interface DependencyPin {
     document: TextDocument;
     versionRange: Range;
+    version: string;
 }
 
 /**
@@ -224,7 +226,10 @@ async function pullExactVersions(advice: ConnectorUpgradeAdvice[], projectPath: 
     }
 }
 
-/** Raises every explicit {@code Ballerina.toml} pin of an advised connector to its pulled version. */
+/**
+ * Raises every explicit {@code Ballerina.toml} pin of an advised connector to its pulled version. A pin that
+ * is already at or above that version is left alone, so an upgrade never downgrades a connector.
+ */
 async function raiseDependencyPins(advice: ConnectorUpgradeAdvice[], projectPath: string): Promise<boolean> {
     const tomlPath = path.join(projectPath, BALLERINA_TOML);
     const pins = await Promise.all(advice.map(async (item) => ({
@@ -232,7 +237,7 @@ async function raiseDependencyPins(advice: ConnectorUpgradeAdvice[], projectPath
         pin: await findDependencyPin(tomlPath, item.orgName, item.packageName)
     })));
     const pinned = pins.filter((entry): entry is { item: ConnectorUpgradeAdvice; pin: DependencyPin } =>
-        entry.pin !== undefined);
+        entry.pin !== undefined && compareVersions(entry.pin.version, entry.item.minSupportedVersion) < 0);
     if (pinned.length === 0) {
         return true;
     }
@@ -248,16 +253,36 @@ async function raiseDependencyPins(advice: ConnectorUpgradeAdvice[], projectPath
 }
 
 /**
- * Removes the stale lock file, then runs {@code bal clean} and a real {@code bal build} so the lock file and
- * build artifacts are regenerated from the pulled versions.
+ * Moves the stale lock file aside, then runs {@code bal clean} and a real {@code bal build} so the lock file
+ * and build artifacts are regenerated from the pulled versions. The old lock file is restored when the
+ * lock file is not regenerated.
  */
 async function regenerateDependenciesToml(dependenciesToml: string, projectPath: string): Promise<boolean> {
+    const backup = `${dependenciesToml}${BACKUP_SUFFIX}`;
     try {
-        await fs.promises.rm(dependenciesToml);
+        await fs.promises.rename(dependenciesToml, backup);
     } catch (error) {
-        console.error('>>> Failed to remove Dependencies.toml', error);
+        console.error('>>> Failed to move Dependencies.toml aside', error);
         return false;
     }
+    const regenerated = await rebuild(dependenciesToml, projectPath);
+    try {
+        if (regenerated) {
+            await fs.promises.rm(backup);
+        } else {
+            await fs.promises.rename(backup, dependenciesToml);
+        }
+    } catch (error) {
+        console.error('>>> Failed to clean up the Dependencies.toml backup', error);
+    }
+    return regenerated;
+}
+
+/**
+ * Runs {@code bal clean} then {@code bal build}. The build counts as successful when it regenerates the lock
+ * file, since it can fail on unrelated compile errors after dependency resolution already succeeded.
+ */
+async function rebuild(dependenciesToml: string, projectPath: string): Promise<boolean> {
     const ballerinaCmd = quoteShellPath(extension.ballerinaExtInstance.getBallerinaCmd());
     const clean = await runCommandWithOutput(`${ballerinaCmd} ${BalCommand.Clean}`, projectPath, buildOutputChannel);
     if (!clean.success) {
@@ -265,6 +290,21 @@ async function regenerateDependenciesToml(dependenciesToml: string, projectPath:
     }
     await runCommandWithOutput(`${ballerinaCmd} ${BalCommand.Build}`, projectPath, buildOutputChannel);
     return fs.existsSync(dependenciesToml);
+}
+
+/**
+ * Compares the numeric major/minor/patch parts of two versions. A missing or non-numeric part counts as 0.
+ */
+function compareVersions(left: string, right: string): number {
+    const parse = (version: string) => version.split(/[.+-]/, 3).map((part) => parseInt(part, 10) || 0);
+    const [a, b] = [parse(left), parse(right)];
+    for (let i = 0; i < 3; i++) {
+        const diff = (a[i] ?? 0) - (b[i] ?? 0);
+        if (diff !== 0) {
+            return diff;
+        }
+    }
+    return 0;
 }
 
 function reportFailure(message: string, advice: ConnectorUpgradeAdvice[]): void {
@@ -305,7 +345,8 @@ async function findDependencyPin(
         const valueEnd = valueStart + versionMatch[1].length;
         return {
             document,
-            versionRange: new Range(document.positionAt(valueStart), document.positionAt(valueEnd))
+            versionRange: new Range(document.positionAt(valueStart), document.positionAt(valueEnd)),
+            version: versionMatch[1]
         };
     }
     return undefined;

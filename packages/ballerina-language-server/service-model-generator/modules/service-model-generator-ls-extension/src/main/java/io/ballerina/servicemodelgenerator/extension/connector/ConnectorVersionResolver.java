@@ -94,7 +94,8 @@ public final class ConnectorVersionResolver {
                                                             Duration centralTimeout) {
         CompletableFuture<Optional<String>> central = lookup(centralLatest)
                 .completeOnTimeout(Optional.empty(), centralTimeout.toMillis(), TimeUnit.MILLISECONDS);
-        CompletableFuture<Optional<String>> cached = lookup(cachedLatest);
+        CompletableFuture<Optional<String>> cached = lookup(cachedLatest)
+                .completeOnTimeout(Optional.empty(), centralTimeout.toMillis(), TimeUnit.MILLISECONDS);
         Optional<String> centralVersion = central.join().filter(version -> isSupported(version, minSupportedVersion));
         if (centralVersion.isPresent()) {
             return new ResolvedConnectorVersion(centralVersion.get(), VersionSource.CENTRAL_LATEST);
