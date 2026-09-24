@@ -112,6 +112,7 @@ import io.ballerina.servicemodelgenerator.extension.util.ServiceClassUtil;
 import io.ballerina.servicemodelgenerator.extension.util.TriggerSearchUtil;
 import io.ballerina.servicemodelgenerator.extension.util.TypeCompletionGenerator;
 import io.ballerina.servicemodelgenerator.extension.util.Utils;
+import io.ballerina.servicemodelgenerator.extension.validation.OpenApiServiceTypeNameValidator;
 import io.ballerina.servicemodelgenerator.extension.validation.SaveTimeValidator;
 import io.ballerina.servicemodelgenerator.extension.validation.ValidationContext;
 import io.ballerina.servicemodelgenerator.extension.validation.ValidationEngine;
@@ -1273,10 +1274,11 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
                     return new CommonSourceResponse();
                 }
                 // Save-time gate: an ERROR here means no edits are generated at all.
-                List<ValidationResult> validations = SaveTimeValidator.validate(
+                List<ValidationResult> validations = new ArrayList<>(SaveTimeValidator.validate(
                         request.serviceInitModel().getProperties(),
                         SaveTimeValidator.context(semanticModel.get(), project, document.get(),
-                                request.serviceInitModel().getModuleName()));
+                                request.serviceInitModel().getModuleName())));
+                validations.addAll(OpenApiServiceTypeNameValidator.validate(request.serviceInitModel()));
                 if (SaveTimeValidator.blocksGeneration(validations)) {
                     return CommonSourceResponse.validationFailure(validations);
                 }
