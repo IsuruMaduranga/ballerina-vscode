@@ -434,7 +434,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
 
             // 5. Build LLM messages with history
             const historyMessages = populateHistoryForAgent(chatHistory);
-            const cacheOptions = await getProviderCacheControl();
+            const cacheOptions = await getProviderCacheControl('1h');
             
             const allMessages: ModelMessage[] = [
                 {
