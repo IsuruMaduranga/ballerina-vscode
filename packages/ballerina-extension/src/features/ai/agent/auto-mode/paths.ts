@@ -71,7 +71,7 @@ export function resolveForContainment(target: string): string | undefined {
     const absolute = resolve(target);
 
     const direct = tryRealpath(absolute);
-    if (direct) return normalize(direct);
+    if (direct) { return normalize(direct); }
 
     // The leaf may be a dangling symlink: realpath fails on it, but writes still
     // follow it. Read the link and resolve its target instead of assuming the
@@ -94,10 +94,10 @@ export function resolveForContainment(target: string): string | undefined {
     let cursor = absolute;
     for (;;) {
         const parent = dirname(cursor);
-        if (parent === cursor) return undefined;
+        if (parent === cursor) { return undefined; }
         tail.unshift(basename(cursor));
         const realParent = tryRealpath(parent);
-        if (realParent) return normalize(join(realParent, ...tail));
+        if (realParent) { return normalize(join(realParent, ...tail)); }
         cursor = parent;
     }
 }
@@ -115,9 +115,9 @@ export function isWithin(base: string, target: string): boolean {
  * finding N18).
  */
 export function toAbsolute(cwd: string, token: string, home: string): string {
-    if (token === "~") return home;
-    if (token === "~" || token.startsWith("~/")) return resolve(expandTilde(token, home));
-    if (isAbsolute(token)) return resolve(token);
+    if (token === "~") { return home; }
+    if (token === "~" || token.startsWith("~/")) { return resolve(expandTilde(token, home)); }
+    if (isAbsolute(token)) { return resolve(token); }
     return resolve(cwd, token);
 }
 

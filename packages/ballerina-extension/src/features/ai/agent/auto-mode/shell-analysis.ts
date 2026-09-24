@@ -258,8 +258,8 @@ function isWholeTreeGitReset(args: Token[]): boolean {
 function hasGitRetargetFlag(args: Token[]): boolean {
     return args.some((token) => {
         const value = token.value;
-        if (!value.startsWith("-")) return false;
-        if (GIT_GLOBAL_VALUE_FLAGS.has(value)) return true;
+        if (!value.startsWith("-")) { return false; }
+        if (GIT_GLOBAL_VALUE_FLAGS.has(value)) { return true; }
         const eq = value.indexOf("=");
         return eq > 0 && GIT_GLOBAL_VALUE_FLAGS.has(value.slice(0, eq));
     });
@@ -380,25 +380,25 @@ function decodeAnsiC(body: string): string {
  * …`, not whatever `$(…)` evaluates to), and the pre-gate escalates on it.
  */
 export function hasInjectionSyntax(command: string): string | undefined {
-    if (/\$\(/.test(command)) return "uses command substitution $( )";
-    if (/(^|[^\\])`/.test(command)) return "uses backtick command substitution";
-    if (/[<>]\(/.test(command)) return "uses process substitution";
-    if (/\beval\b|\bexec\b/.test(command)) return "uses eval/exec";
-    if (/\|\s*(bash|sh|zsh|python|perl|node|ruby)\b/.test(command)) return "pipes into an interpreter";
-    if (/base64\s+(-d|--decode)/.test(command)) return "decodes base64, which can hide the real command";
+    if (/\$\(/.test(command)) { return "uses command substitution $( )"; }
+    if (/(^|[^\\])`/.test(command)) { return "uses backtick command substitution"; }
+    if (/[<>]\(/.test(command)) { return "uses process substitution"; }
+    if (/\beval\b|\bexec\b/.test(command)) { return "uses eval/exec"; }
+    if (/\|\s*(bash|sh|zsh|python|perl|node|ruby)\b/.test(command)) { return "pipes into an interpreter"; }
+    if (/base64\s+(-d|--decode)/.test(command)) { return "decodes base64, which can hide the real command"; }
     return undefined;
 }
 
 /** Syntax we do not model at all; its presence alone forces escalation. */
 export function hasUnmodelledSyntax(command: string): string | undefined {
-    if (command.includes("\n")) return "spans multiple lines";
+    if (command.includes("\n")) { return "spans multiple lines"; }
     const injection = hasInjectionSyntax(command);
-    if (injection) return injection;
-    if (/<<</.test(command)) return "uses a here-string";
-    if (/<</.test(command)) return "uses a heredoc";
+    if (injection) { return injection; }
+    if (/<<</.test(command)) { return "uses a here-string"; }
+    if (/<</.test(command)) { return "uses a heredoc"; }
     // Brace expansion resolves to paths we cannot enumerate (review finding N3).
-    if (/\{[^{}]*,[^{}]*\}/.test(command)) return "uses brace expansion, whose expanded paths cannot be checked";
-    if (/\$\{?[A-Za-z_]/.test(command)) return "references environment variables, whose values are unknown here";
+    if (/\{[^{}]*,[^{}]*\}/.test(command)) { return "uses brace expansion, whose expanded paths cannot be checked"; }
+    if (/\$\{?[A-Za-z_]/.test(command)) { return "references environment variables, whose values are unknown here"; }
     return undefined;
 }
 
@@ -425,7 +425,7 @@ export function parseCommand(command: string): { segments: Segment[]; parseFaile
     let pendingRedirect = false;
 
     const pushToken = () => {
-        if (!current && !quoted) return;
+        if (!current && !quoted) { return; }
         if (pendingRedirect) {
             redirects.push(current);
             pendingRedirect = false;
@@ -476,7 +476,7 @@ export function parseCommand(command: string): { segments: Segment[]; parseFaile
         // (review finding N1, reproduced there).
         if (ch === "$" && command[i + 1] === "'" && !inSingle && !inDouble) {
             const end = command.indexOf("'", i + 2);
-            if (end === -1) return { segments: [], parseFailed: true };
+            if (end === -1) { return { segments: [], parseFailed: true }; }
             current += decodeAnsiC(command.slice(i + 2, end));
             quoted = true;
             hadExpansion = true;
@@ -505,14 +505,14 @@ export function parseCommand(command: string): { segments: Segment[]; parseFaile
         if (ch === ">" || ch === "<") {
             pushToken();
             let j = i + 1;
-            if (command[j] === ">" || command[j] === "|") j++;
+            if (command[j] === ">" || command[j] === "|") { j++; }
             if (command[j] === "&") {
                 // `>&2`, `>&-`: fd duplication, no path involved. But `>&word` with
                 // any other word opens that file for writing (bash's `&>word`), so it
                 // is a write target like `>word` (SECURITY-REVIEW-2026-09-23 H3).
                 let k = j + 1;
-                while (k < command.length && /[0-9]/.test(command[k])) k++;
-                if (command[k] === "-") k++;
+                while (k < command.length && /[0-9]/.test(command[k])) { k++; }
+                if (command[k] === "-") { k++; }
                 const boundary = k >= command.length || /[\s;&|<>()]/.test(command[k]);
                 if (k > j + 1 && boundary) {
                     i = k - 1;
@@ -530,15 +530,15 @@ export function parseCommand(command: string): { segments: Segment[]; parseFaile
             // next command is separate, which is all we need to know.
             const doubled = command[i + 1] === ch;
             pushSegment(i, doubled ? 2 : 1);
-            if (doubled) i++;
+            if (doubled) { i++; }
             continue;
         }
 
-        if (ch === "*" || ch === "?" || ch === "[") glob = true;
+        if (ch === "*" || ch === "?" || ch === "[") { glob = true; }
         current += ch;
     }
 
-    if (escape || inSingle || inDouble) return { segments: [], parseFailed: true };
+    if (escape || inSingle || inDouble) { return { segments: [], parseFailed: true }; }
     pushSegment(command.length);
     return { segments, parseFailed: false };
 }
@@ -550,8 +550,8 @@ export function resolvePayload(tokens: Token[]): { command: string; args: Token[
 
     for (;;) {
         // Leading `VAR=value` assignments are not the command.
-        while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index].value)) index++;
-        if (index >= tokens.length) return { command: "", args: [], peeled };
+        while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index].value)) { index++; }
+        if (index >= tokens.length) { return { command: "", args: [], peeled }; }
 
         const name = commandName(tokens[index].value);
         if (!TRANSPARENT_WRAPPERS.has(name)) {
@@ -564,10 +564,10 @@ export function resolvePayload(tokens: Token[]): { command: string; args: Token[
         while (index < tokens.length && tokens[index].value.startsWith("-")) {
             const flag = tokens[index].value;
             index++;
-            if (WRAPPER_VALUE_OPTIONS.has(flag) && index < tokens.length) index++;
+            if (WRAPPER_VALUE_OPTIONS.has(flag) && index < tokens.length) { index++; }
         }
         // `timeout 30 cmd` — a bare duration is not the payload.
-        while (index < tokens.length && /^[0-9]+[smhd]?$/.test(tokens[index].value)) index++;
+        while (index < tokens.length && /^[0-9]+[smhd]?$/.test(tokens[index].value)) { index++; }
     }
 }
 
@@ -589,7 +589,7 @@ export function leadTokens(seg: Segment): Token[] {
         while (i < tokens.length) {
             const value = tokens[i].value;
             const lead = /^[({]+/.exec(value)?.[0] ?? "";
-            if (lead.length === 0) break;
+            if (lead.length === 0) { break; }
             opened += (lead.match(/\(/g) ?? []).length;
             const stripped = value.slice(lead.length);
             if (stripped.length === 0) {
@@ -628,7 +628,7 @@ export function gitSubcommand(args: Token[]): { sub?: string; rest: Token[] } {
     let i = 0;
     while (i < args.length) {
         const value = args[i].value;
-        if (!value.startsWith("-")) return { sub: value, rest: args.slice(i + 1) };
+        if (!value.startsWith("-")) { return { sub: value, rest: args.slice(i + 1) }; }
         i += GIT_LOCATOR_VALUE_FLAGS.has(value) ? 2 : 1;
     }
     return { rest: [] };
@@ -647,11 +647,11 @@ function commandName(token: string): string {
  * original saw no path at all.
  */
 function looksLikePath(value: string): boolean {
-    if (!value || value.startsWith("-")) return false;
-    if (value.includes("://")) return false;
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(value)) return false;
-    if (value === "." || value === "..") return true;
-    if (value === "~" || value.startsWith("~/")) return true;
+    if (!value || value.startsWith("-")) { return false; }
+    if (value.includes("://")) { return false; }
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(value)) { return false; }
+    if (value === "." || value === "..") { return true; }
+    if (value === "~" || value.startsWith("~/")) { return true; }
     return value.startsWith("/") || value.includes("/");
 }
 
@@ -686,8 +686,8 @@ export function globComponentRegex(glob: string): RegExp | undefined {
     let out = "";
     for (let i = 0; i < glob.length; i++) {
         const ch = glob[i];
-        if (ch === "*") out += "[^/]*";
-        else if (ch === "?") out += "[^/]";
+        if (ch === "*") { out += "[^/]*"; }
+        else if (ch === "?") { out += "[^/]"; }
         else if (ch === "[") {
             // A `]` first in the set, after any `!`/`^`, is a member, not the end.
             const negation = glob[i + 1] === "!" || glob[i + 1] === "^" ? 1 : 0;
@@ -698,10 +698,10 @@ export function globComponentRegex(glob: string): RegExp | undefined {
             }
             let body = glob.slice(i + 1, close);
             const negated = body.startsWith("!") || body.startsWith("^");
-            if (negated) body = body.slice(1);
+            if (negated) { body = body.slice(1); }
             out += `[${negated ? "^" : ""}${body.replace(/[\\\]]/g, "\\$&")}]`;
             i = close;
-        } else out += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        } else { out += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
     }
     try {
         return new RegExp(`^${out}$`);
@@ -722,8 +722,8 @@ function expandGlob(cwd: string, pattern: string, home: string): string[] | unde
     const slash = pattern.lastIndexOf("/");
     const dirPart = slash >= 0 ? pattern.slice(0, slash) : "";
     const leaf = slash >= 0 ? pattern.slice(slash + 1) : pattern;
-    if (!leaf || /[*?[]/.test(dirPart) || leaf.startsWith(".")) return undefined;
-    if (isUnknownTilde(dirPart)) return undefined;
+    if (!leaf || /[*?[]/.test(dirPart) || leaf.startsWith(".")) { return undefined; }
+    if (isUnknownTilde(dirPart)) { return undefined; }
     let entries: string[];
     try {
         entries = readdirSync(toAbsoluteBash(cwd, slash >= 0 ? dirPart || "/" : ".", home));
@@ -731,10 +731,10 @@ function expandGlob(cwd: string, pattern: string, home: string): string[] | unde
         return [pattern];
     }
     const regex = globComponentRegex(leaf);
-    if (!regex) return undefined;
+    if (!regex) { return undefined; }
     const matches = entries.filter((entry) => !entry.startsWith(".") && regex.test(entry));
-    if (matches.length > 2_000) return undefined;
-    if (matches.length === 0) return [pattern];
+    if (matches.length > 2_000) { return undefined; }
+    if (matches.length === 0) { return [pattern]; }
     return matches.map((entry) => (slash >= 0 ? `${dirPart}/${entry}` : entry));
 }
 
@@ -742,9 +742,9 @@ function expandGlob(cwd: string, pattern: string, home: string): string[] | unde
 function outputFlagTarget(args: Token[]): string | undefined {
     for (let i = 0; i < args.length; i++) {
         const value = args[i].value;
-        if (value === "-o" || value === "--output") return args[i + 1]?.value;
-        if (value.startsWith("--output=")) return value.slice("--output=".length);
-        if (value.startsWith("-o") && value.length > 2) return value.slice(2);
+        if (value === "-o" || value === "--output") { return args[i + 1]?.value; }
+        if (value.startsWith("--output=")) { return value.slice("--output=".length); }
+        if (value.startsWith("-o") && value.length > 2) { return value.slice(2); }
     }
     return undefined;
 }
@@ -759,7 +759,7 @@ function gitEscalationReason(args: Token[], isDirOutsideCwd: (dir: string) => bo
     let index = 0;
     while (index < args.length) {
         const token = args[index].value;
-        if (!token.startsWith("-")) break;
+        if (!token.startsWith("-")) { break; }
         // `-c key=value` / `--config-env` can reconfigure git into executing an arbitrary helper.
         if (token === "-c" || token.startsWith("-c") || token === "--config-env" || token.startsWith("--config-env=")) {
             return "passes git -c/--config-env, which can turn a read into code execution";
@@ -769,7 +769,7 @@ function gitEscalationReason(args: Token[], isDirOutsideCwd: (dir: string) => bo
             // `-C` retargets git at another directory; outside the working directory
             // the operation is no longer provably in-project (was review gap: `git
             // -C /etc status` classified safe).
-            if (!dir || isDirOutsideCwd(dir)) return `runs git -C ${dir ?? ""}, which points outside the working directory`;
+            if (!dir || isDirOutsideCwd(dir)) { return `runs git -C ${dir ?? ""}, which points outside the working directory`; }
             index += 2;
             continue;
         }
@@ -789,11 +789,11 @@ function gitEscalationReason(args: Token[], isDirOutsideCwd: (dir: string) => bo
         return `passes git ${flag}, which can point git at another repository or configuration`;
     }
     const subcommand = args[index]?.value;
-    if (!subcommand) return undefined; // bare `git` prints help
+    if (!subcommand) { return undefined; } // bare `git` prints help
     const spec = GIT_SUBCOMMAND_SPECS[subcommand];
-    if (!spec) return `runs git ${subcommand}, which is not a read-only subcommand`;
+    if (!spec) { return `runs git ${subcommand}, which is not a read-only subcommand`; }
     const check = checkOptions(spec, args.slice(index + 1));
-    if ("reason" in check) return `runs git ${subcommand} and ${check.reason}`;
+    if ("reason" in check) { return `runs git ${subcommand} and ${check.reason}`; }
     if (!gitOperandsAllowed(subcommand, check.parsed)) {
         return `runs git ${subcommand} with an operand and no --list, which creates a ref`;
     }
@@ -808,11 +808,11 @@ function gitEscalationReason(args: Token[], isDirOutsideCwd: (dir: string) => bo
 function gitCheckoutReason(args: Token[], cwd: string, home: string, seen: Map<string, string | undefined>): string | undefined {
     let dir = cwd;
     for (let index = 0; index < args.length && args[index].value.startsWith("-"); index++) {
-        if (args[index].value === "-C" && args[index + 1]) dir = toAbsoluteBash(dir, args[++index].value, home);
+        if (args[index].value === "-C" && args[index + 1]) { dir = toAbsoluteBash(dir, args[++index].value, home); }
     }
     // Memoized for one analysis only: nothing runs between its segments, but the
     // model can rewrite `.git/config` between calls.
-    if (!seen.has(dir)) seen.set(dir, checkoutGitRunsProgram(dir, home));
+    if (!seen.has(dir)) { seen.set(dir, checkoutGitRunsProgram(dir, home)); }
     const why = seen.get(dir);
     return why && `runs git where ${why}`;
 }
@@ -838,13 +838,13 @@ const GIT_PATH_SUBCOMMANDS = new Set(["blame", "diff", "grep", "log", "ls-files"
  */
 function gitPathOperands(args: Token[]): Token[] {
     let index = 0;
-    while (index < args.length && args[index].value.startsWith("-")) index += args[index].value === "-C" ? 2 : 1;
+    while (index < args.length && args[index].value.startsWith("-")) { index += args[index].value === "-C" ? 2 : 1; }
     const subcommand = args[index]?.value;
-    if (!GIT_PATH_SUBCOMMANDS.has(subcommand)) return [];
+    if (!GIT_PATH_SUBCOMMANDS.has(subcommand)) { return []; }
     const check = checkOptions(GIT_SUBCOMMAND_SPECS[subcommand], args.slice(index + 1));
-    if ("reason" in check) return [];
+    if ("reason" in check) { return []; }
     const operands = [...check.parsed.positionals];
-    if (subcommand === "grep" && ![...check.parsed.seen].some((option) => PATTERN_OPTIONS.has(option))) operands.shift();
+    if (subcommand === "grep" && ![...check.parsed.seen].some((option) => PATTERN_OPTIONS.has(option))) { operands.shift(); }
     return operands;
 }
 
@@ -906,16 +906,16 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
     let escalatedBeyondReads = false;
     const escalate = (note: string, opts?: { contained?: boolean; outsideRead?: boolean }) => {
         evidence.verdict = "escalate";
-        if (!opts?.contained) uncontained = true;
-        if (!opts?.outsideRead) escalatedBeyondReads = true;
-        if (!evidence.notes.includes(note)) evidence.notes.push(note);
+        if (!opts?.contained) { uncontained = true; }
+        if (!opts?.outsideRead) { escalatedBeyondReads = true; }
+        if (!evidence.notes.includes(note)) { evidence.notes.push(note); }
     };
 
     const trimmed = command.trim();
-    if (!trimmed) return { ...evidence, verdict: "escalate", notes: ["empty command"] };
+    if (!trimmed) { return { ...evidence, verdict: "escalate", notes: ["empty command"] }; }
 
     const unmodelled = hasUnmodelledSyntax(trimmed);
-    if (unmodelled) escalate(unmodelled);
+    if (unmodelled) { escalate(unmodelled); }
 
     const { segments, parseFailed } = parseCommand(trimmed);
     if (parseFailed) {
@@ -942,7 +942,7 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
      * command positionals, and output-flag targets so all writes get one check.
      */
     const checkWriteTarget = (token: string) => {
-        if (token === "/dev/null") return;
+        if (token === "/dev/null") { return; }
         // A `~name`/`~-` target or a glob lands wherever bash expands it, which
         // this check cannot know (SECURITY-REVIEW-2026-09-23 M2).
         if (isUnknownTilde(token) || /[*?[]/.test(token)) {
@@ -988,7 +988,7 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         // writes it too. Check them first so the command-specific `continue`s below
         // (cd/git) can never skip a redirect (was review gap: bare-redirect writes and
         // read-only-command redirects were fast-pathed to "safe").
-        for (const token of segment.redirects) checkWriteTarget(token);
+        for (const token of segment.redirects) { checkWriteTarget(token); }
 
         // A leading `NAME=value` changes what the command runs or reads: git takes
         // its repository and configuration from GIT_* variables (the same
@@ -997,8 +997,8 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         // Only locale and display variables are inert (SECURITY-REVIEW-2026-09-23 H2).
         for (const token of segment.tokens) {
             const assigned = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(token.value)?.[1];
-            if (!assigned) break;
-            if (!INERT_ASSIGNMENTS.test(assigned)) escalate(`sets ${assigned}, which can change what the command runs or reads`);
+            if (!assigned) { break; }
+            if (!INERT_ASSIGNMENTS.test(assigned)) { escalate(`sets ${assigned}, which can change what the command runs or reads`); }
         }
 
         const { command: name, args, peeled } = resolvePayload(segment.tokens);
@@ -1034,15 +1034,15 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         // whether or not it looks like a path: `cd .kube && cat config` reads
         // `~/.kube/config` through two tokens that each look harmless (N12).
         for (const { value } of args) {
-            if (!value || value.startsWith("-")) continue;
+            if (!value || value.startsWith("-")) { continue; }
             const absolute = toAbsoluteBash(effectiveCwd, value, home);
             if (isSensitivePath(value) || isSensitivePath(absolute)) {
                 // The *original* token, never the resolved/expanded form (N18).
-                if (!evidence.sensitivePaths.includes(value)) evidence.sensitivePaths.push(value);
+                if (!evidence.sensitivePaths.includes(value)) { evidence.sensitivePaths.push(value); }
                 escalate(`names ${value}, which is a credential or secret path`);
             }
             if (isExecutionPrimitivePath(absolute)) {
-                if (!evidence.executionPrimitives.includes(value)) evidence.executionPrimitives.push(value);
+                if (!evidence.executionPrimitives.includes(value)) { evidence.executionPrimitives.push(value); }
                 escalate(`touches ${value}, whose contents execute later without further approval`);
             }
         }
@@ -1059,12 +1059,12 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
          * expanded one level here and every match is judged.
          */
         const escalateOutsideRead = (value: string, why: string) => {
-            if (!evidence.outsideReads.includes(value)) evidence.outsideReads.push(value);
+            if (!evidence.outsideReads.includes(value)) { evidence.outsideReads.push(value); }
             escalate(`reads ${value}, ${why}`, { outsideRead: true });
         };
         const checkRead = (word: { value: string; glob?: boolean }) => {
             const value = word.value;
-            if (!value) return;
+            if (!value) { return; }
             if (isUnknownTilde(value)) {
                 escalateOutsideRead(value, "which bash expands to a directory outside what this check can see");
                 return;
@@ -1076,13 +1076,13 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             }
             for (const target of targets) {
                 const absolute = toAbsoluteBash(effectiveCwd, target, home);
-                if (!looksLikePath(target) && !entryExists(absolute)) continue;
+                if (!looksLikePath(target) && !entryExists(absolute)) { continue; }
                 const resolved = resolveForContainment(absolute);
                 if (resolved !== undefined && isSensitivePath(resolved) && !isSensitivePath(absolute)) {
-                    if (!evidence.sensitivePaths.includes(value)) evidence.sensitivePaths.push(value);
+                    if (!evidence.sensitivePaths.includes(value)) { evidence.sensitivePaths.push(value); }
                     escalate(`reads ${value}, which resolves to a credential or secret path`);
                 }
-                if (resolved !== undefined && (isWithin(containmentRoot, resolved) || readableRoots.some((root) => isWithin(root, resolved)))) continue;
+                if (resolved !== undefined && (isWithin(containmentRoot, resolved) || readableRoots.some((root) => isWithin(root, resolved)))) { continue; }
                 escalateOutsideRead(value, "which is outside the working directory");
             }
         };
@@ -1115,12 +1115,12 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             }
             const reason =
                 gitEscalationReason(args, (dir) => {
-                    if (isUnknownTilde(dir)) return true;
+                    if (isUnknownTilde(dir)) { return true; }
                     const resolved = resolveForContainment(toAbsoluteBash(effectiveCwd, dir, home));
                     return resolved === undefined || !isWithin(containmentRoot, resolved);
                 }) ?? gitCheckoutReason(args, effectiveCwd, home, checkoutReasons);
-            if (reason) escalate(reason);
-            else for (const word of gitPathOperands(args)) checkRead(word);
+            if (reason) { escalate(reason); }
+            else { for (const word of gitPathOperands(args)) { checkRead(word); } }
             continue;
         }
 
@@ -1133,7 +1133,7 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         // A delete confined to in-project paths is what the containment gate exists
         // to clear (subject to recoverability); any other mutation (cp/mv/tar/…)
         // stays uncontained and reaches the classifier as before.
-        if (isMutation) escalate(`runs ${name}, which modifies the filesystem`, { contained: isDelete });
+        if (isMutation) { escalate(`runs ${name}, which modifies the filesystem`, { contained: isDelete }); }
 
         // A read-only command is proved read-only by its options, not its name:
         // each option must be in the command's table (read-only-options.ts), so
@@ -1142,8 +1142,8 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         // options such as `grep -f`, are then read-checked.
         if (name === "find") {
             const find = checkFind(args);
-            if ("reason" in find) escalate(find.reason);
-            else for (const word of find.paths) checkRead(word);
+            if ("reason" in find) { escalate(find.reason); }
+            else { for (const word of find.paths) { checkRead(word); } }
         } else if (READ_ONLY_COMMANDS.has(name)) {
             const check = checkOptions(READ_ONLY_SPECS[name], args);
             if ("reason" in check) {
@@ -1151,14 +1151,14 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             } else {
                 const spec = READ_ONLY_SPECS[name];
                 const operandReason = spec.operandReason?.(check.parsed.positionals);
-                if (operandReason) escalate(operandReason);
+                if (operandReason) { escalate(operandReason); }
                 const operands = [...check.parsed.positionals];
                 // A pattern-first command's first operand is its pattern, unless an
                 // option (`-e PAT`, `-f FILE`) supplies it; jq's first is its program.
                 const patternFirst = PATTERN_FIRST_COMMANDS.has(name) && ![...check.parsed.seen].some((option) => PATTERN_OPTIONS.has(option));
-                if (patternFirst || spec.programFirst) operands.shift();
+                if (patternFirst || spec.programFirst) { operands.shift(); }
                 const reads = NO_FILE_OPERANDS.has(name) ? check.parsed.fileValues : [...operands, ...check.parsed.fileValues];
-                for (const word of reads) checkRead(word);
+                for (const word of reads) { checkRead(word); }
             }
         } else if (!isMutation) {
             escalate(`runs ${name}, which is not on the read-only allowlist`);
@@ -1173,7 +1173,7 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             // recoverability gate must see). A glob target cannot be enumerated, so
             // it drops out of containment — the command then reaches the classifier.
             for (const token of args) {
-                if (token.value.startsWith("-")) continue;
+                if (token.value.startsWith("-")) { continue; }
                 if (hasGlob(token.value)) {
                     escalate(`targets ${token.value}, a glob whose expansion cannot be checked`);
                     continue;
@@ -1186,12 +1186,12 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             // positional is a candidate target.
             if (["cp", "mv", "rsync", "ln", "install"].includes(name)) {
                 const last = positionals[positionals.length - 1];
-                if (last) writeTokens.push(last.value);
+                if (last) { writeTokens.push(last.value); }
             } else {
                 writeTokens.push(...positionals.map((token) => token.value));
             }
             for (const { value } of args) {
-                if (value.startsWith("of=")) writeTokens.push(value.slice(3)); // dd
+                if (value.startsWith("of=")) { writeTokens.push(value.slice(3)); } // dd
             }
         }
 
@@ -1206,7 +1206,7 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             }
         }
 
-        for (const token of writeTokens) checkWriteTarget(token);
+        for (const token of writeTokens) { checkWriteTarget(token); }
     }
 
     // The command escalated, but every reason was an in-project delete/whole-tree

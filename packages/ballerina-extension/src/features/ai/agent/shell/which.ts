@@ -24,7 +24,7 @@ import { accessSync, constants } from "fs";
 import { delimiter, join } from "path";
 
 export function whichOnPath(command: string, env: NodeJS.ProcessEnv, platform: string = process.platform): string | undefined {
-    if (!command) return undefined;
+    if (!command) { return undefined; }
     // Windows resolves `foo` to `foo.exe`/`foo.cmd` whether or not a directory is
     // spelled (`node_modules/.bin/tsserver` is `…\tsserver.cmd` on disk), so the
     // extension list applies to both forms; elsewhere only the literal name counts.
@@ -41,10 +41,10 @@ export function whichOnPath(command: string, env: NodeJS.ProcessEnv, platform: s
         return extensions.map((ext) => command + ext).find(isExecutable);
     }
     for (const dir of (envVar(env, "PATH") ?? "").split(delimiter)) {
-        if (!dir) continue;
+        if (!dir) { continue; }
         for (const ext of extensions) {
             const candidate = join(dir, command + ext);
-            if (isExecutable(candidate)) return candidate;
+            if (isExecutable(candidate)) { return candidate; }
         }
     }
     return undefined;
@@ -59,10 +59,10 @@ export function whichOnPath(command: string, env: NodeJS.ProcessEnv, platform: s
  */
 export function envVar(env: NodeJS.ProcessEnv, name: string): string | undefined {
     const direct = env[name];
-    if (direct !== undefined) return direct;
+    if (direct !== undefined) { return direct; }
     const upper = name.toUpperCase();
     for (const key of Object.keys(env)) {
-        if (key.toUpperCase() === upper) return env[key];
+        if (key.toUpperCase() === upper) { return env[key]; }
     }
     return undefined;
 }

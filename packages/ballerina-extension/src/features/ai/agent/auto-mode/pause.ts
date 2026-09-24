@@ -56,7 +56,7 @@ export class PauseTracker {
         this.consecutive++;
         this.total++;
         this.denials.push(denial);
-        if (this.paused) return false;
+        if (this.paused) { return false; }
 
         if (this.consecutive >= CONSECUTIVE_BLOCK_LIMIT) {
             this.paused = true;

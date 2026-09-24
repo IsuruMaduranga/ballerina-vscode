@@ -164,9 +164,9 @@ const PATHEXT = /\.(exe|cmd|bat|com)$/i;
  */
 export function canonicalCommandName(word: string): string {
     const trimmed = word.trim();
-    if (!trimmed) return trimmed;
+    if (!trimmed) { return trimmed; }
     const alias = aliasLookup.get(trimmed.toLowerCase());
-    if (alias) return alias;
+    if (alias) { return alias; }
     if (!/[\\/]/.test(trimmed) && PATHEXT.test(trimmed)) {
         const stripped = trimmed.replace(PATHEXT, "");
         // `where.exe` is the native search tool; bare `where` is the Where-Object
@@ -180,7 +180,7 @@ export function canonicalCommandName(word: string): string {
 export function canonicalizeStatement(statement: string): string {
     const trimmed = statement.trim();
     const match = /^(\S+)([\s\S]*)$/.exec(trimmed);
-    if (!match) return trimmed;
+    if (!match) { return trimmed; }
     return `${canonicalCommandName(match[1])}${match[2]}`;
 }
 
@@ -199,7 +199,7 @@ export function powershellStatements(command: string): string[] | undefined {
     // One decision parses the same line from several places (read-only check,
     // allow-rule split, match forms, guards, git-status detection); a one-entry
     // memo keyed by the exact string keeps that to one scan per command.
-    if (lastSplit?.command === command) return lastSplit.statements?.slice();
+    if (lastSplit?.command === command) { return lastSplit.statements?.slice(); }
     const statements = splitStatements(command);
     lastSplit = { command, statements };
     return statements?.slice();
@@ -215,7 +215,7 @@ function splitStatements(command: string): string[] | undefined {
     let quote: Quote;
     const push = () => {
         const trimmed = current.trim();
-        if (trimmed) parts.push(trimmed);
+        if (trimmed) { parts.push(trimmed); }
         current = "";
     };
     while (i < text.length) {
@@ -241,7 +241,7 @@ function splitStatements(command: string): string[] | undefined {
                 if (next === "'") {
                     current += next;
                     i++; // doubled quote is a literal quote
-                } else quote = undefined;
+                } else { quote = undefined; }
             }
             continue;
         }
@@ -257,7 +257,7 @@ function splitStatements(command: string): string[] | undefined {
                 if (next === '"') {
                     current += next;
                     i++;
-                } else quote = undefined;
+                } else { quote = undefined; }
             }
             continue;
         }
@@ -298,7 +298,7 @@ function splitStatements(command: string): string[] | undefined {
         current += ch;
         i++;
     }
-    if (quote !== undefined) return undefined;
+    if (quote !== undefined) { return undefined; }
     push();
     return parts;
 }
@@ -321,17 +321,17 @@ export function statementCommand(statement: string): string {
  * user approved) are unaffected. Returns undefined when none is present.
  */
 export function powershellInjectionSyntax(command: string): string | undefined {
-    if (/\$\(/.test(command)) return "a $(…) subexpression";
-    if (/`/.test(command)) return "a backtick escape";
-    if (/\{/.test(command)) return "a script block";
-    if (/[()@]/.test(unquotedText(command))) return "a (…) subexpression or @ splat";
-    if (/-e(nc|ncoded|ncodedcommand)?\b/i.test(command) && /\b(pwsh|powershell)(\.exe)?\b/i.test(command)) return "an encoded command";
+    if (/\$\(/.test(command)) { return "a $(…) subexpression"; }
+    if (/`/.test(command)) { return "a backtick escape"; }
+    if (/\{/.test(command)) { return "a script block"; }
+    if (/[()@]/.test(unquotedText(command))) { return "a (…) subexpression or @ splat"; }
+    if (/-e(nc|ncoded|ncodedcommand)?\b/i.test(command) && /\b(pwsh|powershell)(\.exe)?\b/i.test(command)) { return "an encoded command"; }
     const statements = powershellStatements(command);
     for (const statement of statements ?? []) {
-        if (startsWithCallOperator(statement)) return "the call (&) or dot-source operator";
+        if (startsWithCallOperator(statement)) { return "the call (&) or dot-source operator"; }
         const cmd = statementCommand(statement);
-        if (cmd === "invoke-expression" || cmd === "invoke-command" || cmd === "start-process" || cmd === "start-job") return `\`${cmd}\``;
-        if (cmd === "pwsh" || cmd === "powershell" || cmd === "cmd" || cmd === "wsl" || cmd === "bash" || cmd === "sh") return `a nested \`${cmd}\` shell`;
+        if (cmd === "invoke-expression" || cmd === "invoke-command" || cmd === "start-process" || cmd === "start-job") { return `\`${cmd}\``; }
+        if (cmd === "pwsh" || cmd === "powershell" || cmd === "cmd" || cmd === "wsl" || cmd === "bash" || cmd === "sh") { return `a nested \`${cmd}\` shell`; }
     }
     return undefined;
 }
@@ -339,9 +339,9 @@ export function powershellInjectionSyntax(command: string): string | undefined {
 /** The `-Command`/`-c` script of a nested `pwsh …` / `powershell …` statement, if any. */
 function nestedShellScript(statement: string): string | undefined {
     const cmd = statementCommand(statement);
-    if (cmd !== "pwsh" && cmd !== "powershell") return undefined;
+    if (cmd !== "pwsh" && cmd !== "powershell") { return undefined; }
     const match = /\s-(?:c|command)\s+([\s\S]*)$/i.exec(statement);
-    if (!match) return undefined;
+    if (!match) { return undefined; }
     const raw = match[1].trim();
     const quoted = /^(['"])([\s\S]*)\1$/.exec(raw);
     return quoted ? quoted[2] : raw;
@@ -358,15 +358,15 @@ function nestedShellScript(statement: string): string | undefined {
 export function powershellMatchForms(command: string, depth = 0): string[] {
     const forms = new Set<string>();
     const trimmed = command.trim();
-    if (!trimmed) return [];
+    if (!trimmed) { return []; }
     forms.add(trimmed);
     forms.add(canonicalizeStatement(trimmed));
-    if (depth > 4) return [...forms];
+    if (depth > 4) { return [...forms]; }
     for (const statement of powershellStatements(trimmed) ?? []) {
         forms.add(statement);
         forms.add(canonicalizeStatement(statement));
         const nested = nestedShellScript(statement);
-        if (nested) for (const form of powershellMatchForms(nested, depth + 1)) forms.add(form);
+        if (nested) { for (const form of powershellMatchForms(nested, depth + 1)) { forms.add(form); } }
     }
     return [...forms];
 }
@@ -433,16 +433,16 @@ const REMOTE_PARAMETER = /^-(cn|c(o(m(p(u(t(e(r(n(a(m(e)?)?)?)?)?)?)?)?)?)?)?)(:
  * judged by `pathOutsideRoots` when roots are known, and refused otherwise.
  */
 function pathUnvouchable(value: string): boolean {
-    if (!value) return false;
-    if (value.startsWith("\\\\") || value.startsWith("//")) return true;
-    if (/^[A-Za-z][A-Za-z0-9]+:/.test(value)) return true; // HKLM:, env:, cert: (a drive is one letter)
+    if (!value) { return false; }
+    if (value.startsWith("\\\\") || value.startsWith("//")) { return true; }
+    if (/^[A-Za-z][A-Za-z0-9]+:/.test(value)) { return true; } // HKLM:, env:, cert: (a drive is one letter)
     // Drive-relative (`C:foo.txt`, no separator after the colon) means "foo.txt
     // relative to PowerShell's current directory ON C:", which need not be the
     // tool's cwd; `path.isAbsolute` does not call it absolute, so `toAbsolute`
     // would join it onto the cwd and vouch for the wrong file. Refuse by shape.
-    if (/^[A-Za-z]:(?![\\/])/.test(value)) return true;
-    if (value.startsWith("~")) return true;
-    if (/(^|[\\/])\.\.([\\/]|$)/.test(value)) return true;
+    if (/^[A-Za-z]:(?![\\/])/.test(value)) { return true; }
+    if (value.startsWith("~")) { return true; }
+    if (/(^|[\\/])\.\.([\\/]|$)/.test(value)) { return true; }
     return false;
 }
 
@@ -456,8 +456,8 @@ export function splitPowerShellList(token: string): string[] {
     let quote: string | undefined;
     for (const ch of token) {
         if (quote) {
-            if (ch === quote) quote = undefined;
-            else current += ch;
+            if (ch === quote) { quote = undefined; }
+            else { current += ch; }
         } else if (ch === '"' || ch === "'") {
             quote = ch;
         } else if (ch === ",") {
@@ -504,16 +504,16 @@ export interface PowerShellReadOnlyOptions {
 function pathOutsideRoots(value: string, opts: PowerShellReadOnlyOptions | undefined, roots: string[]): boolean {
     for (const part of splitPowerShellList(value)) {
         const trimmed = part.trim();
-        if (!trimmed) continue;
-        if (pathUnvouchable(trimmed)) return true;
-        if (!isAbsoluteSpelling(trimmed)) continue;
-        if (!opts) return true;
+        if (!trimmed) { continue; }
+        if (pathUnvouchable(trimmed)) { return true; }
+        if (!isAbsoluteSpelling(trimmed)) { continue; }
+        if (!opts) { return true; }
         // Resolve only what THIS platform's path module calls absolute: on a POSIX
         // host `C:\x` is not, and `toAbsolute` would join it onto the cwd and
         // vouch for a file the shell would never touch. Refuse it by shape there.
-        if (!isAbsolute(trimmed)) return true;
+        if (!isAbsolute(trimmed)) { return true; }
         const resolved = resolveForContainment(toAbsolute(opts.cwd, trimmed, opts.home));
-        if (resolved === undefined || !roots.some((root) => isWithin(root, resolved))) return true;
+        if (resolved === undefined || !roots.some((root) => isWithin(root, resolved))) { return true; }
     }
     return false;
 }
@@ -534,34 +534,34 @@ export interface PowerShellReadOnlyVerdict {
  */
 export function powershellReadOnly(command: string, opts?: PowerShellReadOnlyOptions): PowerShellReadOnlyVerdict {
     const statements = powershellStatements(command);
-    if (statements === undefined) return { readOnly: false, reason: "unbalanced quoting" };
-    if (statements.length === 0) return { readOnly: false, reason: "empty command" };
-    if (/[<>]/.test(command)) return { readOnly: false, reason: "redirection" };
-    if (/\$/.test(command)) return { readOnly: false, reason: "a variable or subexpression" };
-    if (/[`{}]/.test(command)) return { readOnly: false, reason: "an escape or script block" };
-    if (/[()@]/.test(unquotedText(command))) return { readOnly: false, reason: "a (…) subexpression or @ splat" };
+    if (statements === undefined) { return { readOnly: false, reason: "unbalanced quoting" }; }
+    if (statements.length === 0) { return { readOnly: false, reason: "empty command" }; }
+    if (/[<>]/.test(command)) { return { readOnly: false, reason: "redirection" }; }
+    if (/\$/.test(command)) { return { readOnly: false, reason: "a variable or subexpression" }; }
+    if (/[`{}]/.test(command)) { return { readOnly: false, reason: "an escape or script block" }; }
+    if (/[()@]/.test(unquotedText(command))) { return { readOnly: false, reason: "a (…) subexpression or @ splat" }; }
     // The cwd's realpath once per command (the roots arrive resolved), not once per token.
     const roots = opts ? [resolveForContainment(opts.cwd) ?? opts.cwd, ...(opts.readableRoots ?? [])] : [];
     for (const statement of statements) {
-        if (startsWithCallOperator(statement)) return { readOnly: false, reason: "the call operator" };
+        if (startsWithCallOperator(statement)) { return { readOnly: false, reason: "the call operator" }; }
         const cmd = statementCommand(statement);
         if (cmd === "git") {
             const gitReason = gitStatementNotReadOnly(statement, opts);
-            if (gitReason) return { readOnly: false, reason: gitReason };
+            if (gitReason) { return { readOnly: false, reason: gitReason }; }
             continue;
         }
-        if (!READ_ONLY_POWERSHELL_COMMANDS.has(cmd)) return { readOnly: false, reason: `\`${cmd}\` is not a read-only cmdlet` };
+        if (!READ_ONLY_POWERSHELL_COMMANDS.has(cmd)) { return { readOnly: false, reason: `\`${cmd}\` is not a read-only cmdlet` }; }
         const tokens = statement.trim().split(/\s+/).slice(1);
         for (const token of tokens) {
-            if (WRITING_PARAMETERS.test(token)) return { readOnly: false, reason: `${token.split(":")[0]} writes or forwards` };
-            if (REMOTE_PARAMETER.test(token)) return { readOnly: false, reason: `${token.split(":")[0]} reaches another machine` };
+            if (WRITING_PARAMETERS.test(token)) { return { readOnly: false, reason: `${token.split(":")[0]} writes or forwards` }; }
+            if (REMOTE_PARAMETER.test(token)) { return { readOnly: false, reason: `${token.split(":")[0]} reaches another machine` }; }
             // `-Path:value` binds its value in the same word; until 2026-09-23 the
             // whole word was skipped as a parameter name, so `Get-Content
             // -Path:~/.ssh/id_rsa` and a UNC `-LiteralPath:\\host\share` passed
             // (SECURITY-REVIEW-2026-09-23 H5). The bound value is a path like any other.
             const colon = token.startsWith("-") ? token.indexOf(":") : -1;
             const value = token.startsWith("-") ? (colon > 0 ? token.slice(colon + 1) : "") : token;
-            if (!value) continue;
+            if (!value) { continue; }
             const unquoted = value.replace(/^["']|["']$/g, "");
             if (splitPowerShellList(unquoted).some((part) => isSensitivePath(part.trim()))) {
                 return { readOnly: false, reason: "a credential or secret path" };
@@ -571,7 +571,7 @@ export function powershellReadOnly(command: string, opts?: PowerShellReadOnlyOpt
             // a harness session dir (2026-09-19: /doctor's transcript scan on Windows
             // spelled `<agentDir>\sessions\…` and was classified —
             // docs/decisions/auto-mode.md); a comma list is judged part by part.
-            if (pathOutsideRoots(value, opts, roots)) return { readOnly: false, reason: "a path outside the working directory" };
+            if (pathOutsideRoots(value, opts, roots)) { return { readOnly: false, reason: "a path outside the working directory" }; }
         }
     }
     return { readOnly: true };

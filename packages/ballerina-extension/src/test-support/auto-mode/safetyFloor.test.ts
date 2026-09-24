@@ -65,7 +65,7 @@ describe("bashFloorReason", () => {
             "sed -i s/a/b/ .mcp.json",
             "echo '{}' > .vscode/sett*.json",
         ];
-        for (const command of stopped) expectLabeled(bash(command), command).toBeDefined();
+        for (const command of stopped) { expectLabeled(bash(command), command).toBeDefined(); }
     });
 
     it("stops anything touching the Copilot's own state", () => {
@@ -75,7 +75,7 @@ describe("bashFloorReason", () => {
             `rm -rf ${sh(join(tmp, "bal-proj-1234"))}`,
             `echo x > ${sh(join(tmp, "bal-proj-1234", "main.bal"))}`,
         ];
-        for (const command of stopped) expectLabeled(bash(command), command).toBeDefined();
+        for (const command of stopped) { expectLabeled(bash(command), command).toBeDefined(); }
     });
 
     it("stops any mention of Config.toml, read or write", () => {
@@ -126,7 +126,7 @@ describe("powershellFloorReason", () => {
             "Get-Content Config.toml",
             "Remove-Item -Recurse ~/.ballerina/copilot/workspaces",
         ];
-        for (const command of stopped) expectLabeled(pwsh(command), command).toBeDefined();
+        for (const command of stopped) { expectLabeled(pwsh(command), command).toBeDefined(); }
     });
 
     it("lets ordinary work through", () => {

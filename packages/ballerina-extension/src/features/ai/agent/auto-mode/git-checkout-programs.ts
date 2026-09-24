@@ -74,9 +74,9 @@ function configEntries(text: string): { section: string; key: string; value: str
             section = header[1].split(".")[0].toLowerCase();
             line = line.slice(header[0].length).trim();
         }
-        if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+        if (!line || line.startsWith("#") || line.startsWith(";")) { continue; }
         const entry = /^([A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(.*))?$/.exec(line);
-        if (entry) entries.push({ section, key: entry[1].toLowerCase(), value: entry[2]?.trim().replace(/^"(.*)"$/, "$1") });
+        if (entry) { entries.push({ section, key: entry[1].toLowerCase(), value: entry[2]?.trim().replace(/^"(.*)"$/, "$1") }); }
     }
     return entries;
 }
@@ -89,8 +89,8 @@ function configEntries(text: string): { section: string; key: string; value: str
 export function configRunsProgram(text: string): { program?: string; hooksPaths: string[] } {
     const hooksPaths: string[] = [];
     for (const { section, key, value } of configEntries(text)) {
-        if (section === "core" && key === "hookspath" && value) hooksPaths.push(value);
-        else if (PROGRAM_KEYS[section]?.(key, value)) return { program: `${section}.${key}`, hooksPaths };
+        if (section === "core" && key === "hookspath" && value) { hooksPaths.push(value); }
+        else if (PROGRAM_KEYS[section]?.(key, value)) { return { program: `${section}.${key}`, hooksPaths }; }
     }
     return { hooksPaths };
 }
@@ -98,12 +98,12 @@ export function configRunsProgram(text: string): { program?: string; hooksPaths:
 /** The checkout holding `dir`: its worktree root, git dir and common dir, or undefined outside one. */
 function checkoutOf(dir: string): { root: string; gitDir: string; commonDir: string } | undefined {
     const root = findGitRoot(dir);
-    if (!root) return undefined;
+    if (!root) { return undefined; }
     const gitDir = gitdirFileTarget(root) ?? join(root, ".git");
     let commonDir = gitDir;
     try {
         const common = readFileSync(join(gitDir, "commondir"), "utf-8").trim();
-        if (common) commonDir = isAbsolute(common) ? common : resolve(gitDir, common);
+        if (common) { commonDir = isAbsolute(common) ? common : resolve(gitDir, common); }
     } catch {
         // Not a linked worktree: the git dir is the common dir.
     }
@@ -127,7 +127,7 @@ function isMissing(error: unknown): boolean {
 function submoduleGitDirs(root: string, commonDir: string): string[] | undefined {
     const found = new Set<string>();
     const walk = (dir: string, depth: number): boolean => {
-        if (depth > 32) return false;
+        if (depth > 32) { return false; }
         let entries: Dirent[];
         try {
             entries = readdirSync(dir, { withFileTypes: true });
@@ -140,20 +140,20 @@ function submoduleGitDirs(root: string, commonDir: string): string[] | undefined
         }
         return entries.every((entry) => !entry.isDirectory() || walk(join(dir, entry.name), depth + 1));
     };
-    if (!walk(join(commonDir, "modules"), 0)) return undefined;
+    if (!walk(join(commonDir, "modules"), 0)) { return undefined; }
     let gitmodules = "";
     try {
         gitmodules = readFileSync(join(root, ".gitmodules"), "utf-8");
     } catch (error) {
-        if (!isMissing(error)) return undefined;
+        if (!isMissing(error)) { return undefined; }
     }
     for (const { section, key, value } of configEntries(gitmodules)) {
-        if (section !== "submodule" || key !== "path" || !value) continue;
+        if (section !== "submodule" || key !== "path" || !value) { continue; }
         const worktree = resolve(root, value);
         const dotGit = join(worktree, ".git");
         const gitDir = gitdirFileTarget(worktree) ?? (existsSync(dotGit) ? dotGit : undefined);
-        if (gitDir) found.add(gitDir);
-        if (found.size > 200) return undefined;
+        if (gitDir) { found.add(gitDir); }
+        if (found.size > 200) { return undefined; }
     }
     return [...found];
 }
@@ -165,18 +165,18 @@ function submoduleGitDirs(root: string, commonDir: string): string[] | undefined
  */
 export function checkoutGitRunsProgram(dir: string, home: string): string | undefined {
     const checkout = checkoutOf(dir);
-    if (!checkout) return undefined;
+    if (!checkout) { return undefined; }
     const { root, gitDir, commonDir } = checkout;
     const modules = submoduleGitDirs(root, commonDir);
-    if (!modules) return "the checkout's submodules cannot all be read";
+    if (!modules) { return "the checkout's submodules cannot all be read"; }
     // `status` rewrites the index, which runs `post-index-change`; it recurses
     // into submodules, each with its own hooks directory.
     const hooksDirs = [join(commonDir, "hooks"), ...modules.map((module) => join(module, "hooks"))];
     for (const file of new Set([join(commonDir, "config"), join(commonDir, "config.worktree"), join(gitDir, "config.worktree")])) {
         const found = readConfig(file);
-        if (!found) return "the checkout's git config cannot be read";
-        if (found.program) return `the checkout's git config sets ${found.program}, which names a program git runs`;
-        for (const path of found.hooksPaths) hooksDirs.push(resolve(root, expandTilde(path, home)));
+        if (!found) { return "the checkout's git config cannot be read"; }
+        if (found.program) { return `the checkout's git config sets ${found.program}, which names a program git runs`; }
+        for (const path of found.hooksPaths) { hooksDirs.push(resolve(root, expandTilde(path, home))); }
     }
     for (const module of modules) {
         const found = readConfig(join(module, "config"));

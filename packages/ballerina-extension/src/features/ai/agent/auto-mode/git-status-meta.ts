@@ -157,7 +157,7 @@ export function gitStatusMeta(porcelain: string): GitStatusMeta | undefined {
     let untracked = 0;
     let ignored = 0;
     for (const line of porcelain.split("\n")) {
-        if (line.length < 2) continue;
+        if (line.length < 2) { continue; }
         const [index, worktree] = [line[0], line[1]];
         if (index === "?" && worktree === "?") {
             untracked++;
@@ -167,9 +167,9 @@ export function gitStatusMeta(porcelain: string): GitStatusMeta | undefined {
             ignored++;
             continue;
         }
-        if (index !== " " && index !== "?") staged++;
-        if (worktree !== " ") modified++;
+        if (index !== " " && index !== "?") { staged++; }
+        if (worktree !== " ") { modified++; }
     }
-    if (staged !== 0 || modified !== 0 || untracked !== 0) return { staged, modified, untracked };
+    if (staged !== 0 || modified !== 0 || untracked !== 0) { return { staged, modified, untracked }; }
     return ignored > 0 ? undefined : { clean: true };
 }

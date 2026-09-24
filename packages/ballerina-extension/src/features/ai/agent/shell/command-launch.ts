@@ -59,18 +59,18 @@ export function isBatchFile(path: string): boolean {
  * limit Node's `shell: true` has, and `.cmd` shims are only reached this way.
  */
 export function quoteForCmd(arg: string): string {
-    if (arg === "") return '""';
-    if (!/[\s"&|<>^()]/.test(arg)) return arg;
+    if (arg === "") { return '""'; }
+    if (!/[\s"&|<>^()]/.test(arg)) { return arg; }
     const body = arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1");
     return `"${body}"`;
 }
 
 export function commandLaunch(command: string, args: string[], env: NodeJS.ProcessEnv, opts: CommandLaunchOptions = {}): CommandLaunch {
     const platform = opts.platform ?? process.platform;
-    if (platform !== "win32") return { command, args };
+    if (platform !== "win32") { return { command, args }; }
     const resolved = (opts.which ?? whichOnPath)(command, env, platform);
-    if (!resolved) return { command, args };
-    if (!isBatchFile(resolved)) return { command: resolved, args };
+    if (!resolved) { return { command, args }; }
+    if (!isBatchFile(resolved)) { return { command: resolved, args }; }
     const line = [resolved, ...args].map(quoteForCmd).join(" ");
     // cmd.exe is located from the PROCESS environment, never from `env`: a
     // server's config may set its own variables (a plugin's `.lsp.json` env

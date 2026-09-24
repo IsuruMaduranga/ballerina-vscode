@@ -71,7 +71,7 @@ export interface TargetState {
  * whole action, since one command destroys them all.
  */
 export function judgeTargets(targets: TargetState[]): RecoverabilityResult {
-    if (targets.length === 0) return { verdict: "unknown", reason: "no destruction target could be identified" };
+    if (targets.length === 0) { return { verdict: "unknown", reason: "no destruction target could be identified" }; }
     for (const target of targets) {
         if (!target.tracked) {
             return { verdict: "unrecoverable", reason: `${target.token} is not tracked by git, so deleting it is not reversible` };
@@ -98,7 +98,7 @@ export function judgeTargets(targets: TargetState[]): RecoverabilityResult {
  * the classifier rather than this fast path.
  */
 export function judgeWholeTree(isRepo: boolean, statusPorcelain: string): RecoverabilityResult {
-    if (!isRepo) return { verdict: "unrecoverable", reason: "not a git repository, so a tree-wide reset cannot be undone" };
+    if (!isRepo) { return { verdict: "unrecoverable", reason: "not a git repository, so a tree-wide reset cannot be undone" }; }
     return statusPorcelain.trim().length === 0
         ? { verdict: "recoverable", reason: "the working tree is clean, so git can restore it" }
         : { verdict: "unrecoverable", reason: "the working tree has uncommitted or untracked changes a reset would destroy" };
@@ -106,15 +106,15 @@ export function judgeWholeTree(isRepo: boolean, statusPorcelain: string): Recove
 
 /** Combine several sub-verdicts: the whole action is only as recoverable as its least-recoverable part. */
 export function combine(results: RecoverabilityResult[]): RecoverabilityResult {
-    if (results.length === 0) return { verdict: "unknown", reason: "nothing to check" };
+    if (results.length === 0) { return { verdict: "unknown", reason: "nothing to check" }; }
     const worst = results.find((r) => r.verdict === "unrecoverable") ?? results.find((r) => r.verdict === "unknown");
     return worst ?? results[0];
 }
 
 /** The path is `.git`, sits inside a `.git`, or is a directory with a `.git` entry (repo root, nested repo, worktree). */
 function isOrHoldsGitDir(path: string): boolean {
-    if (basename(path) === ".git") return true;
-    if (path.split(sep).includes(".git")) return true;
+    if (basename(path) === ".git") { return true; }
+    if (path.split(sep).includes(".git")) { return true; }
     try {
         return lstatSync(path).isDirectory() && existsSync(join(path, ".git"));
     } catch {
@@ -139,9 +139,9 @@ function holdsNestedGitDir(dir: string, budget: number): boolean | undefined {
             continue;
         }
         for (const entry of entries) {
-            if (++seen > budget) return undefined;
-            if (entry.name === ".git") return true;
-            if (entry.isDirectory()) stack.push(join(current, entry.name));
+            if (++seen > budget) { return undefined; }
+            if (entry.name === ".git") { return true; }
+            if (entry.isDirectory()) { stack.push(join(current, entry.name)); }
         }
     }
     return false;
@@ -156,7 +156,7 @@ function git(cwd: string, args: string[]): { ok: boolean; stdout: string } | und
         // A non-zero exit still carries stdout (e.g. ls-files --error-unmatch), which
         // the caller may want; distinguish "ran and said no" from "could not run".
         const status = (error as { status?: number }).status;
-        if (typeof status === "number") return { ok: false, stdout: String((error as { stdout?: unknown }).stdout ?? "") };
+        if (typeof status === "number") { return { ok: false, stdout: String((error as { stdout?: unknown }).stdout ?? "") }; }
         return undefined; // git not found / timed out / killed — genuinely unknown
     }
 }
@@ -178,14 +178,14 @@ export function checkRecoverability(cwd: string, destruction: Destruction): Reco
     const isRepo = repoProbe?.ok === true && repoProbe.stdout.trim() === "true";
 
     if (destruction.wholeTree) {
-        if (!isRepo) return judgeWholeTree(false, "");
+        if (!isRepo) { return judgeWholeTree(false, ""); }
         const status = git(cwd, ["status", "--porcelain"]);
-        if (!status) return { verdict: "unknown", reason: "could not read git status to judge a tree-wide reset" };
+        if (!status) { return { verdict: "unknown", reason: "could not read git status to judge a tree-wide reset" }; }
         return judgeWholeTree(true, status.stdout);
     }
 
-    if (destruction.targets.length === 0) return { verdict: "unknown", reason: "no destruction target could be identified" };
-    if (!isRepo) return { verdict: "unrecoverable", reason: "not a git repository, so deletion is not reversible" };
+    if (destruction.targets.length === 0) { return { verdict: "unknown", reason: "no destruction target could be identified" }; }
+    if (!isRepo) { return { verdict: "unrecoverable", reason: "not a git repository, so deletion is not reversible" }; }
 
     const states: TargetState[] = [];
     for (const path of destruction.targets) {
@@ -202,7 +202,7 @@ export function checkRecoverability(cwd: string, destruction: Destruction): Reco
         } catch {
             entryExists = false;
         }
-        if (!entryExists) continue;
+        if (!entryExists) { continue; }
         // The repository itself is never recoverable from itself: `rm -rf .` at the
         // root passes every tracked/clean test (git ls-files matches any dir with
         // tracked files) yet deletes `.git`. Same for a path inside `.git` and for a
@@ -240,6 +240,6 @@ export function checkRecoverability(cwd: string, destruction: Destruction): Reco
         states.push({ token: path, tracked: tracked.ok, dirty, directory: isDirectory });
     }
     // Every target was a non-existent path (pure creation / no-op) — nothing to lose.
-    if (states.length === 0) return { verdict: "recoverable", reason: "no existing content would be destroyed" };
+    if (states.length === 0) { return { verdict: "recoverable", reason: "no existing content would be destroyed" }; }
     return judgeTargets(states);
 }

@@ -43,7 +43,7 @@ describe("canonicalCommandName", () => {
         expect(canonicalCommandName("%")).toBe("ForEach-Object");
     });
     it("leaves the PS-7-removed native collisions alone (sort, sc, curl, wget)", () => {
-        for (const name of ["sort", "sc", "curl", "wget"]) expect(canonicalCommandName(name)).toBe(name);
+        for (const name of ["sort", "sc", "curl", "wget"]) { expect(canonicalCommandName(name)).toBe(name); }
     });
     it("strips PATHEXT from a path-free executable, not from a path", () => {
         expect(canonicalCommandName("git.exe")).toBe("git");
@@ -166,7 +166,7 @@ describe("powershellReadOnly with roots (absolute paths judged by containment, 2
     const cwd = join(root, "project");
     const sessions = join(root, "agent", "sessions", "C--project");
     const elsewhere = join(root, "elsewhere");
-    for (const dir of [join(cwd, "src"), sessions, elsewhere]) mkdirSync(dir, { recursive: true });
+    for (const dir of [join(cwd, "src"), sessions, elsewhere]) { mkdirSync(dir, { recursive: true }); }
     writeFileSync(join(cwd, "src", "a.ts"), "");
     writeFileSync(join(sessions, "s.jsonl"), "{}\n");
     writeFileSync(join(elsewhere, "secret.txt"), "");
@@ -242,11 +242,11 @@ describe("BI: subexpressions and splats are never read-only", () => {
     ];
 
     it("refuses them in the read-only check", () => {
-        for (const command of refused) expectLabeled(powershellReadOnly(command).readOnly, command).toBe(false);
+        for (const command of refused) { expectLabeled(powershellReadOnly(command).readOnly, command).toBe(false); }
     });
 
     it("treats them as injection syntax for session rules", () => {
-        for (const command of refused) expectLabeled(powershellInjectionSyntax(command), command).toBeDefined();
+        for (const command of refused) { expectLabeled(powershellInjectionSyntax(command), command).toBeDefined(); }
     });
 
     it("still clears the same characters inside quotes", () => {
@@ -281,7 +281,7 @@ describe("BI: git statements through the hardened git check", () => {
             "git reset --hard",
             "git -C .. status",
         ];
-        for (const command of refused) expectLabeled(readOnly(command), command).toBe(false);
+        for (const command of refused) { expectLabeled(readOnly(command), command).toBe(false); }
     });
 
     it("refuses an unquoted comma, which PowerShell turns into separate arguments", () => {

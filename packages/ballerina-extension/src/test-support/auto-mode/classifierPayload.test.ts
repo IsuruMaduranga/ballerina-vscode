@@ -369,14 +369,14 @@ describe("PauseTracker", () => {
 
     it("reports the pause only once, so the notice is not repeated", () => {
         const tracker = new PauseTracker();
-        for (let i = 0; i < CONSECUTIVE_BLOCK_LIMIT; i++) tracker.recordBlock(denial);
+        for (let i = 0; i < CONSECUTIVE_BLOCK_LIMIT; i++) { tracker.recordBlock(denial); }
         expect(tracker.recordBlock(denial)).toBe(false);
         expect(tracker.isPaused()).toBe(true);
     });
 
     it("resets the consecutive counter on resume, so the next block does not re-pause", () => {
         const tracker = new PauseTracker();
-        for (let i = 0; i < CONSECUTIVE_BLOCK_LIMIT; i++) tracker.recordBlock(denial);
+        for (let i = 0; i < CONSECUTIVE_BLOCK_LIMIT; i++) { tracker.recordBlock(denial); }
         tracker.resume();
         expect(tracker.isPaused()).toBe(false);
         expect(tracker.recordBlock(denial)).toBe(false);

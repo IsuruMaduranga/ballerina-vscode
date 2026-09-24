@@ -82,8 +82,8 @@ function clipInput(input: Record<string, unknown>, max: number): Record<string, 
  * with string fields clipped.
  */
 function renderEntry(entry: TranscriptEntry, maxField: number): string {
-    if (entry.kind === "user") return JSON.stringify({ user: clip(entry.text, maxField) });
-    if (entry.kind === "meta") return JSON.stringify({ meta: { gitStatus: entry.gitStatus } });
+    if (entry.kind === "user") { return JSON.stringify({ user: clip(entry.text, maxField) }); }
+    if (entry.kind === "meta") { return JSON.stringify({ meta: { gitStatus: entry.gitStatus } }); }
     if (entry.kind === "denied") {
         return JSON.stringify({
             denied_by_permission_rule: { tool: transcriptToolName(entry.tool), attempted: clip(entry.subject, maxField), rule: entry.rule },
@@ -123,7 +123,7 @@ export function renderTranscript(entries: TranscriptEntry[], options: RenderOpti
     let running = 0;
     for (let i = lines.length - 1; i >= 0; i--) {
         running += lines[i].length + 1;
-        if (i < lines.length - 1 && running > maxChars) break;
+        if (i < lines.length - 1 && running > maxChars) { break; }
         firstKept = i;
     }
     const kept = lines.slice(firstKept);

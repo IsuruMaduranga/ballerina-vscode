@@ -148,9 +148,9 @@ export function reviewUser(userPrefix: string): string {
 /** The integer inside the last `<severity>…` tag (closing tag optional). */
 export function parseSeverity(text: string): number | null {
     const matches = [...text.matchAll(/<severity>\s*(\d{1,3})/gi)];
-    if (matches.length === 0) return null;
+    if (matches.length === 0) { return null; }
     const value = Number.parseInt(matches[matches.length - 1][1], 10);
-    if (Number.isNaN(value)) return null;
+    if (Number.isNaN(value)) { return null; }
     return Math.max(0, Math.min(100, value));
 }
 
@@ -200,12 +200,12 @@ export function normalizeQuote(value: string): string {
 export function intentQuoted(intent: string, userMessages: string[]): boolean {
     const messages = userMessages.map((message) => normalizeName(message));
     const whole = normalizeQuote(intent);
-    if (whole.length >= INTENT_MIN_CHARS && messages.some((message) => message.includes(whole))) return true;
+    if (whole.length >= INTENT_MIN_CHARS && messages.some((message) => message.includes(whole))) { return true; }
     const lines = intent
         .split(/\r?\n/)
         .map((line) => normalizeQuote(line))
         .filter((line) => line.length > 0);
-    if (lines.length < 2 || lines.some((line) => line.length < INTENT_MIN_CHARS)) return false;
+    if (lines.length < 2 || lines.some((line) => line.length < INTENT_MIN_CHARS)) { return false; }
     // Every line must come from the SAME message, IN ORDER: two authorizations
     // from different turns stitched together are not one statement of intent,
     // and neither is a later clause pasted in front of an earlier one ("edit
@@ -215,7 +215,7 @@ export function intentQuoted(intent: string, userMessages: string[]): boolean {
         let cursor = 0;
         for (const line of lines) {
             const at = message.indexOf(line, cursor);
-            if (at < 0) return false;
+            if (at < 0) { return false; }
             cursor = at + line.length;
         }
         return true;

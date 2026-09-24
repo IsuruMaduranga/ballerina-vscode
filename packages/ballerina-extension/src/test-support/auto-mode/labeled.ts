@@ -25,12 +25,12 @@ export function expectLabeled<T>(value: T, label: string): jest.JestMatchers<T> 
     return new Proxy(matchers, {
         get(target, property, receiver) {
             const member = Reflect.get(target, property, receiver);
-            if (typeof member !== "function") return member;
+            if (typeof member !== "function") { return member; }
             return (...args: unknown[]) => {
                 try {
                     return member.apply(target, args);
                 } catch (error) {
-                    if (error instanceof Error) error.message = `${label}\n${error.message}`;
+                    if (error instanceof Error) { error.message = `${label}\n${error.message}`; }
                     throw error;
                 }
             };

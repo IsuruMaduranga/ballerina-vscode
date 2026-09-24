@@ -254,7 +254,7 @@ const FRAMING_SUFFIX = "\n</user_agents_md>";
  * Returns "" when there is nothing to frame.
  */
 export function agentsMdFraming(agentsMd: string | undefined): string {
-    if (!agentsMd?.trim()) return "";
+    if (!agentsMd?.trim()) { return ""; }
     // Wrapped verbatim (no trim): the framing text is byte-stable.
     return FRAMING_PREFIX + agentsMd + FRAMING_SUFFIX;
 }

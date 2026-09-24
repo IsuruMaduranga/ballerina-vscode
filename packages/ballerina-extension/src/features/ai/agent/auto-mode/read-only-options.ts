@@ -92,7 +92,7 @@ function words(list: string): string[] {
 function table(arities: Partial<Record<Arity, string>>, extra: Omit<OptionSpec, "options"> = {}): OptionSpec {
     const options: Record<string, Arity> = {};
     for (const [arity, list] of Object.entries(arities) as [Arity, string][]) {
-        for (const option of words(list)) options[option] = arity;
+        for (const option of words(list)) { options[option] = arity; }
     }
     return { options, ...extra };
 }
@@ -106,8 +106,8 @@ function merge(...specs: OptionSpec[]): OptionSpec {
             throw new Error("merge() only merges option tables; set operand limits and hooks on the merged spec itself");
         }
         Object.assign(merged.options, spec.options);
-        if (spec.numeric) merged.numeric = true;
-        if (spec.fileValues) merged.fileValues = [...(merged.fileValues ?? []), ...spec.fileValues];
+        if (spec.numeric) { merged.numeric = true; }
+        if (spec.fileValues) { merged.fileValues = [...(merged.fileValues ?? []), ...spec.fileValues]; }
     }
     return merged;
 }
@@ -126,7 +126,7 @@ export function checkOptions<W extends Word>(spec: OptionSpec, args: readonly W[
 
     /** Record an option's value when it names a file; a separate word keeps its glob flag. */
     const takeValue = (option: string, value: string | W | undefined) => {
-        if (value === undefined || !fileValueOptions.has(option)) return;
+        if (value === undefined || !fileValueOptions.has(option)) { return; }
         parsed.fileValues.push(typeof value === "string" ? { value } : value);
     };
 
@@ -142,7 +142,7 @@ export function checkOptions<W extends Word>(spec: OptionSpec, args: readonly W[
         }
         if (arity === "lastarg") {
             const next = args[i + 1];
-            if (next === undefined || next.value.startsWith("-")) return 0;
+            if (next === undefined || next.value.startsWith("-")) { return 0; }
             takeValue(option, next);
             return 1;
         }
@@ -163,22 +163,22 @@ export function checkOptions<W extends Word>(spec: OptionSpec, args: readonly W[
             endOfOptions = true;
             continue;
         }
-        if (spec.numeric && /^-[0-9]+$/.test(word)) continue;
-        if (spec.lenient) continue;
+        if (spec.numeric && /^-[0-9]+$/.test(word)) { continue; }
+        if (spec.lenient) { continue; }
 
         if (word.startsWith("--")) {
             const eq = word.indexOf("=");
             const name = eq > 0 ? word.slice(0, eq) : word;
             const arity = spec.options[name];
-            if (arity === undefined) return { ok: false, reason: `passes ${name}, an option not known to be read-only` };
+            if (arity === undefined) { return { ok: false, reason: `passes ${name}, an option not known to be read-only` }; }
             parsed.seen.add(name);
             if (eq > 0) {
-                if (arity === "none") return { ok: false, reason: `passes a value to ${name}, which takes none` };
+                if (arity === "none") { return { ok: false, reason: `passes a value to ${name}, which takes none` }; }
                 takeValue(name, word.slice(eq + 1));
                 continue;
             }
             // `optional` takes its value only attached (`--abbrev=7`).
-            if (arity !== "optional") i += takeSeparateValue(name, arity, i);
+            if (arity !== "optional") { i += takeSeparateValue(name, arity, i); }
             continue;
         }
 
@@ -186,14 +186,14 @@ export function checkOptions<W extends Word>(spec: OptionSpec, args: readonly W[
         for (let j = 1; j < word.length; j++) {
             const name = `-${word[j]}`;
             const arity = spec.options[name];
-            if (arity === undefined) return { ok: false, reason: `passes ${name}, an option not known to be read-only` };
+            if (arity === undefined) { return { ok: false, reason: `passes ${name}, an option not known to be read-only` }; }
             parsed.seen.add(name);
-            if (arity === "none") continue;
+            if (arity === "none") { continue; }
             // The rest of the cluster is the value when there is one; otherwise a
             // value-taking letter (not `optional`) takes the next word(s).
             const rest = word.slice(j + 1);
-            if (rest) takeValue(name, rest);
-            else if (arity !== "optional") i += takeSeparateValue(name, arity, i);
+            if (rest) { takeValue(name, rest); }
+            else if (arity !== "optional") { i += takeSeparateValue(name, arity, i); }
             break;
         }
     }
@@ -431,12 +431,12 @@ export function checkFind<W extends Word>(args: readonly W[]): { ok: true; paths
         } else if (word === "-f" && i + 1 < args.length) {
             paths.push(args[i + 1]);
             i += 2;
-        } else break;
+        } else { break; }
     }
     // Starting points: everything up to the first expression word.
     while (i < args.length) {
         const word = args[i].value;
-        if (word.startsWith("-") || word === "!" || word === "(" || word === ")") break;
+        if (word.startsWith("-") || word === "!" || word === "(" || word === ")") { break; }
         paths.push(args[i]);
         i++;
     }
@@ -445,10 +445,10 @@ export function checkFind<W extends Word>(args: readonly W[]): { ok: true; paths
         const word = args[i].value;
         const newer = /^-newer[aBcmt][aBcmt]$/.test(word);
         const consumes = newer ? 1 : FIND_PRIMARIES[word];
-        if (consumes === undefined) return { ok: false, reason: `uses find ${word}, which is not a known read-only primary` };
+        if (consumes === undefined) { return { ok: false, reason: `uses find ${word}, which is not a known read-only primary` }; }
         if (consumes === 1) {
             const value = args[i + 1];
-            if (value !== undefined && (FIND_FILE_PRIMARIES.has(word) || newer)) paths.push(value);
+            if (value !== undefined && (FIND_FILE_PRIMARIES.has(word) || newer)) { paths.push(value); }
             i++;
         }
     }
@@ -602,6 +602,6 @@ export const GIT_SUBCOMMAND_SPECS: Record<string, OptionSpec> = {
  * refs from a bare operand, so they only list when `-l`/`--list` is present.
  */
 export function gitOperandsAllowed(subcommand: string, parsed: ParsedOptions): boolean {
-    if (subcommand !== "branch" && subcommand !== "tag") return true;
+    if (subcommand !== "branch" && subcommand !== "tag") { return true; }
     return parsed.positionals.length === 0 || parsed.seen.has("-l") || parsed.seen.has("--list");
 }

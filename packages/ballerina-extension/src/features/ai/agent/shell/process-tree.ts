@@ -73,7 +73,7 @@ export function detachedSpawnOptions(opts: { outlivesParent?: boolean } = {}): {
  */
 function taskkillTree(child: ChildProcess): void {
     const pid = child.pid;
-    if (pid == null) return;
+    if (pid == null) { return; }
     const direct = () => {
         try {
             child.kill();
@@ -95,7 +95,7 @@ function taskkillTree(child: ChildProcess): void {
 }
 
 export function killProcessTree(child: ChildProcess, signal: NodeJS.Signals = "SIGTERM"): void {
-    if (child.pid == null) return;
+    if (child.pid == null) { return; }
     if (process.platform === "win32") {
         taskkillTree(child);
         return;
@@ -118,10 +118,10 @@ export function killProcessTree(child: ChildProcess, signal: NodeJS.Signals = "S
 export function stopProcessTree(child: ChildProcess, graceMs: number): void {
     killProcessTree(child, "SIGTERM");
     // taskkill /F is already forceful; there is no gentler first signal to grace.
-    if (process.platform === "win32") return;
-    if (child.exitCode !== null || child.signalCode !== null) return;
+    if (process.platform === "win32") { return; }
+    if (child.exitCode !== null || child.signalCode !== null) { return; }
     const timer = setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null) killProcessTree(child, "SIGKILL");
+        if (child.exitCode === null && child.signalCode === null) { killProcessTree(child, "SIGKILL"); }
     }, graceMs);
     timer.unref?.();
     child.once("exit", () => clearTimeout(timer));
@@ -149,8 +149,8 @@ export function waitForChildExit(child: ChildProcess): Promise<ChildExit> {
         let grace: NodeJS.Timeout | undefined;
         let deadline: NodeJS.Timeout | undefined;
         const cleanup = () => {
-            if (grace) clearTimeout(grace);
-            if (deadline) clearTimeout(deadline);
+            if (grace) { clearTimeout(grace); }
+            if (deadline) { clearTimeout(deadline); }
             child.removeListener("error", onError);
             child.removeListener("exit", onExit);
             child.removeListener("close", onClose);
@@ -158,7 +158,7 @@ export function waitForChildExit(child: ChildProcess): Promise<ChildExit> {
             child.stderr?.removeListener("data", onData);
         };
         const finish = () => {
-            if (settled || !exited) return;
+            if (settled || !exited) { return; }
             settled = true;
             cleanup();
             child.stdout?.destroy();
@@ -166,13 +166,13 @@ export function waitForChildExit(child: ChildProcess): Promise<ChildExit> {
             resolve(exited);
         };
         const arm = () => {
-            if (grace) clearTimeout(grace);
+            if (grace) { clearTimeout(grace); }
             // Ref'd on purpose: in a one-shot run this timer may be the only handle
             // left once the pipes have closed, and the promise must still settle.
             grace = setTimeout(finish, EXIT_STDIO_GRACE_MS);
         };
         const onError = (error: Error) => {
-            if (settled) return;
+            if (settled) { return; }
             settled = true;
             cleanup();
             reject(error);
@@ -187,7 +187,7 @@ export function waitForChildExit(child: ChildProcess): Promise<ChildExit> {
             finish();
         };
         const onData = () => {
-            if (exited && !settled) arm();
+            if (exited && !settled) { arm(); }
         };
         child.once("error", onError);
         child.once("exit", onExit);

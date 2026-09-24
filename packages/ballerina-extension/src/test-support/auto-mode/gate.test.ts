@@ -173,7 +173,7 @@ describe("suggestSessionRule: what the banner offers", () => {
             "echo x > ~/probe.txt",            // writes outside the workspace
             "cat ~/.ssh/id_rsa",               // sensitive path
         ];
-        for (const command of none) expectLabeled(suggest(command), command).toBeUndefined();
+        for (const command of none) { expectLabeled(suggest(command), command).toBeUndefined(); }
     });
 });
 
@@ -215,7 +215,7 @@ describe("matchSessionRule: what a granted rule covers", () => {
             "npm run testx",
             "npm run",
         ];
-        for (const command of uncovered) expectLabeled(matches(rules, command), command).toBeUndefined();
+        for (const command of uncovered) { expectLabeled(matches(rules, command), command).toBeUndefined(); }
     });
 });
 

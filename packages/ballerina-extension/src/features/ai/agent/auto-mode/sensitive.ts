@@ -101,11 +101,11 @@ const SENSITIVE_BASENAMES = new Set([
  * scratchpad write to the classifier.
  */
 function isSensitiveWindowsPath(folded: string, segments: string[]): boolean {
-    if (/^[a-z]:\/windows(\/|$)/.test(folded)) return true;
+    if (/^[a-z]:\/windows(\/|$)/.test(folded)) { return true; }
     const appData = segments.indexOf("appdata");
-    if (appData < 0) return false;
+    if (appData < 0) { return false; }
     const next = segments[appData + 1];
-    if (next === "roaming" || next === "locallow") return true;
+    if (next === "roaming" || next === "locallow") { return true; }
     return next === "local" && segments[appData + 2] !== undefined && segments[appData + 2] !== "temp";
 }
 
@@ -123,12 +123,12 @@ function fold(value: string): string {
 /** Whether a basename names a secret file (`.env`, `.env.local`, keys, …). */
 export function isSensitiveBasename(name: string): boolean {
     const folded = fold(name);
-    if (!folded) return false;
-    if (folded === ".env" || folded.startsWith(".env.")) return true;
-    if (SENSITIVE_BASENAMES.has(folded)) return true;
+    if (!folded) { return false; }
+    if (folded === ".env" || folded.startsWith(".env.")) { return true; }
+    if (SENSITIVE_BASENAMES.has(folded)) { return true; }
     // Private keys and certificates by extension, plus the id_* key family.
-    if (/^id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/.test(folded)) return true;
-    if (/\.(pem|key|p12|pfx|jks|keystore)$/.test(folded)) return true;
+    if (/^id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/.test(folded)) { return true; }
+    if (/\.(pem|key|p12|pfx|jks|keystore)$/.test(folded)) { return true; }
     return false;
 }
 
@@ -139,22 +139,22 @@ export function isSensitiveBasename(name: string): boolean {
  */
 export function isSensitivePath(candidate: string): boolean {
     const folded = fold(candidate);
-    if (!folded) return false;
+    if (!folded) { return false; }
 
     for (const root of SENSITIVE_ROOTS) {
-        if (folded === root || folded.startsWith(`${root}/`)) return true;
+        if (folded === root || folded.startsWith(`${root}/`)) { return true; }
     }
 
     const segments = folded.split("/").filter(Boolean);
     for (const segment of segments) {
-        if (SENSITIVE_DIR_SEGMENTS.has(segment)) return true;
+        if (SENSITIVE_DIR_SEGMENTS.has(segment)) { return true; }
     }
     for (const [first, second] of SENSITIVE_DIR_PAIRS) {
         for (let i = 0; i + 1 < segments.length; i++) {
-            if (segments[i] === first && segments[i + 1] === second) return true;
+            if (segments[i] === first && segments[i + 1] === second) { return true; }
         }
     }
-    if (isSensitiveWindowsPath(folded, segments)) return true;
+    if (isSensitiveWindowsPath(folded, segments)) { return true; }
 
     return isSensitiveBasename(basename(folded));
 }
@@ -169,18 +169,18 @@ export function isSensitivePath(candidate: string): boolean {
  */
 export function isExecutionPrimitivePath(candidate: string): boolean {
     const folded = fold(candidate);
-    if (!folded) return false;
+    if (!folded) { return false; }
     const segments = folded.split("/").filter(Boolean);
     const hasGitDir = segments.includes(".git");
     if (hasGitDir) {
         const gitIndex = segments.lastIndexOf(".git");
         const tail = segments.slice(gitIndex + 1);
-        if (tail[0] === "hooks" || tail[0] === "config") return true;
+        if (tail[0] === "hooks" || tail[0] === "config") { return true; }
     }
     // Editor/tooling auto-run configuration.
-    if (segments.includes(".vscode") && /\.json$/.test(segments[segments.length - 1] ?? "")) return true;
-    if (/^(\.envrc|makefile|dockerfile|\.mvn)$/.test(segments[segments.length - 1] ?? "")) return true;
-    if (segments.includes(".mvn") || segments.includes(".github")) return true;
-    if (/^mvnw(\.cmd)?$/.test(segments[segments.length - 1] ?? "")) return true;
+    if (segments.includes(".vscode") && /\.json$/.test(segments[segments.length - 1] ?? "")) { return true; }
+    if (/^(\.envrc|makefile|dockerfile|\.mvn)$/.test(segments[segments.length - 1] ?? "")) { return true; }
+    if (segments.includes(".mvn") || segments.includes(".github")) { return true; }
+    if (/^mvnw(\.cmd)?$/.test(segments[segments.length - 1] ?? "")) { return true; }
     return false;
 }

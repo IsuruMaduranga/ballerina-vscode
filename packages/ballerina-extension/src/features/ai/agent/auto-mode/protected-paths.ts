@@ -139,18 +139,18 @@ export function isProtectedPath(candidate: string, cwd?: string): boolean {
 
     for (const form of forms) {
         const segments = form.split("/").filter((segment) => segment && segment !== ".");
-        if (segments.length === 0) continue;
+        if (segments.length === 0) { continue; }
 
         const basename = segments[segments.length - 1];
-        if (PROTECTED_FILES.has(basename)) return true;
+        if (PROTECTED_FILES.has(basename)) { return true; }
 
         for (const dir of PROTECTED_DIRS) {
             const dirSegments = dir.split("/");
             for (let i = 0; i + dirSegments.length <= segments.length; i++) {
-                if (!dirSegments.every((part, offset) => segments[i + offset] === part)) continue;
+                if (!dirSegments.every((part, offset) => segments[i + offset] === part)) { continue; }
                 // The match is only protective if something lives *under* the
                 // directory — the write target has to be inside it.
-                if (i + dirSegments.length >= segments.length) continue;
+                if (i + dirSegments.length >= segments.length) { continue; }
                 const tail = segments.slice(i).join("/");
                 if (PROTECTED_DIR_EXCEPTIONS.some((exception) => tail.startsWith(`${exception}/`) || tail === exception)) {
                     continue;

@@ -268,8 +268,8 @@ describe("M5: every harness git call carries HARNESS_GIT_CONFIG", () => {
         const walk = (dir: string) => {
             for (const name of readdirSync(dir)) {
                 const path = join(dir, name);
-                if (statSync(path).isDirectory()) walk(path);
-                else if (path.endsWith(".ts")) files.push(path);
+                if (statSync(path).isDirectory()) { walk(path); }
+                else if (path.endsWith(".ts")) { files.push(path); }
             }
         };
         const agentDir = join(__dirname, "..", "..", "features", "ai", "agent");
@@ -381,7 +381,7 @@ describe("PR #8 review: a checkout's git config can make a git read run a progra
     });
 
     posixOnly("treats a config it cannot read as naming a program", () => {
-        if (process.getuid?.() === 0) return; // root reads a mode-000 file
+        if (process.getuid?.() === 0) { return; } // root reads a mode-000 file
         execFileSync("git", ["init", "-q"], { cwd });
         const config = join(cwd, ".git", "config");
         chmodSync(config, 0o000);

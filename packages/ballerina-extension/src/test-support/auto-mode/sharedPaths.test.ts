@@ -49,8 +49,8 @@ describe("msysPathToWindows", () => {
 
     it("is gated to win32", () => {
         const converted = gitBashPathToNative("/c/proj/a.ts");
-        if (process.platform === "win32") expect(converted).toBe("C:\\proj\\a.ts");
-        else expect(converted).toBe("/c/proj/a.ts");
+        if (process.platform === "win32") { expect(converted).toBe("C:\\proj\\a.ts"); }
+        else { expect(converted).toBe("/c/proj/a.ts"); }
     });
 });
 

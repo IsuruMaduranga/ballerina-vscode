@@ -60,7 +60,7 @@ onWindows("Windows: the PowerShell read-only check on native paths", () => {
             `Get-Content ${join(cwd, "src", "main.bal").replace(/\\/g, "/")}`,
             `Get-ChildItem ${roots[0]}`,
             "Get-ChildItem src\\",
-        ]) expectLabeled(ro(command), command).toBe(true);
+        ]) { expectLabeled(ro(command), command).toBe(true); }
     });
 
     it("refuses UNC, drive-relative, other-drive, ~ and .. paths", () => {

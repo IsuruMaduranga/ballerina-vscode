@@ -59,8 +59,8 @@ describe("commandLaunch", () => {
     });
 
     it("recognises batch files by extension, any case", () => {
-        for (const p of ["a.cmd", "A.CMD", "x\\b.bat", "c.Bat"]) expect(isBatchFile(p)).toBe(true);
-        for (const p of ["a.exe", "a.cmd.exe", "cmd", "a.com"]) expect(isBatchFile(p)).toBe(false);
+        for (const p of ["a.cmd", "A.CMD", "x\\b.bat", "c.Bat"]) { expect(isBatchFile(p)).toBe(true); }
+        for (const p of ["a.exe", "a.cmd.exe", "cmd", "a.com"]) { expect(isBatchFile(p)).toBe(false); }
     });
 
     it("quotes for cmd.exe only when needed", () => {

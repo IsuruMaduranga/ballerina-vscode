@@ -68,12 +68,12 @@ describe("design §6: every probe against pincer 5059966 now escalates", () => {
     ];
 
     it("outside a repository", () => {
-        for (const command of probes) expectLabeled(verdict(command), command).toBe("escalate");
+        for (const command of probes) { expectLabeled(verdict(command), command).toBe("escalate"); }
     });
 
     posixOnly("inside a repository", () => {
         gitInit();
-        for (const command of probes) expectLabeled(verdict(command), command).toBe("escalate");
+        for (const command of probes) { expectLabeled(verdict(command), command).toBe("escalate"); }
     });
 });
 
@@ -98,13 +98,13 @@ describe("BI addition: git path operands get the outside-read check", () => {
             expectLabeled(evidence.verdict, command).toBe("escalate");
             expectLabeled(evidence.readOnlyOutside, command).toBe(true);
         }
-        for (const command of inside) expectLabeled(verdict(command), command).toBe("safe");
+        for (const command of inside) { expectLabeled(verdict(command), command).toBe("safe"); }
     });
 
     posixOnly("inside a repository", () => {
         gitInit();
-        for (const command of outside) expectLabeled(verdict(command), command).toBe("escalate");
-        for (const command of inside) expectLabeled(verdict(command), command).toBe("safe");
+        for (const command of outside) { expectLabeled(verdict(command), command).toBe("escalate"); }
+        for (const command of inside) { expectLabeled(verdict(command), command).toBe("safe"); }
     });
 
     it("clears an operand inside a readable root", () => {

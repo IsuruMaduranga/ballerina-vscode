@@ -60,9 +60,9 @@ export function gitStatusOutput(cwd: string, args: readonly string[]): Promise<s
 export function findGitRoot(startDir: string): string | undefined {
     let dir = startDir;
     while (true) {
-        if (existsSync(join(dir, ".git"))) return dir;
+        if (existsSync(join(dir, ".git"))) { return dir; }
         const parent = dirname(dir);
-        if (parent === dir) return undefined;
+        if (parent === dir) { return undefined; }
         dir = parent;
     }
 }
@@ -75,9 +75,9 @@ export function findGitRoot(startDir: string): string | undefined {
 export function gitdirFileTarget(root: string): string | undefined {
     const dotGit = join(root, ".git");
     try {
-        if (!statSync(dotGit).isFile()) return undefined;
+        if (!statSync(dotGit).isFile()) { return undefined; }
         const match = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, "utf-8"));
-        if (!match) return undefined;
+        if (!match) { return undefined; }
         return isAbsolute(match[1]) ? match[1] : resolve(root, match[1]);
     } catch {
         return undefined;

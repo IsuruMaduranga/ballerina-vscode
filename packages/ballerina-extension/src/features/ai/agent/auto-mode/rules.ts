@@ -67,14 +67,14 @@ export function normalizeName(value: string): string {
  * Indented lines (sub-bullets) and non-bullet prose are ignored.
  */
 function ruleNameFromLine(line: string): string | undefined {
-    if (!line.startsWith("- ")) return undefined; // top-level bullets only
+    if (!line.startsWith("- ")) { return undefined; } // top-level bullets only
     const body = line.slice(2);
     // Cut at the first " [" (the [named+specifics …] qualifier) or the first ":".
     const bracket = body.indexOf(" [");
     const colon = body.indexOf(":");
     let end = body.length;
-    if (bracket >= 0) end = Math.min(end, bracket);
-    if (colon >= 0) end = Math.min(end, colon);
+    if (bracket >= 0) { end = Math.min(end, bracket); }
+    if (colon >= 0) { end = Math.min(end, colon); }
     const name = body.slice(0, end).replace(/\*/g, "").trim();
     return name.length > 0 ? name : undefined;
 }
@@ -82,7 +82,7 @@ function ruleNameFromLine(line: string): string | undefined {
 /** The text between two markers (exclusive), or "" if the bounds are missing. */
 function sliceSection(text: string, from: string, to: string): string {
     const start = text.indexOf(from);
-    if (start < 0) return "";
+    if (start < 0) { return ""; }
     const end = text.indexOf(to, start + from.length);
     return text.slice(start + from.length, end < 0 ? text.length : end);
 }
@@ -90,9 +90,9 @@ function sliceSection(text: string, from: string, to: string): string {
 function collectRules(section: string, tier: BlockTier, out: IndexedRule[], byName: Map<string, IndexedRule>): void {
     for (const line of section.split("\n")) {
         const name = ruleNameFromLine(line);
-        if (!name) continue;
+        if (!name) { continue; }
         const nameKey = normalizeName(name);
-        if (byName.has(nameKey)) continue; // a name appearing in two sections keeps its first (HARD) tier
+        if (byName.has(nameKey)) { continue; } // a name appearing in two sections keeps its first (HARD) tier
         const rule: IndexedRule = { name, tier };
         out.push(rule);
         byName.set(nameKey, rule);
@@ -101,7 +101,7 @@ function collectRules(section: string, tier: BlockTier, out: IndexedRule[], byNa
         // uniformly — user extras especially need it, since they have no short
         // `Name:` head and may contain `*`s that the derived name strips.
         const fullKey = normalizeName(line.slice(2));
-        if (fullKey && fullKey !== nameKey && !byName.has(fullKey)) byName.set(fullKey, rule);
+        if (fullKey && fullKey !== nameKey && !byName.has(fullKey)) { byName.set(fullKey, rule); }
     }
 }
 
@@ -124,6 +124,6 @@ export function buildCategoryIndex(ruleset: string): RuleIndex {
 
 /** Look up a category the classifier emitted. undefined ⇒ not a known BLOCK rule. */
 export function groundCategory(index: RuleIndex, category: string | undefined): IndexedRule | undefined {
-    if (!category) return undefined;
+    if (!category) { return undefined; }
     return index.byName.get(normalizeName(category));
 }
