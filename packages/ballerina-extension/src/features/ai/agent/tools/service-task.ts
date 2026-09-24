@@ -23,10 +23,11 @@
  * one way to read and stop anything it started.
  */
 
+import { escapeReminderText } from "../activeFileReminder";
 import { generateTaskId } from "../background/types";
 import { tailCap } from "../shell/output";
 import * as path from "path";
-import type { RunningService, RunningServicesManager } from "./running-service-manager";
+import type { RunningService, RunningServiceInfo, RunningServicesManager } from "./running-service-manager";
 
 export const SERVICE_TASK_PREFIX = "task-service-";
 /** Output past this many characters is cut to its tail, as the shell tool does. */
@@ -42,8 +43,36 @@ export function isServiceTaskId(id: string): boolean {
 }
 
 /** The label a task row shows for a service: `bal run (<package>)`. */
-export function serviceDescription(service: RunningService): string {
+export function serviceDescription(service: Pick<RunningService, "packagePath">): string {
     return `bal run (${path.basename(service.packagePath)})`;
+}
+
+/** Whole minutes since `startedAt`, worded for the model. */
+function runningFor(startedAt: number, now: number): string {
+    const minutes = Math.floor(Math.max(0, now - startedAt) / 60_000);
+    if (minutes < 1) { return "less than a minute"; }
+    return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+}
+
+/** One line per service still running: its id, label, package path and uptime. */
+export function runningServiceLines(services: RunningServiceInfo[], now: number = Date.now()): string[] {
+    return services
+        .filter((s) => !s.exited)
+        .map((s) => `- ${s.taskId}: ${serviceDescription(s)} at ${s.packagePath}, running for ${runningFor(s.startedAt, now)}`);
+}
+
+/**
+ * The turn's `<system-reminder>` naming every service still running, or "" when none is. A service
+ * outlives the chat that started it, so this is how another chat's agent learns the id to read or stop.
+ */
+export function runningServicesReminder(services: RunningServiceInfo[], now: number = Date.now()): string {
+    const lines = runningServiceLines(services, now).map(escapeReminderText);
+    if (lines.length === 0) { return ""; }
+    return `<system-reminder>
+Services running as of ${new Date(now).toUTCString()}, when this message was sent (each a background \`bal run\`, started in this chat or in another chat of the user's). Read a service's logs with task_output and stop it with kill_task, passing its id:
+${lines.join("\n")}
+This list is a snapshot from that time and may be out of date by a later turn: a service can stop, or another start, in any chat. Call task_output with no task_id for the current list.
+</system-reminder>`;
 }
 
 export interface ServiceRead {
@@ -100,7 +129,7 @@ export function serviceReadText(taskId: string, service: RunningService, read: S
 }
 
 export function serviceNotFoundText(taskId: string): string {
-    return `No service with id ${taskId}. It may have been stopped, or it exited more than 30 seconds ago. Start it again with \`bal run\` and run_in_background: true.`;
+    return `No service with id ${taskId}. It may have been stopped, or it exited more than 30 seconds ago. Call task_output with no task_id to list the running services, or start it again with \`bal run\` and run_in_background: true.`;
 }
 
 /** Stops a service and forgets it. An already exited service is forgotten without a kill. */

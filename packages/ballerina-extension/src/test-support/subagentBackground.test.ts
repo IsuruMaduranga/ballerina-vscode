@@ -170,7 +170,7 @@ describe("task tools are scoped to the owning run", () => {
 
         const killed = await createKillTaskTool(e => events.push(e), "run-a").execute!({ task_id: "foreign" }, execOptions("call-2"));
         if (typeof killed !== "string") { throw new Error("unexpected streamed result"); }
-        expect(killed).toBe("Task not found: foreign.");
+        expect(killed).toBe("Task not found: foreign. Call task_output with no task_id to list the tasks and services.");
         expect(getBackgroundSubagent("foreign")).toBeDefined();
         expect(getBackgroundSubagent("foreign")!.aborted).toBe(false);
     });

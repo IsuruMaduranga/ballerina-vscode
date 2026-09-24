@@ -197,6 +197,12 @@ describe("subagent tool rows", () => {
         expect(getToolIcon("task_output")).toBe("codicon-clock");
         expect(getToolIcon("Subagent")).toBe("codicon-package");
     });
+
+    it("words the no-id listing call", () => {
+        expect(getToolCallDisplay("task_output", { list: true })).toEqual({ label: "Listing background tasks and services..." });
+        expect(getToolResultDisplay("task_output", { list: true, status: "listed", running: 2 })).toEqual({ label: "2 running" });
+        expect(getToolResultDisplay("task_output", { list: true, status: "listed", running: 0 })).toEqual({ label: "Nothing running" });
+    });
 });
 
 describe("shell tool rows", () => {

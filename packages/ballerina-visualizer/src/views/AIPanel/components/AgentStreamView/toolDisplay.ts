@@ -180,6 +180,7 @@ export function getToolCallDisplay(toolName: string | undefined, toolInput: any)
             return { label: what ? `${verb} the ${who}${bg} — ${what}...` : `${verb} the ${who}${bg}...` };
         }
         case "task_output": {
+            if (toolInput?.list) return { label: "Listing background tasks and services..." };
             const what = typeof toolInput?.description === "string" && toolInput.description.trim() ? toolInput.description.trim() : "background task";
             return { label: toolInput?.block === false ? `Checking: ${what}...` : `Waiting for: ${what}...` };
         }
@@ -238,6 +239,10 @@ export function getToolResultDisplay(toolName: string | undefined, toolOutput: a
             }
         }
         case "task_output": {
+            if (toolOutput?.list) {
+                const running = typeof toolOutput.running === "number" ? toolOutput.running : 0;
+                return { label: running === 0 ? "Nothing running" : `${running} running` };
+            }
             const what = typeof toolOutput?.description === "string" && toolOutput.description.trim() ? toolOutput.description.trim() : "Background task";
             switch (toolOutput?.status) {
                 case "running": return { label: `${what} — still running` };

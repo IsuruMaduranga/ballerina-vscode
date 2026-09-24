@@ -24,10 +24,13 @@ import {
     isServiceTaskId,
     newServiceTaskId,
     readServiceOutput,
+    runningServicesReminder,
     serviceReadText,
     stopServiceTask,
 } from "../features/ai/agent/tools/service-task";
 import { createKillTaskTool, createTaskOutputTool } from "../features/ai/agent/tools/task-tools";
+import { registerBackgroundTask, resetBackgroundTasksForTests } from "../features/ai/agent/background/registry";
+import type { BackgroundShell } from "../features/ai/agent/background/types";
 
 function fakeService(logs: string[] = []): RunningService {
     return {
@@ -48,6 +51,7 @@ function fakeManager(...services: RunningService[]) {
     const stopped: string[] = [];
     const manager = {
         get: (id: string) => map.get(id),
+        getAll: () => [...map.values()].map(({ taskId, packagePath, startedAt, exited, exitCode }) => ({ taskId, packagePath, startedAt, exited, exitCode })),
         remove: (id: string) => map.delete(id),
         stopOne: async (id: string) => {
             stopped.push(id);
@@ -166,7 +170,59 @@ describe("task_output and kill_task on a service id", () => {
         const events: any[] = [];
         const out = String(await createTaskOutputTool((e) => events.push(e), "run-a", fakeManager().manager)
             .execute!({ task_id: "task-service-00000000" }, execOptions("c4")));
-        expect(out).toContain("Start it again with `bal run` and run_in_background: true.");
+        expect(out).toContain("start it again with `bal run` and run_in_background: true.");
+        expect(out).toContain("Call task_output with no task_id to list the running services");
         expect(events[1]).toMatchObject({ failed: true, toolOutput: { status: "not_found", kind: "service" } });
+    });
+});
+
+describe("runningServicesReminder", () => {
+    it("is empty when no service is running", () => {
+        const exited = { ...fakeService(), exited: true };
+        expect(runningServicesReminder([])).toBe("");
+        expect(runningServicesReminder([exited])).toBe("");
+    });
+
+    it("names each running service's id, package and uptime", () => {
+        const now = 1_000_000_000;
+        const service = { ...fakeService(), startedAt: now - 12 * 60_000 };
+        const fresh = { ...fakeService(), packagePath: "/work/billing", startedAt: now - 5_000 };
+        const reminder = runningServicesReminder([service, fresh], now);
+        expect(reminder).toMatch(/^<system-reminder>\n[\s\S]*\n<\/system-reminder>$/);
+        expect(reminder).toContain(`- ${service.taskId}: bal run (orders) at /work/orders, running for 12 minutes`);
+        expect(reminder).toContain(`- ${fresh.taskId}: bal run (billing) at /work/billing, running for less than a minute`);
+        expect(reminder).toContain(`Services running as of ${new Date(now).toUTCString()}, when this message was sent`);
+        expect(reminder).toContain("may be out of date by a later turn");
+    });
+});
+
+describe("task_output with no task id", () => {
+    afterEach(() => resetBackgroundTasksForTests());
+
+    function fakeShell(runKey: string, completed = false): BackgroundShell {
+        return {
+            kind: "shell", id: `task-shell-${runKey}`, description: "Watch the build", runKey, toolCallId: "t",
+            startTime: new Date(), output: "", completed, success: completed ? true : null, aborted: false,
+            abortController: new AbortController(), notified: false, toolName: "shell", command: "bal build --watch",
+            cwd: "/work", exitCode: null, peek: () => "",
+        };
+    }
+
+    it("lists this chat's tasks and every running service, not another chat's tasks", async () => {
+        registerBackgroundTask(fakeShell("run-a"));
+        registerBackgroundTask(fakeShell("run-b"));
+        const service = fakeService();
+        const events: any[] = [];
+        const out = String(await createTaskOutputTool((e) => events.push(e), "run-a", fakeManager(service).manager).execute!({}, execOptions("c5")));
+        expect(out).toContain("- task-shell-run-a (shell command, running): Watch the build");
+        expect(out).not.toContain("task-shell-run-b");
+        expect(out).toContain(`Running services (any chat):\n- ${service.taskId}: bal run (orders) at /work/orders`);
+        expect(events.map((e) => e.type)).toEqual(["tool_call", "tool_result"]);
+        expect(events[1].toolOutput).toEqual({ list: true, status: "listed", running: 2 });
+    });
+
+    it("says so when nothing exists", async () => {
+        const out = String(await createTaskOutputTool(() => {}, "run-a", fakeManager().manager).execute!({}, execOptions("c6")));
+        expect(out).toBe("This chat has no background tasks.\n\nNo services are running.");
     });
 });

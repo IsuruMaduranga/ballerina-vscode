@@ -62,6 +62,9 @@ export function describeToolCall(toolName: string, toolInput?: any): string {
             return what ? `${head}: ${what}` : head;
         }
         case 'task_output': {
+            if (toolInput?.list) {
+                return 'Listing background tasks';
+            }
             if (toolInput?.kind === 'service') {
                 return 'Reading service logs';
             }

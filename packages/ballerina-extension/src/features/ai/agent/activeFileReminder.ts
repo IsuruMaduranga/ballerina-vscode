@@ -16,7 +16,8 @@
  * under the License.
  */
 
-function escapeReminderText(value: string): string {
+/** Escapes text embedded in a `<system-reminder>`, so a path cannot close or forge the tag. */
+export function escapeReminderText(value: string): string {
     return value
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")

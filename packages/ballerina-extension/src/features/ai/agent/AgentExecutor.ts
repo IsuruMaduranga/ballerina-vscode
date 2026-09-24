@@ -89,6 +89,7 @@ import { getProjectMetrics } from "../../telemetry/common/project-metrics";
 import { getHashedProjectId } from "../../telemetry/common/project-id";
 import { workspace } from 'vscode';
 import { runningServicesManager } from './tools/running-service-manager';
+import { runningServicesReminder } from './tools/service-task';
 
 
 /** Per-response output cap, and what the context-usage widget reports as reserved. Thinking counts against it. */
@@ -465,7 +466,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                 return getUserPrompt(params, tempProjectPath, turnProjects, webSearchEnabled, agentsMd.text, {
                     omitCodebaseDump: this.config.toolOptions?.omitCodebaseDump,
                     codebaseMapText: this.config.toolOptions?.codebaseMapText,
-                }, this.config.toolOptions?.taskNotice);
+                }, [this.config.toolOptions?.taskNotice, runningServicesReminder(runningServicesManager.getAll())]);
             };
             const userMessageContent = buildTurnPrompt(projects, await prepareAgentsMdForTurn(workspaceId || '', threadId));
 

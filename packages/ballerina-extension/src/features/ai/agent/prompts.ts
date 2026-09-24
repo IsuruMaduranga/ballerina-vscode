@@ -291,7 +291,7 @@ In WSO2 Integrator, a Ballerina workspace is called a **project** and a Ballerin
 - The auth structure does NOT change this. Some libraries expose the OAuth config via a directly-named type (e.g. \`oauth2:OAuth2RefreshTokenGrantConfig\`); others wrap it inside the connector's own config record (e.g. a \`ConnectionConfig\` whose \`auth\` field carries the credentials). Both are grouped the same way — look at the credential fields, not where they sit.
 - You do NOT decide which (library, shape) combinations are actually managed — the tool verifies each against the managed registry and silently downgrades unsupported ones to manual entry. So emit a group for ANY connector credential that fits one of the two shapes; grouping a candidate that turns out to be unsupported is harmless. That tolerance covers the library and shape only — every mapped name must be a configurable that already exists in source, spelled exactly as declared. Only leave TRULY non-connector secrets (e.g. a database password, or a standalone API key not tied to any connector) in \`variables\`.
 - Use one managedConnections entry per connector instance (repeat the same library for two clients of it), and put each configurable in EXACTLY ONE place — never list the same name in both a group and \`variables\`.
-- Run a program with a main function with \`bal run\` through the shell tool, in the foreground. Start a service with \`bal run\` and run_in_background: true: the shell waits until the service is ready and returns a \`task-service-…\` id with its startup output. Make sure the project compiles cleanly (${DIAGNOSTICS_TOOL_NAME}) first. A service keeps running after your turn, and in the user's other chats of this project, so the user can try it. Read its later log output with ${TASK_OUTPUT_TOOL_NAME} on that id (each call returns only the new output). Stop it with ${KILL_TASK_TOOL_NAME} when you need to restart it (e.g. after code changes) or when the user explicitly asks to stop it.
+- Run a program with a main function with \`bal run\` through the shell tool, in the foreground. Start a service with \`bal run\` and run_in_background: true: the shell waits until the service is ready and returns a \`task-service-…\` id with its startup output. Make sure the project compiles cleanly (${DIAGNOSTICS_TOOL_NAME}) first. A service keeps running after your turn, and in the user's other chats of this project, so the user can try it. Read its later log output with ${TASK_OUTPUT_TOOL_NAME} on that id (each call returns only the new output). Stop it with ${KILL_TASK_TOOL_NAME} when you need to restart it (e.g. after code changes) or when the user explicitly asks to stop it. A <system-reminder> in the user's message lists the services running when it was sent, with their ids; ${TASK_OUTPUT_TOOL_NAME} with no task_id lists them as they are now.
 
 ## Test Runner
 When running tests:
@@ -330,7 +330,7 @@ export function getUserPrompt(
     webSearchEnabled: boolean,
     agentsMdBlockText?: string,
     codebase?: { omitCodebaseDump?: boolean; codebaseMapText?: string },
-    taskNotice?: string,
+    turnReminders: string[] = [],
 ) {
     const content = [];
 
@@ -425,14 +425,13 @@ ${queryParts.join('\n\n')}
 </User Query>`
     });
 
-    // Background commands that finished while the chat was idle and could not wake it.
-    if (taskNotice) {
-        content.push({
-            type: 'text' as const,
-            text: taskNotice,
-        });
+    // Turn-level reminders: background commands that finished while the chat was idle, and the services
+    // still running (their ids for task_output / kill_task).
+    for (const text of turnReminders) {
+        if (text) {
+            content.push({ type: 'text' as const, text });
+        }
     }
-
 
     content.push({
         type: 'text' as const,

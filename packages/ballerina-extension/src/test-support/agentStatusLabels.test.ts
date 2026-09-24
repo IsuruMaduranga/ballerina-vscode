@@ -110,6 +110,7 @@ describe('subagent wording on the status line', () => {
 describe('service wording on the status line', () => {
     it('names a service read and stop, and keeps the background-task wording otherwise', () => {
         expect(describeToolCall('task_output', { kind: 'service', task_id: 'task-service-0123abcd' })).toBe('Reading service logs');
+        expect(describeToolCall('task_output', { list: true })).toBe('Listing background tasks');
         expect(describeToolCall('kill_task', { kind: 'service' })).toBe('Stopping a service');
         expect(describeToolCall('kill_task', { kind: 'shell' })).toBe('Stopping a background task');
     });
