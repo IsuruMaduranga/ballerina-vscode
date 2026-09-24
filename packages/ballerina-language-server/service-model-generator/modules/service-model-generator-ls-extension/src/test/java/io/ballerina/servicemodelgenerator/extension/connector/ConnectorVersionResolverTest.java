@@ -128,6 +128,20 @@ public class ConnectorVersionResolverTest {
                 "1.4.0", VersionSource.LOCAL_CACHE_LATEST);
     }
 
+    @Test
+    public void testBlankAndMalformedCandidatesAreRejected() {
+        assertResolved(ConnectorVersionResolver.resolveForNewDependency("1.2.0", () -> " ", () -> "not-a-version"),
+                "1.2.0", VersionSource.MIN_SUPPORTED);
+    }
+
+    @Test
+    public void testAnyCandidateSupportedWithoutMinSupported() {
+        assertResolved(ConnectorVersionResolver.resolveForNewDependency(null, () -> "0.1.0", () -> null),
+                "0.1.0", VersionSource.CENTRAL_LATEST);
+        assertResolved(ConnectorVersionResolver.resolveForNewDependency("", () -> null, () -> "0.2.0"),
+                "0.2.0", VersionSource.LOCAL_CACHE_LATEST);
+    }
+
     private void assertFallbackOnCentralTimeout(Supplier<String> cachedLatest, String version, VersionSource source) {
         CountDownLatch centralBlocked = new CountDownLatch(1);
         Supplier<String> blockedCentral = () -> {

@@ -135,8 +135,7 @@ public class PullModuleExecutor implements LSCommandExecutor {
                     moduleName = arg.valueAs(String.class);
                     break;
                 case CommandConstants.ARG_KEY_PACKAGES:
-                    PackageCoordinate[] requestedPackages = arg.valueAs(PackageCoordinate[].class);
-                    packages = requestedPackages == null ? List.of() : List.of(requestedPackages);
+                    packages = packagesArgument(arg);
                     break;
                 default:
             }
@@ -573,6 +572,18 @@ public class PullModuleExecutor implements LSCommandExecutor {
     }
 
     /**
+     * The exact package versions carried by a {@link CommandConstants#ARG_KEY_PACKAGES} argument, or an empty
+     * list when its value is {@code null}.
+     *
+     * @param arg the command argument
+     * @return the requested package versions
+     */
+    static List<PackageCoordinate> packagesArgument(CommandArgument arg) {
+        PackageCoordinate[] requestedPackages = arg.valueAs(PackageCoordinate[].class);
+        return requestedPackages == null ? List.of() : List.of(requestedPackages);
+    }
+
+    /**
      * Pulls every requested exact package version concurrently.
      *
      * @param packages     the exact package versions to pull
@@ -580,11 +591,28 @@ public class PullModuleExecutor implements LSCommandExecutor {
      * @throws UserErrorException if any of the packages could not be pulled
      */
     private static void pullRequestedPackages(List<PackageCoordinate> packages, LSClientLogger clientLogger) {
-        if (packages.isEmpty() || CommonUtil.TEST_OFFLINE) {
+        if (CommonUtil.TEST_OFFLINE) {
+            return;
+        }
+        pullRequestedPackages(packages, clientLogger,
+                pkg -> pullModuleFromCentral(pkg.org(), pkg.name(), pkg.version()));
+    }
+
+    /**
+     * Pulls every requested exact package version concurrently through {@code puller}.
+     *
+     * @param packages     the exact package versions to pull
+     * @param clientLogger the client logger
+     * @param puller       pulls a single package version
+     * @throws UserErrorException if any of the packages could not be pulled
+     */
+    static void pullRequestedPackages(List<PackageCoordinate> packages, LSClientLogger clientLogger,
+                                      PackagePuller puller) {
+        if (packages.isEmpty()) {
             return;
         }
         List<CompletableFuture<Optional<String>>> pulls = packages.stream()
-                .map(pkg -> CompletableFuture.supplyAsync(() -> pullRequestedPackage(pkg, clientLogger)))
+                .map(pkg -> CompletableFuture.supplyAsync(() -> pullRequestedPackage(pkg, clientLogger, puller)))
                 .toList();
         List<String> failed = pulls.stream()
                 .map(CompletableFuture::join)
@@ -595,9 +623,10 @@ public class PullModuleExecutor implements LSCommandExecutor {
         }
     }
 
-    private static Optional<String> pullRequestedPackage(PackageCoordinate pkg, LSClientLogger clientLogger) {
+    private static Optional<String> pullRequestedPackage(PackageCoordinate pkg, LSClientLogger clientLogger,
+                                                         PackagePuller puller) {
         try {
-            pullModuleFromCentral(pkg.org(), pkg.name(), pkg.version());
+            puller.pull(pkg);
             return Optional.empty();
         } catch (CentralClientException | RuntimeException e) {
             clientLogger.logTrace("Failed to pull package '" + pkg.signature() + "': " + e.getMessage());
@@ -617,6 +646,15 @@ public class PullModuleExecutor implements LSCommandExecutor {
         String signature() {
             return org + "/" + name + ":" + version;
         }
+    }
+
+    /**
+     * Pulls a single exact package version into the local bala cache.
+     */
+    @FunctionalInterface
+    interface PackagePuller {
+
+        void pull(PackageCoordinate pkg) throws CentralClientException;
     }
 
     /**
