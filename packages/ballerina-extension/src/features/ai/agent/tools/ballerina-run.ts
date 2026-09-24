@@ -108,9 +108,11 @@ export async function executeRun(
     const packageName = input.packagePath || path.basename(tempProjectPath);
 
     const logs: string[] = [];
+    // `getRunCommand()` returns "run --watch" / "run --experimental" as one string; the
+    // runner passes argv verbatim (no shell), so each word must be its own argument.
     const { process: proc } = spawnProcess(
         balCmd,
-        [runCmd],
+        runCmd.split(' '),
         cwd,
         logs
     );
