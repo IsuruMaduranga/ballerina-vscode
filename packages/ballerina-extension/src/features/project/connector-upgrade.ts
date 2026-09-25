@@ -36,7 +36,6 @@ const RELOAD_WINDOW_COMMAND = 'workbench.action.reloadWindow';
 const BALLERINA_TOML = 'Ballerina.toml';
 const DEPENDENCIES_TOML = 'Dependencies.toml';
 const MAIN_BAL = 'main.bal';
-const BACKUP_SUFFIX = '.bak';
 
 const UPGRADE_PROMPT_MESSAGE = "This project's connectors need an update to work with Service Designer.";
 const UPGRADE_PROGRESS_TITLE = 'Updating connectors';
@@ -54,6 +53,9 @@ enum BalCommand {
     Build = 'build'
 }
 
+/** Resolve past the lock file without deleting it: SOFT allows minor and patch updates of locked versions. */
+const REBUILD_FLAGS = ['--sticky=false', '--locking-mode=soft'];
+
 enum UpgradeAction {
     Update = 'Update',
     NotNow = 'Not Now'
@@ -64,6 +66,16 @@ const pendingReloadConnectors = new Map<string, Map<string, ConnectorReference>>
 interface PackageCoordinate {
     org: string;
     name: string;
+    version: string;
+}
+
+enum TomlTable {
+    Dependency = 'dependency',
+    Package = 'package'
+}
+
+interface VersionEntry {
+    start: number;
     version: string;
 }
 
@@ -107,8 +119,9 @@ export function getPendingReloadConnectors(projectPath: string): ConnectorRefere
  * <li>Pulls the exact required versions through {@code PULL_MODULE}. A plain re-resolution pulls nothing,
  * since an older bala of each connector is already cached.</li>
  * <li>Raises explicit {@code Ballerina.toml} {@code [[dependency]]} pins to the pulled versions.</li>
- * <li>When a {@code Dependencies.toml} exists, removes it and runs {@code bal build} to regenerate it,
- * since the locked versions would otherwise keep winning over the pulled ones.</li>
+ * <li>When a {@code Dependencies.toml} exists, runs {@code bal clean} and a {@code bal build} with the soft
+ * locking mode, since the default mode only allows patch updates and the locked versions would otherwise keep
+ * winning over the pulled ones.</li>
  * </ol>
  *
  * With {@code promptReload}, the upgraded connectors are recorded as waiting for a reload and the user is
@@ -142,7 +155,7 @@ export async function upgradeConnectors(
             const dependenciesToml = path.join(projectPath, DEPENDENCIES_TOML);
             if (fs.existsSync(dependenciesToml)) {
                 progress.report({ message: REBUILDING_PROGRESS_MESSAGE });
-                if (!(await regenerateDependenciesToml(dependenciesToml, projectPath))) {
+                if (!(await rebuild(advice, dependenciesToml, projectPath))) {
                     window.showErrorMessage(REBUILD_FAILED_MESSAGE);
                     return false;
                 }
@@ -253,43 +266,24 @@ async function raiseDependencyPins(advice: ConnectorUpgradeAdvice[], projectPath
 }
 
 /**
- * Moves the stale lock file aside, then runs {@code bal clean} and a real {@code bal build} so the lock file
- * and build artifacts are regenerated from the pulled versions. The old lock file is restored when the
- * lock file is not regenerated.
+ * Runs {@code bal clean} then a {@code bal build} that updates the lock file in place to the pulled versions.
+ * The build counts as successful when the lock file resolves every advised connector to at least its
+ * required version, since it can fail on unrelated compile errors after dependency resolution already succeeded.
  */
-async function regenerateDependenciesToml(dependenciesToml: string, projectPath: string): Promise<boolean> {
-    const backup = `${dependenciesToml}${BACKUP_SUFFIX}`;
-    try {
-        await fs.promises.rename(dependenciesToml, backup);
-    } catch (error) {
-        console.error('>>> Failed to move Dependencies.toml aside', error);
-        return false;
-    }
-    const regenerated = await rebuild(dependenciesToml, projectPath);
-    try {
-        if (regenerated) {
-            await fs.promises.rm(backup);
-        } else {
-            await fs.promises.rename(backup, dependenciesToml);
-        }
-    } catch (error) {
-        console.error('>>> Failed to clean up the Dependencies.toml backup', error);
-    }
-    return regenerated;
-}
-
-/**
- * Runs {@code bal clean} then {@code bal build}. The build counts as successful when it regenerates the lock
- * file, since it can fail on unrelated compile errors after dependency resolution already succeeded.
- */
-async function rebuild(dependenciesToml: string, projectPath: string): Promise<boolean> {
+async function rebuild(
+    advice: ConnectorUpgradeAdvice[], dependenciesToml: string, projectPath: string
+): Promise<boolean> {
     const ballerinaCmd = quoteShellPath(extension.ballerinaExtInstance.getBallerinaCmd());
     const clean = await runCommandWithOutput(`${ballerinaCmd} ${BalCommand.Clean}`, projectPath, buildOutputChannel);
     if (!clean.success) {
         return false;
     }
-    await runCommandWithOutput(`${ballerinaCmd} ${BalCommand.Build}`, projectPath, buildOutputChannel);
-    return fs.existsSync(dependenciesToml);
+    await runCommandWithOutput(
+        [ballerinaCmd, BalCommand.Build, ...REBUILD_FLAGS].join(' '), projectPath, buildOutputChannel);
+    const locked = await Promise.all(advice.map((item) =>
+        findLockedVersion(dependenciesToml, item.orgName, item.packageName)));
+    return locked.every((version, i) =>
+        version !== undefined && compareVersions(version, advice[i].minSupportedVersion) >= 0);
 }
 
 /**
@@ -325,10 +319,42 @@ async function findDependencyPin(
     } catch {
         return undefined;
     }
-    const text = document.getText();
+    const entry = findVersionEntry(document.getText(), TomlTable.Dependency, orgName, packageName);
+    if (!entry) {
+        return undefined;
+    }
+    return {
+        document,
+        versionRange: new Range(document.positionAt(entry.start), document.positionAt(entry.start + entry.version.length)),
+        version: entry.version
+    };
+}
 
-    // [[dependency]] tables run up to the next top-level table header (or EOF).
-    const tableRegex = /\[\[dependency\]\][^[]*/g;
+/**
+ * Reads the version {@code Dependencies.toml} locks {@code orgName}/{@code packageName} to, straight from disk
+ * so an open editor buffer never masks what the build wrote, or {@code undefined} if it is not locked.
+ */
+async function findLockedVersion(
+    dependenciesToml: string, orgName: string, packageName: string
+): Promise<string | undefined> {
+    try {
+        const text = await fs.promises.readFile(dependenciesToml, 'utf8');
+        return findVersionEntry(text, TomlTable.Package, orgName, packageName)?.version;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Finds the {@code version} value, and its offset in {@code text}, of the {@code [[<table>]]} entry
+ * matching {@code orgName}/{@code packageName}.
+ */
+function findVersionEntry(
+    text: string, table: TomlTable, orgName: string, packageName: string
+): VersionEntry | undefined {
+    // Array tables run up to the next `[` (a table header, or an inline array such as `dependencies = [`);
+    // org, name and version always precede it.
+    const tableRegex = new RegExp(`\\[\\[${table}\\]\\][^[]*`, 'g');
     let match: RegExpExecArray | null;
     while ((match = tableRegex.exec(text)) !== null) {
         const block = match[0];
@@ -341,11 +367,8 @@ async function findDependencyPin(
         if (!versionMatch || versionMatch.index === undefined) {
             return undefined;
         }
-        const valueStart = match.index + versionMatch.index + versionMatch[0].indexOf(versionMatch[1]);
-        const valueEnd = valueStart + versionMatch[1].length;
         return {
-            document,
-            versionRange: new Range(document.positionAt(valueStart), document.positionAt(valueEnd)),
+            start: match.index + versionMatch.index + versionMatch[0].indexOf(versionMatch[1]),
             version: versionMatch[1]
         };
     }
