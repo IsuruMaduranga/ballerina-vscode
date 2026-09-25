@@ -48,6 +48,7 @@ import { MigrationPanelWebview } from "../../../views/migration-panel/webview";
 import { VisualizerWebview } from "../../../views/visualizer/webview";
 import { GenerationType } from "./libs/libraries";
 import { sanitizeMessages } from "../agent/resilience";
+import { stripAnalysisFromCompactionBlocks } from "@wso2/copilot-utilities/context-management";
 import { runEventStore } from "./run-event-store";
 import { agentStatusManager } from "../state/AgentStatusManager";
 import { copilotName } from "../../../utils/config";
@@ -86,6 +87,8 @@ export function populateHistoryForAgent(chatHistory: any[]): ModelMessage[] {
     }
     // Keep replayed history provider-valid (coerce malformed tool-call inputs in place).
     sanitizeMessages(messages);
+    // prepareStep strips these live only, so strip the replay too or the cached prefix diverges.
+    stripAnalysisFromCompactionBlocks(messages);
     return messages;
 }
 
