@@ -23,7 +23,7 @@ import { TitleBar } from "../../../components/TitleBar";
 import { isBetaModule } from "../ComponentListView/componentListUtils";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { FormField, FormImports, FormValues } from "@wso2/ballerina-side-panel";
-import { DIRECTORY_MAP, EVENT_TYPE, hasBlockingValidationErrors, LineRange, ModelResolutionIssue, RecordTypeField, ServiceInitModel, ValidationResult } from "@wso2/ballerina-core";
+import { DIRECTORY_MAP, EVENT_TYPE, hasBlockingValidationErrors, LineRange, ModelResolutionError, ModelResolutionIssue, RecordTypeField, ServiceInitModel, ValidationResult } from "@wso2/ballerina-core";
 import { FormHeader } from "../../../components/FormHeader";
 import ArtifactForm from "../Forms/ArtifactForm";
 import styled from "@emotion/styled";
@@ -99,11 +99,12 @@ interface PackagePullingStatusProps {
     isLocalRepository?: boolean;
     packageName: string;
     upgradeIssue?: ModelResolutionIssue;
+    resolutionError?: ModelResolutionError;
     onRetry: () => void;
     onUpdateNow: () => void;
 }
 
-function PackagePullingStatus({ status, isLocalRepository, packageName, upgradeIssue, onRetry, onUpdateNow }: PackagePullingStatusProps) {
+function PackagePullingStatus({ status, isLocalRepository, packageName, upgradeIssue, resolutionError, onRetry, onUpdateNow }: PackagePullingStatusProps) {
     switch (status) {
         case PullingStatus.FETCHING:
             return <RelativeLoader message="Loading package..." />;
@@ -137,9 +138,9 @@ function PackagePullingStatus({ status, isLocalRepository, packageName, upgradeI
                 <StatusCard>
                     <Icon name="bi-error" sx={{ color: ThemeColors.ERROR, fontSize: "18px" }} />
                     <StatusText variant="body2">
-                        {isLocalRepository
+                        {resolutionError?.message || (isLocalRepository
                             ? "Failed to load the package from your local repository. Please try again."
-                            : "Failed to pull the package. Please try again."}
+                            : "Failed to pull the package. Please try again.")}
                     </StatusText>
                     <Button appearance="secondary" onClick={onRetry}>Retry</Button>
                 </StatusCard>
@@ -179,6 +180,7 @@ export function ServiceCreationView(props: ServiceCreationViewProps) {
 
     const [pullingStatus, setPullingStatus] = useState<PullingStatus>(PullingStatus.FETCHING);
     const [upgradeIssue, setUpgradeIssue] = useState<ModelResolutionIssue | undefined>(undefined);
+    const [resolutionError, setResolutionError] = useState<ModelResolutionError | undefined>(undefined);
     const [filePath, setFilePath] = useState<string>("");
     const [targetLineRange, setTargetLineRange] = useState<LineRange>();
     const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -195,6 +197,7 @@ export function ServiceCreationView(props: ServiceCreationViewProps) {
     // way out: PullingStatus.ERROR was rendered but never actually set anywhere.
     const fetchData = async () => {
         setPullingStatus(PullingStatus.FETCHING);
+        setResolutionError(undefined);
 
         try {
             const promise = rpcClient
@@ -262,6 +265,7 @@ export function ServiceCreationView(props: ServiceCreationViewProps) {
             } else {
                 // The call resolved but came back with no model to show — treat it the same as a
                 // failure rather than leaving the loading UI stuck with nothing to display.
+                setResolutionError(res?.resolutionError);
                 setPullingStatus(PullingStatus.ERROR);
                 return;
             }
@@ -418,6 +422,7 @@ export function ServiceCreationView(props: ServiceCreationViewProps) {
                         isLocalRepository={isLocalRepository}
                         packageName={packageName}
                         upgradeIssue={upgradeIssue}
+                        resolutionError={resolutionError}
                         onRetry={fetchData}
                         onUpdateNow={handleUpdateNow}
                     />
