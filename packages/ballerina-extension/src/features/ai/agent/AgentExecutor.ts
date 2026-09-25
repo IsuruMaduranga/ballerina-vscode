@@ -731,11 +731,10 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                             `resuming turn automatically (${truncationRetries}/${MAX_TRUNCATION_RETRIES})`
                         );
                         const resumed = dropDanglingToolCalls(attemptMessages);
-                        carriedMessages.push(...resumed);
-                        // Live prompt only: `carriedMessages` is persisted and replayed by every
-                        // later turn, so the note would ride along for the rest of the thread. The
-                        // adjacent assistant messages this leaves are merged by the provider.
-                        allMessages.push(...resumed, { role: 'user', content: TRUNCATION_RECOVERY_NOTE });
+                        const note: ModelMessage = { role: 'user', content: TRUNCATION_RECOVERY_NOTE };
+                        // Persisted too, so the replayed history matches what was sent and stays cached.
+                        carriedMessages.push(...resumed, note);
+                        allMessages.push(...resumed, note);
                         carriedUsage = addUsage(carriedUsage, await totalUsage);
                         continue;
                     }
