@@ -79,6 +79,7 @@ import java.util.Collection;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -111,7 +112,7 @@ public class PullModuleExecutor implements LSCommandExecutor {
     // Guards against concurrent/re-entrant pulls for the same project. The PROJECT_UPDATE event
     // published in stage 4 below is also consumed by ResolveCompilationErrorsSubscriber, which
     // starts another pull for the same project, creating an endless pull loop on failures.
-    private static final Set<String> PULL_IN_PROGRESS_PROJECTS = ConcurrentHashMap.newKeySet();
+    private static final Map<String, CompletableFuture<Void>> PULLS_IN_PROGRESS = new ConcurrentHashMap<>();
     // Cap the trace we ship to the client: it only feeds a prefilled GitHub issue, whose URL has a
     // practical length limit, and the client truncates further when building that URL.
     private static final int MAX_STACK_TRACE_CHARS = 8000;
@@ -199,10 +200,12 @@ public class PullModuleExecutor implements LSCommandExecutor {
         // PROJECT_UPDATE event published by a running pull re-triggers another pull via
         // ResolveCompilationErrorsSubscriber, causing an endless pull storm when pulls fail.
         String projectKey = project.sourceRoot().toString();
-        if (!PULL_IN_PROGRESS_PROJECTS.add(projectKey)) {
+        CompletableFuture<Void> pullDone = new CompletableFuture<>();
+        CompletableFuture<Void> runningPull = PULLS_IN_PROGRESS.putIfAbsent(projectKey, pullDone);
+        if (runningPull != null) {
             clientLogger.logTrace("Skipped resolving modules since a pull is already in progress for project: "
                     + projectKey);
-            return CompletableFuture.runAsync(() -> pullRequestedPackages(packages, clientLogger));
+            return runningPull.thenRunAsync(() -> pullRequestedPackages(packages, clientLogger));
         }
         return CompletableFuture
                 .runAsync(() -> {
@@ -317,7 +320,8 @@ public class PullModuleExecutor implements LSCommandExecutor {
                     }
                 })
                 .whenComplete((result, t) -> {
-                    PULL_IN_PROGRESS_PROJECTS.remove(projectKey);
+                    PULLS_IN_PROGRESS.remove(projectKey);
+                    pullDone.complete(null);
                     boolean failed = true;
                     if (t != null) {
                         clientLogger.logError(LSContextOperation.WS_EXEC_CMD,

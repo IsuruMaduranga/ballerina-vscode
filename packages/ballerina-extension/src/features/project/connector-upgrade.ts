@@ -31,7 +31,6 @@ const ARG_KEY_DOC_URI = 'doc.uri';
 /** {@code CommandConstants.ARG_KEY_PACKAGES} on the LS side -- see PullModuleExecutor.java. */
 const ARG_KEY_PACKAGES = 'packages';
 const PULL_MODULE_COMMAND = 'PULL_MODULE';
-const EXECUTE_COMMAND_FAILURE = false;
 const RELOAD_WINDOW_COMMAND = 'workbench.action.reloadWindow';
 const BALLERINA_TOML = 'Ballerina.toml';
 const DEPENDENCIES_TOML = 'Dependencies.toml';
@@ -69,7 +68,7 @@ interface PackageCoordinate {
     version: string;
 }
 
-enum TomlTable {
+export enum TomlTable {
     Dependency = 'dependency',
     Package = 'package'
 }
@@ -225,14 +224,14 @@ async function pullExactVersions(advice: ConnectorUpgradeAdvice[], projectPath: 
         version: item.minSupportedVersion
     }));
     try {
-        const result = await StateMachine.langClient().executeCommand({
+        await StateMachine.langClient().executeCommand({
             command: PULL_MODULE_COMMAND,
             arguments: [
                 { key: ARG_KEY_DOC_URI, value: fileUri },
                 { key: ARG_KEY_PACKAGES, value: packages }
             ]
         });
-        return result !== EXECUTE_COMMAND_FAILURE;
+        return true;
     } catch (error) {
         console.error('>>> Connector upgrade pull failed', error);
         return false;
@@ -287,18 +286,47 @@ async function rebuild(
 }
 
 /**
- * Compares the numeric major/minor/patch parts of two versions. A missing or non-numeric part counts as 0.
+ * Compares two versions with semver precedence: the numeric major/minor/patch parts first, then the
+ * pre-release, which ranks below its own release ("2.0.0-beta" < "2.0.0"). Build metadata is ignored, and a
+ * missing or non-numeric core part counts as 0.
  */
-function compareVersions(left: string, right: string): number {
-    const parse = (version: string) => version.split(/[.+-]/, 3).map((part) => parseInt(part, 10) || 0);
+export function compareVersions(left: string, right: string): number {
+    const parse = (version: string) => {
+        const [core, ...preRelease] = version.split('+')[0].split('-');
+        return {
+            core: core.split('.').map((part) => parseInt(part, 10) || 0),
+            preRelease: preRelease.length > 0 ? preRelease.join('-').split('.') : []
+        };
+    };
     const [a, b] = [parse(left), parse(right)];
     for (let i = 0; i < 3; i++) {
-        const diff = (a[i] ?? 0) - (b[i] ?? 0);
+        const diff = (a.core[i] ?? 0) - (b.core[i] ?? 0);
         if (diff !== 0) {
             return diff;
         }
     }
-    return 0;
+    if (a.preRelease.length === 0 || b.preRelease.length === 0) {
+        return b.preRelease.length - a.preRelease.length;
+    }
+    for (let i = 0; i < Math.min(a.preRelease.length, b.preRelease.length); i++) {
+        const diff = comparePreReleaseIdentifiers(a.preRelease[i], b.preRelease[i]);
+        if (diff !== 0) {
+            return diff;
+        }
+    }
+    return a.preRelease.length - b.preRelease.length;
+}
+
+/** Numeric identifiers compare numerically and rank below alphanumeric ones, which compare in ASCII order. */
+function comparePreReleaseIdentifiers(left: string, right: string): number {
+    const [leftNumeric, rightNumeric] = [/^\d+$/.test(left), /^\d+$/.test(right)];
+    if (leftNumeric && rightNumeric) {
+        return parseInt(left, 10) - parseInt(right, 10);
+    }
+    if (leftNumeric !== rightNumeric) {
+        return leftNumeric ? -1 : 1;
+    }
+    return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function reportFailure(message: string, advice: ConnectorUpgradeAdvice[]): void {
@@ -349,12 +377,10 @@ async function findLockedVersion(
  * Finds the {@code version} value, and its offset in {@code text}, of the {@code [[<table>]]} entry
  * matching {@code orgName}/{@code packageName}.
  */
-function findVersionEntry(
+export function findVersionEntry(
     text: string, table: TomlTable, orgName: string, packageName: string
 ): VersionEntry | undefined {
-    // Array tables run up to the next `[` (a table header, or an inline array such as `dependencies = [`);
-    // org, name and version always precede it.
-    const tableRegex = new RegExp(`\\[\\[${table}\\]\\][^[]*`, 'g');
+    const tableRegex = new RegExp(`\\[\\[${table}\\]\\](?:(?!^[ \\t]*\\[)[\\s\\S])*`, 'gm');
     let match: RegExpExecArray | null;
     while ((match = tableRegex.exec(text)) !== null) {
         const block = match[0];
