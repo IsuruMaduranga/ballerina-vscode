@@ -82,6 +82,12 @@ import { runningServicesManager } from './tools/running-service-manager';
 /** Per-response output cap, and what the context-usage widget reports as reserved. */
 const RESERVED_OUTPUT_TOKENS = 64_000;
 
+// The SDK records response messages apart from the live step messages, so the prepareStep strip never reaches them.
+function toPersisted<T>(messages: T[]): T[] {
+    stripAnalysisFromCompactionBlocks(messages);
+    return messages;
+}
+
 /** Built once; the tool names come from the registry so the advice cannot go stale. */
 const TRUNCATION_RECOVERY_NOTE = buildTruncationRecoveryNote(
     FILE_BATCH_EDIT_TOOL_NAME, FILE_SINGLE_EDIT_TOOL_NAME);
@@ -609,8 +615,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                                 chatStateStorage.updateGeneration(this.chatStoreKey, threadId, this.config.generationId, {
                                     modelMessages: [
                                         { role: "user", content: userMessageContent },
-                                        ...carriedMessages,
-                                        ...stepMessages,
+                                        ...toPersisted([...carriedMessages, ...stepMessages]),
                                     ],
                                 });
                                 updateAndSaveChat(this.config.generationId, Command.Agent, this.config.eventHandler);
@@ -770,7 +775,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         chatStateStorage.updateGeneration(projectRootPath, threadId, this.config.generationId, {
                             modelMessages: [
                                 { role: "user", content: streamContext.userMessageContent },
-                                ...partialLLMMessages,
+                                ...toPersisted(partialLLMMessages),
                                 {
                                     role: "user",
                                     content: `<abort_notification>
@@ -1008,7 +1013,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             chatStateStorage.updateGeneration(projectRootPath, threadId, context.messageId, {
                 modelMessages: [
                     { role: "user", content: context.userMessageContent },
-                    ...messagesToSave,
+                    ...toPersisted(messagesToSave),
                 ],
             });
             updateAndSaveChat(context.messageId, Command.Agent, context.eventHandler);
@@ -1204,7 +1209,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         chatStateStorage.updateGeneration(projectRootPath, threadId, context.messageId, {
             modelMessages: [
                 { role: "user", content: context.userMessageContent },
-                ...assistantMessages,
+                ...toPersisted(assistantMessages),
             ],
         });
 

@@ -16,29 +16,28 @@
  * under the License.
  */
 
-for (const m of [
-    '@wso2/ballerina-core', '../features/ai/utils/ai-client', '../RPCLayer', '../views/ai-panel/webview',
-    '../views/migration-panel/webview', '../views/visualizer/webview', '../features/ai/utils/libs/libraries',
-    '../features/ai/utils/run-event-store', '../features/ai/state/AgentStatusManager',
-]) { jest.mock(m, () => ({})); }
-
-import { populateHistoryForAgent } from '../features/ai/utils/ai-utils';
+import { stripAnalysisFromCompactionBlocks } from '@wso2/copilot-utilities/context-management';
 
 const compactionPart = (text: string) => ({ type: 'text', text, providerOptions: { anthropic: { type: 'compaction' } } });
 
-describe('populateHistoryForAgent', () => {
-    it('strips analysis from compaction blocks so the replay matches the live request', () => {
-        const history = [
+describe('stripAnalysisFromCompactionBlocks', () => {
+    it('removes analysis from compaction blocks', () => {
+        const messages: any[] = [
             { role: 'user', content: 'hi' },
             { role: 'assistant', content: [compactionPart('<analysis>draft</analysis>\n<summary>kept</summary>')] },
         ];
-        const [, assistant] = populateHistoryForAgent(history);
-        expect((assistant.content as any[])[0].text).toBe('<summary>kept</summary>');
+        stripAnalysisFromCompactionBlocks(messages);
+        expect(messages[1].content[0].text).toBe('<summary>kept</summary>');
     });
 
     it('leaves ordinary assistant text that mentions analysis untouched', () => {
         const text = 'Wrap it in <analysis>x</analysis> tags.';
-        const [assistant] = populateHistoryForAgent([{ role: 'assistant', content: [{ type: 'text', text }] }]);
-        expect((assistant.content as any[])[0].text).toBe(text);
+        const messages: any[] = [
+            { role: 'assistant', content: [{ type: 'text', text }] },
+            { role: 'assistant', content: text },
+        ];
+        stripAnalysisFromCompactionBlocks(messages);
+        expect(messages[0].content[0].text).toBe(text);
+        expect(messages[1].content).toBe(text);
     });
 });
