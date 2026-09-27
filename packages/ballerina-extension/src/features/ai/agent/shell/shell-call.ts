@@ -16,9 +16,8 @@
 
 /**
  * The shared body of the shell tool (`shell` for bash; `powershell` in Phase
- * B2), in the shape of pincer-agent's `extensions/lib/shell-tool.ts`
- * `registerShellTool` (tip `2602e3c`): guard → millisecond timeout clamp →
- * foreground run, or a background task on the shared registry. Each tool
+ * B2): guard → millisecond timeout clamp → foreground run, or a background
+ * task on the shared registry. Each tool
  * supplies what differs (its name, spawn, guard and command wrapper); this
  * module owns the orchestration.
  *

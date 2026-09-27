@@ -15,9 +15,8 @@
 // under the License.
 /**
  * A shell command run in the background (`run_in_background: true`): started through the runner,
- * registered on the shared background registry, collected with `task_output` and stopped with `kill_task`
- * (pincer-agent `extensions/bash/background.ts` + `lib/shell-tool.ts`, tip `5059966`, on BI's registry
- * instead of pi's).
+ * registered on BI's own shared background registry, collected with `task_output` and stopped with
+ * `kill_task`.
  *
  * The task's own `AbortController` stops the process tree. It is not linked to the run: the command
  * outlives the turn, and an aborted turn leaves it running, as in Claude Code. `kill_task`, the user

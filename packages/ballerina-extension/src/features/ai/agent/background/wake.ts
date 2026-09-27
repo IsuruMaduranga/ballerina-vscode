@@ -15,7 +15,7 @@
 // under the License.
 /**
  * When a chat's background task finishes while the chat is idle, the chat gets a turn of its own —
- * Claude Code's behaviour, as pincer-agent `extensions/lib/notifications.ts` builds it:
+ * Claude Code's behaviour:
  *
  * - a turn is running: nothing to do here; the completion rides that turn's next tool result
  *   (`registry.ts drainBackgroundTaskNotifications`), and `runEnded` catches one it missed;

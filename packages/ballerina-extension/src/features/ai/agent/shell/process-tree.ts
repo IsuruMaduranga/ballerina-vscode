@@ -15,16 +15,14 @@
 // under the License.
 /**
  * Process-tree termination for the shells the Copilot spawns, and the one way
- * to wait for such a child to finish. Ported from pincer-agent
- * `extensions/lib/process-tree.ts` (tip `5059966`); the debug variable is
- * renamed.
+ * to wait for such a child to finish.
  *
  * A `$SHELL -c "cmd"` child is only the leader: with zsh (macOS default) a
  * `cmd; echo` or a pipeline runs the command in further processes, and
  * `child.kill()` signals the shell alone — the command lives on as an orphan
  * holding the inherited stdout pipe, so `close` never fires (the task cannot
  * finish, a `task_output block:true` waits its full timeout) and in a one-shot
- * run the open pipe keeps node alive until the orphan exits (pincer measured
+ * run the open pipe keeps node alive until the orphan exits (measured at
  * 3 min 21 s on a `tail -f | cat`).
  *
  * The producer spawns `detached` (own process group; `detachedSpawnOptions`)

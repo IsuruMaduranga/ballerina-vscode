@@ -16,11 +16,10 @@
 /**
  * Path helpers shared by the shell gate and the shell runner (pure apart from `tryRealpath`).
  *
- * Ported from pincer-agent `extensions/lib/paths.ts` (tip `5059966`), without its One Code
- * config-directory helpers. Every containment check in the gate compares {@link comparablePath}
- * forms, so "under this directory" means one thing everywhere. The MSYS helpers come along
- * inert: no bash runs on Windows here, so `gitBashPathToNative` never converts anything the
- * Copilot passes it.
+ * No agent config-directory helpers are included here. Every containment check in the gate
+ * compares {@link comparablePath} forms, so "under this directory" means one thing everywhere.
+ * The MSYS helpers come along inert: no bash runs on Windows here, so `gitBashPathToNative`
+ * never converts anything the Copilot passes it.
  */
 
 import { realpathSync } from "fs";

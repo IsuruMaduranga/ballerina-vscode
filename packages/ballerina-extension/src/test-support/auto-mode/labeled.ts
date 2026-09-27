@@ -15,7 +15,7 @@
 // under the License.
 
 /**
- * vitest's `expect(value, message)` for the tests ported from pincer-agent.
+ * vitest's `expect(value, message)` for tests ported from another harness.
  * Jest's `expect` takes no message, so a table test that loops over commands
  * would fail without naming the command. This wraps every matcher and puts the
  * label on the first line of the failure.

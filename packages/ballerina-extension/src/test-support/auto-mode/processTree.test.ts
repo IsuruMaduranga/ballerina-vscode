@@ -15,15 +15,15 @@
 // under the License.
 
 /**
- * shell/process-tree.ts against real shells, ported from pincer-agent
- * `test/unit/process-tree.test.ts` (the repo never mocks child_process). A
+ * shell/process-tree.ts against real shells, ported from an earlier harness's
+ * process-tree test suite (the repo never mocks child_process). A
  * `bash -c` leader runs pipelines and `cmd; echo` in further processes;
  * signalling the leader alone left them as orphans holding the stdout pipe.
  * Detached spawn + group kill ends the whole tree, so `close` fires promptly.
  *
  * The Copilot's bash tool is `/bin/bash` on macOS and Linux only; Windows has
  * no bash tool here, so the suite is skipped there; the PowerShell path has its own
- * suites (pincer's Windows assertions time `waitForChildExit`,
+ * suites (the Windows assertions time `waitForChildExit`,
  * because `close` can stay pending after a killed tree is gone).
  */
 import { spawn } from "child_process";

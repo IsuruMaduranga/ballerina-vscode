@@ -62,7 +62,7 @@ describe("isProtectedPath", () => {
         }
     });
 
-    it("protects all of .claude, with no worktree exception (that was One Code's own working space)", () => {
+    it("protects all of .claude, with no worktree exception", () => {
         expect(isProtectedPath(".claude/worktrees/feature/src/a.ts")).toBe(true);
         expect(isProtectedPath(".claude/settings.local.json")).toBe(true);
     });

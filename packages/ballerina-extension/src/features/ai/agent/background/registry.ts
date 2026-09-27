@@ -231,7 +231,7 @@ function escapeForTag(text: string): string {
     return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** One completion line: the subagent's, or pincer's `shellSummary` with the output file or a short tail. */
+/** One completion line: the subagent's, or `shellSummary`'s, with the output file or a short tail. */
 function completionNote(t: BackgroundTask): string {
     if (t.kind === "subagent") {
         const status = t.success ? "completed successfully" : (t.aborted ? "was aborted" : "failed");

@@ -15,9 +15,9 @@
 // under the License.
 
 /**
- * auto-mode/sensitive.ts, the one credential denylist. pincer tests it only
- * through its shell-analysis suite; these pin the list directly, including
- * BI's `Config.toml` (it holds the WSO2 LLM-proxy token).
+ * auto-mode/sensitive.ts, the one credential denylist. Elsewhere this is
+ * exercised only through the shell-analysis suite; these pin the list
+ * directly, including BI's `Config.toml` (it holds the WSO2 LLM-proxy token).
  */
 import { isExecutionPrimitivePath, isSensitiveBasename, isSensitivePath } from "../../features/ai/agent/auto-mode/sensitive";
 

@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-/** The decision log, ported from pincer-agent `test/unit/auto-mode-decision-log.test.ts` (`3b290c8`). */
+/** The decision log, ported from an earlier harness's decision-log test suite. */
 
 import { mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";

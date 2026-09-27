@@ -19,9 +19,8 @@
 
 /**
  * The frame a background-task completion reaches the model in when it is not a tool result: a turn of its
- * own (the chat was idle) or riding with the user's next message. Claude Code's wording, as pincer-agent
- * `extensions/lib/notifications.ts` captured it. Shared so the webview can show such a turn as a notice
- * rather than as a user message.
+ * own (the chat was idle) or riding with the user's next message. Claude Code's wording. Shared so the
+ * webview can show such a turn as a notice rather than as a user message.
  */
 
 export const TASK_NOTIFICATION_MARKER = "[SYSTEM NOTIFICATION - NOT USER INPUT]";

@@ -14,8 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 /**
- * Which shell the Copilot spawns, and how. The shape of pincer-agent's `extensions/lib/shell-spawn.ts`
- * (tip `5059966`), cut down to what BI runs:
+ * Which shell the Copilot spawns, and how. Cut down to what BI runs:
  *
  * - bash is `/bin/bash`, macOS and Linux only. There is no bash on Windows (owner, 2026-09-23), so no Git
  *   Bash search, no bash-path setting and no WSL stdin transport: the command always goes in as an argv

@@ -154,7 +154,7 @@ export function killProcessGroup(proc: child_process.ChildProcess, signal: NodeJ
                     }
                 }
                 // Whatever taskkill reported, end the leader directly too: the
-                // waiters key on its exit (pincer lib/process-tree.ts).
+                // waiters key on its exit.
                 try {
                     proc.kill();
                 } catch {

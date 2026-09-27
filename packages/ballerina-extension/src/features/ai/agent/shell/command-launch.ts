@@ -15,9 +15,8 @@
 // under the License.
 /**
  * How to spawn a named command on this platform (pure apart from the PATH
- * lookup it is given). Ported from pincer-agent `extensions/lib/command-launch.ts`
- * (tip `5059966`). For every bare `spawn(command, args)` of a fixed tool — `bal`
- * above all, which is `bal.bat` on Windows — never for the shell tools.
+ * lookup it is given). For every bare `spawn(command, args)` of a fixed tool
+ * — `bal` above all, which is `bal.bat` on Windows — never for the shell tools.
  *
  * On Windows such a tool is often a `.cmd` / `.bat` shim: `whichOnPath` finds
  * it through PATHEXT, but a bare `spawn(command)` does not — libuv tries the

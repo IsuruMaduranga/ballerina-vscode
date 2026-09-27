@@ -20,8 +20,7 @@
  * workspace: a checked-in file could otherwise hand the agent classifier
  * permissions, and the file itself is a safety-floor target.
  *
- * The keys follow Claude Code's `autoMode` schema as pincer-agent reads it
- * (`extensions/auto-mode/config.ts`):
+ * The keys follow Claude Code's `autoMode` schema:
  * - `environment`: replaces the Environment slot lines; `"$defaults"` splices
  *   the built-in lines at that position, so a user can extend rather than replace;
  * - `hard_deny` / `soft_deny` / `allow`: rules appended to the end of the

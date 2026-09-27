@@ -16,8 +16,8 @@
 
 /**
  * The BI side of the bash pre-gate: the probe list, the two BI
- * additions to pincer's `shell-analysis.ts` (git path operands, the scratchpad
- * write root), readable roots, and BI's own credential files.
+ * additions to the shared `shell-analysis.ts` (git path operands, the
+ * scratchpad write root), readable roots, and BI's own credential files.
  */
 
 import { execFileSync } from "child_process";
@@ -51,9 +51,8 @@ const analyze = (command: string, extra: Partial<AnalyzeInput> = {}) => analyzeS
 const verdict = (command: string, extra: Partial<AnalyzeInput> = {}) => analyze(command, extra).verdict;
 const gitInit = () => execFileSync("git", ["init", "-q"], { cwd });
 
-describe("every probe against pincer 5059966 now escalates", () => {
-    // Each of these returned "safe" before pincer's c1e65da; the last two run a
-    // program.
+describe("these probes escalate", () => {
+    // Each of these used to return "safe"; the last two run a program.
     const probes = [
         "git branch -D x",
         "git branch -m a b",

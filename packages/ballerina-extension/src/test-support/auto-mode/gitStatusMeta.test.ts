@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-/** The `{"meta":{"gitStatus":…}}` transcript line, ported from pincer-agent `test/unit/auto-mode-git-status-meta.test.ts` (`3b290c8`). */
+/** The `{"meta":{"gitStatus":…}}` transcript line, ported from an earlier harness's git-status-meta test suite. */
 
 import { expectLabeled } from "./labeled";
 import { destructiveCategory, gitStatusMeta, gitStatusMetaArgs, reachesIgnoredFiles, wantsGitStatusMeta } from "../../features/ai/agent/auto-mode/git-status-meta";

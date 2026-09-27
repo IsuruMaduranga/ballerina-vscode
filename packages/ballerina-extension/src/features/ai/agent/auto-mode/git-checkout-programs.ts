@@ -34,8 +34,7 @@
  * configuration is theirs, and git-lfs's standard filter commands pass. The
  * scan is textual and wide on purpose: an unneeded escalation costs one
  * classifier call, a missed key would be code execution behind a "safe", so
- * anything it cannot read counts as a program too. *
- * Ported unchanged from pincer-agent `extensions/auto-mode/git-checkout-programs.ts` (tip `2602e3c`).
+ * anything it cannot read counts as a program too.
  */
 
 import { type Dirent, existsSync, readdirSync, readFileSync } from "fs";

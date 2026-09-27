@@ -214,7 +214,7 @@ describe("heredoc handling (T14) and BI's tool names", () => {
         expect(bashGuardReason("<<EOF\nsleep 5\nEOF", { background: false })).toBeUndefined();
     });
 
-    it("names BI's tools, never pincer's monitor, task_stop or read tools", () => {
+    it("names BI's tools, never another harness's monitor, task_stop or read tools", () => {
         for (const command of ["sleep 30", "while true; do sleep 5; done", "nohup server &", "vim a.txt", "watch ls"]) {
             const reason = bashGuardReason(command, { background: false }) ?? "";
             expectLabeled(reason, command).toMatch(/Blocked/);

@@ -15,12 +15,11 @@
 // under the License.
 
 /**
- * Regression tests for pincer-agent's SECURITY-REVIEW-2026-09-23, ported from
- * its `test/unit/security-review-2026-09-23.test.ts` (tip `2602e3c`): every
+ * Regression tests for a 2026-09-23 security review's flagged probes: every
  * probe from the review must reach the classifier, and the everyday reads the
  * pre-gate exists to fast-path must stay "safe". Left out until their modules
  * are ported: the safety-floor probes, the PowerShell ones and the gitStatus
- * line's arguments; pincer's LSP trust has no counterpart here.
+ * line's arguments; there is no LSP-trust counterpart to port here.
  */
 
 import { execFileSync } from "child_process";

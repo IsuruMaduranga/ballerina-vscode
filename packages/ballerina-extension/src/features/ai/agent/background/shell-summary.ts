@@ -14,8 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 /**
- * The one-line completion summary for a background shell command (pure), pincer-agent
- * `extensions/lib/notifications.ts shellSummary` (tip `5059966`) unchanged.
+ * The one-line completion summary for a background shell command (pure).
  */
 
 import type { FinishStatus } from "../shell/runner";

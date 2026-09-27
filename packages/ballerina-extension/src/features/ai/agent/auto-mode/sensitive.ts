@@ -14,9 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 /**
- * The one sensitive-path denylist (pure). Ported from pincer-agent
- * `extensions/auto-mode/sensitive.ts` (tip `5059966`) with BI's `Config.toml`
- * added.
+ * The one sensitive-path denylist (pure), with BI's `Config.toml` added.
  *
  * The upstream sandbox this is derived from kept three divergent copies of this
  * list (one for the shell classifier, one for file tools, one for PowerShell);

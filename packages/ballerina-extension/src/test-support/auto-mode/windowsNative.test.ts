@@ -15,8 +15,8 @@
 // under the License.
 
 /**
- * Native Windows inputs through the PowerShell path, modelled on
- * pincer-agent `test/unit/windows-native-paths.test.ts` (`3b290c8`):
+ * Native Windows inputs through the PowerShell path, modelled on an
+ * earlier harness's Windows-native-paths test suite:
  * `C:\…`, `C:/…`, UNC, drive-relative and `%USERPROFILE%` paths through the
  * read-only check and the floor, the scratchpad's long form under `%TEMP%`,
  * PowerShell resolution, a `.bat` stand-in for `bal.bat` through

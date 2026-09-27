@@ -15,8 +15,7 @@
 // under the License.
 /**
  * Path resolution and containment for the shell pre-gate (pure apart from fs
- * reads). Ported from pincer-agent `extensions/auto-mode/paths.ts` (tip
- * `5059966`); only `WRITING_TOOLS` names BI's tools.
+ * reads). `WRITING_TOOLS` names BI's own tools.
  *
  * Two fixes over the sandbox this derives from:
  *
@@ -51,8 +50,8 @@ export function isWritingTool(toolName: string): boolean {
 
 /**
  * The path a file tool call targets (`file_path` for BI's file tools; `path`
- * and `notebook_path` kept from the pincer original), or undefined. The one place that knows the field names, shared by every
- * path-based gate.
+ * and `notebook_path` for other tool shapes), or undefined. The one place
+ * that knows the field names, shared by every path-based gate.
  */
 export function pathArgument(input: Record<string, unknown> | undefined): string | undefined {
     const path = input?.path ?? input?.file_path ?? input?.notebook_path;

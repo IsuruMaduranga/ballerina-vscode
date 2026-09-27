@@ -15,9 +15,8 @@
 // under the License.
 /**
  * Minimal `which` (pure apart from the access check): the first PATH entry
- * holding an executable of that name, with Windows `PATHEXT` honoured. Ported
- * from pincer-agent `extensions/lib/which.ts` (tip `5059966`); shared by the
- * shell resolvers and `commandLaunch` so "is this on PATH" has one answer.
+ * holding an executable of that name, with Windows `PATHEXT` honoured. Shared
+ * by the shell resolvers and `commandLaunch` so "is this on PATH" has one answer.
  */
 
 import { accessSync, constants } from "fs";
