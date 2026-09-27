@@ -16,8 +16,8 @@
 
 /**
  * The classifier payload, verdict parsing, grounding and pause tracking, ported
- * from pincer-agent `test/unit/auto-mode-classifier.test.ts` (`3b290c8`) with
- * the assertions on Claude Code's ruleset wording moved to the BI ruleset's.
+ * from an earlier harness's classifier test suite, with the assertions on
+ * Claude Code's ruleset wording moved to the BI ruleset's.
  */
 
 import { defaultEnvironment } from "../../features/ai/agent/auto-mode/classifier-prompt";
@@ -102,6 +102,11 @@ describe("buildCategoryIndex / groundCategory", () => {
 });
 
 describe("parseSeverity", () => {
+    it.each(["0.9", "9/10", "90%", "10 is safe", "-1", "1000", "NaN", "", "0x10"])("rejects a non-integer severity body: %s", (body) => {
+        expect(parseSeverity(`<severity>${body}</severity>`)).toBeNull();
+        expect(parseSeverity(`<severity>10</severity><severity>${body}</severity>`)).toBeNull();
+    });
+
     it("reads a closed tag", () => {
         expect(parseSeverity("<severity>65</severity>")).toBe(65);
     });
@@ -154,13 +159,13 @@ describe("parseStage2", () => {
         // allow into a soft block.
         const messages = [
             "Use the write tool to write the text hello into /tmp/probe/hello.txt — I want exactly that path.",
-            "Append the line '# onecode probe' to ~/.zshrc using bash (echo >>).",
+            "Append the line '# copilot probe' to ~/.zshrc using bash (echo >>).",
         ];
         const quotes = [
             '"Use the write tool to write the text hello into /tmp/probe/hello.txt — I want exactly that path."',
             "“Use the write tool to write the text hello into /tmp/probe/hello.txt”",
-            "`Append the line '# onecode probe' to ~/.zshrc using bash (echo >>).`",
-            "'Append the line '# onecode probe' to ~/.zshrc'",
+            "`Append the line '# copilot probe' to ~/.zshrc using bash (echo >>).`",
+            "'Append the line '# copilot probe' to ~/.zshrc'",
             "…write the text hello into /tmp/probe/hello.txt…",
             '"...I want exactly that path."',
             '"I want exactly that path".',
@@ -380,6 +385,30 @@ describe("PauseTracker", () => {
         tracker.resume();
         expect(tracker.isPaused()).toBe(false);
         expect(tracker.recordBlock(denial)).toBe(false);
+    });
+
+    it("ends a consecutive pause on any allowed call and times only its first prompt", () => {
+        const tracker = new PauseTracker();
+        for (let i = 0; i < CONSECUTIVE_BLOCK_LIMIT; i++) { tracker.recordBlock(denial); }
+        expect(tracker.takeTimedPrompt()).toBe(true);
+        expect(tracker.takeTimedPrompt()).toBe(false);
+        expect(tracker.recordAllow()).toBe(true);
+        expect(tracker.isPaused()).toBe(false);
+        for (let i = 0; i < CONSECUTIVE_BLOCK_LIMIT; i++) { tracker.recordBlock(denial); }
+        expect(tracker.takeTimedPrompt()).toBe(true);
+    });
+
+    it("does not end or time a total-limit pause on an allowed call", () => {
+        const tracker = new PauseTracker();
+        for (let i = 0; i < TOTAL_BLOCK_LIMIT; i++) {
+            tracker.recordBlock(denial);
+            tracker.recordAllow();
+        }
+        expect(tracker.isPaused()).toBe(true);
+        expect(tracker.takeTimedPrompt()).toBe(false);
+        expect(tracker.recordAllow()).toBe(false);
+        tracker.resume();
+        expect(tracker.isPaused()).toBe(false);
     });
 
     it("lists recent denials most-recent-first", () => {

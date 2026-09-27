@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-/** PowerShell rule semantics and the read-only check, ported from pincer-agent `test/unit/powershell-rules.test.ts` (`3b290c8`), with BI's additions. */
+/** PowerShell rule semantics and the read-only check, ported from an earlier harness's PowerShell rules test suite, with BI's additions. */
 
 import { expectLabeled } from "./labeled";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
@@ -147,7 +147,7 @@ describe("powershellReadOnly", () => {
     });
 });
 
-describe("powershellReadOnly pipeline cmdlets (One Code's addition to CC's list, 2026-09-19)", () => {
+describe("powershellReadOnly pipeline cmdlets (added to CC's list, 2026-09-19)", () => {
     it("a read-only line piped through pure transforms stays read-only", () => {
         expect(powershellReadOnly("Select-String -Pattern toolCall -Path .\\a.jsonl | Measure-Object | Select-Object -ExpandProperty Count").readOnly).toBe(true);
         expect(powershellReadOnly("Get-ChildItem src | Sort-Object LastWriteTime -Descending | Select-Object -First 5 | Format-Table Name").readOnly).toBe(true);
@@ -180,6 +180,18 @@ describe("powershellReadOnly with roots (absolute paths judged by containment, 2
         expect(powershellReadOnly(`Select-String -Pattern toolCall -Path ${join(sessions, "s.jsonl")}`, opts).readOnly).toBe(true);
         expect(powershellReadOnly(`Get-ChildItem '${join(sessions, "*.jsonl")}'`, opts).readOnly).toBe(true); // glob leaf: judged by its directory
         expect(powershellReadOnly(`Get-ChildItem ${sessions}`, opts).readOnly).toBe(true); // the root itself
+    });
+
+    it("only clears wildcard reads when the directory stays within the enumeration limit", () => {
+        const directory = join(cwd, "many-files");
+        mkdirSync(directory);
+        for (let index = 0; index < 2_000; index++) {
+            writeFileSync(join(directory, `${index}.txt`), "");
+        }
+        const command = `Get-Content '${join(directory, "*.txt")}'`;
+        expect(powershellReadOnly(command, opts).readOnly).toBe(true);
+        writeFileSync(join(directory, "one-more.txt"), "");
+        expect(powershellReadOnly(command, opts).readOnly).toBe(false);
     });
 
     it("an absolute path anywhere else is not, nor a comma list with one such part", () => {
@@ -232,7 +244,7 @@ describe("powershellReadOnly with roots (absolute paths judged by containment, 2
 
 describe("BI: subexpressions and splats are never read-only", () => {
     // PowerShell runs a parenthesised pipeline in argument mode; both of these delete the
-    // file. pincer's check at 3b290c8 cleared them.
+    // file. An earlier check let them through uncaught.
     const refused = [
         "Get-Content (Remove-Item a.txt)",
         "Write-Output (New-Item -Path x -ItemType File)",
@@ -298,5 +310,28 @@ describe("BI: git statements through the hardened git check", () => {
 
     it("needs a working directory", () => {
         expect(powershellReadOnly("git status").readOnly).toBe(false);
+    });
+});
+
+describe("hardened PowerShell lexer", () => {
+    const options = { cwd: tmpdir(), home: tmpdir(), readableRoots: [] };
+
+    it("splits background, carriage-return and comment-hidden writes", () => {
+        for (const command of [
+            "Get-ChildItem & Remove-Item x",
+            "Get-ChildItem\rRemove-Item x",
+            "Get-ChildItem <# ' #> ; Remove-Item x",
+        ]) {
+            expectLabeled(powershellStatements(command)?.some((statement) => /^Remove-Item\b/.test(statement)) ?? false, command).toBe(true);
+            expectLabeled(powershellReadOnly(command, options).readOnly, command).toBe(false);
+        }
+        expect(powershellStatements("Get-ChildItem & Remove-Item x <# open")).toBeUndefined();
+        expect(powershellReadOnly("Get-ChildItem & Remove-Item x <# open", options).readOnly).toBe(false);
+    });
+
+    it("honours typographic quotes and rejects controls outside its grammar", () => {
+        expect(powershellStatements("Get-Content 'x’ ; Remove-Item x ; ‘z'")).toContain("Remove-Item x");
+        expect(powershellReadOnly("Get-ChildItem\u0085src", options).readOnly).toBe(false);
+        expect(powershellInjectionSyntax("Get-ChildItem\u0085src")).toBe("a control character");
     });
 });

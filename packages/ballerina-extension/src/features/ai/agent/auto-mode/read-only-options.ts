@@ -13,6 +13,7 @@
 // KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
 /**
  * Option tables for the shell pre-gate's read-only commands (pure).
  *
@@ -31,8 +32,7 @@
  * that word looks like (getopt and git's parse-options both do this), so
  * `-S -- --output=f` hides nothing: `--` is `-S`'s value and `--output=f` is
  * still parsed as an option. Where the arity is uncertain the tables say
- * "none", which only ever turns a value into an operand that gets read-checked. *
- * Ported unchanged from pincer-agent `extensions/auto-mode/read-only-options.ts` (tip `2602e3c`).
+ * "none", which only ever turns a value into an operand that gets read-checked.
  */
 
 /**
@@ -64,6 +64,17 @@ export interface OptionSpec {
     programFirst?: boolean;
     /** A reason the operands make the command more than a read, or undefined. */
     operandReason?: (operands: readonly Word[]) => string | undefined;
+    /** A reason a combination of options makes the command more than a checked read, or undefined. */
+    optionsReason?: (seen: ReadonlySet<string>) => string | undefined;
+    /**
+     * The command reads through symlinks found INSIDE a directory operand, one
+     * level down, unless one of these options is present. `diff dir1 dir2`
+     * compares same-named entries and dereferences them, so a symlink in a
+     * directory operand reaches outside with no `-r` needed
+     *. The analyzer checks it, because only it
+     * knows which operands resolve to directories.
+     */
+    dereferencesDirEntries?: readonly string[];
 }
 
 /** A shell word as the pre-gate tokenizer produces it (shell-analysis.ts `Token`). */
@@ -89,7 +100,7 @@ function words(list: string): string[] {
 }
 
 /** Build a table from space-separated option lists, one per arity. */
-function table(arities: Partial<Record<Arity, string>>, extra: Omit<OptionSpec, "options"> = {}): OptionSpec {
+export function table(arities: Partial<Record<Arity, string>>, extra: Omit<OptionSpec, "options"> = {}): OptionSpec {
     const options: Record<string, Arity> = {};
     for (const [arity, list] of Object.entries(arities) as [Arity, string][]) {
         for (const option of words(list)) { options[option] = arity; }
@@ -97,14 +108,17 @@ function table(arities: Partial<Record<Arity, string>>, extra: Omit<OptionSpec, 
     return { options, ...extra };
 }
 
+/** The only fields merge() carries; anything else is an operand rule or hook that must sit on the merged spec. */
+const MERGEABLE_FIELDS = new Set(["options", "numeric", "fileValues"]);
+
 function merge(...specs: OptionSpec[]): OptionSpec {
     const merged: OptionSpec = { options: {} };
     for (const spec of specs) {
-        // Only option tables merge. A limit or hook here would silently vanish
-        // from every merged subcommand, so a spec carrying one is refused.
-        if (spec.lenient || spec.maxPositionals !== undefined || spec.programFirst || spec.operandReason) {
-            throw new Error("merge() only merges option tables; set operand limits and hooks on the merged spec itself");
-        }
+        // Only option tables merge. A limit or hook would silently vanish from
+        // every merged subcommand, so a spec carrying any non-mergeable field is
+        // refused — by key, so a field added to OptionSpec later cannot slip past.
+        const extra = Object.keys(spec).find((key) => !MERGEABLE_FIELDS.has(key));
+        if (extra) { throw new Error(`merge() only merges option tables; set '${extra}' on the merged spec itself`); }
         Object.assign(merged.options, spec.options);
         if (spec.numeric) { merged.numeric = true; }
         if (spec.fileValues) { merged.fileValues = [...(merged.fileValues ?? []), ...spec.fileValues]; }
@@ -164,7 +178,12 @@ export function checkOptions<W extends Word>(spec: OptionSpec, args: readonly W[
             continue;
         }
         if (spec.numeric && /^-[0-9]+$/.test(word)) { continue; }
-        if (spec.lenient) { continue; }
+        if (spec.lenient) {
+            // Every option takes no value, so a cluster is all options.
+            if (word.startsWith("--")) { parsed.seen.add(word.split("=", 1)[0]); }
+            else { for (const letter of word.slice(1)) { parsed.seen.add(`-${letter}`); } }
+            continue;
+        }
 
         if (word.startsWith("--")) {
             const eq = word.indexOf("=");
@@ -198,9 +217,16 @@ export function checkOptions<W extends Word>(spec: OptionSpec, args: readonly W[
         }
     }
 
+    const optionsReason = spec.optionsReason?.(parsed.seen);
+    if (optionsReason) { return { ok: false, reason: optionsReason }; }
     if (spec.maxPositionals !== undefined && parsed.positionals.length > spec.maxPositionals) {
         return { ok: false, reason: `takes ${parsed.positionals.length} operands; past ${spec.maxPositionals} the command writes` };
     }
+    // The count above is of words as written; bash expands one glob into as
+    // many operands as it matches, so `uniq sample-*` reached uniq's output
+    // operand.
+    const glob = spec.maxPositionals !== undefined ? parsed.positionals.find((word) => word.glob) : undefined;
+    if (glob) { return { ok: false, reason: `passes the glob ${glob.value}, which can expand past the ${spec.maxPositionals} operand(s) it may take and still only read` }; }
     return { ok: true, parsed };
 }
 
@@ -208,15 +234,26 @@ export function checkOptions<W extends Word>(spec: OptionSpec, args: readonly W[
 // Plain commands
 // ---------------------------------------------------------------------------
 
+/*
+ * Options that follow symbolic links found while recursing are left out of
+ * every table (`grep -R`, `rg -L`, `du -L`, `tree -l`, find's `-L` and
+ * `-follow`), and `ls -LR` and `diff -r` are refused below. Operands are
+ * judged where they resolve, but a symlink deep inside an operand directory
+ * is never seen, so following it reads outside the working directory. Claude
+ * Code accepts these options; the forms that follow only operands (`-H`) stay.
+ */
+const FOLLOWS_WHILE_RECURSING = "follows symbolic links while it recurses, so it can read outside the working directory";
+
+/** The checksum tools without `-c`/`--check`, which reads every file its list names. */
 const CHECKSUM = table({
-    none: "-b -t -c -s -w -z -0 -U --check --status --warn --strict --quiet --tag --binary --text --zero --ignore-missing --untagged --base64 --raw",
+    none: "-b -t -s -w -z -0 -U --status --warn --strict --quiet --tag --binary --text --zero --ignore-missing --untagged --base64 --raw",
     required: "-a -o -l --algorithm --length",
 });
 
 const GREP = table(
     {
         none:
-            "-a -b -c -E -F -G -H -h -i -I -l -L -n -o -q -r -R -s -U -v -w -x -y -z -Z -P -T --count --extended-regexp --fixed-strings --basic-regexp --perl-regexp --with-filename --no-filename --ignore-case --no-ignore-case --files-with-matches --files-without-match --line-number --only-matching --quiet --silent --recursive --dereference-recursive --no-messages --binary --invert-match --word-regexp --line-regexp --null-data --null --byte-offset --line-buffered --initial-tab",
+            "-a -b -c -E -F -G -H -h -i -I -l -L -n -o -q -r -s -U -v -w -x -y -z -Z -P -T --count --extended-regexp --fixed-strings --basic-regexp --perl-regexp --with-filename --no-filename --ignore-case --no-ignore-case --files-with-matches --files-without-match --line-number --only-matching --quiet --silent --recursive --no-messages --binary --invert-match --word-regexp --line-regexp --null-data --null --byte-offset --line-buffered --initial-tab",
         optional: "--color --colour",
         required:
             "-A -B -C -m -e -f -d -D --after-context --before-context --context --max-count --regexp --file --include --exclude --exclude-dir --binary-files --directories --devices --label",
@@ -231,7 +268,7 @@ const GREP = table(
 const RG = table(
     {
         none:
-            "-i -s -S -w -x -v -l -c -n -N -H -I -o -p -q -u -U -L -F -P -a -z -0 -b -h -V --no-heading --heading --hidden --no-hidden --no-ignore --no-ignore-vcs --no-ignore-parent --no-ignore-dot --no-ignore-global --no-ignore-exclude --no-ignore-files --ignore --ignore-case --case-sensitive --smart-case --word-regexp --line-regexp --invert-match --files-with-matches --files-without-match --count --count-matches --line-number --no-line-number --with-filename --no-filename --only-matching --pretty --quiet --json --no-json --files --follow --fixed-strings --pcre2 --no-pcre2 --multiline --no-multiline --multiline-dotall --text --null --null-data --trim --vimgrep --column --no-column --no-messages --stats --type-list --unrestricted --no-config --debug --trace --one-file-system --binary --no-require-git --crlf --passthru --include-zero --byte-offset --line-buffered --block-buffered --max-columns-preview --glob-case-insensitive --search-zip --no-search-zip --sort-files --help --version",
+            "-i -s -S -w -x -v -l -c -n -N -H -I -o -p -q -u -U -F -P -a -z -0 -b -h -V --no-heading --heading --hidden --no-hidden --no-ignore --no-ignore-vcs --no-ignore-parent --no-ignore-dot --no-ignore-global --no-ignore-exclude --no-ignore-files --ignore --ignore-case --case-sensitive --smart-case --word-regexp --line-regexp --invert-match --files-with-matches --files-without-match --count --count-matches --line-number --no-line-number --with-filename --no-filename --only-matching --pretty --quiet --json --no-json --files --fixed-strings --pcre2 --no-pcre2 --multiline --no-multiline --multiline-dotall --text --null --null-data --trim --vimgrep --column --no-column --no-messages --stats --type-list --unrestricted --no-config --debug --trace --one-file-system --binary --no-require-git --crlf --passthru --include-zero --byte-offset --line-buffered --block-buffered --max-columns-preview --glob-case-insensitive --search-zip --no-search-zip --sort-files --help --version",
         required:
             "-e -f -g -t -T -A -B -C -m -d -j -M -r -E --regexp --file --glob --iglob --type --type-not --type-add --type-clear --after-context --before-context --context --max-count --max-depth --maxdepth --max-filesize --threads --max-columns --replace --context-separator --field-match-separator --field-context-separator --engine --encoding --path-separator --sort --sortr --color --colors --dfa-size-limit --regex-size-limit --hyperlink-format",
     },
@@ -240,8 +277,11 @@ const RG = table(
 
 /**
  * jq without `-f`, `--rawfile`, `--slurpfile` (read named files) and `-L`
- * (module search path). A program using `env` is jq's printenv (`$ENV` is
- * already caught as a variable reference).
+ * (module search path). A program naming `env` or `ENV` is jq's printenv: jq
+ * evaluates `$ENV` itself, so single quotes that keep bash from expanding it
+ * do not make it inert, and jq also accepts `$ ENV` with a space
+ *. `import` and
+ * `include` load modules from jq's search path.
  */
 const JQ = table(
     {
@@ -252,7 +292,12 @@ const JQ = table(
     },
     {
         programFirst: true,
-        operandReason: ([program]) => (program && /\benv\b/.test(program.value) ? "runs a jq program that reads the process environment" : undefined),
+        operandReason: ([program]) => {
+            if (!program) { return undefined; }
+            if (/\b(?:env|ENV)\b/.test(program.value)) { return "runs a jq program that reads the process environment"; }
+            if (/\b(?:import|include)\b/.test(program.value)) { return "runs a jq program that loads modules from jq's search path"; }
+            return undefined;
+        },
     },
 );
 
@@ -286,7 +331,7 @@ const WC = table({
 /** du without `-X`/`--exclude-from` and `--files0-from`. */
 const DU = table({
     none:
-        "-a -A -c -h -H -k -L -l -m -g -P -s -x -0 -b -D --si --apparent-size --all --bytes --total --summarize --dereference --dereference-args --no-dereference --one-file-system --human-readable --null --inodes --count-links --separate-dirs -S",
+        "-a -A -c -h -H -k -l -m -g -P -s -x -0 -b -D --si --apparent-size --all --bytes --total --summarize --dereference-args --no-dereference --one-file-system --human-readable --null --inodes --count-links --separate-dirs -S",
     optional: "--time",
     required: "-d -B -t -I --max-depth --block-size --threshold --exclude --time-style",
 });
@@ -301,7 +346,7 @@ const FILE = table({
 /** tree without `-o` (writes), `-R`/`-H` (together write HTML files), `--fromfile`. */
 const TREE = table({
     none:
-        "-a -d -l -f -x -i -q -N -Q -p -u -g -s -h -D -F -v -t -c -U -r -n -C -A -S -J -X -1 --prune --noreport --si --du --dirsfirst --filesfirst --gitignore --matchdirs --ignore-case --info --inodes --device --help --version",
+        "-a -d -f -x -i -q -N -Q -p -u -g -s -h -D -F -v -t -c -U -r -n -C -A -S -J -X -1 --prune --noreport --si --du --dirsfirst --filesfirst --gitignore --matchdirs --ignore-case --info --inodes --device --help --version",
     required: "-L -P -I --charset --filelimit --timefmt --sort",
 });
 
@@ -314,7 +359,12 @@ const DIFF = table(
         required:
             "-U -C -W -x -X -I -F -L -D -S --label --exclude --exclude-from --ignore-matching-lines --show-function-line --width --tabsize --ifdef --starting-file --from-file --to-file --palette --horizon-lines --line-format --old-line-format --new-line-format --unchanged-line-format --old-group-format --new-group-format --changed-group-format --unchanged-group-format",
     },
-    { fileValues: ["-X", "--exclude-from", "--from-file", "--to-file"] },
+    {
+        fileValues: ["-X", "--exclude-from", "--from-file", "--to-file"],
+        // diff dereferences the entries of a directory operand (`-r` recurses,
+        // but even one level follows a symlink) unless told not to.
+        dereferencesDirEntries: ["--no-dereference"],
+    },
 );
 
 /** date without `-s`/`--set` (sets the clock) and `-f` (GNU: reads a file of dates); an operand other than `+FORMAT` sets the clock. */
@@ -324,7 +374,11 @@ const DATE = table(
         optional: "-I --iso-8601 --rfc-3339",
         required: "-d -r -v --date --reference",
     },
-    { operandReason: (operands) => (operands.some((word) => !word.value.startsWith("+")) ? "runs date with an operand, which sets the clock" : undefined) },
+    {
+        // `-r FILE` / `--reference=FILE` read FILE's timestamp (BSD `-r` also takes seconds).
+        fileValues: ["-r", "--reference"],
+        operandReason: (operands) => (operands.some((word) => !word.value.startsWith("+")) ? "runs date with an operand, which sets the clock" : undefined),
+    },
 );
 
 /** hostname with no operand (an operand sets the hostname). */
@@ -354,14 +408,25 @@ export const READ_ONLY_SPECS: Record<string, OptionSpec> = {
     id: LENIENT,
     join: LENIENT,
     jq: JQ,
-    ls: LENIENT,
+    ls: {
+        ...LENIENT,
+        optionsReason: (seen) =>
+            (seen.has("-L") || seen.has("--dereference")) && (seen.has("-R") || seen.has("--recursive")) ? `passes -L with -R, so it ${FOLLOWS_WHILE_RECURSING}` : undefined,
+    },
     md5sum: CHECKSUM,
     nl: LENIENT,
     od: LENIENT,
     paste: LENIENT,
     // No options: bash's `printf -v NAME` assigns a shell variable, and
-    // `printf -v PATH ./bin; ls` would run ./bin/ls.
-    printf: { options: {} },
+    // `printf -v PATH ./bin; ls` would run ./bin/ls. A `%n` conversion assigns
+    // too, to the argument it consumes (`printf '%n' PATH` sets PATH to 0), with
+    // flags and length modifiers (`%.0n`, `%ln`) and on format reuse
+    //.
+    printf: {
+        options: {},
+        operandReason: ([format]) =>
+            format && /%[^%a-zA-Z]*[hlLqjzZt]*n/.test(format.value.replace(/%%/g, "")) ? "runs printf with a %n conversion, which assigns a shell variable" : undefined,
+    },
     pwd: LENIENT,
     readlink: LENIENT,
     realpath: LENIENT,
@@ -402,7 +467,7 @@ export const PATTERN_OPTIONS = new Set(["-e", "-f", "--regexp", "--file"]);
  */
 const FIND_PRIMARIES: Record<string, 0 | 1> = Object.fromEntries([
     ...words(
-        "-print -print0 -ls -prune -quit -true -false -empty -nouser -nogroup -readable -writable -executable -depth -follow -xdev -mount -noleaf -daystart -ignore_readdir_race -noignore_readdir_race -not -a -and -o -or ! ( ) , -nowarn -warn",
+        "-print -print0 -ls -prune -quit -true -false -empty -nouser -nogroup -readable -writable -executable -depth -xdev -mount -noleaf -daystart -ignore_readdir_race -noignore_readdir_race -not -a -and -o -or ! ( ) , -nowarn -warn",
     ).map((p) => [p, 0 as const]),
     ...words(
         "-name -iname -path -ipath -wholename -iwholename -regex -iregex -type -xtype -size -newer -anewer -cnewer -mtime -mmin -atime -amin -ctime -cmin -Btime -Bmin -Bnewer -user -group -uid -gid -perm -maxdepth -mindepth -links -inum -samefile -lname -ilname -fstype -flags -regextype -printf -used -context",
@@ -424,7 +489,8 @@ export function checkFind<W extends Word>(args: readonly W[]): { ok: true; paths
     // starts with `-` is the expression (`-fprint` is not `-f print`).
     while (i < args.length) {
         const word = args[i].value;
-        if (/^-[HLPEXdsx]+$/.test(word) || /^-O[0-9]$/.test(word)) {
+        // No `-L` (follow every symlink): see FOLLOWS_WHILE_RECURSING.
+        if (/^-[HPEXdsx]+$/.test(word) || /^-O[0-9]$/.test(word)) {
             i++;
         } else if (word === "-D") {
             i += 2;

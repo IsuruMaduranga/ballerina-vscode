@@ -32,6 +32,7 @@ module.exports = {
         }],
     },
     moduleFileExtensions: ['ts', 'js', 'json', 'node'],
+    setupFilesAfterEnv: ['<rootDir>/src/test-support/auto-mode/parserSetup.ts'],
     testMatch: ['**/?(*.)+(spec|test).ts'],
     moduleNameMapper: {
         '^vscode$': '<rootDir>/src/test-support/__mocks__/vscode.ts',

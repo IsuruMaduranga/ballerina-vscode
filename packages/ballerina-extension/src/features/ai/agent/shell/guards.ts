@@ -15,9 +15,8 @@
 // under the License.
 
 /**
- * Pre-execution guards for the shell tool (pure). Ported from pincer-agent
- * `extensions/bash/guards.ts` (tip `2602e3c`) with BI's tool names in the
- * messages and without the monitor-tool pointer (BI has no monitor tool).
+ * Pre-execution guards for the shell tool (pure), with BI's tool names in
+ * the messages and no monitor-tool pointer (BI has no monitor tool).
  *
  * Each guard recognises a workflow anti-pattern BEFORE the command runs and
  * refuses it with an instructive error: what tripped it, why it is a problem,
@@ -128,10 +127,10 @@ function waitReason(segments: Segment[]): string | undefined {
 // Poll-loop guard
 
 function pollLoopReason(command: string, segments: Segment[]): string | undefined {
-    const first = leadTokens(segments[0])[0]?.value;
-    if (first !== "while" && first !== "until" && first !== "for") { return undefined; }
-    // `sleep` counts only in command position (segment lead, or right after a
-    // `do`/`then`/`else` keyword) — `echo sleep` is data, not a wait.
+    // The tree-sitter walker returns simple commands rather than pseudo-tokens
+    // for loop keywords. It records the enclosing shell construct instead.
+    if (!segments.some((seg) => seg.enclosing.some((node) => node === "while_statement" || node === "until_statement" || node === "for_statement"))) { return undefined; }
+    // `sleep` counts only in command position — `echo sleep` is data, not a wait.
     const sleeps = segments.some((seg) => resolvePayload(leadTokens(seg)).command === "sleep");
     if (!sleeps) { return undefined; }
     return (

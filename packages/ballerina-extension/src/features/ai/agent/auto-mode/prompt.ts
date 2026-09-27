@@ -17,8 +17,7 @@
 /**
  * Classifier payload assembly and stage-verdict parsing (pure).
  *
- * Ported from pincer-agent `extensions/auto-mode/prompt.ts` (`3b290c8`). The
- * payload is Claude Code's shape:
+ * The payload is Claude Code's shape:
  *   system = <ruleset with Environment spliced> + <Session Context>
  *   user   = <AGENTS.md framing> + <transcript> + <stage final instruction>
  * The two stages share system+framing+transcript byte-for-byte and differ only
@@ -80,6 +79,8 @@ export interface ClassifyVerdict {
     ruleId?: string;
     /** The model's own wording, kept for diagnosis and shown attributed to it. */
     raw?: string;
+    /** The call was not judged: provider failure, invalid reply, cancellation or oversized input. */
+    noVerdict?: true;
 }
 
 /**
@@ -145,13 +146,14 @@ export function reviewUser(userPrefix: string): string {
     return `${userPrefix}\n\n${STAGE2_FINAL.trimStart()}${STAGE_REVIEW_ADDENDUM}`;
 }
 
-/** The integer inside the last `<severity>…` tag (closing tag optional). */
+/** The last severity must be a whole number, not the leading digits of a fraction, percentage or prose. */
 export function parseSeverity(text: string): number | null {
-    const matches = [...text.matchAll(/<severity>\s*(\d{1,3})/gi)];
-    if (matches.length === 0) { return null; }
-    const value = Number.parseInt(matches[matches.length - 1][1], 10);
-    if (Number.isNaN(value)) { return null; }
-    return Math.max(0, Math.min(100, value));
+    const tags = [...text.matchAll(/<severity>([^<]*)/gi)];
+    const last = tags[tags.length - 1];
+    if (!last) { return null; }
+    const body = /^\s*(\d{1,3})\s*$/.exec(last[1]);
+    if (!body) { return null; }
+    return Math.min(100, Number.parseInt(body[1], 10));
 }
 
 /** The content of the last `<tag>…</tag>` (or `<tag>…` unterminated), trimmed. */
@@ -239,6 +241,7 @@ export function parseStage2(text: string, index: RuleIndex, userMessages: string
             reason: "The approval classifier's reply carried no severity, so the verdict could not be read.",
             tier: "unmatched",
             raw,
+            noVerdict: true,
         };
     }
 

@@ -17,7 +17,7 @@
 /**
  * The permission gate for one shell call:
  *
- *   safety floor → pre-gate → git recoverability →
+ *   safety floor → pre-gate → guarded file operations →
  *     ask mode:  a session rule the user granted → the approval banner
  *     auto mode: the classifier (a block goes back to the model) → the
  *                banner only once repeated blocks have paused auto mode
@@ -37,8 +37,8 @@
  */
 
 import type { ClassifyVerdict } from "./prompt";
-import type { PauseTracker } from "./pause";
-import { checkRecoverability } from "./recoverability";
+import { UNATTENDED_PROMPT_TIMEOUT_MS, type PauseTracker } from "./pause";
+import { bashParserReady } from "./bash-parser";
 import { powershellReadOnly } from "./powershell-rules";
 import { bashFloorReason, powershellFloorReason } from "./safety-floor";
 import {
@@ -58,7 +58,7 @@ export type { SessionRule, SessionRuleGrant };
 export type ShellMode = "auto" | "ask";
 
 /** Who let a command run, for the tool row and the decision log. */
-export type ShellAllowedBy = "pre-gate" | "recoverability" | "session-rule" | "classifier" | "user";
+export type ShellAllowedBy = "pre-gate" | "file-operation" | "session-rule" | "classifier" | "user";
 
 /**
  * The gate's answer to the shell tool: run, or return this text to the model
@@ -85,15 +85,19 @@ export interface ShellGateInput {
     writableRoots: string[];
     /** Rules the user granted from earlier banners in this session (ask mode only). */
     sessionRules: readonly SessionRule[];
+    /** Whether an undecided command should construct a session-rule suggestion. Defaults to true. */
+    offerSessionRule?: boolean;
     /** The system temp directory holding the review baselines (floor target); `os.tmpdir()` when absent. */
     tmpDir?: string;
     /** Which shell the command is for; bash when absent. */
     shell?: "bash" | "powershell";
+    /** The caller uses a capable model; permit guarded file operations in auto mode only. */
+    allowContainedFileOperations?: boolean;
 }
 
 /** `evidence` is the bash pre-gate's analysis; a PowerShell decision has none. */
 export type ShellGateDecision =
-    | { outcome: "allow"; layer: "pre-gate" | "recoverability" | "session-rule"; reason?: string; evidence?: ShellEvidence }
+    | { outcome: "allow"; layer: "pre-gate" | "file-operation" | "session-rule"; reason?: string; evidence?: ShellEvidence }
     | { outcome: "ask"; reasons: string[]; grant?: SessionRuleGrant; floor?: true; evidence?: ShellEvidence };
 
 /**
@@ -103,7 +107,7 @@ export type ShellGateDecision =
  * never cleared deterministically.
  */
 function decidePowerShellCommand(input: ShellGateInput): ShellGateDecision {
-    const { command, cwd, home, readableRoots, sessionRules, tmpDir } = input;
+    const { command, cwd, home, readableRoots, writableRoots, sessionRules, tmpDir } = input;
     const floor = powershellFloorReason(command, { cwd, home, tmpDir });
     if (floor) {
         return { outcome: "ask", reasons: [`The command is always shown to you because ${floor}.`], floor: true };
@@ -112,11 +116,16 @@ function decidePowerShellCommand(input: ShellGateInput): ShellGateDecision {
     if (verdict.readOnly) {
         return { outcome: "allow", layer: "pre-gate" };
     }
-    const rule = matchPowerShellSessionRule(sessionRules, command);
+    const context = { cwd, home, writableRoots };
+    const rule = matchPowerShellSessionRule(sessionRules, command, context);
     if (rule) {
-        return { outcome: "allow", layer: "session-rule", reason: `exact rule \`${rule.command}\`` };
+        return { outcome: "allow", layer: "session-rule", reason: `${rule.kind} rule \`${rule.command}\`` };
     }
-    return { outcome: "ask", reasons: [verdict.reason ? `not a read-only command: ${verdict.reason}` : "not a read-only command"], grant: suggestPowerShellSessionRule(command) };
+    return {
+        outcome: "ask",
+        reasons: [verdict.reason ? `not a read-only command: ${verdict.reason}` : "not a read-only command"],
+        grant: input.offerSessionRule === false ? undefined : suggestPowerShellSessionRule(command, context),
+    };
 }
 
 /** Decide one command without asking anyone or calling a model. */
@@ -124,7 +133,7 @@ export function decideShellCommand(input: ShellGateInput): ShellGateDecision {
     if (input.shell === "powershell") { return decidePowerShellCommand(input); }
     const { command, cwd, home, readableRoots, writableRoots, sessionRules, tmpDir } = input;
     const evidence = analyzeShellCommand({ command, cwd, home, readableRoots, writableRoots });
-    const floor = bashFloorReason(command, { cwd, home, tmpDir });
+    const floor = bashFloorReason(command, { cwd, home, tmpDir }, evidence);
     if (floor) {
         return { outcome: "ask", reasons: [`The command is always shown to you because ${floor}.`], floor: true, evidence };
     }
@@ -132,22 +141,21 @@ export function decideShellCommand(input: ShellGateInput): ShellGateDecision {
         return { outcome: "allow", layer: "pre-gate", evidence };
     }
     const reasons = [...evidence.notes];
-    // The only risk is an in-workspace delete or a whole-tree reset: it runs when
-    // git can put the bytes back (non-repo, dirty, untracked or ignored content is
-    // unrecoverable and continues).
-    if (evidence.containedNonNetwork) {
-        const targets = evidence.writes.filter((write) => !write.outsideCwd && write.resolved).map((write) => write.resolved as string);
-        const recoverability = checkRecoverability(cwd, { targets, wholeTree: evidence.wholeTree });
-        if (recoverability.verdict === "recoverable") {
-            return { outcome: "allow", layer: "recoverability", reason: recoverability.reason, evidence };
-        }
-        reasons.push(`git recoverability: ${recoverability.reason}`);
+    // Only the analyzer's guarded mkdir/touch/rm/rmdir/mv/cp subset qualifies.
+    // Git destruction is classified even when the checkout is clean.
+    if (input.allowContainedFileOperations && evidence.containedNonNetwork) {
+        return { outcome: "allow", layer: "file-operation", reason: "guarded in-workspace file operation", evidence };
     }
     const rule = matchSessionRule(sessionRules, command, evidence);
     if (rule) {
         return { outcome: "allow", layer: "session-rule", reason: `${rule.kind} rule \`${rule.command}\``, evidence };
     }
-    return { outcome: "ask", reasons, grant: suggestSessionRule(command, evidence, cwd), evidence };
+    return {
+        outcome: "ask",
+        reasons,
+        grant: input.offerSessionRule === false ? undefined : suggestSessionRule(command, evidence, cwd),
+        evidence,
+    };
 }
 
 /** What the banner shows for one command. */
@@ -157,10 +165,12 @@ export interface ShellApprovalPrompt {
     reasons: string[];
     /** The session rule the banner offers, when one is safe to offer. */
     grant?: SessionRuleGrant;
+    /** Used only for the first consecutive-pause resume prompt. */
+    timeoutMs?: number;
 }
 
 /** The user's answer. `allow-session` is only valid when the prompt carried a grant. */
-export type ShellApprovalAnswer = "allow" | "deny" | "allow-session";
+export type ShellApprovalAnswer = "allow" | "deny" | "allow-session" | "timeout";
 
 /** One gate decision for the decision log (`decision-log.ts decisionEntry` adds the time and clips). */
 export interface GateDecisionRecord {
@@ -180,7 +190,7 @@ export interface AutoModeGate {
 }
 
 export interface ShellGateCallbacks {
-    /** Shows the banner and resolves with the user's answer (a timeout or abort is `deny`). */
+    /** Shows the banner and resolves with the user's answer; an unanswered expiry is `timeout`. */
     ask: (prompt: ShellApprovalPrompt) => Promise<ShellApprovalAnswer>;
     /** Stores a granted rule for the rest of the session. */
     grantRule: (rule: SessionRule) => void;
@@ -230,16 +240,21 @@ export function pausedReason(pause: PauseTracker): string {
 
 /** Decide, classify or ask. Never rejects: a failed prompt denies. */
 export async function authorizeShellCommand(input: ShellGateInput, mode: ShellMode, callbacks: ShellGateCallbacks): Promise<ShellAuthorization> {
+    if (input.shell !== "powershell") { await bashParserReady(); }
     const auto = mode === "auto" ? callbacks.auto : undefined;
-    // Session rules are an ask-mode convenience; in auto mode the classifier is the boundary.
-    const decision = decideShellCommand(auto ? { ...input, sessionRules: [] } : input);
+    // Session rules are an ask-mode convenience; auto mode never inherits them.
+    const decision = decideShellCommand(mode === "auto"
+        ? { ...input, sessionRules: [], offerSessionRule: false }
+        : { ...input, allowContainedFileOperations: false });
     if (decision.outcome === "allow") {
+        auto?.pause.recordAllow();
         callbacks.onDecision?.({ outcome: "allow", source: "pre-gate", reason: decision.reason ?? decision.layer });
         return { allowed: true, mayWrite: mayWrite(decision), by: decision.layer };
     }
 
     let reasons = decision.reasons;
     let grant = decision.grant;
+    let timeoutMs: number | undefined;
     if (auto && !decision.floor) {
         if (!auto.pause.isPaused()) {
             const verdict = await auto.classify(input.command);
@@ -253,22 +268,32 @@ export async function authorizeShellCommand(input: ShellGateInput, mode: ShellMo
             if (verdict.tier === "timeout") {
                 return { allowed: false, text: classifierTimeoutText(verdict), by: "timeout" };
             }
+            if (verdict.noVerdict) {
+                return { allowed: false, text: `${verdict.reason}\n\nThe command did not run. The classifier did not reach a safety verdict.`, by: "classifier" };
+            }
             auto.pause.recordBlock({ toolName: input.shell === "powershell" ? "powershell" : "shell", subject: input.command, reason: verdict.reason, tier: verdict.tier, ruleId: verdict.ruleId, raw: verdict.raw });
             return { allowed: false, text: classifierBlockedText(verdict), by: "classifier", rule: verdict.ruleId ?? verdict.reason };
         }
         // Paused: this is the resume prompt, not a per-action approval.
         reasons = [pausedReason(auto.pause), ...reasons];
+        if (auto.pause.takeTimedPrompt()) {
+            timeoutMs = UNATTENDED_PROMPT_TIMEOUT_MS;
+            reasons.push("This request is automatically declined after two minutes without an answer, so an unattended run can continue.");
+        }
         grant = undefined;
     }
     if (decision.floor || auto) { grant = undefined; }
 
     let answer: ShellApprovalAnswer;
     try {
-        answer = await callbacks.ask({ command: input.command, reasons, grant });
+        answer = await callbacks.ask({ command: input.command, reasons, grant, ...(timeoutMs ? { timeoutMs } : {}) });
     } catch {
         answer = "deny";
     }
-    callbacks.onDecision?.({ outcome: answer === "deny" ? "block" : "allow", source: "user", reason: decision.floor ? "floor" : undefined });
+    callbacks.onDecision?.({ outcome: answer === "deny" || answer === "timeout" ? "block" : "allow", source: "user", reason: answer === "timeout" ? "approval prompt expired" : decision.floor ? "floor" : undefined });
+    if (answer === "timeout") {
+        return { allowed: false, text: "The approval prompt expired without an answer. The command did not run. Continue with work that does not need approval; do not treat this as the user's permission or an explicit refusal.", by: "timeout" };
+    }
     if (answer === "deny") {
         callbacks.onUserDenied?.(input.command);
         return { allowed: false, text: deniedText(input.command), by: "user" };

@@ -58,7 +58,7 @@ export interface ClarifyResponse {
 }
 
 /** The user's answer to a shell command banner. */
-export type ShellApprovalDecision = "allow" | "deny" | "allow-session";
+export type ShellApprovalDecision = "allow" | "deny" | "allow-session" | "timeout";
 
 /** What the shell command banner shows (auto-mode/gate.ts ShellApprovalPrompt, flattened for the UI). */
 export interface ShellApprovalContent {
@@ -551,25 +551,30 @@ export class ApprovalManager {
     /**
      * Ask the user whether a shell command the gate could not clear may run.
      * Serialised through the approval queue like the web tool banner. A timeout,
-     * abort or missing answer resolves as "deny".
+     * expiry resolves as "timeout"; an abort resolves as "deny".
      */
     requestShellApproval(
         requestId: string,
         content: ShellApprovalContent,
         eventHandler: CopilotEventHandler,
+        timeoutMs = this.DEFAULT_TIMEOUT_MS,
     ): Promise<ShellApprovalDecision> {
         return new Promise((resolve) => {
-            const timeoutId = setTimeout(() => {
-                this.shellApprovals.delete(requestId);
-                this._advanceApprovalQueue(requestId);
-                resolve("deny");
-            }, this.DEFAULT_TIMEOUT_MS);
-
-            this.shellApprovals.set(requestId, { resolve, reject: () => resolve("deny"), timeoutId });
+            this.shellApprovals.set(requestId, { resolve, reject: () => resolve("deny") });
 
             this.approvalQueue.push({
                 requestId,
-                emit: () => eventHandler({ type: "shell_approval_request", requestId, ...content }),
+                emit: () => {
+                    const resolver = this.shellApprovals.get(requestId);
+                    if (!resolver) { return; }
+                    // Count from when the banner appears, not while another approval is queued.
+                    resolver.timeoutId = setTimeout(() => {
+                        this.shellApprovals.delete(requestId);
+                        this._advanceApprovalQueue(requestId);
+                        resolve("timeout");
+                    }, timeoutMs);
+                    eventHandler({ type: "shell_approval_request", requestId, ...content });
+                },
             });
 
             this._flushApprovalQueue();

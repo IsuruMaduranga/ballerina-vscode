@@ -27,6 +27,8 @@
 
 export const CONSECUTIVE_BLOCK_LIMIT = 3;
 export const TOTAL_BLOCK_LIMIT = 20;
+/** The first resume prompt in an uninterrupted block streak must not stall an unattended run. */
+export const UNATTENDED_PROMPT_TIMEOUT_MS = 120_000;
 
 export interface Denial {
     toolName: string;
@@ -49,6 +51,8 @@ export class PauseTracker {
     private consecutive = 0;
     private total = 0;
     private paused = false;
+    private trippedBy: "consecutive" | "total" | undefined;
+    private timedShown = false;
     private readonly denials: Denial[] = [];
 
     /** Record a classifier block. Returns true if this one tripped the pause. */
@@ -60,10 +64,12 @@ export class PauseTracker {
 
         if (this.consecutive >= CONSECUTIVE_BLOCK_LIMIT) {
             this.paused = true;
+            this.trippedBy = "consecutive";
             return true;
         }
         if (this.total >= TOTAL_BLOCK_LIMIT) {
             this.paused = true;
+            this.trippedBy = "total";
             // The total counter resets when it is what triggered the fallback.
             // Without this, resuming leaves it at the limit and the very next block
             // re-pauses immediately, making the resume single-use.
@@ -73,9 +79,21 @@ export class PauseTracker {
         return false;
     }
 
-    /** A classifier approval breaks a consecutive-block run. */
-    recordAllow(): void {
+    /** Any allowed call breaks the streak and its pause; a total-limit pause still needs the user. */
+    recordAllow(): boolean {
         this.consecutive = 0;
+        this.timedShown = false;
+        if (!this.paused || this.trippedBy !== "consecutive") { return false; }
+        this.paused = false;
+        this.trippedBy = undefined;
+        return true;
+    }
+
+    /** Time only the first resume prompt in a consecutive-block streak. */
+    takeTimedPrompt(): boolean {
+        if (!this.paused || this.trippedBy !== "consecutive" || this.timedShown) { return false; }
+        this.timedShown = true;
+        return true;
     }
 
     /**
@@ -86,6 +104,8 @@ export class PauseTracker {
     resume(): void {
         this.paused = false;
         this.consecutive = 0;
+        this.trippedBy = undefined;
+        this.timedShown = false;
     }
 
     isPaused(): boolean {
@@ -97,6 +117,8 @@ export class PauseTracker {
         this.consecutive = 0;
         this.total = 0;
         this.paused = false;
+        this.trippedBy = undefined;
+        this.timedShown = false;
         this.denials.length = 0;
     }
 

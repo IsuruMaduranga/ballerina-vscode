@@ -126,6 +126,8 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                 writableRoots: shell.writableRoots,
                 sessionRules: sessionRuleStore.get(runKey),
                 shell: tool === 'powershell' ? 'powershell' : 'bash',
+                // The main agent is pinned to Sonnet; weaker future callers must opt out.
+                allowContainedFileOperations: true,
             },
             mode,
             {
@@ -135,7 +137,7 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                     description,
                     reasons: prompt.reasons,
                     sessionRuleLabel: prompt.grant?.label,
-                }, eventHandler),
+                }, eventHandler, prompt.timeoutMs),
                 grantRule: (rule) => sessionRuleStore.add(runKey, rule),
                 auto: {
                     pause,

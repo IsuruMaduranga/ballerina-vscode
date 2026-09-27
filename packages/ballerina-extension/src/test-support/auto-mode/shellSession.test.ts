@@ -16,10 +16,11 @@
 
 /** The per-run shell setup the prompt and the tool registry share. */
 
-import { existsSync, mkdtempSync, realpathSync, rmSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { shellPromptSection, shellRunSetup } from "../../features/ai/agent/shell/shell-session";
+import { ensureScratchpadDir, ownerDirProblem } from "../../features/ai/agent/shell/scratchpad";
 
 let root: string;
 
@@ -58,6 +59,40 @@ describe("shellRunSetup", () => {
         const home = join(root, "home");
         const setup = shellRunSetup(join(root, "p"), "t", { platform: "linux", home, env: { BALLERINA_HOME_DIR: join(root, "bh") }, scratchpadDir: join(root, "s") });
         expect(setup!.readableRoots).toContain(join(root, "bh", "repositories"));
+    });
+});
+
+describe("private scratchpad owners", () => {
+    it.each([
+        { isSymbolicLink: true, isDirectory: true, uid: 501, mode: 0o700 },
+        { isSymbolicLink: false, isDirectory: false, uid: 501, mode: 0o700 },
+        { isSymbolicLink: false, isDirectory: true, uid: 502, mode: 0o700 },
+        { isSymbolicLink: false, isDirectory: true, uid: 501, mode: 0o720 },
+        { isSymbolicLink: false, isDirectory: true, uid: 501, mode: 0o702 },
+    ])("rejects an owner another user could control: %j", (stat) => {
+        expect(ownerDirProblem(stat, 501)).toBeDefined();
+    });
+
+    (process.platform === "win32" ? it.skip : it)("tightens an existing owner directory before trusting its scratchpad", () => {
+        const owner = join(root, "owner");
+        mkdirSync(owner);
+        chmodSync(owner, 0o755);
+        const dir = join(owner, "project", "thread", "scratchpad");
+        expect(ensureScratchpadDir(dir, owner)).toBe(dir);
+        expect(statSync(owner).mode & 0o777).toBe(0o700);
+        expect(statSync(dir).mode & 0o777).toBe(0o700);
+    });
+
+    (process.platform === "win32" ? it.skip : it)("does not offer an unsafe scratchpad in the prompt or gate roots", () => {
+        const target = join(root, "target");
+        const scratchpadDir = join(root, "symlink");
+        mkdirSync(target);
+        symlinkSync(target, scratchpadDir);
+        const setup = shellRunSetup(join(root, "project"), "t", { platform: "linux", env: {}, scratchpadDir });
+        expect(setup!.scratchpadDir).toBeUndefined();
+        expect(setup!.writableRoots).toEqual([]);
+        expect(setup!.readableRoots).not.toContain(target);
+        expect(setup!.promptSection).not.toContain("# Scratchpad directory");
     });
 });
 

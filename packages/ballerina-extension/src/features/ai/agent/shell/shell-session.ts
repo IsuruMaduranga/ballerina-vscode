@@ -25,6 +25,7 @@
  */
 
 import { homedir } from "os";
+import { dirname } from "path";
 import { readableRoots, ballerinaHomeFromEnv } from "../auto-mode/readable-roots";
 import { tryRealpath } from "../auto-mode/shared-paths";
 import { SHELL_TOOL_NAME } from "./bash-description";
@@ -82,7 +83,9 @@ export function shellRunSetup(projectRoot: string, threadId: string, options: Sh
         return undefined;
     }
     const home = options.home ?? homedir();
-    const created = ensureScratchpadDir(options.scratchpadDir ?? threadScratchpadDir(projectRoot, threadId));
+    const requestedScratchpad = options.scratchpadDir ?? threadScratchpadDir(projectRoot, threadId);
+    const owner = options.scratchpadDir ? requestedScratchpad : dirname(dirname(dirname(requestedScratchpad)));
+    const created = ensureScratchpadDir(requestedScratchpad, owner);
     const scratchpadDir = created ? tryRealpath(created) ?? created : undefined;
     return {
         tool: policy.tool,

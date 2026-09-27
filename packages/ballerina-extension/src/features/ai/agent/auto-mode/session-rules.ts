@@ -18,13 +18,12 @@
  * The "Allow for this session" rules of the shell approval banner (design
  * §10), for the bash tool. A rule is either the exact command the user
  * approved or a word prefix of it (`bal build`, `npm run test`). Matching
- * follows Claude Code's allow semantics as pincer-agent ports them
- * (`permissions/matcher.ts findBashAllowRule`): an exact rule covers the
+ * follows Claude Code's allow semantics: an exact rule covers the
  * identical line; a prefix rule covers a line only when every subcommand of it
  * starts with some prefix rule's words, and never a line carrying injection or
  * other unmodelled syntax.
  *
- * BI narrows pincer in three ways, each toward asking more:
+ * Three narrowings, each toward asking more:
  * - a prefix is matched word by word after quote removal, not by string, so
  *   `bal build` cannot cover `bal build-x` or the one word `"bal build"`;
  * - a prefix never covers a subcommand with a redirection, a wrapper
@@ -40,8 +39,17 @@
  */
 
 import { existsSync } from "fs";
-import { join } from "path";
-import { powershellStatements, powershellWords, statementCommand } from "./powershell-rules";
+import { join, sep } from "path";
+import { isProtectedPath } from "./protected-paths";
+import {
+    canonicalCommandName,
+    powershellInjectionSyntax,
+    powershellStatements,
+    powershellWords,
+    statementCommand,
+} from "./powershell-rules";
+import { isExecutionPrimitivePath, isSensitivePath } from "./sensitive";
+import { isWithin, resolveForContainment, toAbsolute } from "./paths";
 import { hasUnmodelledSyntax, leadTokens, parseCommand, resolvePayload, type Segment, type ShellEvidence } from "./shell-analysis";
 
 export interface SessionRule {
@@ -93,8 +101,7 @@ const DESTRUCTIVE_SUBCOMMANDS: Record<string, Set<string>> = {
  * Interpreters and runners whose arguments are code. A prefix over one grants
  * whatever the next word runs, so they get a prefix only when it names a
  * script or subcommand past the runner's own escape hatch (`npm run test`,
- * never `npm run` or `python`). pincer's `INTERPRETERS_AND_RUNNERS`, trimmed to
- * the bash names.
+ * never `npm run` or `python`). Trimmed to the bash names.
  */
 const RUNNERS = new Set([
     "python", "python3", "node", "deno", "bun", "ruby", "perl", "php", "osascript", "bash", "sh", "zsh", "fish",
@@ -108,14 +115,25 @@ const RUNNER_ESCAPES = new Set(["run", "exec", "x", "dlx", "-c", "-e"]);
 
 /** The words a segment starts with, when it is a plain command a prefix may cover; undefined otherwise. */
 function plainWords(seg: Segment): string[] | undefined {
-    if (seg.redirects.some((target) => !HARMLESS_REDIRECT.test(target))) { return undefined; }
+    if (
+        seg.redirects.some((target) => !HARMLESS_REDIRECT.test(target)) ||
+        seg.inputs.length > 0 ||
+        seg.enclosing.length > 0 ||
+        seg.substitution !== undefined ||
+        seg.unknownTarget ||
+        seg.expandsIntoInput
+    ) { return undefined; }
     const lead = leadTokens(seg);
-    // leadTokens strips subshell parens and `do`/`then` keywords; a prefix covers neither.
+    // A prefix covers only a visible, top-level command. `leadTokens` peels
+    // wrappers for analysis, so a changed head proves the syntax was not plain.
     if (lead.length === 0 || lead.length !== seg.tokens.length || lead[0].value !== seg.tokens[0].value) { return undefined; }
     const payload = resolvePayload(lead);
-    // A wrapper or a leading `VAR=value` changes what runs.
     if (payload.peeled.length > 0 || payload.command !== lead[0].value) { return undefined; }
-    return lead.map((token) => (token.hadExpansion ? "\0" : token.value));
+    // The tree walker distinguishes literal quoted words from values that are
+    // unknown until bash runs. Quoted `"--offline"` remains a normal argument;
+    // `$flag`, `$(command)` and `<(command)` do not inherit a standing prefix.
+    if (lead.some((token) => token.dynamic !== undefined)) { return undefined; }
+    return lead.map((token) => token.value);
 }
 
 function isDestructive(words: string[]): boolean {
@@ -146,8 +164,9 @@ function touchesGuardedPaths(evidence: ShellEvidence): boolean {
 export function suggestSessionRule(command: string, evidence: ShellEvidence, cwd: string): SessionRuleGrant | undefined {
     const trimmed = command.trim();
     if (!trimmed) { return undefined; }
-    const { segments, parseFailed } = parseCommand(trimmed);
-    if (parseFailed || segments.length === 0) { return undefined; }
+    const parsed = parseCommand(trimmed);
+    const { segments, parseFailed, complex, unknownQuoting, background } = parsed;
+    if (parseFailed || complex || unknownQuoting || background || segments.length === 0) { return undefined; }
     // Destructive anywhere in the line, however it is spelled: no rule.
     for (const seg of segments) {
         const payload = resolvePayload(leadTokens(seg));
@@ -159,7 +178,7 @@ export function suggestSessionRule(command: string, evidence: ShellEvidence, cwd
         rule: { kind: "exact", command: trimmed },
         label: "Allow this exact command for this session",
     };
-    if (segments.length !== 1 || hasUnmodelledSyntax(trimmed) || evidence.writes.length > 0 || evidence.network.length > 0) {
+    if (segments.length !== 1 || hasUnmodelledSyntax(trimmed, parsed) || evidence.writes.length > 0 || evidence.network.length > 0) {
         return exact;
     }
     const words = plainWords(segments[0]);
@@ -196,9 +215,10 @@ export function matchSessionRule(rules: readonly SessionRule[], command: string,
     if (exact) { return exact; }
 
     const prefixes = rules.filter((rule) => rule.kind === "prefix");
-    if (prefixes.length === 0 || hasUnmodelledSyntax(trimmed) || touchesGuardedPaths(evidence)) { return undefined; }
-    const { segments, parseFailed } = parseCommand(trimmed);
-    if (parseFailed || segments.length === 0) { return undefined; }
+    if (prefixes.length === 0 || touchesGuardedPaths(evidence)) { return undefined; }
+    const parsed = parseCommand(trimmed);
+    const { segments, parseFailed, complex, unknownQuoting, background } = parsed;
+    if (parseFailed || complex || unknownQuoting || background || segments.length === 0 || hasUnmodelledSyntax(trimmed, parsed)) { return undefined; }
     let first: SessionRule | undefined;
     for (const seg of segments) {
         const words = plainWords(seg);
@@ -222,6 +242,19 @@ export function addSessionRule(rules: readonly SessionRule[], rule: SessionRule)
 // PowerShell
 
 /**
+ * The path context that makes a standing PowerShell prefix safe. The gate owns
+ * these values and resolves any scratchpad roots once per run. A caller that
+ * omits it gets an exact-only grant; a prefix never falls back to an assumed
+ * current directory.
+ */
+export interface PowerShellSessionRuleContext {
+    cwd: string;
+    home: string;
+    /** Resolved directories a command may write to besides the workspace. */
+    writableRoots?: readonly string[];
+}
+
+/**
  * Cmdlets that delete, stop, overwrite state or run other code; no session
  * rule is offered for a line containing one, however it is aliased.
  */
@@ -231,26 +264,121 @@ const DESTRUCTIVE_CMDLETS = new Set([
     "invoke-command", "start-process", "start-job", "new-service", "register-scheduledtask", "set-mppreference", "add-mppreference",
 ]);
 
-/**
- * The session rule offered for a PowerShell command: the exact line, or none
- * for a destructive or unparseable one. Prefix rules would need Claude Code's
- * alias-canonicalized per-statement matching, which is not ported yet.
- */
-export function suggestPowerShellSessionRule(command: string): SessionRuleGrant | undefined {
-    const trimmed = command.trim();
-    const statements = trimmed ? powershellStatements(trimmed) : undefined;
-    if (!statements || statements.length === 0) { return undefined; }
-    for (const statement of statements) {
-        const cmd = statementCommand(statement);
-        if (DESTRUCTIVE_CMDLETS.has(cmd)) { return undefined; }
-        const words = powershellWords(statement) ?? statement.split(/\s+/);
-        if (isDestructive([cmd, ...words.slice(1)])) { return undefined; }
-    }
-    return { rule: { kind: "exact", command: trimmed }, label: "Allow this exact command for this session" };
+/** These change where later statements resolve relative paths; prefix matching does not track that state. */
+const DIRECTORY_CMDLETS = new Set(["set-location", "push-location", "pop-location"]);
+
+/** The command words PowerShell passes to a native command, canonical at index zero. */
+function powerShellWords(statement: string): string[] | undefined {
+    const words = powershellWords(statement);
+    if (!words || words.length === 0) { return undefined; }
+    return [canonicalCommandName(words[0]).toLowerCase(), ...words.slice(1)];
 }
 
-/** A PowerShell command is covered only by an exact rule for the identical line. */
-export function matchPowerShellSessionRule(rules: readonly SessionRule[], command: string): SessionRule | undefined {
+/**
+ * A session prefix is never allowed to reach a target outside the workspace or
+ * designated scratchpad roots, nor a secret, protected configuration or an
+ * execution primitive. PowerShell's command metadata is too broad to model
+ * safely, so each static argument is treated as a possible target. This only
+ * withholds a prefix; the user can still approve the exact command.
+ */
+function powerShellTargetsAreGuarded(words: readonly string[], context: PowerShellSessionRuleContext): boolean {
+    const roots = [resolveForContainment(context.cwd) ?? context.cwd, ...(context.writableRoots ?? [])];
+    for (const word of words.slice(1)) {
+        const colon = word.startsWith("-") ? word.indexOf(":") : -1;
+        const equals = word.startsWith("-") ? word.indexOf("=") : -1;
+        // Both `-Path:value` and native-style `--output=value` bind a value
+        // in one token. Treat either as a potential target rather than letting
+        // a prefix carry an unexamined absolute path.
+        const value = word.startsWith("-")
+            ? (colon > 0 ? word.slice(colon + 1) : equals > 0 ? word.slice(equals + 1) : "")
+            : word;
+        if (!value) { continue; }
+        // Command flags do not name targets. A wildcard can expand onto a
+        // protected or secret file, so no prefix vouches for one.
+        if (value.startsWith("-")) { continue; }
+        if (/[*?[]/.test(value) || /^[A-Za-z]:(?![\\/])/.test(value) || value.startsWith("\\\\") || value.startsWith("//")) { return true; }
+        const spelled = sep === "/" ? value.replaceAll("\\", "/") : value;
+        const absolute = toAbsolute(context.cwd, spelled, context.home);
+        const resolved = resolveForContainment(absolute);
+        if (
+            isSensitivePath(value) ||
+            isSensitivePath(resolved ?? absolute) ||
+            isProtectedPath(value, context.cwd) ||
+            isProtectedPath(resolved ?? absolute, context.cwd) ||
+            isExecutionPrimitivePath(value) ||
+            isExecutionPrimitivePath(resolved ?? absolute) ||
+            resolved === undefined ||
+            !roots.some((root) => isWithin(root, resolved))
+        ) { return true; }
+    }
+    return false;
+}
+
+/** The prefix portion of a single, static PowerShell statement, if it is narrow enough. */
+function powerShellPrefix(words: readonly string[], context: PowerShellSessionRuleContext): string | undefined {
+    if (powerShellTargetsAreGuarded(words, context)) { return undefined; }
+    const prefix: string[] = [];
+    for (const word of words) {
+        if (prefix.length === MAX_PREFIX_WORDS || !PLAIN_WORD.test(word)) { break; }
+        if (prefix.length > 0 && existsSync(join(context.cwd, word))) { break; }
+        prefix.push(word);
+    }
+    if (prefix.length < 2) { return undefined; }
+    if (RUNNERS.has(prefix[0]) && RUNNER_ESCAPES.has(prefix[prefix.length - 1])) { return undefined; }
+    return prefix.join(" ");
+}
+
+/**
+ * The session rule offered for a PowerShell command. A destructive or dynamic
+ * line gets no rule. A safe one-statement line gets a canonical, per-statement
+ * prefix only when the caller supplies containment context; all other lines
+ * retain the exact-command grant.
+ */
+export function suggestPowerShellSessionRule(command: string, context?: PowerShellSessionRuleContext): SessionRuleGrant | undefined {
     const trimmed = command.trim();
-    return trimmed ? rules.find((rule) => rule.kind === "exact" && rule.command === trimmed) : undefined;
+    if (!trimmed || powershellInjectionSyntax(trimmed)) { return undefined; }
+    const statements = powershellStatements(trimmed);
+    if (!statements || statements.length === 0) { return undefined; }
+    const wordsByStatement = statements.map(powerShellWords);
+    if (wordsByStatement.some((words) => !words)) { return undefined; }
+    for (const [index, statement] of statements.entries()) {
+        const cmd = statementCommand(statement);
+        const words = wordsByStatement[index] as string[];
+        if (DESTRUCTIVE_CMDLETS.has(cmd) || isDestructive(words)) { return undefined; }
+    }
+    const exact: SessionRuleGrant = { rule: { kind: "exact", command: trimmed }, label: "Allow this exact command for this session" };
+    if (!context || statements.length !== 1 || DIRECTORY_CMDLETS.has(statementCommand(statements[0]))) { return exact; }
+    const prefix = powerShellPrefix(wordsByStatement[0] as string[], context);
+    return prefix ? { rule: { kind: "prefix", command: prefix }, label: `Allow \`${prefix}\` commands for this session` } : exact;
+}
+
+/**
+ * A PowerShell prefix matches every visible statement, after canonicalizing
+ * aliases and casing. Exact grants remain literal user approvals. Prefixes
+ * refuse dynamic syntax and guarded targets even when an earlier command in
+ * the same line has a matching rule.
+ */
+export function matchPowerShellSessionRule(rules: readonly SessionRule[], command: string, context?: PowerShellSessionRuleContext): SessionRule | undefined {
+    const trimmed = command.trim();
+    if (!trimmed) { return undefined; }
+    const exact = rules.find((rule) => rule.kind === "exact" && rule.command === trimmed);
+    if (exact) { return exact; }
+    if (!context || powershellInjectionSyntax(trimmed)) { return undefined; }
+    const prefixes = rules.filter((rule) => rule.kind === "prefix");
+    const statements = powershellStatements(trimmed);
+    if (prefixes.length === 0 || !statements || statements.length === 0) { return undefined; }
+    let first: SessionRule | undefined;
+    for (const statement of statements) {
+        const words = powerShellWords(statement);
+        if (!words || DIRECTORY_CMDLETS.has(statementCommand(statement)) || DESTRUCTIVE_CMDLETS.has(statementCommand(statement)) || isDestructive(words) || powerShellTargetsAreGuarded(words, context)) { return undefined; }
+        const rule = prefixes.find((candidate) => {
+            const ruleWords = candidate.command.split(" ");
+            return ruleWords.length <= words.length && ruleWords.every((word, index) =>
+                index === 0 ? words[index].toLowerCase() === word.toLowerCase() : words[index] === word,
+            );
+        });
+        if (!rule) { return undefined; }
+        first ??= rule;
+    }
+    return first;
 }

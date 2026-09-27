@@ -67,7 +67,7 @@ function cdTarget(args: Token[]): string | undefined {
 
 /** A token the shell passes as written: no quoting-with-expansion, glob, variable or command substitution. */
 function isLiteral(token: Token): boolean {
-    return !token.hadExpansion && !token.glob && !/[$`]/.test(token.value);
+    return !token.dynamic && !token.glob && !/[$`]/.test(token.value);
 }
 
 /** The package path `bal run` is given, if any: the first operand before `--`. */

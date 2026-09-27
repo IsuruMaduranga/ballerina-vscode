@@ -16,8 +16,7 @@
 
 /**
  * Pre-execution guards for the `powershell` tool (pure): the PowerShell
- * spelling of `guards.ts`, ported from pincer-agent
- * `extensions/powershell/guards.ts` (`3b290c8`) with BI's tool names.
+ * spelling of `guards.ts`, with BI's tool names.
  * Steering, not security; a guard concludes only on a positive parse.
  *
  * - interactive guard (foreground and background): `Read-Host`,
@@ -72,7 +71,7 @@ export function powershellGuardReason(command: string, opts: { background: boole
         if (cmd === "git") {
             // gitSubcommand skips git's value-taking global flags, so `git -C x rebase -i` still finds "rebase".
             const words = (powershellWords(statement) ?? statement.trim().split(/\s+/)).slice(1);
-            const { sub, rest } = gitSubcommand(words.map((value) => ({ value, hadExpansion: false })));
+            const { sub, rest } = gitSubcommand(words.map((value) => ({ value })));
             const flags = new Set(rest.map((token) => token.value));
             if (sub === "rebase" && (flags.has("-i") || flags.has("--interactive"))) {
                 return (

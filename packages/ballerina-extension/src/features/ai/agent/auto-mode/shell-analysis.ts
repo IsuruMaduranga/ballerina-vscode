@@ -13,6 +13,7 @@
 // KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
 /**
  * Deterministic shell pre-gate for auto mode (pure apart from path resolution).
  *
@@ -32,31 +33,19 @@
  *
  * Its second job matters as much: it extracts **deterministic evidence** —
  * resolved write targets, credential paths touched, whether a target escapes
- * the working directory, which wrapped command actually runs — and hands that
- * to the classifier. Parsing shell is exactly what an LLM classifier is worst
- * at, so giving it facts instead of a command string is the point of having
- * both layers.
+ * the working directory, which wrapped command actually runs — for the gate's
+ * fast paths, session-rule checks and approval reasons.
  *
- * Fixes relative to the original: `$'…'` ANSI-C quoting, bare `.`/`..`, brace
- * expansion, unspaced `<>&|` boundaries, transparent wrappers, archive/sync
- * tools, `find` actions, in-script redirection, `>|`, git default-deny by
- * subcommand, a sensitive-path check on every token (`cd` tracked), one
- * shared denylist (see `sensitive.ts`), and git's global flags.
- *
- * Ported from pincer-agent `extensions/auto-mode/shell-analysis.ts` (tip
- * `2602e3c`, which carries its 2026-09-23 security review). Two BI additions:
- * `writableRoots`, so a redirect into the thread's scratchpad counts as
- * contained like an in-workspace one; and `gitPathOperands`, so the path
- * operands of git's read-only subcommands get the outside-read check. Three
- * `!x.ok` tests read `"reason" in x`: boolean discriminants do not narrow
- * under this package's `strictNullChecks: false`.
+ * This keeps its own protected and credential paths, writable scratchpad roots,
+ * and explicit git path-operand checks.
  */
 
 import { isProtectedPath } from "./protected-paths";
 import { isExecutionPrimitivePath, isSensitivePath } from "./sensitive";
 import { isWithin, resolveForContainment, toAbsoluteBash } from "./paths";
 import { checkoutGitRunsProgram } from "./git-checkout-programs";
-import { lstatSync, readdirSync } from "fs";
+import { lstatSync, readdirSync, statSync } from "fs";
+import { join } from "path";
 import {
     GIT_GLOBAL_SAFE,
     GIT_SUBCOMMAND_SPECS,
@@ -65,7 +54,25 @@ import {
     checkFind,
     checkOptions,
     gitOperandsAllowed,
+    table,
+    type OptionSpec,
 } from "./read-only-options";
+import { parseCommand, scopedTracker, type Segment, type Token } from "./shell-parse";
+
+export { decodeAnsiC, LOOPS, parseCommand, scopedTracker, type ParseResult, type Segment, type Token } from "./shell-parse";
+
+/** Syntax that a standing session prefix cannot cover. The parser owns syntax recognition. */
+export function hasUnmodelledSyntax(command: string, parsed = parseCommand(command)): string | undefined {
+    if (parsed.complex) { return parsed.complex; }
+    if (parsed.unknownQuoting) { return parsed.unknownQuoting; }
+    if (parsed.substitutions.length > 0) { return "uses command substitution"; }
+    if (parsed.segments.some((segment) => segment.tokens.some((token) => token.dynamic))) {
+        return "references a value that is only known when the shell runs";
+    }
+    if (/\|\s*(bash|sh|zsh|python|perl|node|ruby)\b/.test(command)) { return "pipes into an interpreter"; }
+    if (/base64\s+(-d|--decode)/.test(command)) { return "decodes base64, which can hide the real command"; }
+    return undefined;
+}
 
 export type ShellVerdict = "safe" | "escalate";
 
@@ -88,10 +95,9 @@ export interface ShellEvidence {
     /** In-project paths whose contents execute later (`.git/hooks/*`, `.vscode/*.json`). */
     executionPrimitives: string[];
     /**
-     * Tooling/agent-configuration paths (`permissions/protected-paths.ts`: `.cargo/`,
-     * `.claude/`, hook configs, shell rc files, …) this command writes. The
-     * `write`/`edit` tools route these to the classifier; a shell redirect or
-     * `rm`/`mv` onto the same path must not be "safe" merely for being in-project.
+     * Tooling/agent-configuration paths (`protected-paths.ts`: `.cargo/`,
+     * `.claude/`, hook configs, shell rc files, …) this command writes. A shell
+     * redirect or `rm`/`mv` onto one must not be "safe" merely for being in-project.
      */
     protectedPaths: string[];
     /** Network-capable commands present (curl, ssh, …) — an egress signal for the classifier. */
@@ -100,7 +106,7 @@ export interface ShellEvidence {
      * Paths a read-only command reads from OUTSIDE the working directory
      * (original tokens). Claude Code asks for every read outside it; here the
      * read escalates so the classifier at least sees it — until 2026-09-05
-     * `cat ~/.onecode/agent/auth.json` fast-pathed as "safe".
+     * `cat ~/.someagent/agent/auth.json` fast-pathed as "safe".
      */
     outsideReads: string[];
     /**
@@ -111,21 +117,15 @@ export interface ShellEvidence {
      */
     readOnlyOutside: boolean;
     /**
-     * True when the ONLY reason this escalated is an in-project filesystem
-     * mutation/deletion — every path is inside the working directory and resolved,
+     * True when the ONLY reason this escalated is Claude Code's acceptEdits file
+     * commands (`ACCEPT_EDITS_OPTIONS`) on the working space — every path is
+     * inside the working directory (or a `writableRoots` entry) and resolved,
      * nothing touches the network, no credential/execution-primitive path, no
-     * unknown command, interpreter, glob, xargs, `cd`, or unmodelled syntax. The
-     * containment gate uses this to decide whether a git-recoverability check may
-     * clear the command (see auto-mode/recoverability.ts). Never true when the
-     * verdict is "safe" (nothing escalated) — it only qualifies an escalation.
+     * unknown command, interpreter, glob, xargs, `cd`, or unmodelled syntax.
+     * Never true when the verdict is "safe" (nothing escalated) — it only
+     * qualifies an escalation.
      */
     containedNonNetwork: boolean;
-    /**
-     * True for a whole-working-tree destructive git op (`git reset --hard`), whose
-     * recoverability is judged against the whole tree's cleanliness rather than
-     * named paths.
-     */
-    wholeTree: boolean;
 }
 
 /**
@@ -168,29 +168,75 @@ const NO_FILE_OPERANDS = new Set([
  */
 const PATTERN_FIRST_COMMANDS = new Set(["grep", "egrep", "fgrep", "rg"]);
 
-/**
- * Commands that run whatever follows them. The original only knew three of
- * these and never looked past them, so `env rm -rf ~/Desktop` classified as a
- * harmless `env`. Every one of these is peeled and the
- * payload command is classified instead.
- */
-const TRANSPARENT_WRAPPERS = new Set([
-    "command",
-    "env",
-    "flock",
-    "ionice",
-    "nice",
-    "nohup",
-    "script",
-    "setsid",
-    "stdbuf",
-    "time",
-    "timeout",
-    "xargs",
-]);
+interface WrapperSpec {
+    /** Options whose next word is a harmless value. */
+    values?: readonly string[];
+    /**
+     * Options whose value changes where or how the payload runs (`env -C`,
+     * `time -o`, `script -T`) or carries code (`flock -c`, `env -S`). Leave
+     * the value in command position so the command escalates.
+     */
+    unsafeValues?: readonly string[];
+    /** The first operand is a file, not the command (`flock LOCK cmd`, `script LOG cmd`). */
+    fileFirst?: boolean;
+    /** The first operand is a duration (`timeout 30 cmd`). */
+    durationFirst?: boolean;
+    /**
+     * Whether an in-project payload stays contained (`containedNonNetwork`).
+     * xargs takes its targets from stdin, and flock and script write the
+     * file they are given, which nothing write-checks.
+     */
+    contained: boolean;
+    /** The upstream deny-form parser peels these; this pre-gate leaves them unknown. */
+    denyFormsOnly?: boolean;
+}
 
-/** Options of wrapper commands that consume the following token as a value. */
-const WRAPPER_VALUE_OPTIONS = new Set(["-u", "-c", "-n", "-I", "-L", "-P", "--signal", "-s", "-k"]);
+/**
+ * Commands that run whatever follows them, and how each one takes its own
+ * options. The original only knew three and never looked past them, so `env
+ * rm -rf ~/Desktop` classified as a harmless `env`; one
+ * shared value-option list later read `setsid -c` (a flag) and `stdbuf -o 1M`
+ * wrong, so the real command slipped past deny rules
+ *. `sudo`/`doas` are peeled for deny forms
+ * only: the pre-gate peeling them would clear `sudo rm` as a contained delete.
+ */
+const WRAPPERS: Record<string, WrapperSpec> = {
+    // `builtin cd x` runs the builtin `cd` (PR #12 review: it hid a `cd` from the worktree guard).
+    builtin: { contained: true },
+    // Runs its argument as the command of that name (`busybox rm x`).
+    busybox: { contained: false, denyFormsOnly: true },
+    caffeinate: { values: ["-t", "-w"], contained: true, denyFormsOnly: true },
+    command: { contained: true },
+    doas: { values: ["-u", "-a"], unsafeValues: ["-C"], contained: false, denyFormsOnly: true },
+    exec: { values: ["-a"], contained: false, denyFormsOnly: true },
+    env: { values: ["-u", "--unset"], unsafeValues: ["-C", "--chdir", "-S", "--split-string"], contained: true },
+    flock: { values: ["-w", "--timeout", "-E", "--conflict-exit-code"], unsafeValues: ["-c", "--command"], fileFirst: true, contained: false },
+    ionice: { values: ["-c", "--class", "-n", "--classdata"], contained: true },
+    nice: { values: ["-n", "--adjustment"], contained: true },
+    nohup: { contained: true },
+    script: {
+        values: ["-t", "-E", "--echo", "-m", "--logging-format"],
+        unsafeValues: ["-T", "--log-timing", "-I", "--log-in", "-O", "--log-out", "-B", "--log-io", "-c", "--command"],
+        fileFirst: true,
+        contained: false,
+    },
+    setsid: { contained: true },
+    stdbuf: { values: ["-i", "-o", "-e", "--input", "--output", "--error"], contained: true },
+    sudo: {
+        values: ["-u", "-g", "-h", "-p", "-r", "-t", "-U", "-T", "-a", "--user", "--group", "--host", "--prompt", "--role", "--type", "--other-user", "--command-timeout", "--auth-type"],
+        unsafeValues: ["-C", "-D", "-R", "--close-from", "--chdir", "--chroot"],
+        contained: false,
+        denyFormsOnly: true,
+    },
+    time: { values: ["-f", "--format"], unsafeValues: ["-o", "--output"], contained: true },
+    timeout: { values: ["-s", "--signal", "-k", "--kill-after"], durationFirst: true, contained: true },
+    watch: { values: ["-n", "--interval", "-q", "--equexit"], contained: false, denyFormsOnly: true },
+    xargs: {
+        values: ["-I", "-L", "-n", "-P", "-s", "-E", "-d", "--delimiter", "--max-args", "--max-procs", "--max-chars", "--max-lines", "--eof"],
+        unsafeValues: ["-a", "--arg-file"],
+        contained: false,
+    },
+};
 
 /**
  * Anything here writes, deletes, or fetches-and-writes. The list is only used to
@@ -221,49 +267,47 @@ const MUTATION_COMMANDS = new Set([
     "zip",
 ]);
 
-/**
- * The delete/truncate commands whose blast radius is exactly their (in-project,
- * resolved, concrete) path arguments, so an in-project use may be cleared by the
- * containment + git-recoverability gate rather than always reaching the
- * classifier. This is an *allowlist* for the "provably contained" conclusion —
- * omission is safe (the command still escalates to the classifier via the generic
- * mutation path). Overwrite/copy tools (cp, mv, dd, tee) are deliberately left
- * out for now: their destination semantics are subtler, so they keep classifying.
- * Membership here does not clear anything on its own: every target must resolve
- * inside the working directory and the recoverability check must pass.
- */
+/** The delete/truncate commands whose targets are every positional, bare names included. */
 const DELETE_COMMANDS = new Set(["rm", "rmdir", "shred", "truncate"]);
+
+/**
+ * Claude Code's acceptEdits file commands (2.1.282), with the
+ * options this check models; the only mutations that can be marked contained.
+ * Any other option, one carrying a value included (`cp -t dir`,
+ * `--target-directory=dir`, `mkdir -m`), leaves the command uncontained, as do
+ * symlink-following `cp -L`/`-H`. `sed` is on Claude Code's list but left out
+ * until its program is checked the way Claude Code checks it; Claude Code
+ * classified `sed -i '' …` anyway. This is an *allowlist* for the "provably
+ * contained" conclusion: omission only sends a command to the classifier.
+ */
+const ACCEPT_EDITS_OPTIONS: Record<string, OptionSpec> = {
+    rm: table({ none: "-f -R -r -i -v -I -d --force --recursive --verbose --dir --interactive" }),
+    rmdir: table({ none: "-p -v --parents --verbose" }),
+    mkdir: table({ none: "-p -v --parents --verbose" }),
+    touch: table({ none: "-a -c -m --no-create" }),
+    cp: table({ none: "-r -R -f -i -n -p -v -a -P --recursive --force --interactive --no-clobber --verbose --archive --no-dereference" }),
+    mv: table({ none: "-f -i -n -v --force --interactive --no-clobber --verbose" }),
+};
+
+/**
+ * The operands of an acceptEdits file command, or undefined when it carries an
+ * option `ACCEPT_EDITS_OPTIONS` does not model. After `--` every word is an operand.
+ */
+function acceptEditsOperands(name: string, args: Token[]): Token[] | undefined {
+    const spec = ACCEPT_EDITS_OPTIONS[name];
+    if (!spec) { return undefined; }
+    const check = checkOptions(spec, args);
+    return check.ok ? check.parsed.positionals : undefined;
+}
 
 /** Glob/other shell metacharacters we cannot enumerate, so a target carrying one is not "concrete". */
 function hasGlob(token: string): boolean {
     return /[*?\[\]]/.test(token);
 }
 
-/** `git reset --hard [ref]` — a whole-working-tree discard of uncommitted changes. */
-function isWholeTreeGitReset(args: Token[]): boolean {
-    const positionals = args.filter((token) => !token.value.startsWith("-"));
-    return positionals[0]?.value === "reset" && args.some((token) => token.value === "--hard");
-}
-
-/**
- * Whether git is being pointed at another repository or tree (`-C dir`,
- * `--git-dir[=]…`, `--work-tree[=]…`, `--namespace`, `--exec-path`). A
- * whole-tree op carrying one of these acts on THAT tree, so judging it against
- * the working directory would clear a reset of some other checkout.
- */
-function hasGitRetargetFlag(args: Token[]): boolean {
-    return args.some((token) => {
-        const value = token.value;
-        if (!value.startsWith("-")) { return false; }
-        if (GIT_GLOBAL_VALUE_FLAGS.has(value)) { return true; }
-        const eq = value.indexOf("=");
-        return eq > 0 && GIT_GLOBAL_VALUE_FLAGS.has(value.slice(0, eq));
-    });
-}
-
 /**
  * Interpreters whose *scripts* can write files the token-level pass never sees
- * (`awk 'BEGIN{print > "f"}'` is one example). Their programs are not
+ * (for example, `awk 'BEGIN{print > "f"}'`). Their programs are not
  * parsed — they escalate unconditionally.
  */
 const SCRIPT_INTERPRETERS = new Set([
@@ -307,307 +351,150 @@ const NETWORK_COMMANDS = new Set([
  * `GIT_SUBCOMMAND_SPECS` (read-only-options.ts) can be fast-pathed, each only
  * with the options its table names. The original enumerated *mutating*
  * subcommands and allowed the rest, so `git rm`, `git mv`, `git archive`,
- * `git config`, and `git update-ref` all slipped through; until 2026-09-23
- * the options after an allowed subcommand were never looked at, so
- * `git branch -D`, `git diff --output=f` and `git grep -O<prog>` passed
- * as reads. `ls-remote` is not read-only: it contacts a remote.
+ * `git config`, and `git update-ref` all slipped through;
+ * until 2026-09-23 the options after an allowed subcommand were never looked
+ * at, so `git branch -D`, `git diff --output=f` and `git grep -O<prog>` passed
+ * as reads. `ls-remote` is not read-only: it
+ * contacts a remote.
  */
 /**
  * git global flags that take a value. `git -c k=v <sub>` can turn a read into
- * code execution (`git -c protocol.ext.allow=always clone ext::sh …`,
- * reproduced live here), so `-c`/`--config-env` are *not* skipped
+ * code execution (`git -c protocol.ext.allow=always clone ext::sh …`),
+ * so `-c`/`--config-env` are *not* skipped
  * silently: seeing either escalates.
  */
 const GIT_GLOBAL_VALUE_FLAGS = new Set(["-C", "--git-dir", "--work-tree", "--namespace", "--exec-path"]);
 
-export interface Token {
-    /** The token with quotes removed and `$'…'` decoded. */
-    value: string;
-    /** True when the token was written with any quoting or expansion syntax. */
-    hadExpansion: boolean;
-    /** True when an unquoted, unescaped `*`, `?` or `[` makes the token a glob bash expands. */
-    glob?: boolean;
-}
+/**
+ * Commands that only print their arguments, so a command substitution among
+ * them is safe once the substituted command is: its output is printed, not
+ * read as an option, a path or a program (`echo "built $(date)"`). `echo`'s
+ * options only change how it prints. `printf` is not here: `printf $(echo
+ * -v) PATH ./bin` assigns a variable (PR #12 review).
+ */
+const PURE_OUTPUT = new Set(["echo"]);
 
-export interface Segment {
-    tokens: Token[];
-    /** Redirection targets found in this segment, in written order. */
-    redirects: string[];
-    raw: string;
-}
+/** A parameter bash sets itself (`$1`, `$@`, `$$`, `${#}`), as opposed to an environment variable. */
+const SPECIAL_PARAMETER = /\$\{?[0-9@*#?$!-]/;
 
-/** Decode the escapes bash understands inside `$'…'`. */
-function decodeAnsiC(body: string): string {
-    return body.replace(/\\(n|t|r|\\|'|"|a|b|f|v|0|x[0-9a-fA-F]{1,2})/g, (match, escape: string) => {
-        switch (escape) {
-            case "n":
-                return "\n";
-            case "t":
-                return "\t";
-            case "r":
-                return "\r";
-            case "\\":
-                return "\\";
-            case "'":
-                return "'";
-            case '"':
-                return '"';
-            case "a":
-                return "\x07";
-            case "b":
-                return "\b";
-            case "f":
-                return "\f";
-            case "v":
-                return "\v";
-            case "0":
-                return "\0";
-            default:
-                return escape.startsWith("x") ? String.fromCharCode(Number.parseInt(escape.slice(1), 16)) : match;
-        }
-    });
+export interface Payload {
+    command: string;
+    args: Token[];
+    /** The wrappers peeled, outermost first. */
+    peeled: string[];
+    /** Command-position words spelled with a directory (`./cat`, `bin/ls`, `/bin/rm`), as written. */
+    pathNamed: string[];
 }
 
 /**
- * Syntax through which a command can run something other than what its
- * visible words say. The permission matcher refuses to let a prefix/wildcard
- * allow rule cover a command carrying any of it (the user approved `npm test
- * …`, not whatever `$(…)` evaluates to), and the pre-gate escalates on it.
+ * Peel wrappers to the command that actually runs.
+ *
+ * Peel only what the pre-gate and guards fully understand. Options that
+ * change where the payload runs or carry a script stay in command position
+ * and escalate.
  */
-export function hasInjectionSyntax(command: string): string | undefined {
-    if (/\$\(/.test(command)) { return "uses command substitution $( )"; }
-    if (/(^|[^\\])`/.test(command)) { return "uses backtick command substitution"; }
-    if (/[<>]\(/.test(command)) { return "uses process substitution"; }
-    if (/\beval\b|\bexec\b/.test(command)) { return "uses eval/exec"; }
-    if (/\|\s*(bash|sh|zsh|python|perl|node|ruby)\b/.test(command)) { return "pipes into an interpreter"; }
-    if (/base64\s+(-d|--decode)/.test(command)) { return "decodes base64, which can hide the real command"; }
-    return undefined;
-}
-
-/** Syntax we do not model at all; its presence alone forces escalation. */
-export function hasUnmodelledSyntax(command: string): string | undefined {
-    if (command.includes("\n")) { return "spans multiple lines"; }
-    const injection = hasInjectionSyntax(command);
-    if (injection) { return injection; }
-    if (/<<</.test(command)) { return "uses a here-string"; }
-    if (/<</.test(command)) { return "uses a heredoc"; }
-    // Brace expansion resolves to paths we cannot enumerate.
-    if (/\{[^{}]*,[^{}]*\}/.test(command)) { return "uses brace expansion, whose expanded paths cannot be checked"; }
-    if (/\$\{?[A-Za-z_]/.test(command)) { return "references environment variables, whose values are unknown here"; }
-    return undefined;
-}
-
-/**
- * Split a command into pipeline/list segments and tokenize each. Unlike the
- * original, `<`, `>`, `&`, and `|` terminate a token even without surrounding
- * whitespace, so `cmd>file` and `a|b` are seen. An
- * unquoted newline ends a segment too (it is a command separator in bash).
- */
-export function parseCommand(command: string): { segments: Segment[]; parseFailed: boolean } {
-    const segments: Segment[] = [];
-    let tokens: Token[] = [];
-    let redirects: string[] = [];
-    let rawStart = 0;
-
-    let current = "";
-    let hadExpansion = false;
-    let glob = false;
-    let quoted = false;
-    let inSingle = false;
-    let inDouble = false;
-    let escape = false;
-    /** Set while consuming the token that follows a redirection operator. */
-    let pendingRedirect = false;
-
-    const pushToken = () => {
-        if (!current && !quoted) { return; }
-        if (pendingRedirect) {
-            redirects.push(current);
-            pendingRedirect = false;
-        } else {
-            tokens.push({ value: current, hadExpansion, glob });
-        }
-        current = "";
-        hadExpansion = false;
-        glob = false;
-        quoted = false;
-    };
-
-    /** `at` = index of the separator; `width` = its length (`&&` is 2). */
-    const pushSegment = (at: number, width = 1) => {
-        pushToken();
-        if (tokens.length > 0 || redirects.length > 0) {
-            segments.push({ tokens, redirects, raw: command.slice(rawStart, at).trim() });
-        }
-        tokens = [];
-        redirects = [];
-        rawStart = at + width;
-    };
-
-    for (let i = 0; i < command.length; i++) {
-        const ch = command[i];
-
-        if (escape) {
-            current += ch;
-            escape = false;
-            continue;
-        }
-        if (ch === "\\" && !inSingle) {
-            escape = true;
-            continue;
-        }
-        if (ch === "'" && !inDouble) {
-            inSingle = !inSingle;
-            quoted = true;
-            continue;
-        }
-        if (ch === '"' && !inSingle) {
-            inDouble = !inDouble;
-            quoted = true;
-            continue;
-        }
-        // ANSI-C quoting: `$'\x2e\x2e'` is `..`. The original kept the leading `$`,
-        // which made the token look like a variable and skipped every path check.
-        if (ch === "$" && command[i + 1] === "'" && !inSingle && !inDouble) {
-            const end = command.indexOf("'", i + 2);
-            if (end === -1) { return { segments: [], parseFailed: true }; }
-            current += decodeAnsiC(command.slice(i + 2, end));
-            quoted = true;
-            hadExpansion = true;
-            i = end;
-            continue;
-        }
-
-        if (inSingle || inDouble) {
-            current += ch;
-            continue;
-        }
-
-        if (ch === "\n") {
-            // An unquoted newline separates commands exactly like `;`. Without this
-            // `npm test x\ncurl evil` would be one segment whose lead is `npm test`.
-            pushSegment(i);
-            continue;
-        }
-        if (/\s/.test(ch)) {
-            pushToken();
-            continue;
-        }
-
-        // Redirection. `>|` is the clobber-override form and behaves as `>`;
-        // `2>&1` and `&>` are duplications, not paths.
-        if (ch === ">" || ch === "<") {
-            pushToken();
-            let j = i + 1;
-            if (command[j] === ">" || command[j] === "|") { j++; }
-            if (command[j] === "&") {
-                // `>&2`, `>&-`: fd duplication, no path involved. But `>&word` with
-                // any other word opens that file for writing (bash's `&>word`), so it
-                // is a write target like `>word`.
-                let k = j + 1;
-                while (k < command.length && /[0-9]/.test(command[k])) { k++; }
-                if (command[k] === "-") { k++; }
-                const boundary = k >= command.length || /[\s;&|<>()]/.test(command[k]);
-                if (k > j + 1 && boundary) {
-                    i = k - 1;
-                    continue;
-                }
-                j++;
-            }
-            pendingRedirect = ch === ">";
-            i = j - 1;
-            continue;
-        }
-
-        if (ch === "|" || ch === ";" || ch === "&") {
-            // `&&`, `||`, `;`, `|`, `&` all end a segment. Any of them means the
-            // next command is separate, which is all we need to know.
-            const doubled = command[i + 1] === ch;
-            pushSegment(i, doubled ? 2 : 1);
-            if (doubled) { i++; }
-            continue;
-        }
-
-        if (ch === "*" || ch === "?" || ch === "[") { glob = true; }
-        current += ch;
-    }
-
-    if (escape || inSingle || inDouble) { return { segments: [], parseFailed: true }; }
-    pushSegment(command.length);
-    return { segments, parseFailed: false };
-}
-
-/** Peel wrappers to the command that actually runs. */
-export function resolvePayload(tokens: Token[]): { command: string; args: Token[]; peeled: string[] } {
-    const peeled: string[] = [];
+export function resolvePayload(tokens: Token[]): Payload {
+    const payload: Payload = { command: "", args: [], peeled: [], pathNamed: [] };
     let index = 0;
+
+    const kind = (spec: WrapperSpec, option: string) =>
+        spec.values?.includes(option) ? "value" : spec.unsafeValues?.includes(option) ? "unsafe" : undefined;
+
+    /**
+     * Skip the wrapper's own options; `--` ends them. A value may be attached,
+     * as getopt allows: `--chdir=/tmp`, `-C/tmp`, or last in a short cluster
+     * (`-iC/tmp`). Until 2026-09-24 only the separate spelling was recognised,
+     * so `env --chdir=/tmp rm -f a.txt` peeled as a contained delete and
+     * `env --split-string='rm …'` hid its script from deny rules.
+     */
+    const skipOptions = (spec: WrapperSpec) => {
+        while (index < tokens.length && tokens[index].value.startsWith("-")) {
+            const word = tokens[index].value;
+            if (word === "--") {
+                index++;
+                return;
+            }
+            let option: string | undefined;
+            let attached: string | undefined;
+            if (word.startsWith("--")) {
+                const eq = word.indexOf("=");
+                option = eq > 0 ? word.slice(0, eq) : word;
+                attached = eq > 0 ? word.slice(eq + 1) : undefined;
+            } else {
+                for (let i = 1; i < word.length; i++) {
+                    if (!kind(spec, `-${word[i]}`)) { continue; }
+                    option = `-${word[i]}`;
+                    attached = word.slice(i + 1) || undefined;
+                    break;
+                }
+            }
+            const type = option === undefined ? undefined : kind(spec, option);
+            // An attached value that moves the payload or carries a script
+            // stays in command position, so the command escalates uncontained.
+            if (attached !== undefined && type === "unsafe") { return; }
+            index++;
+            if (type === undefined || attached !== undefined) {
+                continue;
+            }
+            if (index >= tokens.length) { return; }
+            if (type === "value") { index++; }
+        }
+    };
 
     for (;;) {
         // Leading `VAR=value` assignments are not the command.
         while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index].value)) { index++; }
-        if (index >= tokens.length) { return { command: "", args: [], peeled }; }
+        if (index >= tokens.length) { return payload; }
 
+        if (/[\\/]/.test(tokens[index].value)) { payload.pathNamed.push(tokens[index].value); }
         const name = commandName(tokens[index].value);
-        if (!TRANSPARENT_WRAPPERS.has(name)) {
-            return { command: name, args: tokens.slice(index + 1), peeled };
+        const spec = WRAPPERS[name];
+        if (!spec || spec.denyFormsOnly) {
+            payload.command = name;
+            payload.args = tokens.slice(index + 1);
+            return payload;
         }
 
-        peeled.push(name);
+        payload.peeled.push(name);
         index++;
-        // Step over the wrapper's own flags and their values.
-        while (index < tokens.length && tokens[index].value.startsWith("-")) {
-            const flag = tokens[index].value;
+        skipOptions(spec);
+        if (spec.fileFirst && index < tokens.length) {
             index++;
-            if (WRAPPER_VALUE_OPTIONS.has(flag) && index < tokens.length) { index++; }
+            // `flock LOCK -c '…'`: options may follow the file too.
+            skipOptions(spec);
         }
-        // `timeout 30 cmd` — a bare duration is not the payload.
-        while (index < tokens.length && /^[0-9]+[smhd]?$/.test(tokens[index].value)) { index++; }
+        if (spec.durationFirst && index < tokens.length && /^[0-9.]+[smhd]?$/.test(tokens[index].value)) { index++; }
     }
 }
 
+/** Whether every peeled wrapper keeps an in-project payload contained (see `WrapperSpec.contained`). */
+function wrappersContained(peeled: readonly string[]): boolean {
+    return peeled.every((name) => WRAPPERS[name]?.contained);
+}
+
+/** Commands that change the shell's working directory. */
+export const DIRECTORY_MOVERS: ReadonlySet<string> = new Set(["cd", "pushd", "popd"]);
+
+/** Whether a segment's command (past `time` and wrappers) changes the shell's directory. */
+export function movesDirectory(seg: Segment): boolean {
+    return DIRECTORY_MOVERS.has(resolvePayload(leadTokens(seg)).command);
+}
+
 /**
- * A segment's tokens normalised for command-position checks: subshell parens
- * stripped from the head token only (`(cd` → `cd` — a later argument may
- * legitimately begin with `(`), leading `do`/`then`/`else` keywords skipped,
- * and as many trailing `)`s stripped off the last token as `(`s were opened at
- * the head, so `(git stash)` still matches subcommand `stash`. A subshell
- * whose closing paren lands in a *different* segment (`(a && git stash)`) is
- * a known limitation — the closer is only balanced within one segment.
- * Used by the bash/worktree guard pipelines, not by the escalation analyzer.
+ * A segment's tokens from its command word on, for command-position checks.
+ * `time` is a reserved word that the grammar reads as a command, so `time
+ * { rm x; }` arrives as the words `time { rm x` (and a `}` command): a leading
+ * `time`, its `-p`, and the `{`, `(` or `!` it times are skipped. The grammar
+ * has already taken that punctuation out of every other command. Used by the
+ * guards and the deny forms, not by the escalation analyzer.
  */
 export function leadTokens(seg: Segment): Token[] {
-    const tokens = [...seg.tokens];
     let i = 0;
-    let opened = 0;
-    for (;;) {
-        while (i < tokens.length) {
-            const value = tokens[i].value;
-            const lead = /^[({]+/.exec(value)?.[0] ?? "";
-            if (lead.length === 0) { break; }
-            opened += (lead.match(/\(/g) ?? []).length;
-            const stripped = value.slice(lead.length);
-            if (stripped.length === 0) {
-                i++;
-                continue;
-            }
-            tokens[i] = { ...tokens[i], value: stripped };
-            break;
-        }
-        if (i < tokens.length && ["do", "then", "else"].includes(tokens[i].value)) {
-            i++;
-            continue;
-        }
-        break;
+    while (seg.tokens[i]?.value === "time") {
+        i++;
+        while (["-p", "--", "{", "(", "!"].includes(seg.tokens[i]?.value)) { i++; }
     }
-    if (opened > 0 && tokens.length > i) {
-        const last = tokens.length - 1;
-        const trailing = /\)+$/.exec(tokens[last].value)?.[0];
-        if (trailing) {
-            const strip = Math.min(trailing.length, opened);
-            tokens[last] = { ...tokens[last], value: tokens[last].value.slice(0, tokens[last].value.length - strip) };
-        }
-    }
-    return tokens.slice(i);
+    return seg.tokens.slice(i);
 }
 
 /**
@@ -636,9 +523,9 @@ function commandName(token: string): string {
 }
 
 /**
- * Whether a token names a path. Unlike the original, bare `.` and `..` count —
- * `rm -rf ..` deletes the parent directory and the original saw no path at
- * all.
+ * Whether a token names a path. Unlike the original, bare `.` and `..` count
+ * — `rm -rf ..` deletes the parent directory and the
+ * original saw no path at all.
  */
 function looksLikePath(value: string): boolean {
     if (!value || value.startsWith("-")) { return false; }
@@ -653,12 +540,57 @@ function looksLikePath(value: string): boolean {
 const INERT_ASSIGNMENTS = /^(LANG|LANGUAGE|LC_[A-Z]+|TZ|NO_COLOR|FORCE_COLOR|CLICOLOR|CLICOLOR_FORCE|TERM|COLUMNS|LINES)$/;
 
 /**
+ * Whether an inert variable's VALUE keeps it inert. libc reads a file named by
+ * `TZ=:/path` or `TZ=/path`, and a locale name with a `/` is a path too, so
+ * only plain names pass: a zone name made of plain segments (`Asia/Tokyo`,
+ * read from the system zoneinfo) for TZ, and no `/` at all for the rest
+ *.
+ */
+function isInertValue(name: string, value: string): boolean {
+    if (name === "TZ") { return /^([A-Za-z0-9_+-]+(\/[A-Za-z0-9_+-]+)*)?$/.test(value); }
+    return /^[A-Za-z0-9_.,@:+-]*$/.test(value);
+}
+
+/**
  * A `~` word other than `~` and `~/…`: bash expands `~name` to that user's
  * home and `~-`/`~+` to `$OLDPWD`/`$PWD`, which `toAbsolute` would read as a
  * directory literally named `~name` inside the working directory.
  */
 export function isUnknownTilde(value: string): boolean {
     return value.startsWith("~") && value !== "~" && !value.startsWith("~/");
+}
+
+/**
+ * Whether moving, copying or removing `source` touches a path `guarded`
+ * flags beneath it: walks `source` without following symlinks, at most
+ * `budget` entries, and tests each entry's counterpart under `target` (the
+ * same path for a removal). A walk that runs out of budget counts as touching
+ * one, so the command is judged, not cleared. A file source walks nothing.
+ */
+function touchesGuardedPath(source: string, target: string, guarded: (path: string) => boolean, budget = 5_000): boolean {
+    const stack = [""];
+    let seen = 0;
+    while (stack.length > 0) {
+        const relative = stack.pop() as string;
+        let entries;
+        try {
+            entries = readdirSync(join(source, relative), { withFileTypes: true });
+        } catch {
+            continue;
+        }
+        for (const entry of entries) {
+            const child = join(relative, entry.name);
+            if (++seen > budget || guarded(join(target, child))) { return true; }
+            if (entry.isDirectory()) { stack.push(child); }
+        }
+    }
+    return false;
+}
+
+/** The last component of a bash path word, trailing slashes dropped (`a/b/` is `b`). */
+function bashBasename(word: string): string {
+    const trimmed = word.replace(/\/+$/, "");
+    return trimmed.slice(trimmed.lastIndexOf("/") + 1);
 }
 
 /** Whether a directory entry exists at `absolute` (a dangling symlink counts). */
@@ -670,6 +602,17 @@ function entryExists(absolute: string): boolean {
         return false;
     }
 }
+
+/** Whether `resolved` (already realpath'd) is a directory. */
+function isDirectory(resolved: string): boolean {
+    try {
+        return statSync(resolved).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+const FOLLOWS_DIR_ENTRY_SYMLINKS = "reads through symbolic links inside it, which can read outside the working directory";
 
 /**
  * A bash glob (one path component) as a RegExp: `*`, `?`, `[…]`/`[!…]`,
@@ -749,7 +692,7 @@ function outputFlagTarget(args: Token[]): string | undefined {
  * options its table names, is safe. Returns undefined when safe, else the
  * reason to escalate.
  */
-function gitEscalationReason(args: Token[], isDirOutsideCwd: (dir: string) => boolean): string | undefined {
+function gitEscalationReason(args: Token[], isDirOutsideCwd: (dir: string) => boolean, onFileReads: (words: Token[]) => void): string | undefined {
     let index = 0;
     while (index < args.length) {
         const token = args[index].value;
@@ -791,8 +734,37 @@ function gitEscalationReason(args: Token[], isDirOutsideCwd: (dir: string) => bo
     if (!gitOperandsAllowed(subcommand, check.parsed)) {
         return `runs git ${subcommand} with an operand and no --list, which creates a ref`;
     }
+    if (GIT_FILE_OPERANDS.has(subcommand)) { onFileReads(check.parsed.positionals); }
     return undefined;
 }
+
+/** The directory git runs in: `cwd`, then each leading `-C <dir>` in turn, as git applies them. */
+function gitWorkingDirectory(args: Token[], cwd: string, home: string): string {
+    let dir = cwd;
+    for (let index = 0; index < args.length; ) {
+        const token = args[index].value;
+        if (token === "-C") {
+            const next = args[index + 1]?.value;
+            if (next) { dir = toAbsoluteBash(dir, next, home); }
+            index += 2;
+        } else if (GIT_GLOBAL_SAFE.has(token)) {
+            index++;
+        } else {
+            break;
+        }
+    }
+    return dir;
+}
+
+/**
+ * Subcommands whose operands can be files git reads outside the repository.
+ * `git diff <path> <path>` goes `--no-index` by itself when either path is
+ * outside the work tree or there is no repository, and reads both files
+ *. Every operand is read-checked, revisions included: a
+ * revision is not a path unless a file of that name exists, and one that
+ * resolves inside the working directory passes.
+ */
+const GIT_FILE_OPERANDS = new Set(["diff"]);
 
 /**
  * For a git command the options already proved read-only: why the checkout it
@@ -811,32 +783,16 @@ function gitCheckoutReason(args: Token[], cwd: string, home: string, seen: Map<s
     return why && `runs git where ${why}`;
 }
 
-/**
- * BI addition. The read-only subcommands whose operands can name a file on
- * disk. `git diff` takes two paths as `--no-index` whenever one is
- * outside the work tree or no repository is found, so `git diff /etc/hosts
- * a.txt` reads `/etc/hosts` with `--no-index` never written (verified on git
- * 2.43). The others refuse a path outside the repository, but a path outside
- * the cwd and inside the repository is still a read beyond the workspace
- * folder.
- */
+/** BI addition: read-check path operands for every supported read-only Git subcommand. */
 const GIT_PATH_SUBCOMMANDS = new Set(["blame", "diff", "grep", "log", "ls-files", "ls-tree", "show"]);
 
-/**
- * The operands of a git command that the outside-read check must see: every
- * positional of a `GIT_PATH_SUBCOMMANDS` subcommand, less `grep`'s pattern.
- * Called only after `gitEscalationReason` cleared the command, so the global
- * options are the safe ones and `-C`. Operands are resolved against the cwd,
- * not the `-C` directory; `-C` must land inside the cwd, so a relative operand
- * can only resolve further out that way, never less far.
- */
 function gitPathOperands(args: Token[]): Token[] {
     let index = 0;
     while (index < args.length && args[index].value.startsWith("-")) { index += args[index].value === "-C" ? 2 : 1; }
     const subcommand = args[index]?.value;
-    if (!GIT_PATH_SUBCOMMANDS.has(subcommand)) { return []; }
+    if (!subcommand || !GIT_PATH_SUBCOMMANDS.has(subcommand)) { return []; }
     const check = checkOptions(GIT_SUBCOMMAND_SPECS[subcommand], args.slice(index + 1));
-    if ("reason" in check) { return []; }
+    if (!check.ok) { return []; }
     const operands = [...check.parsed.positionals];
     if (subcommand === "grep" && ![...check.parsed.seen].some((option) => PATTERN_OPTIONS.has(option))) { operands.shift(); }
     return operands;
@@ -847,25 +803,25 @@ export interface AnalyzeInput {
     cwd: string;
     home: string;
     /**
-     * Directories protected at runtime beyond protected-paths.ts's static list.
+     * Directories protected at runtime beyond protected-paths.ts's static list
+     * (pi's own agent dir — permissions/matcher.ts `DecideInput.protectedDirs`).
      * A redirect landing inside one escalates like a write to `.git/hooks`.
      */
     protectedDirs?: string[];
     /**
      * REALPATH-resolved directories a read-only command may read from besides
-     * the working directory without escalating (readable-roots.ts: the
-     * scratchpad, the bala cache, the Librarian's rendered docs), resolved once
-     * per thread by the caller (compared against realpaths here, unresolved).
-     * Reads only; the write and delete checks never consult this list.
+     * the working directory without escalating: the harness's own session dirs
+     * (memory, scratchpad, persisted results, this project's transcripts —
+     * permissions/matcher.ts `DecideInput.sessionDirPath`), resolved once per
+     * session by the caller (compared against realpaths here, unresolved). Reads
+     * only; the write and delete checks never consult this list.
      */
     readableRoots?: string[];
     /**
-     * BI addition. REALPATH-resolved directories a write target may land in and
-     * still count as inside the working directory: only the thread's own
-     * scratchpad. A write there is still checked against the
-     * sensitive, execution-primitive and protected lists, and a delete there
-     * still needs the recoverability judge, which refuses a path outside the
-     * repository.
+     * REALPATH-resolved directories a write may land in besides the working
+     * directory without leaving the working space: the workspace directories,
+     * passed only for a model that gets Claude Code's fast paths
+     * (permissions/matcher.ts `DecideInput.claudeCodeFastPaths`).
      */
     writableRoots?: string[];
 }
@@ -887,13 +843,12 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         outsideReads: [],
         readOnlyOutside: false,
         containedNonNetwork: false,
-        wholeTree: false,
     };
     /**
      * Set by any escalation reason that is NOT a bare in-project mutation — i.e.
      * anything meaning the command reaches outside the project or cannot be fully
      * accounted for. When it stays false through an escalation, the only blocker
-     * was in-project mutation, and the containment gate may consult recoverability.
+     * was in-project mutation (`containedNonNetwork`).
      */
     let uncontained = false;
     /** Set by any escalation that is not an outside-cwd read (see readOnlyOutside). */
@@ -908,14 +863,13 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
     const trimmed = command.trim();
     if (!trimmed) { return { ...evidence, verdict: "escalate", notes: ["empty command"] }; }
 
-    const unmodelled = hasUnmodelledSyntax(trimmed);
-    if (unmodelled) { escalate(unmodelled); }
-
-    const { segments, parseFailed } = parseCommand(trimmed);
+    const { segments, parseFailed, unavailable, unknownQuoting, complex } = parseCommand(trimmed);
     if (parseFailed) {
-        escalate("could not be parsed (unbalanced quotes), so nothing about it is known");
+        escalate(unavailable ? `could not be parsed: ${unavailable}` : "could not be parsed as bash, so nothing about it is known");
         return evidence;
     }
+    if (unknownQuoting) { escalate(unknownQuoting); }
+    if (complex) { escalate(complex); }
 
     /**
      * Containment is checked against the *resolved* working directory. Write
@@ -928,6 +882,8 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
 
     /** `cd` changes what later relative paths mean; the original never tracked it. */
     let effectiveCwd = cwd;
+    /** The directory per subshell scope: a `cd` inside `$(…)` or `( … )` does not reach the parent. */
+    const cwdByScope = scopedTracker(cwd);
 
     /**
      * Resolve a write-target token, record it as evidence, and escalate on any
@@ -946,8 +902,7 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         }
         const absolute = toAbsoluteBash(effectiveCwd, token, home);
         const resolved = resolveForContainment(absolute);
-        const outsideCwd =
-            resolved === undefined || !(isWithin(containmentRoot, resolved) || writableRoots.some((root) => isWithin(root, resolved)));
+        const outsideCwd = resolved === undefined || !(isWithin(containmentRoot, resolved) || writableRoots.some((root) => isWithin(root, resolved)));
         evidence.writes.push({ token, absolute, resolved, outsideCwd });
         if (resolved === undefined) {
             escalate(`writes to ${token}, which could not be resolved to a real path`);
@@ -976,13 +931,83 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         }
     };
 
+    /**
+     * A word a read-only command reads. It escalates when it resolves outside
+     * the working directory and the readable roots, or onto a credential path
+     * — judged where it RESOLVES, so an in-project symlink named `notes` that
+     * points at a key file is the key file. A
+     * `~name`/`~-` word and a glob that could reach `..` are paths bash
+     * expands to places this check cannot see (M2); an ordinary glob is
+     * expanded one level here and every match is judged.
+     */
+    const escalateOutsideRead = (value: string, why: string) => {
+        if (!evidence.outsideReads.includes(value)) { evidence.outsideReads.push(value); }
+        escalate(`reads ${value}, ${why}`, { outsideRead: true });
+    };
+    // `base` is where the reading program resolves a relative word (git's
+    // final `-C` directory); bash still expands globs from the shell's cwd.
+    const checkRead = (word: { value: string; glob?: boolean }, base = effectiveCwd) => {
+        const value = word.value;
+        if (!value) { return; }
+        if (isUnknownTilde(value)) {
+            escalateOutsideRead(value, "which bash expands to a directory outside what this check can see");
+            return;
+        }
+        const targets = word.glob ? expandGlob(effectiveCwd, value, home) : [value];
+        if (targets === undefined) {
+            escalateOutsideRead(value, "a glob whose matches cannot be checked");
+            return;
+        }
+        for (const target of targets) {
+            const absolute = toAbsoluteBash(base, target, home);
+            if (!looksLikePath(target) && !entryExists(absolute)) { continue; }
+            const resolved = resolveForContainment(absolute);
+            if (resolved !== undefined && isSensitivePath(resolved) && !isSensitivePath(absolute)) {
+                if (!evidence.sensitivePaths.includes(value)) { evidence.sensitivePaths.push(value); }
+                escalate(`reads ${value}, which resolves to a credential or secret path`);
+            }
+            if (resolved !== undefined && (isWithin(containmentRoot, resolved) || readableRoots.some((root) => isWithin(root, resolved)))) { continue; }
+            escalateOutsideRead(value, "which is outside the working directory");
+        }
+    };
+
     for (const segment of segments) {
+        effectiveCwd = cwdByScope.get(segment);
         // Redirection targets are writes regardless of the command word: a bare
         // `> file` truncates/creates it with no command at all, and `git log > file`
         // writes it too. Check them first so the command-specific `continue`s below
         // (cd/git) can never skip a redirect (was review gap: bare-redirect writes and
         // read-only-command redirects were fast-pathed to "safe").
         for (const token of segment.redirects) { checkWriteTarget(token); }
+        // An input redirect (`tr a b < f`) opens `f` whatever the command is, so
+        // it is read-checked even for a command that takes no file operands. A
+        // literally named credential file is checked here too: checkRead only
+        // catches one reached through a symlink, leaving the literal name to the
+        // operand scan below, which never sees `inputs` (`cat < .env`).
+        for (const word of segment.inputs) {
+            if (isSensitivePath(word.value) || isSensitivePath(toAbsoluteBash(effectiveCwd, word.value, home))) {
+                if (!evidence.sensitivePaths.includes(word.value)) { evidence.sensitivePaths.push(word.value); }
+                escalate(`reads ${word.value} on stdin, which is a credential or secret path`);
+            }
+            checkRead(word);
+        }
+        if (segment.unknownTarget) { escalate("redirects to or from a path an expansion computes, which cannot be resolved here"); }
+        // `cat <<< "$TOKEN"` prints the environment's value as surely as `echo $TOKEN`.
+        if (segment.expandsIntoInput) { escalate("expands a parameter into the command's input, whose value is unknown here"); }
+
+        // A word bash computes at run time. A parameter's value comes from the
+        // environment (`$@` is empty in a `bash -c` line, so `cat $@/etc/passwd`
+        // read as an in-project path); a substitution's output can be any words,
+        // options included. The substituted commands are segments of their own
+        // and judged below like any other.
+        const dynamicKinds = new Set(segment.tokens.map((token) => token.dynamic).filter((kind) => kind !== undefined));
+        if (dynamicKinds.has("variable")) {
+            escalate(
+                segment.tokens.some((token) => token.dynamic === "variable" && SPECIAL_PARAMETER.test(token.value))
+                    ? "references a shell special parameter ($1, $@, $$, …), whose value is unknown here"
+                    : "references environment variables, whose values are unknown here",
+            );
+        }
 
         // A leading `NAME=value` changes what the command runs or reads: git takes
         // its repository and configuration from GIT_* variables (the same
@@ -992,14 +1017,22 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         for (const token of segment.tokens) {
             const assigned = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(token.value)?.[1];
             if (!assigned) { break; }
-            if (!INERT_ASSIGNMENTS.test(assigned)) { escalate(`sets ${assigned}, which can change what the command runs or reads`); }
+            const inert = INERT_ASSIGNMENTS.test(assigned) && isInertValue(assigned, token.value.slice(assigned.length + 1));
+            if (!inert) { escalate(`sets ${assigned}, which can change what the command runs or reads`); }
         }
 
-        const { command: name, args, peeled } = resolvePayload(segment.tokens);
+        const { command: name, args, peeled, pathNamed } = resolvePayload(segment.tokens);
+        if (dynamicKinds.has("substitution") && !PURE_OUTPUT.has(name)) {
+            escalate(`passes a command substitution's output to ${name || "the shell"}, and its words are unknown here`);
+        }
+        // `diff <(git show HEAD:a) a`: bash hands a read-only command a pipe from a command judged on its own.
+        if (dynamicKinds.has("process-input") && !READ_ONLY_COMMANDS.has(name) && name !== "find") {
+            escalate(`passes a <( ) pipe to ${name || "the shell"}, which is not a read-only command`);
+        }
         if (!name) {
             // A wrapper with nothing to wrap is a command of its own: a bare `env`
             // (or `env -i`, `nice`) prints the whole process environment / state.
-            // Until 2026-09-05 this fell through as "safe".
+            // Until 2026-09-05 this fell through as "safe" (H2).
             if (peeled.length > 0) {
                 escalate(
                     peeled.includes("env")
@@ -1010,12 +1043,15 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             continue;
         }
         evidence.commands.push(name);
+        // `./cat` or `bin/timeout` runs whatever file sits there, not the command
+        // its basename names; Claude Code matches the command word exactly too.
+        for (const word of pathNamed) { escalate(`runs ${word}, a program named by its path, so its name says nothing about what it does`); }
         if (peeled.length > 0) {
             // A transparent wrapper (timeout, env, nice) leaves the payload's own
-            // arguments visible, so an in-project payload stays contained; xargs is
-            // the exception — its targets come from stdin, unknown to this check.
+            // arguments visible, so an in-project payload stays contained unless a
+            // wrapper's spec says otherwise (xargs, flock, script).
             escalate(`wraps the real command in ${peeled.join(" → ")}, so ${name} is what actually runs`, {
-                contained: !peeled.includes("xargs"),
+                contained: wrappersContained(peeled),
             });
         }
 
@@ -1031,10 +1067,7 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             if (!value || value.startsWith("-")) { continue; }
             const absolute = toAbsoluteBash(effectiveCwd, value, home);
             if (isSensitivePath(value) || isSensitivePath(absolute)) {
-                // The *original* token, never the resolved/expanded form — a
-                // resolved path can embed an expanded environment-variable value,
-                // and echoing that back to the model leaks the secret it was
-                // meant to protect.
+                // The *original* token, never the resolved/expanded form.
                 if (!evidence.sensitivePaths.includes(value)) { evidence.sensitivePaths.push(value); }
                 escalate(`names ${value}, which is a credential or secret path`);
             }
@@ -1044,80 +1077,51 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             }
         }
 
-        // BI: defined here rather than just before the read-only branch below,
-        // so the git branch can read-check its operands too.
-        /**
-         * A word a read-only command reads. It escalates when it resolves outside
-         * the working directory and the readable roots, or onto a credential path
-         * — judged where it RESOLVES, so an in-project symlink named `notes` that
-         * points at a key file is the key file. A `~name`/`~-` word and a glob
-         * that could reach `..` are paths bash expands to places this check
-         * cannot see; an ordinary glob is
-         * expanded one level here and every match is judged.
-         */
-        const escalateOutsideRead = (value: string, why: string) => {
-            if (!evidence.outsideReads.includes(value)) { evidence.outsideReads.push(value); }
-            escalate(`reads ${value}, ${why}`, { outsideRead: true });
-        };
-        const checkRead = (word: { value: string; glob?: boolean }) => {
-            const value = word.value;
-            if (!value) { return; }
-            if (isUnknownTilde(value)) {
-                escalateOutsideRead(value, "which bash expands to a directory outside what this check can see");
-                return;
-            }
-            const targets = word.glob ? expandGlob(effectiveCwd, value, home) : [value];
-            if (targets === undefined) {
-                escalateOutsideRead(value, "a glob whose matches cannot be checked");
-                return;
-            }
-            for (const target of targets) {
-                const absolute = toAbsoluteBash(effectiveCwd, target, home);
-                if (!looksLikePath(target) && !entryExists(absolute)) { continue; }
-                const resolved = resolveForContainment(absolute);
-                if (resolved !== undefined && isSensitivePath(resolved) && !isSensitivePath(absolute)) {
-                    if (!evidence.sensitivePaths.includes(value)) { evidence.sensitivePaths.push(value); }
-                    escalate(`reads ${value}, which resolves to a credential or secret path`);
-                }
-                if (resolved !== undefined && (isWithin(containmentRoot, resolved) || readableRoots.some((root) => isWithin(root, resolved)))) { continue; }
-                escalateOutsideRead(value, "which is outside the working directory");
-            }
-        };
-
         if (name === "cd") {
             const target = args.find((token) => !token.value.startsWith("-"))?.value;
             if (target) {
                 effectiveCwd = toAbsoluteBash(effectiveCwd, target, home);
+                cwdByScope.set(segment, effectiveCwd);
                 escalate(`changes directory to ${target}, so later paths in this command resolve elsewhere`);
             }
             continue;
         }
 
-        if (name === "git") {
-            // `git reset --hard` is an in-project whole-tree discard: escalate, but
-            // mark it contained so the recoverability gate can clear it when the tree
-            // is clean. Any other non-read-only git subcommand is uncontained.
-            if (isWholeTreeGitReset(args)) {
-                if (hasGitRetargetFlag(args)) {
-                    // The reset acts on whatever -C/--git-dir/--work-tree names, not on
-                    // the working directory the recoverability judge would inspect.
-                    escalate("runs git reset --hard against another tree (-C/--git-dir/--work-tree), which cannot be judged here");
-                    continue;
-                }
-                evidence.wholeTree = true;
-                escalate("runs git reset --hard, which discards uncommitted changes in the working tree", {
-                    contained: true,
-                });
-                continue;
+        // Bash expands a glob before the command parses its options, so a match
+        // that starts with `-` arrives as an option no table judged: with a file
+        // named `--output=victim`, `sort *` writes `victim`
+        //. A glob this check cannot
+        // enumerate escalates when its expansion could start with `-`.
+        for (const token of args) {
+            if (!token.glob) { continue; }
+            const matches = expandGlob(effectiveCwd, token.value, home);
+            const injects = matches === undefined ? /^[-*?[]/.test(token.value) : matches.some((match) => match !== token.value && match.startsWith("-"));
+            if (injects) {
+                escalate(`passes the glob ${token.value}, which can expand to a filename starting with -, read as an option`);
+                break;
             }
+        }
+
+        if (name === "git") {
+            const fileReads: Token[] = [];
             const reason =
-                gitEscalationReason(args, (dir) => {
-                    if (isUnknownTilde(dir)) { return true; }
-                    const resolved = resolveForContainment(toAbsoluteBash(effectiveCwd, dir, home));
-                    return resolved === undefined || !isWithin(containmentRoot, resolved);
-                }) ?? gitCheckoutReason(args, effectiveCwd, home, checkoutReasons);
+                gitEscalationReason(
+                    args,
+                    (dir) => {
+                        if (isUnknownTilde(dir)) { return true; }
+                        const resolved = resolveForContainment(toAbsoluteBash(effectiveCwd, dir, home));
+                        return resolved === undefined || !isWithin(containmentRoot, resolved);
+                    },
+                    (words) => fileReads.push(...words),
+                ) ?? gitCheckoutReason(args, effectiveCwd, home, checkoutReasons);
             if (reason) { escalate(reason); }
-            else { for (const word of gitPathOperands(args)) { checkRead(word); } }
+            // git resolves a relative operand from its final `-C` directory, not
+            // the shell's: `git -C sub diff ../../x/data.txt a.txt` can climb out
+            // from `sub` where the same word stays inside from the working directory.
+            else {
+                const gitCwd = gitWorkingDirectory(args, effectiveCwd, home);
+                for (const word of [...fileReads, ...gitPathOperands(args)]) { checkRead(word, gitCwd); }
+            }
             continue;
         }
 
@@ -1127,15 +1131,17 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
 
         const isMutation = MUTATION_COMMANDS.has(name);
         const isDelete = DELETE_COMMANDS.has(name);
-        // A delete confined to in-project paths is what the containment gate exists
-        // to clear (subject to recoverability); any other mutation (cp/mv/tar/…)
-        // stays uncontained and reaches the classifier as before.
-        if (isMutation) { escalate(`runs ${name}, which modifies the filesystem`, { contained: isDelete }); }
+        // Claude Code's acceptEdits file commands with modelled options are the
+        // contained mutations, their targets checked below; any other mutation
+        // (tar/dd/ln/…) stays uncontained.
+        const fileOperands = acceptEditsOperands(name, args);
+        if (isMutation) { escalate(`runs ${name}, which modifies the filesystem`, { contained: fileOperands !== undefined }); }
+
 
         // A read-only command is proved read-only by its options, not its name:
         // each option must be in the command's table (read-only-options.ts), so
-        // `rg --pre=<prog>`, `tree -o f` and `uniq in out` escalate.
-        // Its operands, and the files named by
+        // `rg --pre=<prog>`, `tree -o f` and `uniq in out` escalate
+        //. Its operands, and the files named by
         // options such as `grep -f`, are then read-checked.
         if (name === "find") {
             const find = checkFind(args);
@@ -1152,10 +1158,38 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
                 const operands = [...check.parsed.positionals];
                 // A pattern-first command's first operand is its pattern, unless an
                 // option (`-e PAT`, `-f FILE`) supplies it; jq's first is its program.
-                const patternFirst = PATTERN_FIRST_COMMANDS.has(name) && ![...check.parsed.seen].some((option) => PATTERN_OPTIONS.has(option));
+                // `rg --files` lists files and takes no pattern, so every operand is a
+                // path.
+                const patternFirst =
+                    PATTERN_FIRST_COMMANDS.has(name) && !check.parsed.seen.has("--files") && ![...check.parsed.seen].some((option) => PATTERN_OPTIONS.has(option));
+                // A glob where the pattern, program or format goes becomes that operand
+                // only in its first match; the rest are operands this check never saw
+                // (`grep *` reads every match but the first, jq's program is a filename).
+                const lead = operands[0];
+                if (lead?.glob && (patternFirst || spec.programFirst || spec.operandReason)) {
+                    escalate(`runs ${name} with the glob ${lead.value} as its first operand, which ${name} does not read as a file, so the other matches go unchecked`);
+                }
                 if (patternFirst || spec.programFirst) { operands.shift(); }
                 const reads = NO_FILE_OPERANDS.has(name) ? check.parsed.fileValues : [...operands, ...check.parsed.fileValues];
                 for (const word of reads) { checkRead(word); }
+                // A command that dereferences the entries of a directory operand
+                // (`diff dir1 dir2`) reads through any symlink one level inside it,
+                // which the operand's own containment check never sees (A1).
+                if (spec.dereferencesDirEntries && !spec.dereferencesDirEntries.some((option) => check.parsed.seen.has(option))) {
+                    for (const word of operands) {
+                        // A glob could expand to a directory this check cannot enumerate, so
+                        // it escalates rather than being skipped (code-review 2026-09-24).
+                        if (word.glob) {
+                            escalate(`runs ${name} on the glob ${word.value}, which could name a directory that ${FOLLOWS_DIR_ENTRY_SYMLINKS}`);
+                            break;
+                        }
+                        const resolved = resolveForContainment(toAbsoluteBash(effectiveCwd, word.value, home));
+                        if (resolved !== undefined && isDirectory(resolved)) {
+                            escalate(`runs ${name} on the directory ${word.value}, which ${FOLLOWS_DIR_ENTRY_SYMLINKS}`);
+                            break;
+                        }
+                    }
+                }
             }
         } else if (!isMutation) {
             escalate(`runs ${name}, which is not on the read-only allowlist`);
@@ -1164,10 +1198,61 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         // The positional destinations of writing commands are the paths that get
         // written. (Redirections were already handled at the top of the loop.)
         const writeTokens: string[] = [];
-        if (isDelete) {
+        if (fileOperands !== undefined) {
+            // Every operand is a path, bare names included. cp and mv write their
+            // last operand and read the rest, so a source outside the working space
+            // (or a credential) is an outside read and leaves the line uncontained.
+            const copies = name === "cp" || name === "mv";
+            const reads = copies ? fileOperands.slice(0, -1) : [];
+            // The paths the write checks guard, beneath a directory operand as well
+            // as at it: they protect the files, not the directory holding them.
+            const guarded = (path: string) =>
+                isProtectedPath(path, effectiveCwd) || protectedDirs.some((dir) => isWithin(dir, path)) || isSensitivePath(path) || isExecutionPrimitivePath(path);
+            // Removing or moving away a working root, a `.git`, a directory holding
+            // one at any depth, or a guarded path or a directory holding one loses
+            // what git or the gate would keep (`rm -rf .`, `mv .git x`, `rm -rf
+            // vendor` over `vendor/lib/.git`, `rm -rf .claude`, `mv .husky old`),
+            // whatever else is contained.
+            const lost = (path: string) => path.split(/[\\/]/).includes(".git") || guarded(path);
+            for (const token of name === "mv" ? reads : name === "rm" || name === "rmdir" ? fileOperands : []) {
+                const absolute = toAbsoluteBash(effectiveCwd, token.value, home);
+                const resolved = resolveForContainment(absolute);
+                if (resolved === undefined) { continue; }
+                const root = resolved === containmentRoot || writableRoots.includes(resolved);
+                if (root || lost(absolute) || lost(resolved) || touchesGuardedPath(resolved, resolved, lost)) {
+                    escalate(`${name === "mv" ? "moves" : "removes"} ${token.value}, which is a working root, or is or holds a git repository or a protected, credential or execution-primitive path`);
+                }
+            }
+            for (const token of reads) {
+                if (isSensitivePath(toAbsoluteBash(effectiveCwd, token.value, home))) {
+                    if (!evidence.sensitivePaths.includes(token.value)) { evidence.sensitivePaths.push(token.value); }
+                    escalate(`copies or moves ${token.value}, a credential or secret path`);
+                }
+                checkRead(token);
+            }
+            const destination = copies ? fileOperands.at(-1) : undefined;
+            if (destination === undefined) {
+                writeTokens.push(...fileOperands.map((token) => token.value));
+            } else if (reads.length === 0) {
+                writeTokens.push(destination.value);
+            } else {
+                // Into an existing directory, each source lands beneath it (`cp
+                // settings.json .claude` writes `.claude/settings.json`), and a
+                // directory source brings its whole tree along.
+                const intoDirectory = destination.value.endsWith("/") || isDirectory(toAbsoluteBash(effectiveCwd, destination.value, home));
+                for (const source of reads) {
+                    const target = intoDirectory ? `${destination.value.replace(/\/+$/, "")}/${bashBasename(source.value)}` : destination.value;
+                    writeTokens.push(target);
+                    const sourceResolved = resolveForContainment(toAbsoluteBash(effectiveCwd, source.value, home));
+                    if (sourceResolved !== undefined && touchesGuardedPath(sourceResolved, toAbsoluteBash(effectiveCwd, target, home), guarded)) {
+                        escalate(`${name === "cp" ? "copies" : "moves"} ${source.value} to ${target}, which puts files on a protected, credential or execution-primitive path`);
+                    }
+                }
+            }
+        } else if (isDelete) {
             // A delete's targets are every non-flag positional, bare names included
-            // (`rm notes.txt` has no slash but is still a real target the
-            // recoverability gate must see). A glob target cannot be enumerated, so
+            // (`rm notes.txt` has no slash but is still a real target that
+            // must be resolved). A glob target cannot be enumerated, so
             // it drops out of containment — the command then reaches the classifier.
             for (const token of args) {
                 if (token.value.startsWith("-")) { continue; }
@@ -1206,9 +1291,8 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
         for (const token of writeTokens) { checkWriteTarget(token); }
     }
 
-    // The command escalated, but every reason was an in-project delete/whole-tree
-    // reset — nothing reached outside the project, the network, or the unknown. The
-    // containment gate may now consult git-recoverability (auto-mode/recoverability).
+    // The command escalated, but every reason was an acceptEdits file command on
+    // the working space: nothing reached outside it, the network, or the unknown.
     evidence.containedNonNetwork = evidence.verdict === "escalate" && !uncontained;
     evidence.readOnlyOutside = evidence.verdict === "escalate" && !escalatedBeyondReads;
 

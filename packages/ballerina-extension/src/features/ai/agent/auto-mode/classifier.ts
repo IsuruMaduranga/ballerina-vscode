@@ -15,10 +15,9 @@
 // under the License.
 
 /**
- * The two-stage classifier call, from pincer-agent
- * `extensions/auto-mode/classifier.ts` (`3b290c8`) without its candidate
- * chain: the WSO2 Integrator Copilot has one model per login method, so the
- * caller supplies the one model call (`ClassifierModelCall`, Sonnet 5 through
+ * The two-stage classifier call. There is no candidate-chain fallback: the
+ * WSO2 Integrator Copilot has one model per login method, so the caller
+ * supplies the one model call (`ClassifierModelCall`, Sonnet 5 through
  * `getAnthropicClient` in production, a fake in tests).
  *
  *   Stage 1 grades HARM ONLY (64 output tokens). Severity below 50 allows,
@@ -44,6 +43,7 @@ import {
     stage1User,
     stage2User,
 } from "./prompt";
+import { actionLength, MAX_ACTION_CHARS } from "./transcript";
 
 /** A slow classifier stalls every shell call, so each stage's wait is capped. */
 export const CLASSIFIER_TIMEOUT_MS = 30_000;
@@ -97,6 +97,15 @@ export function isClassifierTimeout(message: string): boolean {
 
 /** Classify one shell call. Never rejects. */
 export async function classify(request: ClassifyRequest, deps: ClassifierDeps): Promise<ClassifyVerdict> {
+    const actionChars = actionLength(request.transcript);
+    if (actionChars > MAX_ACTION_CHARS) {
+        return {
+            decision: "block",
+            reason: `This call is ${actionChars} characters, more than the ${MAX_ACTION_CHARS} the auto-mode classifier reviews in full. Split it into smaller calls.`,
+            tier: "unmatched",
+            noVerdict: true,
+        };
+    }
     const { system, userPrefix, index } = buildPayload(request);
     const timeoutMs = deps.timeoutMs ?? CLASSIFIER_TIMEOUT_MS;
     const afterRuleDenial = request.transcript.some((entry) => entry.kind === "denied");
@@ -150,21 +159,23 @@ export async function classify(request: ClassifyRequest, deps: ClassifierDeps): 
         const message = error instanceof Error ? error.message : String(error);
         switch (kind) {
             case "cancelled":
-                return { decision: "block", reason: "Auto-mode classification was cancelled.", tier: "unmatched" };
+                return { decision: "block", reason: "Auto-mode classification was cancelled.", tier: "unmatched", noVerdict: true };
             case "truncated":
                 return {
                     decision: "block",
                     reason: "The approval classifier's reply was cut off before its verdict was complete.",
                     tier: "unmatched",
+                    noVerdict: true,
                 };
             case "timeout":
                 return {
                     decision: "block",
                     tier: "timeout",
+                    noVerdict: true,
                     reason: `Auto mode could not screen this ${request.toolName} call in time: the approval classifier timed out, so the call was not judged either way.`,
                 };
             default:
-                return { decision: "block", reason: `The auto-mode classifier could not be reached (${message}).`, tier: "unmatched" };
+                return { decision: "block", reason: `The auto-mode classifier could not be reached (${message}).`, tier: "unmatched", noVerdict: true };
         }
     }
 }

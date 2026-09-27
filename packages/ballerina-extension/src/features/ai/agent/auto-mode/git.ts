@@ -14,14 +14,14 @@
 // specific language governing permissions and limitations
 // under the License.
 /**
- * Shared git helpers. Ported from pincer-agent `extensions/lib/git.ts` (tip
- * `2602e3c`) without `findProjectRoot` / `linkedWorktreeMainRoot`, which only
- * One Code's project identity used.
+ * Shared git helpers. `findProjectRoot` / `linkedWorktreeMainRoot` are not
+ * included: they served a different agent's project-identity resolution,
+ * which this Copilot does not need.
  */
 
 /**
  * Global options for every git command the harness runs on its own (startup
- * git status, recoverability, consent checks, worktree bookkeeping). git
+ * git status and the classifier's git-status metadata). git
  * honours the checkout's own `.git/config`, and `core.fsmonitor` there names a
  * program that `status` and other index reads run — so a directory whose
  * `.git` came from an archive or a copied tree would run it the moment the
@@ -78,7 +78,8 @@ export function gitdirFileTarget(root: string): string | undefined {
         if (!statSync(dotGit).isFile()) { return undefined; }
         const match = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, "utf-8"));
         if (!match) { return undefined; }
-        return isAbsolute(match[1]) ? match[1] : resolve(root, match[1]);
+        // Normalize absolute paths too: git writes forward slashes on Windows.
+        return isAbsolute(match[1]) ? resolve(match[1]) : resolve(root, match[1]);
     } catch {
         return undefined;
     }

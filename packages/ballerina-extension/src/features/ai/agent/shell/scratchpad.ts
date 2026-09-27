@@ -17,8 +17,7 @@
 /**
  * The thread's scratchpad: a temp-files directory the system prompt points the
  * agent at, instead of `/tmp` or the user's project. The shape
- * follows Claude Code's (`<tmp>/<owner>/<project-slug>/<session-id>/scratchpad`)
- * as pincer-agent's `extensions/lib/scratchpad.ts` (tip `2602e3c`) builds it,
+ * follows Claude Code's (`<tmp>/<owner>/<project-slug>/<session-id>/scratchpad`),
  * with the WSO2 Integrator Copilot's own owner segment, so a machine running
  * Claude Code too never interleaves the two under one owner directory, and a
  * thread id in place of the session id.
@@ -29,7 +28,7 @@
  * gets special treatment.
  */
 
-import { mkdirSync } from "fs";
+import { chmodSync, lstatSync, mkdirSync } from "fs";
 import * as os from "os";
 import { join } from "path";
 import { tryRealpath } from "../auto-mode/shared-paths";
@@ -52,8 +51,8 @@ export function scratchpadDir(tmpRoot: string, uid: number | undefined, projectR
  * `/tmp` through its symlink (macOS: `/private/tmp`), and on Windows, which has
  * no `/tmp`, `%TEMP%` through the 8.3 short names it is often spelled with
  * (`C:\Users\RUNNER~1\…`). A write's target arrives realpath'd to the long
- * form, so a scratchpad kept in the short spelling would contain nothing
- * (pincer `01a303a`). Falls back to the spelling as given where resolution fails.
+ * form, so a scratchpad kept in the short spelling would contain nothing.
+ * Falls back to the spelling as given where resolution fails.
  */
 export function resolveTmpRoot(platform: NodeJS.Platform = process.platform): string {
     return tryRealpath(platform === "win32" ? os.tmpdir() : "/tmp") ?? os.tmpdir();
@@ -65,13 +64,32 @@ export function threadScratchpadDir(projectRoot: string, threadId: string): stri
     return scratchpadDir(resolveTmpRoot(), uid, projectRoot, threadId);
 }
 
+/** The owner directory must not be replaceable by another user on a shared temp volume. */
+export function ownerDirProblem(stat: { isSymbolicLink: boolean; isDirectory: boolean; uid: number; mode: number }, uid: number): string | undefined {
+    if (stat.isSymbolicLink) { return "it is a symlink"; }
+    if (!stat.isDirectory) { return "it is not a directory"; }
+    if (stat.uid !== uid) { return `it is owned by uid ${stat.uid}`; }
+    if (stat.mode & 0o022) { return "others may write to it"; }
+    return undefined;
+}
+
 /**
- * Create the scratchpad (owner-only on POSIX) and return it, or undefined when
- * it cannot be created. Created up front so the gate's roots resolve to a real
- * directory and the agent's first write into it needs no `mkdir`.
+ * Create a private scratchpad, with an ownership check before use.
+ * The production owner is the predictable `<tmp>/wso2-integrator-copilot-<uid>`
+ * directory, not only the leaf. Tests with a custom location check that location.
+ * An unsafe owner must never enter the gate's readable or writable roots.
  */
-export function ensureScratchpadDir(dir: string): string | undefined {
+export function ensureScratchpadDir(dir: string, owner = dir): string | undefined {
     try {
+        const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
+        mkdirSync(owner, { recursive: true, mode: 0o700 });
+        if (uid !== undefined) {
+            const stat = lstatSync(owner);
+            if (ownerDirProblem({ isSymbolicLink: stat.isSymbolicLink(), isDirectory: stat.isDirectory(), uid: stat.uid, mode: stat.mode }, uid)) {
+                return undefined;
+            }
+            if (stat.mode & 0o077) { chmodSync(owner, 0o700); }
+        }
         mkdirSync(dir, { recursive: true, mode: 0o700 });
         return dir;
     } catch {

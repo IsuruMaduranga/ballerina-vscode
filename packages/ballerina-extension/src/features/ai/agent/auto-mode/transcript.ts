@@ -20,8 +20,7 @@
  * Claude Code hands its classifier a compact JSONL transcript of the session —
  * user messages and tool-call *inputs only*, with tool RESULTS stripped so
  * hostile content the agent read cannot reach the classifier as if it were
- * context. Ported from pincer-agent `extensions/auto-mode/transcript.ts`
- * (`3b290c8`); BI keeps its own tool names except for the shell tools.
+ * context. This keeps its own tool names except for the shell tools.
  *
  * The last entry is always the action under review — the gate appends the call
  * being judged before rendering. Results are never appended here; only
@@ -97,8 +96,17 @@ function renderEntry(entry: TranscriptEntry, maxField: number): string {
     return JSON.stringify({ [name]: clipInput(entry.input, maxField) });
 }
 
+/** Refuse larger actions rather than asking the classifier to judge a clipped command. */
+export const MAX_ACTION_CHARS = 100_000;
+
+/** The rendered length of the action under review, the last entry, unclipped. */
+export function actionLength(entries: readonly TranscriptEntry[]): number {
+    const action = entries[entries.length - 1];
+    return action ? renderEntry(action, Number.POSITIVE_INFINITY).length : 0;
+}
+
 export interface RenderOptions {
-    /** Max chars per string field. */
+    /** Max chars per string field of an earlier entry; the action under review is never clipped. */
     maxField?: number;
     /** Max chars for the whole rendered transcript; oldest entries drop first. */
     maxChars?: number;
@@ -107,14 +115,14 @@ export interface RenderOptions {
 /**
  * Render the ordered entries into a `<transcript>…</transcript>` block. When the
  * rendered lines exceed `maxChars`, the oldest are dropped and a marker records
- * it — the action under review (the last entry) is always kept. The full user
+ * it — the action under review (the last entry) is always kept, whole. The full user
  * messages are carried separately for intent verification, so dropping old lines
  * here never weakens that check.
  */
 export function renderTranscript(entries: TranscriptEntry[], options: RenderOptions = {}): string {
     const maxField = options.maxField ?? 2000;
     const maxChars = options.maxChars ?? 60_000;
-    const lines = entries.map((entry) => renderEntry(entry, maxField));
+    const lines = entries.map((entry, i) => renderEntry(entry, i === entries.length - 1 ? Number.POSITIVE_INFINITY : maxField));
 
     // Keep the newest lines that fit the budget, walking from the end in one pass
     // (the last line — the action under review — is always kept). +1 per line for

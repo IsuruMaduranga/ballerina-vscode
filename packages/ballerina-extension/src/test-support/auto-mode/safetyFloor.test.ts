@@ -16,8 +16,8 @@
 
 /**
  * The safety floor with BI's targets: gate-control files, the
- * Copilot's own state, and Config.toml. Modelled on pincer-agent's
- * `auto-mode-safety-floor.test.ts` and `safety-floor-powershell.test.ts`.
+ * Copilot's own state, and Config.toml. Modelled on an earlier harness's
+ * safety-floor test suites (bash and PowerShell).
  */
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
@@ -105,6 +105,25 @@ describe("bashFloorReason", () => {
     it("names a target in a command it cannot model as a write", () => {
         expect(bash("python3 tool.py --out .vscode/settings.json")).toBeDefined();
         expect(bash("sh -c 'echo x > .mcp.json'")).toBeDefined();
+    });
+
+    it("tracks a literal cd by scope for redirect and input targets", () => {
+        expect(bash("cd .copilot && python3 tool.py --out skills.config.json")).toBeDefined();
+        expect(bash("cd .copilot && python3 tool.py < skills.config.json")).toBeDefined();
+    });
+
+    it("stops a control-file basename when a cd target is unknown or conditional", () => {
+        const stopped = [
+            'cd "$TARGET"; python3 tool.py --out skills.config.json',
+            "false && cd .copilot; python3 tool.py --out skills.config.json",
+            "cd .copilot | cat; python3 tool.py --out skills.config.json",
+            "while false; do cd .copilot; done; python3 tool.py --out skills.config.json",
+        ];
+        for (const command of stopped) { expectLabeled(bash(command), command).toBeDefined(); }
+    });
+
+    it("does not leak a cd in command substitution into the parent shell", () => {
+        expect(bash('cd .copilot; echo "$(cd /tmp; pwd)" > skills.config.json')).toBeDefined();
     });
 });
 

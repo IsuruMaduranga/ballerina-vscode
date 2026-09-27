@@ -15,9 +15,8 @@
 // under the License.
 /**
  * Protected paths (pure) — Claude Code's list of paths whose *writes* are never
- * auto-approved, in any mode except bypassPermissions. Ported from pincer-agent
- * `extensions/permissions/protected-paths.ts` (tip `5059966`, re-synced to `2602e3c`) with BI's own
- * agent-configuration paths in place of One Code's.
+ * auto-approved, in any mode except bypassPermissions, with BI's own
+ * agent-configuration paths.
  *
  * These are not "secret" paths (that list lives in `auto-mode/sensitive.ts` and
  * is about credentials). These are paths that configure the tooling: a write to
@@ -55,12 +54,14 @@ const PROTECTED_DIRS = [
     "library/launchagents",
     ".config/fish",
     ".local/bin",
+    // SSH configuration can add login identities or a ProxyCommand that runs
+    // during the next connection. It is also sensitive for reads.
+    ".ssh",
 ];
 
 /**
  * Protected directories whose subtree is ordinary working space rather than
- * configuration. None for BI: pincer's two (`.claude/worktrees`,
- * `.onecode/plans`) are One Code's own working directories.
+ * configuration. None: `.claude/` is protected with no worktree exception.
  */
 const PROTECTED_DIR_EXCEPTIONS: string[] = [];
 
@@ -117,8 +118,7 @@ const PROTECTED_FILES = new Set([
 ]);
 
 // `isWritingTool` / `WRITING_TOOLS` live in ./paths (the shared lower layer) so
-// the safety floor and this gate share one source of truth; re-exported here as
-// in the pincer original.
+// the safety floor and this gate share one source of truth; re-exported here.
 export { isWritingTool } from "./paths";
 
 /**

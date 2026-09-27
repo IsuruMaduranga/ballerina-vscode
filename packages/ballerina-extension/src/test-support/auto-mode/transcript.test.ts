@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-/** The classifier transcript, ported from pincer-agent `test/unit/auto-mode-transcript.test.ts` and `transcript-powershell.test.ts` (`3b290c8`). */
+/** The classifier transcript, ported from an earlier harness's transcript test suites (bash and PowerShell). */
 
 import { renderTranscript, transcriptToolName, type TranscriptEntry } from "../../features/ai/agent/auto-mode/transcript";
 
@@ -56,12 +56,20 @@ describe("renderTranscript", () => {
         expect(out).not.toContain("result");
     });
 
-    it("clips an oversized field so one argument cannot dominate", () => {
-        const out = renderTranscript([{ kind: "tool", tool: "shell", input: { command: "x".repeat(50_000) } }], {
-            maxField: 100,
-        });
-        expect(out).toContain("truncated");
-        expect(out.length).toBeLessThan(1000);
+    it("clips earlier fields but sends the current action whole even beyond the transcript budget", () => {
+        const command = `${"x".repeat(50_000)} DANGEROUS-SUFFIX`;
+        const out = renderTranscript([
+            { kind: "tool", tool: "shell", input: { command: "old".repeat(5000) } },
+            { kind: "tool", tool: "shell", input: { command } },
+        ], { maxField: 100, maxChars: 1000 });
+        expect(out).toContain(JSON.stringify(command));
+        expect(out).toContain("omitted for length");
+        expect(out).not.toContain("truncated");
+        const withHistory = renderTranscript([
+            { kind: "tool", tool: "shell", input: { command: "old".repeat(5000) } },
+            { kind: "tool", tool: "shell", input: { command: "current" } },
+        ], { maxField: 100 });
+        expect(withHistory).toContain("truncated");
     });
 
     it("drops oldest entries past the char budget but always keeps the action under review", () => {
@@ -92,7 +100,10 @@ describe("rule denials", () => {
     });
 
     it("clips a long denied subject like every other field", () => {
-        const out = renderTranscript([{ kind: "denied", tool: "shell", subject: "x".repeat(5000), rule: "Bash(rm:*)" }], { maxField: 50 });
+        const out = renderTranscript([
+            { kind: "denied", tool: "shell", subject: "x".repeat(5000), rule: "Bash(rm:*)" },
+            { kind: "tool", tool: "shell", input: { command: "current" } },
+        ], { maxField: 50 });
         expect(out).toContain("truncated");
     });
 });

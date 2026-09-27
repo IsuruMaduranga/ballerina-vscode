@@ -91,18 +91,16 @@ describe("decideShellCommand: which layer clears a command", () => {
         const decision = decide("rm a.txt");
         expect(decision.outcome).toBe("ask");
         if (decision.outcome === "ask") {
-            expect(decision.reasons.some((reason) => reason.startsWith("git recoverability:"))).toBe(true);
+            expect(decision.reasons.length).toBeGreaterThan(0);
             expect(decision.grant).toBeUndefined();
         }
     });
 
-    posixOnly("clears a delete of a tracked, clean file through recoverability", () => {
+    posixOnly("does not clear a delete in ask mode merely because git can restore it", () => {
         git("init", "-q");
         git("add", ".");
         git("commit", "-q", "-m", "init");
-        const decision = decide("rm a.txt");
-        expect(decision.outcome).toBe("allow");
-        if (decision.outcome === "allow") { expect(decision.layer).toBe("recoverability"); }
+        expect(decide("rm a.txt").outcome).toBe("ask");
     });
 
     posixOnly("asks for a delete of a dirty tracked file", () => {
@@ -113,10 +111,39 @@ describe("decideShellCommand: which layer clears a command", () => {
         expect(decide("rm a.txt").outcome).toBe("ask");
     });
 
+    it.each(["rm a.txt", "mkdir generated", "touch generated.txt", "cp a.txt copy.txt", "mv a.txt moved.txt"])("clears guarded file operations only for a capable auto-mode caller: %s", async (command) => {
+        const callbacks = { ask: jest.fn(async () => "deny" as const), grantRule: jest.fn() };
+        const result = await authorizeShellCommand({ ...input(command), allowContainedFileOperations: true }, "auto", callbacks);
+        expect(result).toEqual({ allowed: true, mayWrite: true, by: "file-operation" });
+        expect(callbacks.ask).not.toHaveBeenCalled();
+        const askResult = await authorizeShellCommand({ ...input(command), allowContainedFileOperations: true }, "ask", callbacks);
+        expect(askResult.allowed).toBe(false);
+        expect(callbacks.ask).toHaveBeenCalled();
+    });
+
+    posixOnly("never clears destructive git through the contained-file fast path", () => {
+        git("init", "-q");
+        git("add", ".");
+        git("commit", "-q", "-m", "init");
+        for (const command of ["git reset --hard", "git clean -fd", "git checkout -- a.txt"]) {
+            expect(decideShellCommand({ ...input(command), allowContainedFileOperations: true }).outcome).toBe("ask");
+        }
+    });
+
+    it.each(["rm -rf .", "rm Config.toml", "rm .mcp.json", "cp a.txt .vscode/settings.json", "rm ../outside", "rm src && curl https://example.net"])("never clears guarded or outside effects as a file operation: %s", (command) => {
+        expect(decideShellCommand({ ...input(command), allowContainedFileOperations: true }).outcome).toBe("ask");
+    });
+
     it("a granted rule clears the command it covers", () => {
         const decision = decide("bal build --offline", [{ kind: "prefix", command: "bal build" }]);
         expect(decision.outcome).toBe("allow");
         if (decision.outcome === "allow") { expect(decision.layer).toBe("session-rule"); }
+    });
+
+    it("does not construct a session-rule suggestion when the caller disables it", () => {
+        const decision = decideShellCommand({ ...input("bal build"), offerSessionRule: false });
+        expect(decision.outcome).toBe("ask");
+        if (decision.outcome === "ask") { expect(decision.grant).toBeUndefined(); }
     });
 });
 
@@ -125,6 +152,7 @@ describe("suggestSessionRule: what the banner offers", () => {
         const cases: [string, string][] = [
             ["bal build", "bal build"],
             ["bal build --offline", "bal build"],
+            ["bal build '--offline'", "bal build"], // static quoting is not a dynamic AST value
             ["bal test --code-coverage", "bal test"],
             ["npm run test -- --watch=false", "npm run test"],
             ["mvn clean install", "mvn clean install"],
@@ -154,6 +182,14 @@ describe("suggestSessionRule: what the banner offers", () => {
         ];
         for (const command of exactOnly) {
             expectLabeled(suggest(command)?.rule, command).toEqual({ kind: "exact", command });
+        }
+    });
+
+    it("does not turn dynamic or complex abstract syntax trees into standing prefixes", () => {
+        for (const command of ["bal build $FLAG", "if true; then bal build; fi", "(bal build)"]) {
+            const grant = suggest(command);
+            expectLabeled(grant?.rule.kind, command).not.toBe("prefix");
+            expectLabeled(matches([{ kind: "prefix", command: "bal build" }], command), command).toBeUndefined();
         }
     });
 

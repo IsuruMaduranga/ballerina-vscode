@@ -20,8 +20,7 @@
  * gate is made of or what the WSO2 Integrator Copilot keeps for itself. A
  * floor hit never reaches the classifier and never gets a session rule.
  *
- * Mechanics from pincer-agent `extensions/auto-mode/safety-floor.ts` (tip
- * `3b290c8`), targets BI's own:
+ * Targets BI's own:
  * - gate-control files: any `.copilot/skills.config.json`, `.mcp.json` and
  *   `.vscode/settings.json`, plus `~/.ballerina/copilot/mcp.json` and the
  *   auto-mode configuration `~/.ballerina/copilot/auto-mode.json`;
@@ -39,7 +38,7 @@
 import { tmpdir } from "os";
 import { join } from "path";
 import { resolveForContainment, toAbsolute, toAbsoluteBash } from "./paths";
-import { analyzeShellCommand, globComponentRegex, isUnknownTilde, parseCommand, resolvePayload } from "./shell-analysis";
+import { analyzeShellCommand, globComponentRegex, isUnknownTilde, LOOPS, movesDirectory, parseCommand, resolvePayload, scopedTracker, type ShellEvidence } from "./shell-analysis";
 import { comparablePath, tryRealpath } from "./shared-paths";
 
 const fold = comparablePath;
@@ -92,6 +91,7 @@ function isFloorTarget(resolved: string, targets: FloorForms): boolean {
 }
 
 const GLOB_CHARS = /[*?[]/;
+const FLOOR_CONTROL_NAMES = new Set(["skills.config.json", ".mcp.json", "settings.json", "mcp.json", "auto-mode.json", "config.toml"]);
 
 /**
  * Whether a resolved path names a floor target, literally or as a glob the
@@ -107,7 +107,7 @@ function namesFloorTarget(resolved: string, targets: FloorForms, dotRule: boolea
     const leaf = target.slice(slash + 1);
     const regex = globComponentRegex(leaf);
     if (!regex) { return false; }
-    const names = ["skills.config.json", ".mcp.json", "settings.json", "mcp.json", "auto-mode.json", "config.toml"];
+    const names = [...FLOOR_CONTROL_NAMES];
     const spelled = names.filter((name) => regex.test(name) && !(dotRule && name.startsWith(".") && !leaf.startsWith(".")));
     if (spelled.length === 0) { return false; }
     // A glob directory could be `.vscode` or `.copilot`: stop.
@@ -119,20 +119,48 @@ const reason = (token: string) =>
     `it touches ${token}, which holds the WSO2 Integrator Copilot's own configuration, credentials or state`;
 
 /**
- * The first word of a bash line that names a floor target, or undefined.
+ * The first word of a Bash line that names a floor target, or undefined.
  * Every word counts, read or write, plus the value after an `=` and the words
- * of a nested `sh -c '…'`; `cd` is followed. False positives cost one prompt.
+ * of a nested `sh -c '…'`. Directories are tracked per shell scope so a `cd`
+ * in a substitution does not move later commands in its parent shell. If a
+ * `cd` is conditional, pipeline-scoped, looped, expanded, or otherwise
+ * unknown, a later control-file basename stops by name alone. The floor may
+ * only say "stop", so a false positive is the safe outcome.
  */
 export function shellNamesFloorTarget(command: string, ctx: FloorContext, depth = 0, targets = floorForms(ctx)): string | undefined {
     const text = command.toLowerCase().replace(/\\/g, "/").replace(/\/\.\//g, "/").replace(/\/{2,}/g, "/");
     const match = CONTROL_FILE_TEXT.exec(text);
     if (match) { return match[2]; }
+
     const { segments, parseFailed } = parseCommand(command);
-    if (parseFailed) { return undefined; }
-    let dir = ctx.cwd;
+    const dirs = scopedTracker(ctx.cwd);
+    const unknownDir =
+        parseFailed ||
+        segments.some((segment) => {
+            const payload = resolvePayload(segment.tokens);
+            // These execute scripts in the current shell and may change its cwd.
+            if (["eval", "source", "."].includes(payload.command)) { return true; }
+            if (!movesDirectory(segment)) { return false; }
+            const target = payload.args.find((token) => !token.value.startsWith("-"));
+            const previous = payload.args.some((token) => token.value === "-");
+            // Every pipeline member has a separate scope. The parser marks only
+            // the last member as `pipelineShell`, but a cd in any member cannot
+            // determine the parent shell's later cwd.
+            return payload.command !== "cd" || previous || segment.scopes.length > 0 || segment.pipelineShell !== undefined ||
+                !!segment.conditional || segment.enclosing.some((construct) => LOOPS.has(construct)) ||
+                !!target?.dynamic || !!target?.glob || (!!target && isUnknownTilde(target.value));
+        });
+    const baseName = (path: string) => path.slice(path.replace(/\\/g, "/").lastIndexOf("/") + 1).toLowerCase();
+    const controlNames = new Set([...FLOOR_CONTROL_NAMES, ...targets.files].map(baseName));
+
     for (const segment of segments) {
+        const dir = dirs.get(segment);
         const payload = resolvePayload(segment.tokens);
-        for (const word of [...segment.tokens.map((token) => token.value), ...segment.redirects]) {
+        for (const word of [
+            ...segment.tokens.map((token) => token.value),
+            ...segment.redirects,
+            ...segment.inputs.map((token) => token.value),
+        ]) {
             if (depth < 3 && /\s/.test(word)) {
                 const nested = shellNamesFloorTarget(word, { ...ctx, cwd: dir }, depth + 1, targets);
                 if (nested) { return nested; }
@@ -142,11 +170,12 @@ export function shellNamesFloorTarget(command: string, ctx: FloorContext, depth 
                 if (!candidate || isUnknownTilde(candidate)) { continue; }
                 const resolved = resolveForContainment(toAbsoluteBash(dir, candidate, ctx.home));
                 if (resolved && namesFloorTarget(resolved, targets, true)) { return candidate; }
+                if (unknownDir && controlNames.has(baseName(candidate))) { return candidate; }
             }
         }
-        if (payload.command === "cd") {
-            const target = payload.args.find((token) => !token.value.startsWith("-"))?.value;
-            if (target && !isUnknownTilde(target)) { dir = toAbsoluteBash(dir, target, ctx.home); }
+        if (payload.command === "cd" && !unknownDir) {
+            const target = payload.args.find((token) => !token.value.startsWith("-"));
+            if (target) { dirs.set(segment, toAbsoluteBash(dir, target.value, ctx.home)); }
         }
     }
     return undefined;
@@ -158,12 +187,14 @@ export function shellNamesFloorTarget(command: string, ctx: FloorContext, depth 
  * target stops it. A command the pre-gate could not prove read-only stops on
  * any word naming a target, since it may write in ways the evidence does not
  * model; a proven read of a gate-control file (`cat .mcp.json`) does not stop.
+ * Callers that already analyzed this exact authorization call may provide that
+ * evidence; standalone callers still analyze the command themselves.
  */
-export function bashFloorReason(command: string, ctx: FloorContext): string | undefined {
+export function bashFloorReason(command: string, ctx: FloorContext, evidence?: ShellEvidence): string | undefined {
     const configToml = CONFIG_TOML_TEXT.exec(command);
     if (configToml) { return reason("Config.toml"); }
     const targets = floorForms(ctx);
-    const evidence = analyzeShellCommand({ command, cwd: ctx.cwd, home: ctx.home });
+    evidence ??= analyzeShellCommand({ command, cwd: ctx.cwd, home: ctx.home });
     for (const write of evidence.writes) {
         if (write.resolved && namesFloorTarget(write.resolved, targets, true)) { return reason(write.token); }
     }
@@ -175,8 +206,8 @@ export function bashFloorReason(command: string, ctx: FloorContext): string | un
 }
 
 /**
- * Path-looking tokens of a PowerShell line (pincer `powershellPathTokens`):
- * quotes stripped, `$env:USERPROFILE` / `$env:HOME` / `$HOME` / `~` expanded,
+ * Path-looking tokens of a PowerShell line: quotes stripped,
+ * `$env:USERPROFILE` / `$env:HOME` / `$HOME` / `~` expanded,
  * backslashes forward-slashed, `-Path:value` unwrapped. Anything with a
  * separator or a `.json` / `.toml` name counts; the floor tolerates false positives.
  */

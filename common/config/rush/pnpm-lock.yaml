@@ -299,6 +299,9 @@ importers:
       vscode-uri:
         specifier: 3.0.8
         version: 3.0.8
+      web-tree-sitter:
+        specifier: 0.27.0
+        version: 0.27.0
       xml-js:
         specifier: 1.6.11
         version: 1.6.11
@@ -16777,6 +16780,9 @@ packages:
 
   web-tree-sitter@0.24.5:
     resolution: {integrity: sha512-+J/2VSHN8J47gQUAvF8KDadrfz6uFYVjxoxbKWDoXVsH2u7yLdarCnIURnrMA6uSRkgX3SdmqM5BOoQjPdSh5w==}
+
+  web-tree-sitter@0.27.0:
+    resolution: {integrity: sha512-XK08gj6RwTMQatAG7uVRP8MunqotL/XC19vHgkSPKmELgbGPBj4ECvB8haHOUnyj6ls2B8t42UTro14zxGgAHg==}
 
   webfonts-generator@0.4.0:
     resolution: {integrity: sha512-2tz14d9lDYkNopbogp3cCEo0oQj6tHYo17v6nYlJQT57CwzQy/7Y6a1UzleNK9jSshez2qau6MHcHy/gbDwssQ==}
@@ -38910,6 +38916,8 @@ snapshots:
 
   web-tree-sitter@0.24.5:
     optional: true
+
+  web-tree-sitter@0.27.0: {}
 
   webfonts-generator@0.4.0:
     dependencies:

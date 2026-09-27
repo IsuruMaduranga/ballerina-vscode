@@ -16,10 +16,11 @@
 
 /**
  * The Windows `powershell` tool: which tool a platform gets, how
- * PowerShell resolves, its guards (pincer-agent `powershell-guards.test.ts`,
- * `3b290c8`), its description, its gate branch and session rules, the
- * Windows roots on the sensitive list, and a live run through a real `pwsh`
- * when one is found (`PWSH_PATH`, PATH, or the portable build pincer keeps).
+ * PowerShell resolves, its guards (ported from an earlier harness's
+ * `powershell-guards.test.ts`), its description, its gate branch and session
+ * rules, the Windows roots on the sensitive list, and a live run through a
+ * real `pwsh` when one is found (`PWSH_PATH`, PATH, or the portable build
+ * cached locally for Mac development).
  */
 
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
@@ -101,7 +102,7 @@ describe("shellRunSetup picks the tool", () => {
     });
 });
 
-describe("startSleepSeconds / powershellGuardReason (pincer's cases)", () => {
+describe("startSleepSeconds / powershellGuardReason", () => {
     const fg = { background: false };
 
     it("reads positional, -Seconds, -s and -Milliseconds forms, and nothing else", () => {
@@ -184,15 +185,58 @@ describe("the gate's PowerShell branch", () => {
         }
     });
 
-    it("offers only an exact rule, and none for a destructive line", () => {
-        expect(suggestPowerShellSessionRule("bal build")?.rule).toEqual({ kind: "exact", command: "bal build" });
+    it("offers a guarded canonical prefix, and none for a destructive line", () => {
+        const context = { cwd, home: join(root, "home"), writableRoots: [] };
+        expect(suggestPowerShellSessionRule("bal build", context)?.rule).toEqual({ kind: "prefix", command: "bal build" });
         for (const command of ["Remove-Item -Recurse target", "rm main.bal", "del x", "git push", "bal push", "Start-Process notepad"]) {
             expectLabeled(suggestPowerShellSessionRule(command), command).toBeUndefined();
         }
-        const rules = [{ kind: "exact" as const, command: "bal build" }];
-        expect(matchPowerShellSessionRule(rules, "bal build")).toBeDefined();
-        expect(matchPowerShellSessionRule(rules, "bal build --offline")).toBeUndefined();
-        expect(decideShellCommand(input("bal build", rules))).toMatchObject({ outcome: "allow", layer: "session-rule" });
+        const rules = [{ kind: "prefix" as const, command: "bal build" }];
+        expect(matchPowerShellSessionRule(rules, "bal build --offline", context)).toBeDefined();
+        expect(decideShellCommand(input("bal build --offline", rules))).toMatchObject({ outcome: "allow", layer: "session-rule" });
+    });
+
+    it("matches PowerShell prefixes statement-by-statement after alias canonicalization", () => {
+        const context = { cwd, home: join(root, "home"), writableRoots: [] };
+        const rules = [
+            { kind: "prefix" as const, command: "get-childitem src" },
+            { kind: "prefix" as const, command: "get-content src" },
+        ];
+        expect(matchPowerShellSessionRule(rules, "DIR src -Force; cat src", context)).toEqual(rules[0]);
+        expect(matchPowerShellSessionRule(rules, "DIR src; Remove-Item main.bal", context)).toBeUndefined();
+    });
+
+    it("never lets a PowerShell prefix cover an outside, secret or protected target", () => {
+        const context = { cwd, home: join(root, "home"), writableRoots: [] };
+        const rule = { kind: "prefix" as const, command: "get-childitem src" };
+        for (const command of [
+            "Get-ChildItem /etc",
+            "Get-ChildItem .env",
+            "Get-ChildItem .git/config",
+            "Get-ChildItem -Path=/etc",
+            "Get-ChildItem --output=/etc",
+        ]) {
+            expectLabeled(matchPowerShellSessionRule([rule], command, context), command).toBeUndefined();
+        }
+        expect(suggestPowerShellSessionRule("Set-Content .git/config value", context)?.rule.kind).toBe("exact");
+        expect(suggestPowerShellSessionRule("bal build --output=/etc", context)?.rule.kind).toBe("exact");
+    });
+
+    it("does not let a prefix carry directory state into later statements", () => {
+        const context = { cwd, home: join(root, "home"), writableRoots: [] };
+        const rules = [
+            { kind: "prefix" as const, command: "set-location src" },
+            { kind: "prefix" as const, command: "bal build" },
+        ];
+        expect(suggestPowerShellSessionRule("Set-Location src", context)?.rule.kind).toBe("exact");
+        expect(matchPowerShellSessionRule(rules, "Set-Location src; bal build", context)).toBeUndefined();
+    });
+
+    it("compares only command words case-insensitively", () => {
+        const context = { cwd, home: join(root, "home"), writableRoots: [] };
+        const rule = { kind: "prefix" as const, command: "npm run Build" };
+        expect(matchPowerShellSessionRule([rule], "NPM run Build --offline", context)).toBe(rule);
+        expect(matchPowerShellSessionRule([rule], "NPM run build --offline", context)).toBeUndefined();
     });
 
     it("stops a line naming a floor target, in ask and auto mode", async () => {
@@ -233,7 +277,7 @@ describe("Windows roots on the sensitive list", () => {
     });
 });
 
-/** A real pwsh: PWSH_PATH, PATH, or the portable PowerShell 7 pincer keeps for Mac development. */
+/** A real pwsh: PWSH_PATH, PATH, or the portable PowerShell 7 build cached under `~/.cache/cc-windows-mode/pwsh` for Mac development. */
 function findPwsh(): string | undefined {
     const candidates = [process.env.PWSH_PATH, whichOnPath("pwsh", process.env), join(homedir(), ".cache", "cc-windows-mode", "pwsh", "pwsh")];
     return candidates.find((path): path is string => !!path && existsSync(path));

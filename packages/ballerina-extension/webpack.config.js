@@ -39,6 +39,19 @@ function concatenateAndMinify(options) {
   };
 }
 
+/** Copies the tree-sitter runtime beside the CommonJS extension bundle. */
+function copyTreeSitterRuntime() {
+  return {
+    apply(compiler) {
+      compiler.hooks.afterEmit.tapPromise('CopyTreeSitterRuntimePlugin', async () => {
+        const outBase = (compiler.options.output && compiler.options.output.path) ? compiler.options.output.path : path.resolve(__dirname, 'dist');
+        const source = require.resolve('web-tree-sitter/web-tree-sitter.wasm');
+        fs.copyFileSync(source, path.join(outBase, 'web-tree-sitter.wasm'));
+      });
+    }
+  };
+}
+
 const envPath = path.resolve(__dirname, '.env');
 const env = dotenv.config({ path: envPath }).parsed || {}; // ensure object for //@ts-check
 console.log("Fetching values for environment variables...");
@@ -109,6 +122,7 @@ module.exports = {
   stats: 'normal',
   plugins: [
     new webpack.DefinePlugin(envKeys),
+    copyTreeSitterRuntime(),
     // Custom concatenation + minification plugin (replacement for deprecated dependency)
     concatenateAndMinify({
       sources: [

@@ -71,6 +71,15 @@ describe("parseCommand", () => {
     it("reports unbalanced quotes as a parse failure rather than guessing", () => {
         expect(parseCommand(`echo "unterminated`).parseFailed).toBe(true);
     });
+
+    it("models input redirections and dynamic expansion without treating them as literals", () => {
+        const parsed = parseCommand('cat < "$input" | grep "$(pattern)" > out');
+        expect(parsed.parseFailed).toBe(false);
+        expect(parsed.segments[0].inputs).toEqual([{ value: "$input", dynamic: "variable" }]);
+        expect(parsed.segments[0].unknownTarget).toBe(true);
+        expect(parsed.segments[1].tokens[1]).toEqual({ value: "$(pattern)", dynamic: "substitution" });
+        expect(parsed.substitutions).toEqual(["pattern"]);
+    });
 });
 
 describe("hasUnmodelledSyntax", () => {
@@ -192,7 +201,7 @@ describe("analyzeShellCommand fast path", () => {
         it("the harness's own credential stores are on the sensitive list", () => {
             for (const command of [
                 "cat ~/.pi/agent/auth.json",
-                "cat ~/.onecode/agent/auth.json",
+                "cat ~/.someagent/agent/auth.json",
                 "cat ~/.claude/.credentials.json",
                 "cat ~/.cargo/credentials.toml",
                 "cat ~/Library/Keychains/login.keychain-db",
@@ -364,20 +373,18 @@ describe("analyzeShellCommand write-target gaps (whole-codebase review)", () => 
     });
 });
 
-describe("containment signal for the recoverability gate (Phase 2)", () => {
+describe("contained in-project mutation evidence", () => {
     it("marks an in-project rm of a bare-name file as contained, capturing the target", () => {
         const ev = analyze("rm notes.txt");
         expect(ev.verdict).toBe("escalate");
         expect(ev.containedNonNetwork).toBe(true);
-        expect(ev.wholeTree).toBe(false);
         expect(ev.writes.some((w) => w.token === "notes.txt" && !w.outsideCwd)).toBe(true);
     });
 
-    it("marks git reset --hard as a contained whole-tree op", () => {
+    it("leaves destructive Git reset uncontained", () => {
         const ev = analyze("git reset --hard HEAD");
         expect(ev.verdict).toBe("escalate");
-        expect(ev.containedNonNetwork).toBe(true);
-        expect(ev.wholeTree).toBe(true);
+        expect(ev.containedNonNetwork).toBe(false);
     });
 
     it("does NOT mark an rm outside the project as contained", () => {
@@ -395,10 +402,10 @@ describe("containment signal for the recoverability gate (Phase 2)", () => {
         expect(ev.containedNonNetwork).toBe(false);
     });
 
-    it("does NOT mark a non-delete mutation (cp) as contained", () => {
+    it("marks a guarded in-project cp as contained", () => {
         const ev = analyze("cp a.txt b.txt");
         expect(ev.verdict).toBe("escalate");
-        expect(ev.containedNonNetwork).toBe(false);
+        expect(ev.containedNonNetwork).toBe(true);
     });
 
     it("does NOT mark rm as contained when the command also reaches the network", () => {
@@ -426,7 +433,6 @@ describe("containment signal for the recoverability gate (Phase 2)", () => {
         ]) {
             const ev = analyze(cmd);
             expectLabeled(ev.verdict, cmd).toBe("escalate");
-            expectLabeled(ev.wholeTree, cmd).toBe(false);
             expectLabeled(ev.containedNonNetwork, cmd).toBe(false);
         }
     });
@@ -458,25 +464,21 @@ describe("containment signal for the recoverability gate (Phase 2)", () => {
         }
     });
 
-    it("has no protected-dir exceptions: pincer's .claude/worktrees is protected here", () => {
-        // pincer keeps its own worktrees under .claude/worktrees; BI has none, so
+    it("has no protected-dir exceptions: .claude/worktrees is protected here", () => {
+        // Some setups keep worktrees under .claude/worktrees; BI has none, so
         // the whole .claude tree stays configuration.
         const ev = analyze("echo x > .claude/worktrees/fix/notes.txt");
         expect(ev.protectedPaths).toHaveLength(1);
         expect(ev.verdict).toBe("escalate");
     });
 
-    it("still marks a bare git reset --hard (no ref) as whole-tree contained", () => {
-        const ev = analyze("git reset --hard");
-        expect(ev.containedNonNetwork).toBe(true);
-        expect(ev.wholeTree).toBe(true);
+    it("leaves a bare git reset --hard uncontained", () => {
+        expect(analyze("git reset --hard").containedNonNetwork).toBe(false);
     });
 
-    // A delete target the classifier's fast path cannot enumerate must never be
-    // treated as a concrete in-project literal — otherwise `rm -rf "$VAR"` would
-    // resolve to a nonexistent `cwd/$VAR`, the recoverability check would find
-    // nothing to lose, and it would auto-approve while $VAR expands to anything at
-    // runtime. These must stay uncontained so the classifier judges them.
+    // A delete target the fast path cannot enumerate must never be treated as a
+    // concrete in-project literal. These must stay uncontained so the classifier
+    // judges them.
     it("does NOT mark rm of a dynamic/unenumerable target as contained", () => {
         for (const command of ['rm -rf "$VAR"', "rm -rf ${DIR:-fallback}", "rm -rf $HOME/x", "rm -rf {a,b}.txt"]) {
             const ev = analyze(command);
@@ -487,7 +489,7 @@ describe("containment signal for the recoverability gate (Phase 2)", () => {
 
 describe("runtime protected dirs", () => {
     it("escalates a redirect into a runtime-protected dir when the caller passes it, and stays safe otherwise", () => {
-        const agentDir = join(home, ".pi", "agent"); // pincer's example: any directory known only at runtime
+        const agentDir = join(home, ".pi", "agent"); // an example: any directory known only at runtime
         mkdirSync(join(agentDir, "extensions"), { recursive: true });
         // Spelled with forward slashes, as a path is inside a bash command line.
         const command = `echo evil > ${sh(agentDir)}/extensions/x.ts`;
