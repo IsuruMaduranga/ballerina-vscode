@@ -1664,6 +1664,10 @@ export interface ServiceModelFromCodeRequest {
     };
 }
 export interface ServiceModelFromCodeResponse {
+    /**
+     * Absent when the model could not be resolved; `resolutionError` then says why. Language servers older
+     * than this contract return neither field in that case. Consumers must check for it before use.
+     */
     service?: ServiceModel;
     errorMsg?: string;
     stacktrace?: string;

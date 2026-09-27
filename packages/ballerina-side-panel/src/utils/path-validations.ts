@@ -318,11 +318,18 @@ export function parseServiceStringLiteral(input: string): ParseResult {
             return result;
         }
         if (c === '\\') {
-            const escape = content.slice(i + 1).match(/^(?:[nrt\\"]|u\{[0-9A-Fa-f]+\})/);
+            const escape = content.slice(i + 1).match(/^(?:[nrt\\"]|u\{([0-9A-Fa-f]+)\})/);
             if (!escape) {
                 const sequence = i + 1 < content.length ? `\\${content[i + 1]}` : '\\';
                 result.errors.push({ position, message: `invalid escape sequence "${sequence}"` });
                 return result;
+            }
+            if (escape[1] !== undefined) {
+                const codePoint = parseInt(escape[1], 16);
+                if (codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
+                    result.errors.push({ position, message: `invalid code point in escape sequence "\\${escape[0]}"` });
+                    return result;
+                }
             }
             i += escape[0].length;
         }

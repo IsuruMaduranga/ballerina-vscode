@@ -131,7 +131,8 @@ public class ServiceBuilderRouter {
         }
         ModuleID moduleID = serviceMetadata.moduleId();
 
-        NodeBuilder<Service> serviceBuilder = useSchemaDrivenPath(moduleID.orgName(), moduleID.moduleName())
+        boolean schemaDriven = useSchemaDrivenPath(moduleID.orgName(), moduleID.moduleName());
+        NodeBuilder<Service> serviceBuilder = schemaDriven
                         ? schemaDrivenServiceBuilder(moduleID.moduleName())
                         : getServiceBuilder(moduleID.moduleName());
         ModelFromSourceContext context = new ModelFromSourceContext(node, project, semanticModel,
@@ -141,22 +142,18 @@ public class ServiceBuilderRouter {
         try {
             service = serviceBuilder.getModelFromSource(context);
         } catch (Throwable e) {
-            TriggerModelReader.getInstance().getSchemaDrivenResolutionError(
-                    moduleID.orgName(), moduleID.packageName(), moduleID.moduleName(), moduleID.version(), false)
-                    .ifPresent(error -> {
-                        throw new ModelResolutionException(error);
-                    });
+            sourceResolutionError(moduleID, schemaDriven).ifPresent(error -> {
+                throw new ModelResolutionException(error);
+            });
             if (e instanceof RuntimeException runtimeException) {
                 throw runtimeException;
             }
             throw new RuntimeException(e);
         }
         if (service == null) {
-            TriggerModelReader.getInstance().getSchemaDrivenResolutionError(
-                    moduleID.orgName(), moduleID.packageName(), moduleID.moduleName(), moduleID.version(), false)
-                    .ifPresent(error -> {
-                        throw new ModelResolutionException(error);
-                    });
+            sourceResolutionError(moduleID, schemaDriven).ifPresent(error -> {
+                throw new ModelResolutionException(error);
+            });
             throw new ModelResolutionException(new ModelResolutionError(
                     ModelResolutionError.SERVICE_NOT_FOUND,
                     "The service model could not be resolved from the selected source range.",
@@ -164,6 +161,17 @@ public class ServiceBuilderRouter {
         }
         service.getProperties().forEach((k, v) -> v.setAdvanced(false));
         return service;
+    }
+
+    /**
+     * Explains why a service could not be read from source. A connector on the legacy builder ships no trigger
+     * metadata by design, so a missing file explains nothing there and its real failure is kept instead.
+     */
+    private static Optional<ModelResolutionError> sourceResolutionError(ModuleID moduleID, boolean schemaDriven) {
+        return TriggerModelReader.getInstance().getSchemaDrivenResolutionError(
+                        moduleID.orgName(), moduleID.packageName(), moduleID.moduleName(), moduleID.version(), false)
+                .filter(error -> schemaDriven
+                        || !ModelResolutionError.TRIGGER_METADATA_NOT_FOUND.equals(error.code()));
     }
 
     public static Map<String, List<TextEdit>> addService(Service service,

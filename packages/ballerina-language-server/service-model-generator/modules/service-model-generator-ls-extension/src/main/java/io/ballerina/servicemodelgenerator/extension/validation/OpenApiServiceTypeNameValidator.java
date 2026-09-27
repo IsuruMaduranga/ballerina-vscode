@@ -22,6 +22,7 @@ import io.ballerina.servicemodelgenerator.extension.model.ServiceInitModel;
 import io.ballerina.servicemodelgenerator.extension.model.Value;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.parser.OpenAPIV3Parser;
+import io.swagger.v3.parser.core.models.ParseOptions;
 import io.swagger.v3.parser.core.models.SwaggerParseResult;
 
 import java.io.IOException;
@@ -72,7 +73,12 @@ public final class OpenApiServiceTypeNameValidator {
 
     private static Optional<String> openApiSchemaConflict(String name, String specPath) {
         try {
-            SwaggerParseResult parseResult = new OpenAPIV3Parser().readContents(Files.readString(Path.of(specPath)));
+            // Only the declared component names are compared, so references are left unresolved: resolving them
+            // would let a save-time check fetch remote hosts named in the specification.
+            ParseOptions options = new ParseOptions();
+            options.setResolve(false);
+            SwaggerParseResult parseResult = new OpenAPIV3Parser().readContents(
+                    Files.readString(Path.of(specPath)), null, options);
             OpenAPI openAPI = parseResult.getOpenAPI();
             if (openAPI == null || openAPI.getComponents() == null || openAPI.getComponents().getSchemas() == null) {
                 return Optional.empty();

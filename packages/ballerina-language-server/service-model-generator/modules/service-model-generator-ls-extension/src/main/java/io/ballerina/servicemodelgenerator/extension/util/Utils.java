@@ -28,6 +28,7 @@ import io.ballerina.compiler.api.symbols.AnnotationAttachmentSymbol;
 import io.ballerina.compiler.api.symbols.AnnotationSymbol;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.TypeDefinitionSymbol;
+import io.ballerina.compiler.api.symbols.TypeDescKind;
 import io.ballerina.compiler.api.symbols.TypeReferenceTypeSymbol;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.syntax.tree.AnnotationNode;
@@ -605,7 +606,7 @@ public final class Utils {
 
     /**
      * The type of an annotation property created from source: a {@code RECORD_MAP_EXPRESSION} over the
-     * annotation's record type when the semantic model resolves it, else a plain {@code EXPRESSION}.
+     * annotation's named record type when the semantic model resolves it, else a plain {@code EXPRESSION}.
      */
     private static PropertyType annotationPropertyType(SemanticModel semanticModel, AnnotationNode annotationNode,
                                                        String prefix) {
@@ -629,7 +630,8 @@ public final class Utils {
         }
         Optional<TypeSymbol> typeDesc = annotSymbol.typeDescriptor();
         if (typeDesc.isEmpty() || !(typeDesc.get() instanceof TypeReferenceTypeSymbol typeRef)
-                || typeRef.getName().isEmpty() || typeRef.getModule().isEmpty()) {
+                || typeRef.getName().isEmpty() || typeRef.getModule().isEmpty()
+                || CommonUtils.getRawType(typeRef).typeKind() != TypeDescKind.RECORD) {
             return fallback;
         }
         String typeName = typeRef.getName().get();

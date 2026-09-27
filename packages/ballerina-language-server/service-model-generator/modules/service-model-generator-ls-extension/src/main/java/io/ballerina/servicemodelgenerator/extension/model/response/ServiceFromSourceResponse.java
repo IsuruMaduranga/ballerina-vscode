@@ -34,6 +34,10 @@ public record ServiceFromSourceResponse(Service service, String errorMsg, String
         this(service, null, null, null);
     }
 
+    public ServiceFromSourceResponse(ModelResolutionError resolutionError) {
+        this(null, null, null, resolutionError);
+    }
+
     public ServiceFromSourceResponse(Throwable e) {
         this(null, e.toString(), Arrays.toString(e.getStackTrace()),
                 e instanceof ModelResolutionException ex

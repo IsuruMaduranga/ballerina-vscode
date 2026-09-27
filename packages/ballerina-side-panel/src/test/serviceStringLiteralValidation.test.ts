@@ -33,6 +33,8 @@ describe("parseServiceStringLiteral", () => {
         ['"esc\\"aped"'],
         ['"tab\\tnewline\\n\\\\"'],
         ['"\\u{1F600}"'],
+        ['"\\u{10FFFF}"'],
+        ['"\\u{D7FF}"'],
     ])("accepts %s", (input) => {
         const result = parseServiceStringLiteral(input);
         expect(result.valid).toBe(true);
@@ -68,6 +70,14 @@ describe("parseServiceStringLiteral", () => {
         // The trailing backslash would escape the closing quote.
         ['"a\\"', 'invalid escape sequence "\\"'],
     ])("rejects the invalid escape in %s", (input, expected) => {
+        expect(firstError(input)).toBe(expected);
+    });
+
+    it.each([
+        ['"\\u{D800}"', 'invalid code point in escape sequence "\\u{D800}"'],
+        ['"\\u{DFFF}"', 'invalid code point in escape sequence "\\u{DFFF}"'],
+        ['"\\u{110000}"', 'invalid code point in escape sequence "\\u{110000}"'],
+    ])("rejects the out-of-range code point in %s", (input, expected) => {
         expect(firstError(input)).toBe(expected);
     });
 });
