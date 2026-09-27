@@ -45,6 +45,7 @@ import { buildRunKey, KILL_TASK_TOOL_NAME, SUBAGENT_TOOL_NAME, SubagentRunContex
 import { withBackgroundNotifications } from './background/registry';
 import { createShellTool, POWERSHELL_TOOL_NAME, SHELL_TOOL_NAME } from './tools/shell-tool';
 import { createShellAuthorizer } from './tools/shell-authorizer';
+import { RunToolCallLog, withToolCallLog } from './auto-mode/run-tool-calls';
 import type { ShellRunSetup } from './shell/shell-session';
 import { registerShellTouchedFiles } from './tools/shell-touched-files';
 import { chatStateStorage } from '../../../views/ai-panel/chatStateStorage';
@@ -105,7 +106,7 @@ export interface ToolRegistryOptions {
  * The bash tool behind the gate (`auto-mode/gate.ts`, wired in
  * `tools/shell-authorizer.ts`), with shell edits registered for the review.
  */
-function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, runKey: string, threadId: string) {
+function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, runKey: string, threadId: string, toolCallLog: RunToolCallLog) {
     return createShellTool({
         kind: shell.tool,
         eventHandler: opts.eventHandler,
@@ -122,6 +123,7 @@ function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, r
             runKey,
             projectRootPath: opts.projectRootPath,
             threadId,
+            toolCallLog,
         }),
     });
 }
@@ -194,6 +196,7 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
     };
     // In a workspace project, generated code goes into the package the user is working in.
     const activeProject = projects.find(project => project.isActive) ?? projects[0];
+    const toolCallLog = new RunToolCallLog();
     const tools = {
         [TASK_WRITE_TOOL_NAME]: createTaskWriteTool(
             eventHandler,
@@ -246,7 +249,7 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
         [CLARIFY_TOOL]: createClarifyTool(eventHandler),
         [SKILL_TOOL_NAME]: createSkillTool(REGISTERED_SKILLS, projectRootPath, eventHandler),
         [TOOL_SEARCH_TOOL_NAME]: createToolSearchTool(() => deferredCatalog(), eventHandler),
-        ...(opts.shell ? { [opts.shell.tool === 'powershell' ? POWERSHELL_TOOL_NAME : SHELL_TOOL_NAME]: createGatedShellTool(opts, opts.shell, subagentCtx.runKey, resolvedThreadId) } : {}),
+        ...(opts.shell ? { [opts.shell.tool === 'powershell' ? POWERSHELL_TOOL_NAME : SHELL_TOOL_NAME]: createGatedShellTool(opts, opts.shell, subagentCtx.runKey, resolvedThreadId, toolCallLog) } : {}),
         // TODO(auto-memory): memory tools temporarily disabled for this release — restore once the memory feature is refined.
         // // Memory tools — registered only when auto-memory is enabled and a workspace root is known
         // ...(autoMemoryEnabled && projectRootPath ? {
@@ -258,9 +261,13 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
     // Every tool result of this run carries a <system-reminder> for background subagents that have
     // finished since the last one, so the main agent learns of completion without polling.
     // `tool_search` is left out: a result that loads tools can hold nothing but the tool references,
-    // so a notice drained into it would be lost; it rides the next tool result instead.
+    // so a notice drained into it would be lost; it rides the next tool result instead. Every call
+    // is logged as its tool starts, so the shell classifier sees the earlier calls of its own step.
     const wrap = (set: Record<string, Tool>) => Object.fromEntries(
-        Object.entries(set).map(([name, t]) => [name, name === TOOL_SEARCH_TOOL_NAME ? t : withBackgroundNotifications(t as any, subagentCtx.runKey)])
+        Object.entries(set).map(([name, t]) => {
+            const logged = withToolCallLog(t as any, name, toolCallLog);
+            return [name, name === TOOL_SEARCH_TOOL_NAME ? logged : withBackgroundNotifications(logged, subagentCtx.runKey)];
+        })
     ) as Record<string, Tool>;
     const builtIns = orderTools(wrap(Object.fromEntries(
         Object.entries(tools as Record<string, Tool>).map(([name, t]) => [name, DEFERRED_BUILT_IN_TOOLS.has(name) ? deferTool(t) : t])

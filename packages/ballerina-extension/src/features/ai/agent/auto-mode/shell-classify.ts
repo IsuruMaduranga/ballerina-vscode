@@ -17,7 +17,8 @@
 /**
  * Builds the classifier request for one shell command and runs it (design
  * §4): the thread's transcript (user messages and tool inputs, results
- * stripped), the user's denials, a `{"meta":{"gitStatus":…}}` line above a
+ * stripped), the user's denials, the earlier calls of the step still running,
+ * a `{"meta":{"gitStatus":…}}` line above a
  * command that can destroy uncommitted work, then the command under review as
  * the last entry. The model call is injected, so this runs under Jest.
  */
@@ -28,7 +29,7 @@ import type { AutoModeConfig } from "./config";
 import { gitStatusMeta, gitStatusMetaArgs, reachesIgnoredFiles, wantsGitStatusMeta } from "./git-status-meta";
 import type { ClassifyVerdict } from "./prompt";
 import type { TranscriptEntry } from "./transcript";
-import { transcriptFromGenerations, type TranscriptGeneration } from "./transcript-source";
+import { transcriptFromGenerations, unstoredToolCalls, type TranscriptGeneration, type TranscriptToolCall } from "./transcript-source";
 
 export interface ShellClassifyInput {
     command: string;
@@ -38,6 +39,10 @@ export interface ShellClassifyInput {
     generations: readonly TranscriptGeneration[];
     /** Commands the user declined earlier in the thread, as `denied` entries. */
     denials: readonly TranscriptEntry[];
+    /** The run's tool calls as their tools started (`run-tool-calls.ts`); the unstored ones are added. */
+    runToolCalls?: readonly TranscriptToolCall[];
+    /** The shell call under review, left out of `runToolCalls`. */
+    toolCallId?: string;
     agentsMd?: string;
     username: string;
     scratchpadDir?: string;
@@ -53,8 +58,12 @@ export function shellKindOf(tool: "shell" | "powershell", edition: "core" | "des
 
 /** Classify one shell command in auto mode. Never rejects. */
 export async function classifyShellCommand(input: ShellClassifyInput, deps: ClassifierDeps): Promise<ClassifyVerdict> {
-    const { entries, userMessages } = transcriptFromGenerations(input.generations);
-    const transcript: TranscriptEntry[] = [...entries, ...input.denials];
+    const { entries, userMessages, toolCallIds } = transcriptFromGenerations(input.generations);
+    const transcript: TranscriptEntry[] = [
+        ...entries,
+        ...input.denials,
+        ...unstoredToolCalls(input.runToolCalls ?? [], toolCallIds, input.toolCallId),
+    ];
     const flavour = input.tool === "powershell" ? "powershell" : "bash";
     if (input.gitStatus && wantsGitStatusMeta(flavour, input.command)) {
         const porcelain = await input.gitStatus(input.cwd, gitStatusMetaArgs(reachesIgnoredFiles(flavour, input.command)));

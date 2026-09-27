@@ -39,6 +39,7 @@ import { appendDecision, decisionEntry } from '../auto-mode/decision-log';
 import { authorizeShellCommand, sessionRuleStore, type ShellAuthorization, type ShellMode } from '../auto-mode/gate';
 import { gitStatusOutput } from '../auto-mode/git';
 import { PauseTracker } from '../auto-mode/pause';
+import type { RunToolCallLog } from '../auto-mode/run-tool-calls';
 import { classifyShellCommand, shellKindOf } from '../auto-mode/shell-classify';
 import type { TranscriptEntry } from '../auto-mode/transcript';
 import type { ShellRunSetup } from '../shell/shell-session';
@@ -99,11 +100,13 @@ export interface ShellAuthorizerOptions {
     runKey: string;
     projectRootPath: string;
     threadId: string;
+    /** The run's tool calls, so the classifier sees the earlier calls of the step under review. */
+    toolCallLog?: RunToolCallLog;
 }
 
 /** The `authorize` callback of the shell tool. */
 export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
-    const { shell, mode, eventHandler, runKey, projectRootPath, threadId } = opts;
+    const { shell, mode, eventHandler, runKey, projectRootPath, threadId, toolCallLog } = opts;
     const tool = shell.tool;
     const toolName = tool === 'powershell' ? POWERSHELL_TOOL_NAME : SHELL_TOOL_NAME;
     const edition = tool === 'powershell' ? powerShellEdition(powerShellSpawn()) : undefined;
@@ -115,7 +118,7 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
         ? join(chatStateStorage.getThreadDir(projectRootPath, threadId), 'auto-mode-decisions.jsonl')
         : undefined;
 
-    return async ({ command, description, abortSignal }: { command: string; description?: string; abortSignal?: AbortSignal }): Promise<ShellAuthorization> => {
+    return async ({ command, description, toolCallId, abortSignal }: { command: string; description?: string; toolCallId?: string; abortSignal?: AbortSignal }): Promise<ShellAuthorization> => {
         const pause = pauseTrackerFor(runKey);
         return authorizeShellCommand(
             {
@@ -148,6 +151,8 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                             cwd: shell.cwd,
                             generations: projectRootPath ? chatStateStorage.getGenerations(projectRootPath, threadId) : [],
                             denials: userDenials.get(runKey) ?? [],
+                            runToolCalls: toolCallLog?.list(),
+                            toolCallId,
                             agentsMd: loadAgentsMdForClassifier(shell.cwd),
                             username: safeUsername(),
                             scratchpadDir: shell.scratchpadDir,
