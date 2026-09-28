@@ -1237,7 +1237,7 @@ final class TriggerUIMetadataCompiler {
      * base-path widget, which accepts values that aren't valid there. Retype it as {@code STRING_LITERAL}
      * so the editor only accepts a double-quoted string literal.
      */
-    private static void normalizeStringLiteralWidget(JsonObject field) {
+    static void normalizeStringLiteralWidget(JsonObject field) {
         if (!field.has(PROP_KEY_CODEDATA) || !field.get(PROP_KEY_CODEDATA).isJsonObject()
                 || !CD_TYPE_STRING_LITERAL.equals(string(field.getAsJsonObject(PROP_KEY_CODEDATA), "type"))
                 || !field.has("types") || !field.get("types").isJsonArray()) {

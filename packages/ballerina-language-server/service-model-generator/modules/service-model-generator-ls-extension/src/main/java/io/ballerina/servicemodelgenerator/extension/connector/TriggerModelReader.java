@@ -48,6 +48,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -167,6 +168,14 @@ public class TriggerModelReader {
         ModuleInfo moduleInfo = new ModuleInfo(orgName, packageName, moduleName, version);
         LibraryMetadataReader.MetadataStatus status = LibraryMetadataReader.getInstance()
                 .inspectMetadata(moduleInfo, isLocalRepository);
+        return resolutionError(status, () -> hasSchemaDrivenModel(orgName, moduleName, version, isLocalRepository),
+                orgName, packageName, moduleName);
+    }
+
+    /** Maps an inspected package to the first reason it cannot produce a model; the model is built only last. */
+    static Optional<ModelResolutionError> resolutionError(LibraryMetadataReader.MetadataStatus status,
+                                                          BooleanSupplier hasModel, String orgName,
+                                                          String packageName, String moduleName) {
         if (!status.packageResolved()) {
             return Optional.of(error(ModelResolutionError.PACKAGE_NOT_RESOLVED,
                     "The package " + orgName + "/" + packageName + " could not be resolved.",
@@ -182,7 +191,7 @@ public class TriggerModelReader {
                     "The package contains an invalid or unsupported metadata/trigger-metadata.json.",
                     orgName, packageName, moduleName));
         }
-        if (!hasSchemaDrivenModel(orgName, moduleName, version, isLocalRepository)) {
+        if (!hasModel.getAsBoolean()) {
             return Optional.of(error(ModelResolutionError.SERVICE_NOT_FOUND,
                     "The trigger metadata could not be converted into a service form.",
                     orgName, packageName, moduleName));

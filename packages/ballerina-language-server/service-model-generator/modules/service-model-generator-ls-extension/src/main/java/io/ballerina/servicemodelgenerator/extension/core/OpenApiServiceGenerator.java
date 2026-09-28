@@ -130,7 +130,7 @@ public class OpenApiServiceGenerator {
 
         List<Diagnostic> diagnostics = new ArrayList<>();
         GenSrcFile serviceTypeFile = generateServiceType(openAPIContractPath, typeName, filter, diagnostics);
-        rejectGeneratedTypeNameCollision(serviceTypeFile, typeName);
+        rejectGeneratedTypeNameCollision(serviceTypeFile.getContent(), typeName);
         List<String> errorMessages = new ArrayList<>();
         for (Diagnostic diagnostic : diagnostics) {
             DiagnosticSeverity severity = diagnostic.diagnosticInfo().severity();
@@ -185,9 +185,9 @@ public class OpenApiServiceGenerator {
      * The OpenAPI generator emits the service object and schema types into the same file, so a
      * duplicate declaration for the selected service type name would make references ambiguous.
      */
-    private static void rejectGeneratedTypeNameCollision(GenSrcFile serviceTypeFile, String typeName)
+    static void rejectGeneratedTypeNameCollision(String serviceTypeSource, String typeName)
             throws BallerinaOpenApiException {
-        SyntaxTree syntaxTree = SyntaxTree.from(TextDocuments.from(serviceTypeFile.getContent()));
+        SyntaxTree syntaxTree = SyntaxTree.from(TextDocuments.from(serviceTypeSource));
         ModulePartNode modulePartNode = (ModulePartNode) syntaxTree.rootNode();
         long matchingTypeCount = modulePartNode.members().stream()
                 .filter(TypeDefinitionNode.class::isInstance)

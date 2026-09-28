@@ -142,7 +142,11 @@ public final class LibraryMetadataReader {
         if (root.isEmpty()) {
             return new MetadataStatus(false, false, false, false, false);
         }
-        Path packageRoot = root.get();
+        return inspectMetadata(root.get());
+    }
+
+    // Package-private so the tests can inspect a hand-built package root, as with readTriggerMetadataModel.
+    MetadataStatus inspectMetadata(Path packageRoot) {
         Path metadata = packageRoot.resolve(TRIGGER_METADATA_RESOURCE_PATH);
         Path uiMetadata = packageRoot.resolve(TRIGGER_UI_METADATA_RESOURCE_PATH);
         boolean metadataPresent = Files.isRegularFile(metadata);

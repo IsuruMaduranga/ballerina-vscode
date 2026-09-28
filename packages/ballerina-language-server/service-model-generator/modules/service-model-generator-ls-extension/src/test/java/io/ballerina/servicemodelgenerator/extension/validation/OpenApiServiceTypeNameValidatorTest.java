@@ -23,8 +23,11 @@ import io.ballerina.servicemodelgenerator.extension.model.Value;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,8 +64,55 @@ public class OpenApiServiceTypeNameValidatorTest {
         Assert.assertTrue(OpenApiServiceTypeNameValidator.validate(model("WeatherService")).isEmpty());
     }
 
+    @Test
+    public void testAcceptsSpecificationWithoutSchemas() throws IOException {
+        Path spec = Files.createTempFile("no-schemas", ".yaml");
+        Files.writeString(spec, """
+                openapi: 3.0.1
+                info:
+                  title: Weather
+                  version: 1.0.0
+                paths: {}
+                """);
+
+        Assert.assertTrue(OpenApiServiceTypeNameValidator.validate(model("Weather", spec.toString())).isEmpty());
+    }
+
+    @Test
+    public void testLeavesAnUnreadableSpecificationToTheGenerator() {
+        Path missing = ISSUE_395_SPEC.resolveSibling("no-such-openapi.yaml");
+
+        Assert.assertTrue(OpenApiServiceTypeNameValidator.validate(model("Weather", missing.toString())).isEmpty());
+    }
+
+    @Test
+    public void testIgnoresUnsetServiceTypeName() {
+        Assert.assertTrue(OpenApiServiceTypeNameValidator.validate(model(null)).isEmpty());
+    }
+
+    @Test
+    public void testIgnoresDisabledChoice() {
+        ServiceInitModel model = model("Weather");
+        model.getProperties().get("designApproach").getChoices().getFirst().setEnabled(false);
+
+        Assert.assertTrue(OpenApiServiceTypeNameValidator.validate(model).isEmpty());
+    }
+
+    @Test
+    public void testIgnoresModelWithoutDesignApproach() {
+        ServiceInitModel model = new ServiceInitModel.Builder()
+                .setModuleName("http")
+                .build();
+
+        Assert.assertTrue(OpenApiServiceTypeNameValidator.validate(model).isEmpty());
+    }
+
     private static ServiceInitModel model(String serviceTypeName) {
-        Value spec = value(ISSUE_395_SPEC.toString());
+        return model(serviceTypeName, ISSUE_395_SPEC.toString());
+    }
+
+    private static ServiceInitModel model(String serviceTypeName, String specPath) {
+        Value spec = value(specPath);
         Value typeName = value(serviceTypeName);
         Map<String, Value> choiceProperties = new HashMap<>();
         choiceProperties.put("spec", spec);
@@ -77,7 +127,8 @@ public class OpenApiServiceTypeNameValidatorTest {
                 .enabled(true)
                 .editable(true)
                 .build();
-        designApproach.setChoices(List.of(openApiChoice));
+        // Mutable, so a test can disable the choice.
+        designApproach.setChoices(new ArrayList<>(List.of(openApiChoice)));
 
         ServiceInitModel model = new ServiceInitModel.Builder()
                 .setModuleName("http")

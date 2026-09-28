@@ -126,13 +126,12 @@ public final class OpenApiServiceTypeNameValidator {
         return null;
     }
 
+    // An unset field carries a null value; read it as blank so validate() skips it.
     private static Candidate candidate(Value name, Value spec, String propertyPath) {
-        return new Candidate(name.getValue(), spec.getValue(), propertyPath);
+        return new Candidate(Objects.toString(name.getValue(), ""), Objects.toString(spec.getValue(), ""),
+                propertyPath);
     }
 
     private record Candidate(String name, String spec, String propertyPath) {
-        private Candidate(Object name, Object spec, String propertyPath) {
-            this(Objects.toString(name, ""), Objects.toString(spec, ""), propertyPath);
-        }
     }
 }
