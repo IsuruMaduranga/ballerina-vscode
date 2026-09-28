@@ -45,7 +45,6 @@ import {
     ActiveMigrationSessionLocal,
     EnhanceTomlData,
     MigrationContext,
-    MIGRATION_PROJECT_ROOT_KEY,
     PackageEnhancementResult,
     PENDING_ENHANCEMENT_TTL_MS,
     PENDING_MIGRATION_ENHANCEMENT_KEY,
@@ -322,9 +321,6 @@ export function scheduleMigrationEnhancement(
         sourcePath,
     };
     extension.context.globalState.update(PENDING_MIGRATION_ENHANCEMENT_KEY, entry);
-    // Also persist the project root without expiry so getActiveMigrationSessionState
-    // can always resolve the toml even if the webview beats checkAndRunPendingEnhancement.
-    extension.context.globalState.update(MIGRATION_PROJECT_ROOT_KEY, projectRoot);
     console.log(`[MigrationEnhancement] Scheduled enhancement (aiFeatureUsed=${aiFeatureUsed}) for project: ${projectRoot}`);
 }
 
@@ -1739,8 +1735,19 @@ export function openMigratedProject(): void {
 // Internal helpers
 // ===========================================================================
 
+/** `true` when `candidate` is one of the open workspace folders or lies inside one. */
+function _isInOpenWorkspace(candidate: string): boolean {
+    return (workspace.workspaceFolders ?? []).some((folder) => {
+        const relative = path.relative(folder.uri.fsPath, candidate);
+        const escapes = relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+        return !escapes;
+    });
+}
+
 function _resolveCurrentProjectRoot(): string | undefined {
-    // Build a list of candidate paths to check for the toml file.
+    // Build a list of candidate paths to check for the toml file. Only paths of the
+    // open project qualify: a remembered path from an earlier migration would leak
+    // that project's enhancement state into unrelated projects.
     const candidates: string[] = [];
 
     const folders = workspace.workspaceFolders;
@@ -1748,24 +1755,19 @@ function _resolveCurrentProjectRoot(): string | undefined {
         candidates.push(folders[0].uri.fsPath);
     }
 
-    // Also check the project root stored persistently at migration time.
-    const stored = extension.context.globalState.get<string>(MIGRATION_PROJECT_ROOT_KEY);
-    console.log("[MigrationEnhancement] stored MIGRATION_PROJECT_ROOT_KEY:", stored);
-    if (stored && !candidates.includes(stored)) {
-        candidates.push(stored);
-    }
-
     // Also check the active Ballerina project path from the state machine —
     // this is the most reliable source when the panel is opened manually
-    // without going through the migration wizard first.
+    // without going through the migration wizard first. Its paths are not
+    // refreshed when workspace folders change and can come from a file opened
+    // outside the workspace, so only those inside an open folder qualify.
     try {
         const smCtx = StateMachine.context();
         const smProjectPath = smCtx?.projectPath;
         const smWorkspacePath = smCtx?.workspacePath;
-        if (smProjectPath && !candidates.includes(smProjectPath)) {
+        if (smProjectPath && _isInOpenWorkspace(smProjectPath) && !candidates.includes(smProjectPath)) {
             candidates.push(smProjectPath);
         }
-        if (smWorkspacePath && !candidates.includes(smWorkspacePath)) {
+        if (smWorkspacePath && _isInOpenWorkspace(smWorkspacePath) && !candidates.includes(smWorkspacePath)) {
             candidates.push(smWorkspacePath);
         }
         console.log("[MigrationEnhancement] StateMachine candidates:", smProjectPath, smWorkspacePath);
