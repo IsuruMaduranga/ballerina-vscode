@@ -142,8 +142,8 @@ export function showUpdateOutput(): void {
 
 /** Worded like the JDK screen; keeping the lock means an older app, or older Ballerina plus older extension(s). */
 function describeOutdated(): { paragraphs: string[]; earlierVersionLabel: string } {
-    const why = 'Your project dependencies were set up with an earlier Ballerina version and are incompatible with '
-        + `Ballerina ${REQUIRED_BALLERINA_VERSION}.`;
+    const why = 'Your project dependencies were set up with an earlier Ballerina version, and some of the dependencies '
+        + `may be incompatible with Ballerina ${REQUIRED_BALLERINA_VERSION}.`;
     if (isInIntegratorApp()) {
         return {
             paragraphs: [why, 'Update the dependencies, or keep them as they are by switching to an earlier release of '
