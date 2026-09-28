@@ -72,13 +72,16 @@ function findOutdated(root: string | undefined): OutdatedPackage[] {
 
 /**
  * Blocks the visualizer on the update screen when a package under `root` has a Dependencies.toml older than
- * {@link REQUIRED_BALLERINA_VERSION}. Detection fails open; once an outdated lock is known, a failure blocks.
+ * {@link REQUIRED_BALLERINA_VERSION}, and brings the app back once none does. Detection fails open; once an
+ * outdated lock is known, a failure blocks.
  */
-export function checkDependencyCompatibility(root: string | undefined): DependencyCheckResult {
+export async function checkDependencyCompatibility(root: string | undefined): Promise<DependencyCheckResult> {
     let outdated: OutdatedPackage[] = [];
     try {
         outdated = findOutdated(root);
         if (outdated.length === 0) {
+            // A lock fixed outside the screen, or a compatible root in a multi-root window: no-op unless blocked.
+            await reloadVisualizerApp();
             return 'compatible';
         }
         blockPanel(root);
@@ -158,7 +161,7 @@ function describeOutdated(): { paragraphs: string[]; earlierVersionLabel: string
     };
 }
 
-/** Only the root the panel is showing; a panel that does not exist yet loads the app as usual. */
+/** Only the root the panel is showing; a panel that does not exist yet loads the app as usual. Keeps a status. */
 function blockPanel(
     root: string,
     status?: { kind: 'updating'; message: string } | { kind: 'failed'; message: string }
@@ -166,7 +169,10 @@ function blockPanel(
     if (!VisualizerWebview.currentPanel || !isSamePath(getVisualizerCheckRoot(StateMachine.context()), root)) {
         return;
     }
-    VisualizerWebview.showDependencyUpdateRequired({ rootPath: root, title: OUTDATED_TITLE, ...describeOutdated(), status });
+    // A re-check (navigation, Run) keeps the progress or failure already showing for this root.
+    const showing = VisualizerWebview.dependencyUpdateRequired;
+    const kept = status ?? (showing && isSamePath(showing.rootPath, root) ? showing.status : undefined);
+    VisualizerWebview.showDependencyUpdateRequired({ rootPath: root, title: OUTDATED_TITLE, ...describeOutdated(), status: kept });
 }
 
 /** `outdated` plus the packages whose last build failed, if still members of `root` and not already listed. */
@@ -265,8 +271,10 @@ async function syncManifestDistribution(packagePath: string, lockedVersion: stri
     }
     const edit = new WorkspaceEdit();
     edit.replace(uri, new Range(document.positionAt(field.start), document.positionAt(field.end)), value);
+    const hadUnsavedEdits = document.isDirty;
     try {
-        if (await workspace.applyEdit(edit)) {
+        // With unsaved edits of the user's own in the buffer, saving would write them too; they save it themselves.
+        if (await workspace.applyEdit(edit) && !hadUnsavedEdits) {
             await document.save();
         }
     } catch (error) {

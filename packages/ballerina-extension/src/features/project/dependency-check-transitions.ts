@@ -18,7 +18,7 @@
 
 // The visualizer state machine's dependency-check routing, kept apart from stateMachine.ts so it can be unit tested.
 
-import { assign, TransitionConfig } from 'xstate';
+import { TransitionConfig } from 'xstate';
 import { normalizeProjectPath } from '@wso2/ballerina-core';
 
 export type DependencyCheckResult = 'compatible' | 'blocked';
@@ -28,7 +28,6 @@ export interface DependencyCheckContext {
     projectPath?: string;
     dependenciesResolved?: boolean;
     connectorUpgradesCheckedPaths?: Set<string>;
-    dependencyCompatibleRoots?: Set<string>;
 }
 
 /** The root the visualizer checks: its workspace when there is one, so the overview and every member are covered. */
@@ -36,10 +35,9 @@ export function getVisualizerCheckRoot(context: DependencyCheckContext): string 
     return normalizeProjectPath(context.workspacePath || context.projectPath) || undefined;
 }
 
-/** Whether entering a view should run the check: a root not already found compatible this session. */
+/** Whether entering a view should run the check: on every navigation with a root, so a lock changed since is seen. */
 export function needsDependencyCheck(context: DependencyCheckContext): boolean {
-    const root = getVisualizerCheckRoot(context);
-    return !!root && !context.dependencyCompatibleRoots?.has(root);
+    return !!getVisualizerCheckRoot(context);
 }
 
 /**
@@ -49,13 +47,6 @@ export function needsDependencyCheck(context: DependencyCheckContext): boolean {
  */
 export function createDependencyCheckTransitions<TContext extends DependencyCheckContext>():
     Array<TransitionConfig<TContext, any>> {
-    const markCompatible = assign<TContext, any>({
-        dependencyCompatibleRoots: (context: TContext) => {
-            const compatibleRoots = new Set(context.dependencyCompatibleRoots ?? []);
-            compatibleRoots.add(getVisualizerCheckRoot(context));
-            return compatibleRoots;
-        }
-    } as any);
     const connectorsUnchecked = (context: TContext) => !context.connectorUpgradesCheckedPaths?.has(context.projectPath);
 
     return [
@@ -65,17 +56,14 @@ export function createDependencyCheckTransitions<TContext extends DependencyChec
         },
         {
             target: 'resolveMissingDependencies',
-            cond: (context) => !context.dependenciesResolved,
-            actions: markCompatible
+            cond: (context) => !context.dependenciesResolved
         },
         {
             target: 'checkConnectorUpgrades',
-            cond: connectorsUnchecked,
-            actions: markCompatible
+            cond: connectorsUnchecked
         },
         {
-            target: 'webViewLoading',
-            actions: markCompatible
+            target: 'webViewLoading'
         }
     ];
 }

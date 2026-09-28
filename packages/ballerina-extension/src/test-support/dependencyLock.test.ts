@@ -43,11 +43,11 @@ const BEFORE = ['2201.0.0', '2201.8.6', '2201.12.3', '2201.13.0-alpha', '2201.13
 const AT_OR_AFTER = ['2201.14.0', '2201.14.0-alpha', '2201.14.0-20260916-095600-2ad98357', '2201.14.2', '2201.15.0', '2202.0.0'];
 
 /** A package folder with a generated integration manifest and, optionally, a lock from `lockedBy`. */
-function makePackage(dir: string, lockedBy?: string): string {
+function makePackage(dir: string, lockedBy?: string, sticky = true): string {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'Ballerina.toml'),
-        `[package]\norg = "wso2"\nname = "${path.basename(dir)}"\nversion = "0.1.0"\ndistribution = "2201.13.6"\n\n`
-        + '[build-options]\nsticky = true\n');
+        `[package]\norg = "wso2"\nname = "${path.basename(dir)}"\nversion = "0.1.0"\ndistribution = "2201.13.6"\n`
+        + (sticky ? '\n[build-options]\nsticky = true\n' : ''));
     if (lockedBy) {
         fs.writeFileSync(path.join(dir, 'Dependencies.toml'), lockText(`distribution-version = "${lockedBy}"`));
     }
@@ -55,9 +55,10 @@ function makePackage(dir: string, lockedBy?: string): string {
 }
 
 /** A workspace root, as the Integrator creates it, listing `members`. */
-function makeWorkspace(members: string[]): void {
+function makeWorkspace(members: string[], sticky = false): void {
     fs.writeFileSync(path.join(root, 'Ballerina.toml'),
-        `[workspace]\ntitle = "Default"\npackages = [${members.map((member) => `"${member}"`).join(', ')}]\n`);
+        `[workspace]\ntitle = "Default"\npackages = [${members.map((member) => `"${member}"`).join(', ')}]\n`
+        + (sticky ? '\n[build-options]\nsticky = true\n' : ''));
 }
 
 let root: string;
@@ -168,6 +169,27 @@ describe('workspaces', () => {
         expect(getWorkspacePackagePaths(root)).toEqual([path.join(root, 'orders')]);
     });
 
+    it('drops a member that is a symlink to a folder outside the workspace', () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-lock-outside-'));
+        try {
+            makePackage(path.join(root, 'orders'));
+            makePackage(path.join(outside, 'elsewhere'), '2201.12.3');
+            fs.symlinkSync(path.join(outside, 'elsewhere'), path.join(root, 'linked'), 'dir');
+            makeWorkspace(['orders', 'linked']);
+            expect(getWorkspacePackagePaths(root)).toEqual([path.join(root, 'orders')]);
+            expect(findOutdatedPackages(root)).toEqual([]);
+        } finally {
+            fs.rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
+    it('keeps a symlinked member that stays inside the workspace', () => {
+        makePackage(path.join(root, 'packages', 'orders'));
+        fs.symlinkSync(path.join(root, 'packages', 'orders'), path.join(root, 'orders'), 'dir');
+        makeWorkspace(['orders']);
+        expect(getWorkspacePackagePaths(root)).toEqual([path.join(root, 'orders')]);
+    });
+
     it('keeps members whose folder name merely starts with two dots', () => {
         makeWorkspace(['..shared', 'apps/..billing']);
         expect(getWorkspacePackagePaths(root)).toEqual([path.join(root, '..shared'), path.join(root, 'apps', '..billing')]);
@@ -190,6 +212,20 @@ describe('workspaces', () => {
         makePackage(path.join(root, 'teststicky'), '2201.14.0');
         makePackage(path.join(root, 'untitled'));
         expect(findOutdatedPackages(root)).toEqual([]);
+    });
+
+    it('skips non-sticky packages, whose builds re-resolve an old lock by themselves', () => {
+        makeWorkspace(['sticky', 'plain']);
+        makePackage(path.join(root, 'sticky'), '2201.12.3');
+        makePackage(path.join(root, 'plain'), '2201.12.3', false);
+        expect(findOutdatedPackages(root).map((item) => item.name)).toEqual(['sticky']);
+        expect(findOutdatedPackages(path.join(root, 'plain'))).toEqual([]);
+    });
+
+    it('treats every member as sticky when the workspace declares it', () => {
+        makeWorkspace(['plain'], true);
+        makePackage(path.join(root, 'plain'), '2201.12.3', false);
+        expect(findOutdatedPackages(root).map((item) => item.name)).toEqual(['plain']);
     });
 
     it('checks a lone package by itself', () => {

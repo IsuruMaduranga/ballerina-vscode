@@ -111,7 +111,8 @@ export interface OutdatedPackage {
 
 /**
  * Absolute member paths when `root` is a workspace (each member keeps its own Dependencies.toml). Members that
- * resolve outside the workspace are dropped: the update builds in, and edits, each member's folder.
+ * resolve outside the workspace, including through a symlink, are dropped: the update builds in, and edits, each
+ * member's folder.
  */
 export function getWorkspacePackagePaths(root: string): string[] | undefined {
     try {
@@ -121,10 +122,11 @@ export function getWorkspacePackagePaths(root: string): string[] | undefined {
         if (!Array.isArray(packages)) {
             return undefined;
         }
+        const realRoot = realPath(root);
         return packages.filter((member): member is string => typeof member === 'string')
             .map((member) => path.resolve(root, member))
             .filter((member) => {
-                const relative = path.relative(root, member);
+                const relative = path.relative(realRoot, realPath(member));
                 const escapes = relative === '..' || relative.startsWith(`..${path.sep}`);
                 return !!relative && !escapes && !path.isAbsolute(relative); // `..shared` is a member folder, not an escape
             });
@@ -133,11 +135,50 @@ export function getWorkspacePackagePaths(root: string): string[] | undefined {
     }
 }
 
-/** Every package under `root` (the package itself, or each workspace member) whose lock needs updating. */
+/**
+ * Where the path really points. For a path that doesn't exist yet, its nearest existing parent is resolved and the
+ * rest appended, so it compares against a resolved root (for example `/var` -> `/private/var` on macOS).
+ */
+function realPath(target: string): string {
+    const missing: string[] = [];
+    let current = path.resolve(target);
+    while (true) {
+        try {
+            return path.join(fs.realpathSync.native(current), ...missing);
+        } catch {
+            const parent = path.dirname(current);
+            if (parent === current) {
+                return path.resolve(target);
+            }
+            missing.unshift(path.basename(current));
+            current = parent;
+        }
+    }
+}
+
+/** `[build-options] sticky = true` in a manifest, or `false` when it can't be read. */
+function declaresSticky(manifestDir: string): boolean {
+    try {
+        const buildOptions = parse(fs.readFileSync(path.join(manifestDir, BALLERINA_TOML), 'utf8'))['build-options'] as
+            Record<string, unknown> | undefined;
+        return buildOptions?.sticky === true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Every package under `root` (the package itself, or each workspace member) whose lock needs updating. Only sticky
+ * packages qualify: a non-sticky build re-resolves a lock from an older distribution by itself.
+ */
 export function findOutdatedPackages(root: string): OutdatedPackage[] {
     const members = getWorkspacePackagePaths(root);
+    const workspaceSticky = !!members && declaresSticky(root);
     const outdated: OutdatedPackage[] = [];
     for (const packagePath of members ?? [root]) {
+        if (!workspaceSticky && !declaresSticky(packagePath)) {
+            continue;
+        }
         const assessment = assessDependencyLock(packagePath);
         if (assessment.kind === 'outdated') {
             outdated.push({

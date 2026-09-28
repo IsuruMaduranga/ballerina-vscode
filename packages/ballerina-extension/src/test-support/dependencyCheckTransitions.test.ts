@@ -71,7 +71,6 @@ function contextWith(overrides: Partial<DependencyCheckContext>): DependencyChec
         projectPath: PROJECT,
         dependenciesResolved: false,
         connectorUpgradesCheckedPaths: new Set(),
-        dependencyCompatibleRoots: new Set(),
         ...overrides
     };
 }
@@ -82,42 +81,35 @@ describe('routing after the dependency check', () => {
         result: DependencyCheckResult;
         context: Partial<DependencyCheckContext>;
         target: string;
-        markedCompatible: boolean;
         dependenciesResolved: boolean;
     }[] = [
         {
             name: 'blocked skips the startup build and the connector prompt, and is checked again next time',
             result: 'blocked', context: {},
-            target: 'webViewLoading', markedCompatible: false, dependenciesResolved: false
+            target: 'webViewLoading', dependenciesResolved: false
         },
         {
             name: 'compatible runs the startup build when dependencies are unresolved',
             result: 'compatible', context: {},
-            target: 'resolveMissingDependencies', markedCompatible: true, dependenciesResolved: false
+            target: 'resolveMissingDependencies', dependenciesResolved: false
         },
         {
             name: 'compatible with dependencies resolved goes to the connector prompt',
             result: 'compatible', context: { dependenciesResolved: true },
-            target: 'checkConnectorUpgrades', markedCompatible: true, dependenciesResolved: true
+            target: 'checkConnectorUpgrades', dependenciesResolved: true
         },
         {
             name: 'compatible with everything done goes straight to the view',
             result: 'compatible',
             context: { dependenciesResolved: true, connectorUpgradesCheckedPaths: new Set([PROJECT]) },
-            target: 'webViewLoading', markedCompatible: true, dependenciesResolved: true
+            target: 'webViewLoading', dependenciesResolved: true
         },
     ];
 
-    it.each(cases)('$name', async ({ result, context, target, markedCompatible, dependenciesResolved }) => {
+    it.each(cases)('$name', async ({ result, context, target, dependenciesResolved }) => {
         const next = await route(result, contextWith(context));
         expect(next.target).toBe(target);
-        expect(next.context.dependencyCompatibleRoots.has(PROJECT)).toBe(markedCompatible);
         expect(next.context.dependenciesResolved).toBe(dependenciesResolved);
-    });
-
-    it('marks the workspace, not the member, so every member is covered', async () => {
-        const next = await route('compatible', contextWith({ workspacePath: '/work' }));
-        expect([...next.context.dependencyCompatibleRoots]).toEqual(['/work']);
     });
 });
 
@@ -130,14 +122,11 @@ describe('check root', () => {
 
     it('treats one root reached by different spellings as the same key', () => {
         expect(getVisualizerCheckRoot({ projectPath: 'C:\\work\\orders\\' })).toBe('c:\\work\\orders');
-        expect(needsDependencyCheck({
-            projectPath: `${PROJECT}/`,
-            dependencyCompatibleRoots: new Set([PROJECT])
-        })).toBe(false);
     });
 
-    it('runs for an unchecked root and never without one', () => {
-        expect(needsDependencyCheck({ projectPath: PROJECT, dependencyCompatibleRoots: new Set() })).toBe(true);
-        expect(needsDependencyCheck({ dependencyCompatibleRoots: new Set() })).toBe(false);
+    it('runs on every navigation with a root, so a lock changed since the last check is seen', () => {
+        expect(needsDependencyCheck({ projectPath: PROJECT })).toBe(true);
+        expect(needsDependencyCheck({ workspacePath: '/work' })).toBe(true);
+        expect(needsDependencyCheck({})).toBe(false);
     });
 });

@@ -73,7 +73,6 @@ interface MachineContext extends VisualizerLocation {
     errorCode: string | null;
     dependenciesResolved?: boolean;
     connectorUpgradesCheckedPaths?: Set<string>;
-    dependencyCompatibleRoots?: Set<string>;
     isInDevant: boolean;
     isViewUpdateTransition?: boolean;
 }
@@ -100,7 +99,6 @@ const stateMachine = createMachine<MachineContext>(
             view: MACHINE_VIEW.PackageOverview,
             dependenciesResolved: false,
             connectorUpgradesCheckedPaths: new Set(),
-            dependencyCompatibleRoots: new Set(),
             isInDevant: isInDevant()
         },
         on: {
