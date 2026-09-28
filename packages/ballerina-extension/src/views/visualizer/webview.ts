@@ -60,10 +60,9 @@ function toInlineJson(value: unknown): string {
 export interface DependencyUpdateRequiredInfo {
     /** The package, or the workspace whose members are checked together. */
     rootPath: string;
-    /** Which packages are outdated and why. */
-    summary: string;
-    /** The two ways out, worded for the app or the extension. */
-    choice: string;
+    title: string;
+    /** Why, and the two ways out, worded for the app or the extension. */
+    detail: string;
 }
 
 export class VisualizerWebview {
@@ -351,12 +350,8 @@ export class VisualizerWebview {
             ? `<div class="container" id="dependency-update-container">
                 <div class="loader-wrapper">
                     <div class="welcome-content">
-                        <h1 class="welcome-title">Dependencies need to be updated</h1>
-                        <p class="welcome-subtitle">
-                            ${escapeHtml(dependencyUpdate.summary)}
-                            <br><br>
-                            ${escapeHtml(dependencyUpdate.choice)}
-                        </p>
+                        <h1 class="welcome-title">${escapeHtml(dependencyUpdate.title)}</h1>
+                        <p class="welcome-subtitle">${escapeHtml(dependencyUpdate.detail)}</p>
                         <div class="action-row">
                             <button class="action-button" id="update-dependencies">Update Dependencies</button>
                             <button class="action-button secondary" id="use-earlier-version">Use an Earlier Version</button>

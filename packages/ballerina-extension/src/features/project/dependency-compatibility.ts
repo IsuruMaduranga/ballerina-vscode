@@ -25,7 +25,7 @@ import { StateMachine, openView, reloadVisualizerApp } from '../../stateMachine'
 import { VisualizerWebview } from '../../views/visualizer/webview';
 import { runCommandWithOutput } from '../../utils/runCommand';
 import { buildOutputChannel } from '../../utils/logger';
-import { isInWI, quoteShellPath, WI_EXTENSION_ID } from '../../utils/config';
+import { quoteShellPath } from '../../utils/config';
 import { extension } from '../../BalExtensionContext';
 import { EXTENSION_ID } from '../../core';
 import {
@@ -37,7 +37,6 @@ import {
     findOutdatedPackages,
     findPackageRoot,
     findPinnedDependencies,
-    getWorkspacePackagePaths,
     isRuntimeOnRequiredDistribution,
     parseDistributionVersion,
     pickRollbackDistribution,
@@ -50,6 +49,7 @@ import { DependencyCheckResult, getVisualizerCheckRoot } from './dependency-chec
 // detects such a lock from Dependencies.toml and offers to re-resolve it, or to go back to a matching version.
 // A root is a package or a workspace; a workspace is checked and updated as a whole, one lock per member.
 
+const OUTDATED_TITLE = 'Your project dependencies need to be updated.';
 const UPDATE_DEPENDENCIES = 'Update Dependencies';
 const USE_EARLIER_VERSION = 'Use an Earlier Version';
 
@@ -61,13 +61,6 @@ const updatesInFlight = new Map<string, Promise<boolean>>();
 /** The Integrator app bundles its own distribution, so going back means an older app. */
 function isInIntegratorApp(): boolean {
     return !!process.env.WSO2_INTEGRATOR_RUNTIME;
-}
-
-function productName(): string {
-    if (isInIntegratorApp()) {
-        return 'WSO2 Integrator';
-    }
-    return isInWI() ? 'the WSO2 Integrator extension' : 'the Ballerina extension';
 }
 
 /** The packages under `root` whose locks need updating; empty when none do or the check does not apply. */
@@ -99,23 +92,21 @@ export async function checkDependencyCompatibility(
         }
         const key = normalizeProjectPath(root);
         if (options.promptOnce && promptedRoots.has(key)) {
-            blockPanel(root, outdated);
+            blockPanel(root);
             return 'blocked';
         }
         promptedRoots.add(key);
 
         const selection = await window.showWarningMessage(
-            outdated.length > 1 || isWorkspace(root)
-                ? "Some packages' dependencies need to be updated."
-                : "This integration's dependencies need to be updated.",
-            { modal: true, detail: `${describeOutdated(root, outdated)} ${describeChoice()}` },
+            OUTDATED_TITLE,
+            { modal: true, detail: describeOutdated() },
             UPDATE_DEPENDENCIES,
             USE_EARLIER_VERSION
         );
         if (selection === UPDATE_DEPENDENCIES && await updateDependencies(root, outdated)) {
             return 'updated';
         }
-        blockPanel(root, findOutdated(root)); // a partial update leaves fewer to list
+        blockPanel(root);
         if (selection === USE_EARLIER_VERSION) {
             await showEarlierVersionGuide(findOutdated(root));
         }
@@ -145,7 +136,7 @@ export async function updateDependenciesFromPanel(): Promise<void> {
         return;
     }
     await updateDependencies(info.rootPath, findOutdated(info.rootPath));
-    await refreshBlockedPanel(); // restores the app, or lists what is left and re-enables the button
+    await refreshBlockedPanel(); // restores the app, or re-enables the button
 }
 
 export async function showEarlierVersionGuideFromPanel(): Promise<void> {
@@ -155,39 +146,27 @@ export async function showEarlierVersionGuideFromPanel(): Promise<void> {
     }
 }
 
-function isWorkspace(root: string): boolean {
-    return !!getWorkspacePackagePaths(root);
-}
-
-function describeOutdated(root: string, outdated: OutdatedPackage[]): string {
-    const required = `Ballerina ${REQUIRED_BALLERINA_VERSION} (Java 25)`;
-    if (outdated.length === 1 && !isWorkspace(root)) {
-        return `Its dependencies were locked by Ballerina ${outdated[0].lockedVersion ?? 'an earlier version'} and `
-            + `cannot run on ${required}.`;
-    }
-    const names = outdated.map((item) => `${item.name} (${item.lockedVersion ?? 'an earlier version'})`).join(', ');
-    return `These packages' dependencies were locked by an earlier Ballerina version and cannot run on ${required}: `
-        + `${names}.`;
-}
-
-function describeChoice(): string {
-    return 'Update them to the latest compatible versions, or keep them by going back to an earlier version of '
-        + `${productName()}.`;
+function describeOutdated(): string {
+    const keep = isInIntegratorApp()
+        ? 'switch to an earlier release of WSO2 Integrator'
+        : `switch to a Ballerina version earlier than ${REQUIRED_BALLERINA_VERSION}`;
+    return `They were set up with an earlier Ballerina version and don't work with Ballerina `
+        + `${REQUIRED_BALLERINA_VERSION}. Update them, or ${keep} to keep using them as they are.`;
 }
 
 /** Only the root the panel is showing; a panel that does not exist yet loads the app as usual. */
-function blockPanel(root: string, outdated: OutdatedPackage[]): void {
+function blockPanel(root: string): void {
     if (!VisualizerWebview.currentPanel || !isSamePath(getVisualizerCheckRoot(StateMachine.context()), root)) {
         return;
     }
     VisualizerWebview.showDependencyUpdateRequired({
         rootPath: root,
-        summary: describeOutdated(root, outdated),
-        choice: describeChoice()
+        title: OUTDATED_TITLE,
+        detail: describeOutdated()
     });
 }
 
-/** After an update outside the state machine's own check: restore a panel with nothing left, else re-list. */
+/** After an update outside the state machine's own check: restore a panel with nothing left, else re-block. */
 async function refreshBlockedPanel(): Promise<void> {
     const info = VisualizerWebview.dependencyUpdateRequired;
     if (!info) {
@@ -195,7 +174,7 @@ async function refreshBlockedPanel(): Promise<void> {
     }
     const outdated = findOutdated(info.rootPath);
     if (outdated.length > 0) {
-        blockPanel(info.rootPath, outdated);
+        blockPanel(info.rootPath); // re-enables its button
         return;
     }
     await reloadVisualizerApp();
@@ -358,14 +337,12 @@ async function showEarlierVersionGuide(outdated: OutdatedPackage[]): Promise<voi
         manifestDistribution: readManifestDistribution(item.path)
     })));
     const pullCommand = distribution ? `bal dist pull ${distribution}` : undefined;
-    const extensionId = isInWI() ? WI_EXTENSION_ID : EXTENSION_ID;
-    const extensions = isInWI() ? 'the WSO2 Integrator and Ballerina extensions' : 'the Ballerina extension';
     const step1 = pullCommand
         ? `1. Run \`${pullCommand}\` to switch to the Ballerina version they were locked with.`
         : `1. Switch to a Ballerina version earlier than ${REQUIRED_BALLERINA_VERSION} with \`bal dist pull <version>\` `
             + '(`bal dist list` shows them).';
     const detail = `To keep this integration's current dependencies:\n\n${step1}\n`
-        + `2. Install the previous version of ${extensions}: expand the dropdown next to Uninstall and pick `
+        + `2. Install the previous version of the Ballerina extension: expand the dropdown next to Uninstall and pick `
         + '"Install Specific Version...".\n\n'
         + 'Turn off auto-update for the extension, or VS Code will reinstall this version.';
 
@@ -383,6 +360,6 @@ async function showEarlierVersionGuide(outdated: OutdatedPackage[]): Promise<voi
         );
     }
     if (selection === OPEN_EXTENSION_PAGE) {
-        await commands.executeCommand('extension.open', extensionId);
+        await commands.executeCommand('extension.open', EXTENSION_ID);
     }
 }
