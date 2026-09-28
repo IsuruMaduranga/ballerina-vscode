@@ -408,6 +408,37 @@ describe("what a checkpoint restore is allowed to touch", () => {
         expect(fs.existsSync(at("added-by-hand.csv"))).toBe(false);
     });
 
+    it("does not promise the trash when the trash is switched off", async () => {
+        fs.writeFileSync(at("added-by-hand.csv"), "id,name\n1,ada\n");
+        const prompts: string[] = [];
+        const buttons: string[] = [];
+        window.showWarningMessage = ((message: string, ...rest: unknown[]) => {
+            const isModal = typeof rest[0] === "object" && rest[0] !== null;
+            if (isModal) {
+                prompts.push(message);
+                buttons.push(...(rest.slice(1) as string[]));
+            }
+            return Promise.resolve(isModal ? (rest[1] as string) : undefined);
+        }) as never;
+        const originalGetConfiguration = workspace.getConfiguration;
+        workspace.getConfiguration = ((section?: string) => ({
+            get: (key: string, defaultValue?: unknown) =>
+                section === "files" && key === "enableTrash" ? false : defaultValue,
+            update: () => Promise.resolve(),
+            inspect: () => undefined,
+        })) as never;
+
+        try {
+            await expect(restoreWorkspaceSnapshot(checkpoint, true)).resolves.toBe(true);
+
+            expect(buttons).toContain("Delete Permanently");
+            expect(buttons).not.toContain("Move to Trash");
+            expect(prompts[0]).toContain("cannot be recovered");
+        } finally {
+            workspace.getConfiguration = originalGetConfiguration;
+        }
+    });
+
     it("keeps the files and still restores the rest when the prompt is declined", async () => {
         fs.writeFileSync(at("added-by-hand.csv"), "id,name\n1,ada\n");
         window.showWarningMessage = ((_message: string, ...rest: unknown[]) => {

@@ -270,6 +270,7 @@ export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtif
 
             // Asked before anything is written, because this is the irreversible half: the snapshot
             // holds no copy of a file it never captured, so the trash is the only way back.
+            const useTrash = vscode.workspace.getConfiguration('files').get<boolean>('enableTrash', true);
             const deleteCount = balFilesToDelete.length + nonBalFilesToDelete.length;
             if (deleteCount > 0) {
                 const names = [...balFilesToDelete, ...nonBalFilesToDelete.map(f => f.fileUri)]
@@ -277,10 +278,16 @@ export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtif
                     .map(uri => path.relative(workspaceRoot.fsPath, uri.fsPath))
                     .join(', ');
                 const more = deleteCount > 5 ? ` and ${deleteCount - 5} more` : '';
+                // The prompt has to name the outcome the setting actually produces: with the trash
+                // off these deletions are permanent, and the snapshot holds no copy to undo them with.
+                const removeLabel = useTrash ? 'Move to Trash' : 'Delete Permanently';
+                const consequence = useTrash
+                    ? 'They can be recovered from the trash.'
+                    : 'They cannot be recovered — the trash is disabled in your settings.';
                 const choice = await vscode.window.showWarningMessage(
-                    `Restoring this checkpoint removes ${deleteCount} file(s) it does not contain: ${names}${more}.`,
+                    `Restoring this checkpoint removes ${deleteCount} file(s) it does not contain: ${names}${more}. ${consequence}`,
                     { modal: true },
-                    'Move to Trash',
+                    removeLabel,
                     'Keep Them'
                 );
                 if (choice === undefined) {
@@ -316,10 +323,8 @@ export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtif
                 // WorkspaceEdit.replace() silently no-ops on a file with no open TextDocument,
                 // which is never true for .bal files but always true for the rest.
                 // Each file is isolated: one unwritable path must not abandon the rest half-restored.
-                // The snapshot holds no copy of a file it never captured, so this deletion is the
-                // user's only copy. Which is why it follows their own trash setting rather than a
-                // hardcoded choice — the same setting WorkspaceEdit honours for the .bal deletions.
-                const useTrash = vscode.workspace.getConfiguration('files').get<boolean>('enableTrash', true);
+                // Follows the user's own trash setting rather than a hardcoded choice — the same
+                // setting WorkspaceEdit honours for the .bal deletions, and the one the prompt named.
                 for (const { fileUri, filePath } of nonBalFilesToDelete) {
                     if (!fs.existsSync(fileUri.fsPath)) {
                         continue;
