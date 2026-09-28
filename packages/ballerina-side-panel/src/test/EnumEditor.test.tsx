@@ -157,15 +157,17 @@ describe("EnumEditor with a value that is not one of the members", () => {
         { id: "MULTI_EVENT", content: "MULTI_EVENT", value: "MULTI_EVENT" },
         { id: "SINGLE_EVENT", content: "SINGLE_EVENT", value: "SINGLE_EVENT" }
     ];
-    const cardinalityField = {
+    const cardinalityField: FormField = {
         key: "cardinality",
         label: "Cardinality",
         type: "SINGLE_SELECT",
+        types: [],
+        value: "",
         optional: true,
         editable: true,
         enabled: true,
         documentation: ""
-    } as unknown as FormField;
+    };
 
     const selectedFor = (value: string) => {
         const { container } = render(
@@ -176,9 +178,7 @@ describe("EnumEditor with a value that is not one of the members", () => {
     };
 
     it("INVARIANT: does not present a constant naming a member as that member", () => {
-        const selected = selectedFor("ONE_SHOT");
-        expect(selected).not.toBe("SINGLE_EVENT");
-        expect(selected).not.toBe("MULTI_EVENT");
+        expect(selectedFor("ONE_SHOT")).toBe(NONE_SELECTED);
     });
 
     it("still presents a member given by name", () => {
