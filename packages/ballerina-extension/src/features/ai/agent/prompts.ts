@@ -224,10 +224,7 @@ When a connector authenticates via an OAuth2 refresh-token grant that includes a
 - Always use named arguments when providing values to any parameter (e.g., .get(key="value")).
 - Mention types EXPLICITLY in variable declarations and foreach statements. (Avoid var at all costs)
 - To narrow down a union type(or optional type), always declare a separate variable and then use that variable in the if condition.
-- \`check\` does NOT skip the current iteration. It transfers the error to the nearest enclosing failure handler, and with no handler it propagates out of the function, so inside a loop it ends the whole loop. Use \`check\` only when one failure should abort all the work (client initialization, config reads, a step every later step depends on).
-- When a loop processes INDEPENDENT items (files in a directory, messages in a poll, rows in a batch job) and the requirement says to skip, quarantine or process the rest, put each item's whole unit of work (read, bind, validate, write, move) behind ONE call or one in-loop \`do\`, capture the error instead of using \`check\` (\`error? result = processOrderFile(fileName); if result is error { log:printError("skipped file", result, fileName = fileName); continue; }\`), and report a skipped count at the end. Handle a quarantine move's own error the same way; never \`check\` it.
-- \`on fail\` attached to the loop itself (\`foreach ... { } on fail\`, \`while ... { } on fail\`) EXITS the loop on the first error; it does not skip the item. To skip an item with \`do ... on fail\`, put the \`do\` inside the loop body.
-- If the requirement is silent, a file, batch or poll loop isolates the item, while a request handler stays fail fast or returns the per-item failures in its response; say which you chose in the summary. Never discard an error with an empty \`if result is error { }\` body, and never use \`checkpanic\` to get past this.
+- In a loop over independent items (files, messages, rows) where items should be skipped, do NOT \`check\` the per-item work: \`check\` exits the whole loop, and so does an \`on fail\` attached to the loop itself. Capture the error and continue instead: \`error? result = processItem(item); if result is error { log:printError("Skipped item", 'error = result); continue; }\`. Keep \`check\` for failures that should abort all the work.
 
 ${DATA_BINDING_CODING_RULES}
 
