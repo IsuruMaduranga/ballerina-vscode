@@ -268,6 +268,36 @@ export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtif
                 }
             }
 
+            // Asked before anything is written, because this is the irreversible half: the snapshot
+            // holds no copy of a file it never captured, so the trash is the only way back.
+            const deleteCount = balFilesToDelete.length + nonBalFilesToDelete.length;
+            if (deleteCount > 0) {
+                const names = [...balFilesToDelete, ...nonBalFilesToDelete.map(f => f.fileUri)]
+                    .slice(0, 5)
+                    .map(uri => path.relative(workspaceRoot.fsPath, uri.fsPath))
+                    .join(', ');
+                const more = deleteCount > 5 ? ` and ${deleteCount - 5} more` : '';
+                const choice = await vscode.window.showWarningMessage(
+                    `Restoring this checkpoint removes ${deleteCount} file(s) it does not contain: ${names}${more}.`,
+                    { modal: true },
+                    'Move to Trash',
+                    'Keep Them'
+                );
+                if (choice === undefined) {
+                    throw new Error('cancelled');
+                }
+                if (choice === 'Keep Them') {
+                    for (const fileUri of balFilesToDelete) {
+                        notRestored.push(path.relative(workspaceRoot.fsPath, fileUri.fsPath));
+                    }
+                    for (const { filePath } of nonBalFilesToDelete) {
+                        notRestored.push(filePath);
+                    }
+                    balFilesToDelete.length = 0;
+                    nonBalFilesToDelete.length = 0;
+                }
+            }
+
             progress.report({ message: 'Applying workspace changes...' });
 
             // Armed before the edits: the notification has no replay, so a Language Server that
@@ -381,6 +411,10 @@ export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtif
         return true;
     } catch (error) {
         artifactWait?.cancel();
+        if ((error as Error).message === 'cancelled') {
+            console.log('[Checkpoint] Restore cancelled at the deletion prompt');
+            return false;
+        }
         console.error('[Checkpoint] Failed to restore workspace snapshot:', error);
         vscode.window.showErrorMessage('Failed to restore checkpoint: ' + (error as Error).message);
         return false;

@@ -63,6 +63,14 @@ const ORIGINAL_CONFIG = 'greeting = "before the generation"\n';
 const RAW_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe, 0x00, 0x80]);
 const ORIGINAL_BAL = "// before the generation\n";
 
+/** Answers the deletion modal by taking its first button, as a click would. */
+function answerDeletionPrompt(choice = 0): void {
+    window.showWarningMessage = ((_message: string, ...rest: unknown[]) => {
+        const isModal = typeof rest[0] === "object" && rest[0] !== null;
+        return Promise.resolve(isModal ? (rest[1 + choice] as string) : undefined);
+    }) as never;
+}
+
 /** Lets the restore's promise chain run to its next timer-bound step under fake timers. */
 async function settle(): Promise<void> {
     for (let i = 0; i < 50; i++) {
@@ -93,6 +101,7 @@ describe("checkpoint restore outcome vs. the artifact-update notification", () =
         dataMapper.context = {};
         dataMapper.refresh = () => Promise.resolve();
         workspace.textDocuments = [];
+        answerDeletionPrompt();
         root = fs.mkdtempSync(path.join(os.tmpdir(), "checkpoint-restore-"));
         fs.writeFileSync(path.join(root, "main.bal"), "// the generation's edit\n");
         fs.writeFileSync(path.join(root, "Config.toml"), 'greeting = "the generation\'s edit"\n');
@@ -175,6 +184,8 @@ describe("checkpoint restore outcome vs. the artifact-update notification", () =
     });
 });
 
+const realDelete = workspace.fs.delete;
+
 describe("what a checkpoint restore is allowed to touch", () => {
     let root: string;
     let checkpoint: Checkpoint;
@@ -191,6 +202,7 @@ describe("what a checkpoint restore is allowed to touch", () => {
         workspace.textDocuments = [];
         applied = [];
         warnings = [];
+        workspace.fs.delete = realDelete;
 
         root = fs.mkdtempSync(path.join(os.tmpdir(), "checkpoint-touch-"));
         fs.writeFileSync(at("main.bal"), "// the generation's edit\n");
@@ -213,10 +225,11 @@ describe("what a checkpoint restore is allowed to touch", () => {
             return Promise.resolve(true);
         };
         workspace.saveAll = () => Promise.resolve(true);
-        window.showWarningMessage = (message: string) => {
-            warnings.push(message);
-            return Promise.resolve(undefined);
-        };
+        window.showWarningMessage = ((message: string, ...rest: unknown[]) => {
+            const isModal = typeof rest[0] === "object" && rest[0] !== null;
+            if (!isModal) { warnings.push(message); }
+            return Promise.resolve(isModal ? (rest[1] as string) : undefined);
+        }) as never;
     });
 
     afterEach(() => {
@@ -379,6 +392,46 @@ describe("what a checkpoint restore is allowed to touch", () => {
 
         expect(fs.readFileSync(at("Config.toml"), "utf8")).toBe(ORIGINAL_CONFIG);
     });
+    it("asks before removing files the checkpoint does not contain", async () => {
+        fs.writeFileSync(at("added-by-hand.csv"), "id,name\n1,ada\n");
+        const prompts: string[] = [];
+        window.showWarningMessage = ((message: string, ...rest: unknown[]) => {
+            const isModal = typeof rest[0] === "object" && rest[0] !== null;
+            if (isModal) { prompts.push(message); }
+            return Promise.resolve(isModal ? (rest[1] as string) : undefined);
+        }) as never;
+
+        await expect(restoreWorkspaceSnapshot(checkpoint, true)).resolves.toBe(true);
+
+        expect(prompts).toHaveLength(1);
+        expect(prompts[0]).toContain("added-by-hand.csv");
+        expect(fs.existsSync(at("added-by-hand.csv"))).toBe(false);
+    });
+
+    it("keeps the files and still restores the rest when the prompt is declined", async () => {
+        fs.writeFileSync(at("added-by-hand.csv"), "id,name\n1,ada\n");
+        window.showWarningMessage = ((_message: string, ...rest: unknown[]) => {
+            const isModal = typeof rest[0] === "object" && rest[0] !== null;
+            return Promise.resolve(isModal ? "Keep Them" : undefined);
+        }) as never;
+
+        await expect(restoreWorkspaceSnapshot(checkpoint, true)).resolves.toBe(true);
+
+        expect(fs.existsSync(at("added-by-hand.csv"))).toBe(true);
+        expect(fs.readFileSync(at("Config.toml"), "utf8")).toBe(ORIGINAL_CONFIG);
+    });
+
+    it("writes nothing when the prompt is dismissed", async () => {
+        fs.writeFileSync(at("added-by-hand.csv"), "id,name\n1,ada\n");
+        window.showWarningMessage = (() => Promise.resolve(undefined)) as never;
+
+        await expect(restoreWorkspaceSnapshot(checkpoint, true)).resolves.toBe(false);
+
+        expect(fs.existsSync(at("added-by-hand.csv"))).toBe(true);
+        expect(fs.readFileSync(at("Config.toml"), "utf8")).not.toBe(ORIGINAL_CONFIG);
+        expect(applied).toEqual([]);
+    });
+
     it("lists a file it could not read at capture, without snapshotting it", async () => {
         fs.writeFileSync(at("locked.txt"), "held by another process\n");
         const realReadFile = workspace.fs.readFile;
