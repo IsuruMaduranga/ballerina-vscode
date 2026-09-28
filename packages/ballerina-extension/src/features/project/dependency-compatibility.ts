@@ -28,6 +28,7 @@ import { quoteShellPath } from '../../utils/config';
 import { extension } from '../../BalExtensionContext';
 import {
     BALLERINA_TOML,
+    compareDistributionVersions,
     OutdatedPackage,
     REQUIRED_BALLERINA_VERSION,
     assessDependencyLock,
@@ -251,7 +252,10 @@ async function cleanBuildWithoutSticky(packagePath: string): Promise<{ success: 
     return runCommandWithOutput(`${bal} clean && ${bal} build --sticky=false`, packagePath, buildOutputChannel);
 }
 
-/** Keeps Ballerina.toml's `distribution` in step with the lock; `bal build` never rewrites it. Never throws. */
+/**
+ * Moves Ballerina.toml's `distribution` forward to the lock's; `bal build` never rewrites it. Only ever advances it,
+ * skips a manifest with unsaved edits, and never throws.
+ */
 async function syncManifestDistribution(packagePath: string, lockedVersion: string): Promise<void> {
     const version = parseDistributionVersion(lockedVersion);
     if (!version) {
@@ -265,16 +269,19 @@ async function syncManifestDistribution(packagePath: string, lockedVersion: stri
     } catch {
         return;
     }
+    // An edit to a buffer with unsaved changes gets saved with them, here or by the visualizer's change listener.
+    if (document.isDirty) {
+        return;
+    }
     const field = findManifestDistribution(document.getText());
-    if (!field || field.value === value) {
-        return; // a removed field is not added back
+    // A removed field is not added back, and one already naming a newer distribution is not moved back.
+    if (!field || !(compareDistributionVersions(field.value, value) < 0)) {
+        return;
     }
     const edit = new WorkspaceEdit();
     edit.replace(uri, new Range(document.positionAt(field.start), document.positionAt(field.end)), value);
-    const hadUnsavedEdits = document.isDirty;
     try {
-        // With unsaved edits of the user's own in the buffer, saving would write them too; they save it themselves.
-        if (await workspace.applyEdit(edit) && !hadUnsavedEdits) {
+        if (await workspace.applyEdit(edit)) {
             await document.save();
         }
     } catch (error) {

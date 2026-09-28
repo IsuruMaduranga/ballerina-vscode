@@ -25,6 +25,7 @@ import {
     REQUIRED_BALLERINA_VERSION,
     assessDependencyLock,
     assessDependencyLockText,
+    compareDistributionVersions,
     findManifestDistribution,
     findOutdatedPackages,
     findPackageRoot,
@@ -89,6 +90,14 @@ describe('distribution versions', () => {
     it('reads the runtime version out of `bal version` style strings', () => {
         expect(isRuntimeOnRequiredDistribution('Ballerina 2201.14.0 (Swan Lake Update 14)')).toBe(true);
         expect(isRuntimeOnRequiredDistribution('Ballerina 2201.13.6 (Swan Lake Update 13)')).toBe(false);
+    });
+
+    it('orders distributions so the manifest sync only ever moves forward', () => {
+        expect(compareDistributionVersions('2201.13.6', '2201.14.0')).toBeLessThan(0);
+        expect(compareDistributionVersions('2201.15.0', '2201.14.0')).toBeGreaterThan(0);
+        expect(compareDistributionVersions('2201.14.0', '2201.14.0-alpha')).toBe(0);
+        expect(compareDistributionVersions('2201.14.2', '2201.14.10')).toBeLessThan(0);
+        expect(compareDistributionVersions('latest', '2201.14.0')).toBeUndefined();
     });
 
     it('fails open on versions it cannot read', () => {

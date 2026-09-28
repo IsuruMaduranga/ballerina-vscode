@@ -68,6 +68,16 @@ export function isBeforeRequiredDistribution(value: string | undefined): boolean
     return current.patch < required.patch;
 }
 
+/** Negative, zero or positive as `a` is older than, the same as, or newer than `b`; `undefined` if either is unreadable. */
+export function compareDistributionVersions(a: string | undefined, b: string | undefined): number | undefined {
+    const left = parseDistributionVersion(a);
+    const right = parseDistributionVersion(b);
+    if (!left || !right) {
+        return undefined;
+    }
+    return (left.major - right.major) || (left.minor - right.minor) || (left.patch - right.patch);
+}
+
 /** Only a runtime that is itself on the required distribution can re-resolve a lock onto it. */
 export function isRuntimeOnRequiredDistribution(runtimeVersion: string | undefined): boolean {
     return !!parseDistributionVersion(runtimeVersion) && !isBeforeRequiredDistribution(runtimeVersion);
