@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import React from "react";
 import styled from "@emotion/styled";
 import { ModelResolutionError } from "@wso2/ballerina-core";
 import { Button, Icon, ThemeColors, Typography } from "@wso2/ui-toolkit";
