@@ -137,21 +137,26 @@ public final class SchemaDrivenSourceGenerator {
                                                                    ModulePartNode rootNode, String filePath) {
         List<TextEdit> edits = new ArrayList<>();
         String emitAlias = resolveEmitAlias(rootNode, filledInitForm, triggerModel);
-        String imports = buildImports(filledInitForm, triggerModel, rootNode, emitAlias);
+        Map<String, String> boundPrefixes = new LinkedHashMap<>();
+        String imports = buildImports(filledInitForm, triggerModel, rootNode, emitAlias, boundPrefixes);
         if (!imports.isEmpty()) {
             edits.add(new TextEdit(Utils.toRange(rootNode.lineRange().startLine()), imports));
         }
         edits.add(new TextEdit(Utils.toRange(rootNode.lineRange().endLine()),
-                buildServiceBlockForTrigger(filledInitForm, triggerModel, emitAlias)));
+                buildServiceBlockForTrigger(filledInitForm, triggerModel, emitAlias, boundPrefixes)));
         return Map.of(filePath, edits);
     }
 
     /**
      * The connector import plus any additional imports the model declares in {@code importStatements}
-     * (each an {@code org/module} reference). Each is emitted only when not already present in the file.
+     * (each an {@code org/module} reference). Each is emitted only when not already present in the file;
+     * when it is, the prefix that import binds is recorded in {@code boundPrefixes} against the module's
+     * natural prefix, so types the model authored as e.g. {@code http:Request} follow an existing
+     * {@code import ballerina/http as h;}.
      */
     private static String buildImports(ServiceInitModel filledInitForm, TriggerUISchemaModel triggerModel,
-                                       ModulePartNode rootNode, String emitAlias) {
+                                       ModulePartNode rootNode, String emitAlias,
+                                       Map<String, String> boundPrefixes) {
         StringBuilder imports = new StringBuilder();
         Set<ModuleRef> declared = new LinkedHashSet<>();
         declared.add(new ModuleRef(filledInitForm.getOrgName(), filledInitForm.getModuleName()));
@@ -177,19 +182,36 @@ public final class SchemaDrivenSourceGenerator {
                     module = rest.substring(0, asIndex).trim();
                     alias = rest.substring(asIndex + 4).trim();
                 }
-                if (!Utils.importExists(rootNode, org, module)) {
+                Optional<String> existing = existingPrefix(rootNode, org, module);
+                if (existing.isEmpty()) {
                     imports.append(alias == null ? Utils.getImportStmt(org, module)
                             : Utils.getImportStmt(org, module, alias));
+                } else if (alias == null) {
+                    boundPrefixes.put(ModuleAliasResolver.selfPrefix(module), existing.get());
                 }
                 declared.add(new ModuleRef(org, module));
             }
         }
         for (ModuleRef moduleRef : handlerParameterModules(filledInitForm, triggerModel)) {
-            if (declared.add(moduleRef) && !Utils.importExists(rootNode, moduleRef.org(), moduleRef.module())) {
+            if (!declared.add(moduleRef)) {
+                continue;
+            }
+            Optional<String> existing = existingPrefix(rootNode, moduleRef.org(), moduleRef.module());
+            if (existing.isEmpty()) {
                 imports.append(Utils.getImportStmt(moduleRef.org(), moduleRef.module()));
+            } else {
+                boundPrefixes.put(ModuleAliasResolver.selfPrefix(moduleRef.module()), existing.get());
             }
         }
         return imports.toString();
+    }
+
+    /**
+     * The prefix the file binds {@code org/module} to, matching only imports that name {@code org}
+     * (as {@link Utils#importExists} does): an org-less import is a local module, never this one.
+     */
+    private static Optional<String> existingPrefix(ModulePartNode rootNode, String org, String module) {
+        return ImportPrefixReader.existingImportPrefix(rootNode, org, module, "");
     }
 
     /**
@@ -253,12 +275,26 @@ public final class SchemaDrivenSourceGenerator {
      */
     public static String buildServiceBlockForTrigger(ServiceInitModel filledInitForm, TriggerUISchemaModel triggerModel,
                                                      String emitAlias) {
+        return buildServiceBlockForTrigger(filledInitForm, triggerModel, emitAlias, Map.of());
+    }
+
+    /**
+     * As {@link #buildServiceBlockForTrigger(ServiceInitModel, TriggerUISchemaModel, String)}, additionally
+     * re-qualifying other modules' types in handler signatures from their natural prefix onto the prefix
+     * in {@code boundPrefixes} (the one the file's existing import binds).
+     */
+    private static String buildServiceBlockForTrigger(ServiceInitModel filledInitForm,
+                                                      TriggerUISchemaModel triggerModel, String emitAlias,
+                                                      Map<String, String> boundPrefixes) {
         String selfPrefix = getProtocol(filledInitForm.getModuleName());
         requalifyValueQualifiers(filledInitForm.getProperties(), selfPrefix, emitAlias);
         ListenerArgs collected = collectListenerArgs(filledInitForm);
         String descriptor = resolveServiceDescriptor(filledInitForm, triggerModel, selfPrefix, emitAlias);
         String basePath = resolveBasePath(filledInitForm);
-        List<String> functions = buildRequiredFunctionSources(filledInitForm, triggerModel, selfPrefix, emitAlias);
+        // The connector's own prefix wins when another module shares its natural prefix (e.g. mssql.cdc and cdc).
+        Map<String, String> qualifiers = new LinkedHashMap<>(boundPrefixes);
+        qualifiers.put(selfPrefix, emitAlias);
+        List<String> functions = buildRequiredFunctionSources(filledInitForm, triggerModel, qualifiers);
 
         StringBuilder builder = new StringBuilder(NEW_LINE);
         if (collected.declareListener) {
@@ -590,8 +626,8 @@ public final class SchemaDrivenSourceGenerator {
 
     /** Emits the present (enabled, non-optional) handlers of the selected service type. */
     private static List<String> buildRequiredFunctionSources(ServiceInitModel filledInitForm,
-                                                             TriggerUISchemaModel triggerModel, String selfPrefix,
-                                                             String emitAlias) {
+                                                             TriggerUISchemaModel triggerModel,
+                                                             Map<String, String> qualifiers) {
         List<String> functions = new ArrayList<>();
         TriggerUISchemaModel.ServiceTypeModel serviceType = selectServiceType(filledInitForm, triggerModel);
         if (serviceType == null || serviceType.functions() == null) {
@@ -599,7 +635,7 @@ public final class SchemaDrivenSourceGenerator {
         }
         for (TriggerUISchemaModel.FunctionModel function : serviceType.functions()) {
             if (function.enabled() && !Boolean.TRUE.equals(function.optional())) {
-                functions.add(TAB + buildFunctionSource(function, selfPrefix, emitAlias)
+                functions.add(TAB + buildFunctionSource(function, qualifiers)
                         .replace(NEW_LINE, NEW_LINE_WITH_TAB));
             }
         }
@@ -608,15 +644,16 @@ public final class SchemaDrivenSourceGenerator {
 
     /** Renders one handler, leaving module-qualified types exactly as the model authored them. */
     static String buildFunctionSource(TriggerUISchemaModel.FunctionModel function) {
-        return buildFunctionSource(function, "", "");
+        return buildFunctionSource(function, Map.of());
     }
 
     /**
      * Renders one handler from the unified {@code FunctionModel} (params carry type/name as Property),
-     * re-qualifying self-module references in parameter and return types onto {@code emitAlias}.
+     * re-qualifying module prefixes in parameter and return types per {@code qualifiers} (natural prefix to
+     * emitted prefix).
      */
-    private static String buildFunctionSource(TriggerUISchemaModel.FunctionModel function, String selfPrefix,
-                                              String emitAlias) {
+    private static String buildFunctionSource(TriggerUISchemaModel.FunctionModel function,
+                                              Map<String, String> qualifiers) {
         StringBuilder builder = new StringBuilder();
         for (String annotation : AnnotationEmitter.annotationsOf(function.properties())) {
             builder.append(annotation).append(NEW_LINE);
@@ -626,8 +663,8 @@ public final class SchemaDrivenSourceGenerator {
             builder.append(function.defaultAccessor()).append(SPACE);
         }
         builder.append(effectiveFunctionName(function)).append("(")
-                .append(buildParameterList(function, selfPrefix, emitAlias)).append(")");
-        String returnClause = buildReturnType(function.returnType(), selfPrefix, emitAlias);
+                .append(buildParameterList(function, qualifiers)).append(")");
+        String returnClause = buildReturnType(function.returnType(), qualifiers);
         if (!returnClause.isEmpty()) {
             builder.append(SPACE).append(returnClause);
         }
@@ -732,8 +769,8 @@ public final class SchemaDrivenSourceGenerator {
         };
     }
 
-    private static String buildParameterList(TriggerUISchemaModel.FunctionModel function, String selfPrefix,
-                                             String emitAlias) {
+    private static String buildParameterList(TriggerUISchemaModel.FunctionModel function,
+                                             Map<String, String> qualifiers) {
         if (function.parameters() == null) {
             return "";
         }
@@ -742,7 +779,7 @@ public final class SchemaDrivenSourceGenerator {
             if (!isEmitted(parameter)) {
                 continue;
             }
-            String type = rewriteSelfPrefix(PayloadComposer.effectiveType(parameter.type()), selfPrefix, emitAlias);
+            String type = ModuleAliasResolver.requalify(PayloadComposer.effectiveType(parameter.type()), qualifiers);
             String name = paramName(parameter);
             if (!type.isEmpty() && !name.isEmpty()) {
                 params.add(type + SPACE + name);
@@ -772,13 +809,13 @@ public final class SchemaDrivenSourceGenerator {
         return String.valueOf(nameProp.value());
     }
 
-    private static String buildReturnType(TriggerUISchemaModel.ReturnType returnType, String selfPrefix,
-                                           String emitAlias) {
+    private static String buildReturnType(TriggerUISchemaModel.ReturnType returnType,
+                                          Map<String, String> qualifiers) {
         if (returnType == null || !returnType.enabled() || returnType.type() == null
                 || returnType.type().isBlank()) {
             return "";
         }
-        String type = rewriteSelfPrefix(returnType.type(), selfPrefix, emitAlias);
+        String type = ModuleAliasResolver.requalify(returnType.type(), qualifiers);
         if (Boolean.TRUE.equals(returnType.hasError()) && !type.contains(ERROR)) {
             type = type + "|" + ERROR;
         }
