@@ -164,8 +164,13 @@ describe('workspaces', () => {
     });
 
     it('drops members that resolve outside the workspace', () => {
-        makeWorkspace(['orders', '../elsewhere', '.', path.join(os.tmpdir(), 'absolute')]);
+        makeWorkspace(['orders', '../elsewhere', '..', 'nested/../../elsewhere', '.', path.join(os.tmpdir(), 'absolute')]);
         expect(getWorkspacePackagePaths(root)).toEqual([path.join(root, 'orders')]);
+    });
+
+    it('keeps members whose folder name merely starts with two dots', () => {
+        makeWorkspace(['..shared', 'apps/..billing']);
+        expect(getWorkspacePackagePaths(root)).toEqual([path.join(root, '..shared'), path.join(root, 'apps', '..billing')]);
     });
 
     it('checks every member, since the root has no lock of its own', () => {

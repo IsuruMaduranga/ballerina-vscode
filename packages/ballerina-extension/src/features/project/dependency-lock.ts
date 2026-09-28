@@ -125,7 +125,8 @@ export function getWorkspacePackagePaths(root: string): string[] | undefined {
             .map((member) => path.resolve(root, member))
             .filter((member) => {
                 const relative = path.relative(root, member);
-                return !!relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+                const escapes = relative === '..' || relative.startsWith(`..${path.sep}`);
+                return !!relative && !escapes && !path.isAbsolute(relative); // `..shared` is a member folder, not an escape
             });
     } catch {
         return undefined;
