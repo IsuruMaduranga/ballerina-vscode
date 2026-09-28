@@ -128,12 +128,26 @@ export function showUpdateOutput(): void {
     buildOutputChannel.show();
 }
 
-function describeOutdated(): string {
-    const keep = isInIntegratorApp()
-        ? 'switch to an earlier release of WSO2 Integrator'
-        : `switch to a Ballerina version earlier than ${REQUIRED_BALLERINA_VERSION}`;
-    return `They were set up with an earlier Ballerina version and don't work with Ballerina `
-        + `${REQUIRED_BALLERINA_VERSION}. Update them, or ${keep} to keep using them as they are.`;
+/** Worded like the JDK screen; keeping the lock means an older app, or older Ballerina plus older extension(s). */
+function describeOutdated(): { paragraphs: string[]; earlierVersionLabel: string } {
+    const why = 'Your project dependencies were set up with an earlier Ballerina version and are incompatible with '
+        + `Ballerina ${REQUIRED_BALLERINA_VERSION}.`;
+    if (isInIntegratorApp()) {
+        return {
+            paragraphs: [why, 'Update the dependencies, or keep them as they are by switching to an earlier release of '
+                + 'WSO2 Integrator.'],
+            earlierVersionLabel: 'Use a Previous Release'
+        };
+    }
+    // Same test the screen's title uses: with the Integrator extension there are two extensions to downgrade.
+    const extensions = VisualizerWebview.webviewTitle === VisualizerWebview.biTitle
+        ? 'switching extensions to their previous versions'
+        : 'switching the extension to its previous version';
+    return {
+        paragraphs: [why, 'Update the dependencies, or keep them as they are by switching to a Ballerina version '
+            + `earlier than ${REQUIRED_BALLERINA_VERSION} and ${extensions}.`],
+        earlierVersionLabel: 'Use Previous Versions'
+    };
 }
 
 /** Only the root the panel is showing; a panel that does not exist yet loads the app as usual. */
@@ -144,7 +158,7 @@ function blockPanel(
     if (!VisualizerWebview.currentPanel || !isSamePath(getVisualizerCheckRoot(StateMachine.context()), root)) {
         return;
     }
-    VisualizerWebview.showDependencyUpdateRequired({ rootPath: root, title: OUTDATED_TITLE, detail: describeOutdated(), status });
+    VisualizerWebview.showDependencyUpdateRequired({ rootPath: root, title: OUTDATED_TITLE, ...describeOutdated(), status });
 }
 
 /** Resolves to a failure message, or `undefined` when every package in `outdated` ended up current. */

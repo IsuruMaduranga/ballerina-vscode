@@ -64,8 +64,9 @@ export interface DependencyUpdateRequiredInfo {
     /** The package, or the workspace whose members are checked together. */
     rootPath: string;
     title: string;
-    /** Why, and the two ways out, worded for the app or the extension. */
-    detail: string;
+    /** Why, then the two ways out, worded for the app or the extension(s). */
+    paragraphs: string[];
+    earlierVersionLabel: string;
     /** Shown in place of a popup: the update in progress, or why it failed. */
     status?: { kind: "updating"; message: string } | { kind: "failed"; message: string };
 }
@@ -362,7 +363,7 @@ export class VisualizerWebview {
                 <div class="loader-wrapper">
                     <div class="welcome-content">
                         <h1 class="welcome-title">${escapeHtml(dependencyUpdate.title)}</h1>
-                        <p class="welcome-subtitle">${escapeHtml(dependencyUpdate.detail)}</p>
+                        <p class="welcome-subtitle">${dependencyUpdate.paragraphs.map(escapeHtml).join("<br><br>")}</p>
                         ${dependencyUpdate.status?.kind === "updating"
                             ? `<div class="logo-container"><div class="loader"></div></div>
                             <p class="welcome-subtitle">${escapeHtml(dependencyUpdate.status.message)}</p>`
@@ -371,7 +372,7 @@ export class VisualizerWebview {
                                 : ""}
                             <div class="action-row">
                                 <button class="action-button" id="update-dependencies">Update Dependencies</button>
-                                <button class="action-button secondary" id="use-earlier-version">Use an Earlier Version</button>
+                                <button class="action-button secondary" id="use-earlier-version">${escapeHtml(dependencyUpdate.earlierVersionLabel)}</button>
                                 ${dependencyUpdate.status?.kind === "failed"
                                     ? `<button class="action-button secondary" id="show-output">Show Output</button>`
                                     : ""}
