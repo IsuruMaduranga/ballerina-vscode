@@ -21,7 +21,7 @@
 import { assign, TransitionConfig } from 'xstate';
 import { normalizeProjectPath } from '@wso2/ballerina-core';
 
-export type DependencyCheckResult = 'compatible' | 'updated' | 'blocked';
+export type DependencyCheckResult = 'compatible' | 'blocked';
 
 export interface DependencyCheckContext {
     workspacePath?: string;
@@ -44,8 +44,8 @@ export function needsDependencyCheck(context: DependencyCheckContext): boolean {
 
 /**
  * The check's `onDone` routing, in order. A blocked root skips both the startup build (a sticky `bal build` of an
- * outdated lock pulls the very versions that fail on Java 25) and the connector upgrade prompt. An updated root
- * skips the startup build too, since the update's own build already pulled every missing module.
+ * outdated lock pulls the very versions that fail on Java 25) and the connector upgrade prompt, and is checked
+ * again on the next navigation. Updates start from the blocked screen, which re-enters the view once done.
  */
 export function createDependencyCheckTransitions<TContext extends DependencyCheckContext>():
     Array<TransitionConfig<TContext, any>> {
@@ -56,23 +56,12 @@ export function createDependencyCheckTransitions<TContext extends DependencyChec
             return compatibleRoots;
         }
     } as any);
-    const markResolved = assign<TContext, any>({ dependenciesResolved: true } as any);
     const connectorsUnchecked = (context: TContext) => !context.connectorUpgradesCheckedPaths?.has(context.projectPath);
 
     return [
         {
             target: 'webViewLoading',
             cond: (context, event) => event.data === 'blocked'
-        },
-        {
-            target: 'checkConnectorUpgrades',
-            cond: (context, event) => event.data === 'updated' && connectorsUnchecked(context),
-            actions: [markCompatible, markResolved]
-        },
-        {
-            target: 'webViewLoading',
-            cond: (context, event) => event.data === 'updated',
-            actions: [markCompatible, markResolved]
         },
         {
             target: 'resolveMissingDependencies',

@@ -101,8 +101,8 @@ class DebugConfigProvider implements DebugConfigurationProvider {
         }
         const configs = await getModifiedConfigs(_folder, config);
 
-        // Old locked packages fail on Java 25; offer the update before building on them.
-        if (!configs.notebookDebug && !await ensureDependenciesCompatible(configs.script)) {
+        // Old locked packages fail on Java 25; show the update screen instead of building on them.
+        if (!configs.notebookDebug && !ensureDependenciesCompatible(configs.script)) {
             return undefined;
         }
 

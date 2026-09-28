@@ -1723,36 +1723,13 @@ export class BallerinaExtension {
         const message = `Your Ballerina ${this.ballerinaVersion} is incompatible with the current extension.`;
         sendTelemetryEvent(this, TM_EVENT_EXTENSION_INI_FAILED, CMP_EXTENSION_CORE, getMessageObject(message));
 
-        // The modal is transient, so the panel carries the same explanation.
+        // No popup: the visualizer screen explains, and offers updating Ballerina or the earlier-version docs.
         VisualizerWebview.showJdkIncompatibility({
             ballerinaVersion: this.ballerinaVersion,
             jdkMajorVersion,
             requiredJdkMajorVersion: REQUIRED_JDK_MAJOR_VERSION,
             requiredBallerinaVersion: REQUIRED_BALLERINA_VERSION
         });
-
-        const UPDATE_BALLERINA = 'Update Ballerina';
-        const INSTALL_PREVIOUS = 'Install Previous Extension Version';
-        const selection = await window.showWarningMessage(
-            message,
-            {
-                modal: true,
-                detail: `Update Ballerina to ${REQUIRED_BALLERINA_VERSION} or later, or keep your `
-                    + `current Ballerina version and install an older extension: expand the dropdown `
-                    + `next to Uninstall and pick "Install Specific Version...".`
-            },
-            UPDATE_BALLERINA,
-            INSTALL_PREVIOUS
-        );
-
-        if (selection === UPDATE_BALLERINA) {
-            // The setup view opens its own panel, which would otherwise inherit this state.
-            VisualizerWebview.clearJdkIncompatibility();
-            await commands.executeCommand('ballerina.update-ballerina-visually');
-        } else if (selection === INSTALL_PREVIOUS) {
-            // No VS Code command opens the version picker for a given extension; the page is closest.
-            await commands.executeCommand('extension.open', EXTENSION_ID);
-        }
         return false;
     }
 

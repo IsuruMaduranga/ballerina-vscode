@@ -647,7 +647,7 @@ const stateMachine = createMachine<MachineContext>(
         // Startup render: must NOT block on the webview — gating LS activation on the
         // bundle would delay startup and stall the machine if it never loads.
         openInitialWebView: (context, event) => openVisualizerPanel(context, false),
-        checkDependencyCompatibility: (context) => checkDependencyCompatibility(getVisualizerCheckRoot(context), { promptOnce: true }),
+        checkDependencyCompatibility: async (context) => checkDependencyCompatibility(getVisualizerCheckRoot(context)),
         resolveMissingDependencies: (context, event) => {
             return new Promise(async (resolve, reject) => {
                 if (context?.projectPath) {

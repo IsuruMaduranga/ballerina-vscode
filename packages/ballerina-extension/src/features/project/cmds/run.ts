@@ -141,7 +141,7 @@ function activateRunCmdCommand() {
             // }
 
             if (currentProject.kind !== PROJECT_TYPE.SINGLE_FILE) {
-                if (!await ensureDependenciesCompatible(currentProject.path!)) {
+                if (!ensureDependenciesCompatible(currentProject.path!)) {
                     return;
                 }
                 // Per-integration restart guard (#1012): integrations run

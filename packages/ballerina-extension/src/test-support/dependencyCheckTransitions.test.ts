@@ -91,16 +91,6 @@ describe('routing after the dependency check', () => {
             target: 'webViewLoading', markedCompatible: false, dependenciesResolved: false
         },
         {
-            name: 'updated skips the startup build but still offers connector upgrades',
-            result: 'updated', context: {},
-            target: 'checkConnectorUpgrades', markedCompatible: true, dependenciesResolved: true
-        },
-        {
-            name: 'updated with connectors already checked goes straight to the view',
-            result: 'updated', context: { connectorUpgradesCheckedPaths: new Set([PROJECT]) },
-            target: 'webViewLoading', markedCompatible: true, dependenciesResolved: true
-        },
-        {
             name: 'compatible runs the startup build when dependencies are unresolved',
             result: 'compatible', context: {},
             target: 'resolveMissingDependencies', markedCompatible: true, dependenciesResolved: false

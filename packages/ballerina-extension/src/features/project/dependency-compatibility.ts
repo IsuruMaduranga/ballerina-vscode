@@ -19,7 +19,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { commands, env, ProgressLocation, Range, TextDocument, Uri, window, workspace, WorkspaceEdit } from 'vscode';
+import { Range, TextDocument, Uri, workspace, WorkspaceEdit } from 'vscode';
 import { EVENT_TYPE, MACHINE_VIEW, isSamePath, normalizeProjectPath } from '@wso2/ballerina-core';
 import { StateMachine, openView, reloadVisualizerApp } from '../../stateMachine';
 import { VisualizerWebview } from '../../views/visualizer/webview';
@@ -27,7 +27,6 @@ import { runCommandWithOutput } from '../../utils/runCommand';
 import { buildOutputChannel } from '../../utils/logger';
 import { quoteShellPath } from '../../utils/config';
 import { extension } from '../../BalExtensionContext';
-import { EXTENSION_ID } from '../../core';
 import {
     BALLERINA_TOML,
     OutdatedPackage,
@@ -36,27 +35,22 @@ import {
     findManifestDistribution,
     findOutdatedPackages,
     findPackageRoot,
-    findPinnedDependencies,
+    getWorkspacePackagePaths,
     isRuntimeOnRequiredDistribution,
-    parseDistributionVersion,
-    pickRollbackDistribution,
-    readManifestDistribution
+    parseDistributionVersion
 } from './dependency-lock';
 import { DependencyCheckResult, getVisualizerCheckRoot } from './dependency-check-transitions';
 
 // Integrations are created with `sticky = true`, so a project written on a Java 21 distribution keeps its locked
 // package versions after moving to 2201.14.0, and never picks up the releases that fixed them for Java 25. This
-// detects such a lock from Dependencies.toml and offers to re-resolve it, or to go back to a matching version.
+// detects such a lock from Dependencies.toml and, on the visualizer screen, offers to re-resolve it or points to the
+// docs for going back to a matching version. No VS Code popups: the screen carries the choice, progress and outcome.
 // A root is a package or a workspace; a workspace is checked and updated as a whole, one lock per member.
 
 const OUTDATED_TITLE = 'Your project dependencies need to be updated.';
-const UPDATE_DEPENDENCIES = 'Update Dependencies';
-const USE_EARLIER_VERSION = 'Use an Earlier Version';
 
-/** Roots already prompted this session; later visits block the panel without another modal. Normalized keys. */
-const promptedRoots = new Set<string>();
-/** Normalized keys, so the panel, Run and Debug reaching one root by different spellings share one update. */
-const updatesInFlight = new Map<string, Promise<boolean>>();
+/** Normalized keys, so repeated clicks on one root reached by different spellings share one update. */
+const updatesInFlight = new Map<string, Promise<string | undefined>>();
 
 /** The Integrator app bundles its own distribution, so going back means an older app. */
 function isInIntegratorApp(): boolean {
@@ -76,40 +70,17 @@ function findOutdated(root: string | undefined): OutdatedPackage[] {
 }
 
 /**
- * Prompts when a package under `root` has a Dependencies.toml older than {@link REQUIRED_BALLERINA_VERSION}. With
- * `promptOnce`, a root already prompted this session is blocked without asking again. Detection fails open; once
- * an outdated lock is known, a failure blocks rather than letting Run build on it.
+ * Blocks the visualizer on the update screen when a package under `root` has a Dependencies.toml older than
+ * {@link REQUIRED_BALLERINA_VERSION}. Detection fails open; once an outdated lock is known, a failure blocks.
  */
-export async function checkDependencyCompatibility(
-    root: string | undefined,
-    options: { promptOnce: boolean }
-): Promise<DependencyCheckResult> {
+export function checkDependencyCompatibility(root: string | undefined): DependencyCheckResult {
     let outdated: OutdatedPackage[] = [];
     try {
         outdated = findOutdated(root);
         if (outdated.length === 0) {
             return 'compatible';
         }
-        const key = normalizeProjectPath(root);
-        if (options.promptOnce && promptedRoots.has(key)) {
-            blockPanel(root);
-            return 'blocked';
-        }
-        promptedRoots.add(key);
-
-        const selection = await window.showWarningMessage(
-            OUTDATED_TITLE,
-            { modal: true, detail: describeOutdated() },
-            UPDATE_DEPENDENCIES,
-            USE_EARLIER_VERSION
-        );
-        if (selection === UPDATE_DEPENDENCIES && await updateDependencies(root, outdated)) {
-            return 'updated';
-        }
         blockPanel(root);
-        if (selection === USE_EARLIER_VERSION) {
-            await showEarlierVersionGuide(findOutdated(root));
-        }
         return 'blocked';
     } catch (error) {
         console.error('>>> Error checking dependency compatibility', error);
@@ -117,33 +88,44 @@ export async function checkDependencyCompatibility(
     }
 }
 
-/** Run/Debug gate for the package or workspace being launched: false when left outdated. */
-export async function ensureDependenciesCompatible(filePath: string | undefined): Promise<boolean> {
+/** Run/Debug gate: an outdated package or workspace cancels the launch and shows the update screen instead. */
+export function ensureDependenciesCompatible(filePath: string | undefined): boolean {
     const root = filePath ? findPackageRoot(filePath) : undefined;
-    if (!root) {
+    if (!root || findOutdated(root).length === 0) {
         return true;
     }
-    const result = await checkDependencyCompatibility(root, { promptOnce: false });
-    if (result === 'updated') {
-        await refreshBlockedPanel();
+    if (VisualizerWebview.currentPanel && isSamePath(getVisualizerCheckRoot(StateMachine.context()), root)) {
+        blockPanel(root);
+        VisualizerWebview.currentPanel.getWebview()?.reveal();
+    } else {
+        // The state machine's own check blocks the view it opens.
+        openView(EVENT_TYPE.OPEN_VIEW, getWorkspacePackagePaths(root)
+            ? { view: MACHINE_VIEW.WorkspaceOverview }
+            : { view: MACHINE_VIEW.PackageOverview, projectPath: root });
     }
-    return result !== 'blocked';
+    return false;
 }
 
 export async function updateDependenciesFromPanel(): Promise<void> {
     const info = VisualizerWebview.dependencyUpdateRequired;
-    if (!info) {
+    if (!info || info.status?.kind === 'updating') {
         return;
     }
-    await updateDependencies(info.rootPath, findOutdated(info.rootPath));
-    await refreshBlockedPanel(); // restores the app, or re-enables the button
+    const root = info.rootPath;
+    const failure = await updateDependencies(root, findOutdated(root));
+    if (failure) {
+        blockPanel(root, { kind: 'failed', message: failure });
+        return;
+    }
+    await reloadVisualizerApp();
+    const context = StateMachine.context();
+    openView(EVENT_TYPE.OPEN_VIEW, context.projectPath
+        ? { view: MACHINE_VIEW.PackageOverview, projectPath: context.projectPath }
+        : { view: MACHINE_VIEW.WorkspaceOverview });
 }
 
-export async function showEarlierVersionGuideFromPanel(): Promise<void> {
-    const info = VisualizerWebview.dependencyUpdateRequired;
-    if (info) {
-        await showEarlierVersionGuide(findOutdated(info.rootPath));
-    }
+export function showUpdateOutput(): void {
+    buildOutputChannel.show();
 }
 
 function describeOutdated(): string {
@@ -155,68 +137,47 @@ function describeOutdated(): string {
 }
 
 /** Only the root the panel is showing; a panel that does not exist yet loads the app as usual. */
-function blockPanel(root: string): void {
+function blockPanel(
+    root: string,
+    status?: { kind: 'updating'; message: string } | { kind: 'failed'; message: string }
+): void {
     if (!VisualizerWebview.currentPanel || !isSamePath(getVisualizerCheckRoot(StateMachine.context()), root)) {
         return;
     }
-    VisualizerWebview.showDependencyUpdateRequired({
-        rootPath: root,
-        title: OUTDATED_TITLE,
-        detail: describeOutdated()
-    });
+    VisualizerWebview.showDependencyUpdateRequired({ rootPath: root, title: OUTDATED_TITLE, detail: describeOutdated(), status });
 }
 
-/** After an update outside the state machine's own check: restore a panel with nothing left, else re-block. */
-async function refreshBlockedPanel(): Promise<void> {
-    const info = VisualizerWebview.dependencyUpdateRequired;
-    if (!info) {
-        return;
-    }
-    const outdated = findOutdated(info.rootPath);
-    if (outdated.length > 0) {
-        blockPanel(info.rootPath); // re-enables its button
-        return;
-    }
-    await reloadVisualizerApp();
-    const context = StateMachine.context();
-    openView(EVENT_TYPE.OPEN_VIEW, context.projectPath
-        ? { view: MACHINE_VIEW.PackageOverview, projectPath: context.projectPath }
-        : { view: MACHINE_VIEW.WorkspaceOverview });
-}
-
-/** True when every package in `outdated` ended up current. */
-function updateDependencies(root: string, outdated: OutdatedPackage[]): Promise<boolean> {
+/** Resolves to a failure message, or `undefined` when every package in `outdated` ended up current. */
+function updateDependencies(root: string, outdated: OutdatedPackage[]): Promise<string | undefined> {
     const key = normalizeProjectPath(root);
     const inFlight = updatesInFlight.get(key);
     if (inFlight) {
         return inFlight;
     }
-    const update = runDependencyUpdate(outdated).finally(() => updatesInFlight.delete(key));
+    const update = runDependencyUpdate(root, outdated).finally(() => updatesInFlight.delete(key));
     updatesInFlight.set(key, update);
     return update;
 }
 
-async function runDependencyUpdate(outdated: OutdatedPackage[]): Promise<boolean> {
+async function runDependencyUpdate(root: string, outdated: OutdatedPackage[]): Promise<string | undefined> {
     const failed: { item: OutdatedPackage; output: string }[] = [];
     const updated: OutdatedPackage[] = [];
-    await window.withProgress(
-        { location: ProgressLocation.Notification, title: 'Updating dependencies' },
-        async (progress) => {
-            // One member at a time, from its own folder, so one member's compile errors do not hold back the rest.
-            for (const item of outdated) {
-                progress.report({ message: outdated.length > 1 ? item.name : undefined });
-                const output = await rebuildWithoutSticky(item.path);
-                // The lock is only rewritten when the build succeeds; the exit code cannot say it moved forward.
-                const after = assessDependencyLock(item.path);
-                if (after.kind === 'current') {
-                    await syncManifestDistribution(item.path, after.lockedVersion);
-                    updated.push(item);
-                } else {
-                    failed.push({ item, output });
-                }
-            }
+    // One member at a time, from its own folder, so one member's compile errors do not hold back the rest.
+    for (const item of outdated) {
+        blockPanel(root, {
+            kind: 'updating',
+            message: outdated.length > 1 ? `Updating dependencies of ${item.name}...` : 'Updating dependencies...'
+        });
+        const output = await rebuildWithoutSticky(item.path);
+        // The lock is only rewritten when the build succeeds; the exit code cannot say it moved forward.
+        const after = assessDependencyLock(item.path);
+        if (after.kind === 'current') {
+            await syncManifestDistribution(item.path, after.lockedVersion);
+            updated.push(item);
+        } else {
+            failed.push({ item, output });
         }
-    );
+    }
 
     // The LS reloads each project on its Dependencies.toml change; this pulls anything still missing into it.
     for (const item of updated) {
@@ -228,13 +189,7 @@ async function runDependencyUpdate(outdated: OutdatedPackage[]): Promise<boolean
             console.error(`>>> Error resolving dependencies of ${item.name} after the update`, error);
         }
     }
-
-    if (failed.length > 0) {
-        reportUpdateFailure(failed, outdated.length);
-        return false;
-    }
-    reportUpdateSuccess(updated);
-    return true;
+    return failed.length > 0 ? describeFailure(failed, outdated.length) : undefined;
 }
 
 /**
@@ -279,87 +234,16 @@ async function syncManifestDistribution(packagePath: string, lockedVersion: stri
     }
 }
 
-async function reportUpdateSuccess(updated: OutdatedPackage[]): Promise<void> {
-    const pins: string[] = [];
-    for (const item of updated) {
-        try {
-            const document = await workspace.openTextDocument(Uri.file(path.join(item.path, BALLERINA_TOML)));
-            pins.push(...findPinnedDependencies(document.getText()));
-        } catch {
-            // No Ballerina.toml to read pins from.
-        }
-    }
-    if (pins.length === 0) {
-        window.showInformationMessage('Dependencies updated.');
-        return;
-    }
-    // An explicit [[dependency]] version is a hard constraint that re-resolution cannot move.
-    window.showWarningMessage(
-        `Dependencies updated, except those pinned in ${BALLERINA_TOML}: ${pins.join(', ')}. `
-        + 'Update their versions there if they fail on Java 25.'
-    );
-}
-
-async function reportUpdateFailure(failed: { item: OutdatedPackage; output: string }[], total: number): Promise<void> {
+function describeFailure(failed: { item: OutdatedPackage; output: string }[], total: number): string {
     const subject = total > 1
         ? `The dependencies of ${failed.map(({ item }) => item.name).join(', ')} couldn't be updated`
-        : "The integration's dependencies couldn't be updated";
+        : "The dependencies couldn't be updated";
     const outputs = failed.map(({ output }) => output).join('\n');
-    let message = `${subject}.`;
     if (/compilation contains errors/i.test(outputs)) {
-        message = `${subject} because of compile errors. Fix them and try again.`;
-    } else if (/unknown ?host|connection refused|connect timed out|failed to connect|unable to connect|network is unreachable/i.test(outputs)) {
-        message = `${subject}: Ballerina Central couldn't be reached. Check your internet connection and try again.`;
+        return `${subject} because of compile errors. Fix them and try again.`;
     }
-    const SHOW_OUTPUT = 'Show Output';
-    if (await window.showErrorMessage(message, SHOW_OUTPUT) === SHOW_OUTPUT) {
-        buildOutputChannel.show();
+    if (/unknown ?host|connection refused|connect timed out|failed to connect|unable to connect|network is unreachable/i.test(outputs)) {
+        return `${subject}: Ballerina Central couldn't be reached. Check your internet connection and try again.`;
     }
-}
-
-async function showEarlierVersionGuide(outdated: OutdatedPackage[]): Promise<void> {
-    if (isInIntegratorApp()) {
-        await window.showInformationMessage(
-            'Switch to an earlier release of WSO2 Integrator.',
-            {
-                modal: true,
-                detail: 'Earlier releases bundle the Ballerina version these dependencies were locked with, so the '
-                    + 'integration opens unchanged, with no dependency update needed.'
-            }
-        );
-        return;
-    }
-
-    // Downgrading the extension alone leaves the Java 25 distribution in place, and an older distribution alone is
-    // refused by this extension's JDK check, so both go back.
-    const distribution = pickRollbackDistribution(outdated.map((item) => ({
-        lockedVersion: item.lockedVersion,
-        manifestDistribution: readManifestDistribution(item.path)
-    })));
-    const pullCommand = distribution ? `bal dist pull ${distribution}` : undefined;
-    const step1 = pullCommand
-        ? `1. Run \`${pullCommand}\` to switch to the Ballerina version they were locked with.`
-        : `1. Switch to a Ballerina version earlier than ${REQUIRED_BALLERINA_VERSION} with \`bal dist pull <version>\` `
-            + '(`bal dist list` shows them).';
-    const detail = `To keep this integration's current dependencies:\n\n${step1}\n`
-        + `2. Install the previous version of the Ballerina extension: expand the dropdown next to Uninstall and pick `
-        + '"Install Specific Version...".\n\n'
-        + 'Turn off auto-update for the extension, or VS Code will reinstall this version.';
-
-    const COPY_COMMAND = 'Copy Command';
-    const OPEN_EXTENSION_PAGE = 'Open Extension Page';
-    const actions = pullCommand ? [COPY_COMMAND, OPEN_EXTENSION_PAGE] : [OPEN_EXTENSION_PAGE];
-    let selection = await window.showInformationMessage(
-        'Go back to an earlier Ballerina and extension version.', { modal: true, detail }, ...actions
-    );
-    if (selection === COPY_COMMAND) {
-        await env.clipboard.writeText(pullCommand);
-        selection = await window.showInformationMessage(
-            `Copied \`${pullCommand}\`. Run it in a terminal, then install the previous extension version.`,
-            OPEN_EXTENSION_PAGE
-        );
-    }
-    if (selection === OPEN_EXTENSION_PAGE) {
-        await commands.executeCommand('extension.open', EXTENSION_ID);
-    }
+    return `${subject}.`;
 }

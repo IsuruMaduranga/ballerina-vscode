@@ -166,65 +166,6 @@ export function findManifestDistribution(text: string): { start: number; end: nu
     return { start, end: start + field[1].length, value: field[1] };
 }
 
-/** `org/name:version` of every explicit `[[dependency]]` pin in Ballerina.toml. */
-export function findPinnedDependencies(text: string): string[] {
-    const pins: string[] = [];
-    // [[dependency]] tables run up to the next table header (or EOF).
-    const tableRegex = /^[ \t]*\[\[dependency\]\][^\n]*\n([\s\S]*?)(?=^[ \t]*\[|(?![\s\S]))/gm;
-    let match: RegExpExecArray | null;
-    while ((match = tableRegex.exec(text)) !== null) {
-        const org = /^[ \t]*org[ \t]*=[ \t]*"([^"]+)"/m.exec(match[1])?.[1];
-        const name = /^[ \t]*name[ \t]*=[ \t]*"([^"]+)"/m.exec(match[1])?.[1];
-        const version = /^[ \t]*version[ \t]*=[ \t]*"([^"]+)"/m.exec(match[1])?.[1];
-        if (org && name && version) {
-            pins.push(`${org}/${name}:${version}`);
-        }
-    }
-    return pins;
-}
-
-export function readManifestDistribution(projectPath: string): string | undefined {
-    try {
-        return findManifestDistribution(fs.readFileSync(path.join(projectPath, BALLERINA_TOML), 'utf8'))?.value;
-    } catch {
-        return undefined;
-    }
-}
-
-/**
- * The distribution to go back to in order to keep the current lock: the one it was resolved on, else the one
- * Ballerina.toml names. Pre-releases cannot be pulled, so their GA is returned instead.
- */
-export function getRollbackDistribution(lockedVersion?: string, manifestDistribution?: string): string | undefined {
-    for (const candidate of [lockedVersion, manifestDistribution]) {
-        const version = parseDistributionVersion(candidate);
-        if (version && isBeforeRequiredDistribution(candidate)) {
-            return `${version.major}.${version.minor}.${version.patch}`;
-        }
-    }
-    return undefined;
-}
-
-/** Across several packages, the newest of their rollback distributions: the smallest step back that suits all. */
-export function pickRollbackDistribution(
-    packages: { lockedVersion?: string; manifestDistribution?: string }[]
-): string | undefined {
-    let newest: string | undefined;
-    for (const item of packages) {
-        const candidate = getRollbackDistribution(item.lockedVersion, item.manifestDistribution);
-        if (candidate && (!newest || compareDistributionVersions(candidate, newest) > 0)) {
-            newest = candidate;
-        }
-    }
-    return newest;
-}
-
-function compareDistributionVersions(a: string, b: string): number {
-    const left = parseDistributionVersion(a);
-    const right = parseDistributionVersion(b);
-    return (left.major - right.major) || (left.minor - right.minor) || (left.patch - right.patch);
-}
-
 /** The package root enclosing `filePath` (a file or a directory), or `undefined` outside a package. */
 export function findPackageRoot(filePath: string): string | undefined {
     let current = path.resolve(filePath);
