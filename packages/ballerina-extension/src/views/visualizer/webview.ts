@@ -57,8 +57,10 @@ function toInlineJson(value: unknown): string {
     return JSON.stringify(value ?? null).replace(/</g, "\\u003c");
 }
 
+/** Linked from a failed dependency update. */
+const TROUBLESHOOTING_DOCS_URL = "https://wso2.com/integration-platform/docs/develop/troubleshooting/ide-troubleshooting";
 /** Where both blocked screens send users who want to stay on an earlier version. Placeholder until its own page. */
-const EARLIER_VERSION_DOCS_URL = "https://wso2.com/integration-platform/docs/develop/troubleshooting/ide-troubleshooting";
+const EARLIER_VERSION_DOCS_URL = TROUBLESHOOTING_DOCS_URL;
 
 export interface DependencyUpdateRequiredInfo {
     /** The package, or the workspace whose members are checked together. */
@@ -108,6 +110,8 @@ export class VisualizerWebview {
                 await updateDependenciesFromPanel();
             } else if (message?.command === 'dependencyUpdate.showOutput') {
                 showUpdateOutput();
+            } else if (message?.command === 'dependencyUpdate.troubleshoot') {
+                await vscode.env.openExternal(vscode.Uri.parse(TROUBLESHOOTING_DOCS_URL));
             }
         }));
 
@@ -368,7 +372,8 @@ export class VisualizerWebview {
                             ? `<div class="logo-container"><div class="loader"></div></div>
                             <p class="welcome-subtitle">${escapeHtml(dependencyUpdate.status.message)}</p>`
                             : `${dependencyUpdate.status?.kind === "failed"
-                                ? `<p class="status-error">${escapeHtml(dependencyUpdate.status.message)}</p>`
+                                ? `<p class="status-error">${escapeHtml(dependencyUpdate.status.message)}
+                                    <a href="#" id="troubleshooting-docs">See the troubleshooting guide.</a></p>`
                                 : ""}
                             <div class="action-row">
                                 <button class="action-button" id="update-dependencies">Update Dependencies</button>
@@ -383,12 +388,14 @@ export class VisualizerWebview {
             <script>
                 const vscodeApi = acquireVsCodeApi();
                 const post = (id, command) => document.getElementById(id)?.addEventListener('click', (event) => {
+                    event.preventDefault(); // the docs link is an anchor
                     event.currentTarget.disabled = command === 'dependencyUpdate.update'; // re-rendered with progress
                     vscodeApi.postMessage({ command });
                 });
                 post('update-dependencies', 'dependencyUpdate.update');
                 post('use-earlier-version', 'useEarlierVersion');
                 post('show-output', 'dependencyUpdate.showOutput');
+                post('troubleshooting-docs', 'dependencyUpdate.troubleshoot');
             </script>`
             : `<div class="container" id="webview-container">
                 <div class="loader-wrapper">
@@ -486,6 +493,9 @@ export class VisualizerWebview {
             .status-error {
                 color: var(--vscode-errorForeground);
                 margin-top: 16px;
+            }
+            .status-error a {
+                color: var(--vscode-textLink-foreground);
             }
             .welcome-title {
                 color: var(--vscode-foreground);

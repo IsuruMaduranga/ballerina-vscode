@@ -16,8 +16,6 @@
  * under the License.
  */
 
-import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { Range, TextDocument, Uri, workspace, WorkspaceEdit } from 'vscode';
 import { EVENT_TYPE, MACHINE_VIEW, isSamePath, normalizeProjectPath } from '@wso2/ballerina-core';
@@ -51,6 +49,8 @@ const OUTDATED_TITLE = 'Your project dependencies need to be updated.';
 
 /** Normalized keys, so repeated clicks on one root reached by different spellings share one update. */
 const updatesInFlight = new Map<string, Promise<string | undefined>>();
+/** Normalized root -> packages whose last update build failed; retried even if their lock already moved. */
+const failedBuilds = new Map<string, OutdatedPackage[]>();
 
 /** The Integrator app bundles its own distribution, so going back means an older app. */
 function isInIntegratorApp(): boolean {
@@ -112,7 +112,7 @@ export async function updateDependenciesFromPanel(): Promise<void> {
         return;
     }
     const root = info.rootPath;
-    const failure = await updateDependencies(root, findOutdated(root));
+    const failure = await updateDependencies(root, withFailedBuilds(root, findOutdated(root)));
     if (failure) {
         blockPanel(root, { kind: 'failed', message: failure });
         return;
@@ -161,7 +161,13 @@ function blockPanel(
     VisualizerWebview.showDependencyUpdateRequired({ rootPath: root, title: OUTDATED_TITLE, ...describeOutdated(), status });
 }
 
-/** Resolves to a failure message, or `undefined` when every package in `outdated` ended up current. */
+function withFailedBuilds(root: string, outdated: OutdatedPackage[]): OutdatedPackage[] {
+    const retries = (failedBuilds.get(normalizeProjectPath(root)) ?? [])
+        .filter((item) => !outdated.some((pending) => isSamePath(pending.path, item.path)));
+    return [...outdated, ...retries];
+}
+
+/** Resolves to a failure message, or `undefined` when every package in `outdated` built and ended up current. */
 function updateDependencies(root: string, outdated: OutdatedPackage[]): Promise<string | undefined> {
     const key = normalizeProjectPath(root);
     const inFlight = updatesInFlight.get(key);
@@ -182,15 +188,22 @@ async function runDependencyUpdate(root: string, outdated: OutdatedPackage[]): P
             kind: 'updating',
             message: outdated.length > 1 ? `Updating dependencies of ${item.name}...` : 'Updating dependencies...'
         });
-        const output = await rebuildWithoutSticky(item.path);
-        // The lock is only rewritten when the build succeeds; the exit code cannot say it moved forward.
+        const build = await cleanBuildWithoutSticky(item.path);
+        // Both must hold: the exit code cannot say the lock moved forward, and a build can fail after it did.
         const after = assessDependencyLock(item.path);
         if (after.kind === 'current') {
             await syncManifestDistribution(item.path, after.lockedVersion);
             updated.push(item);
-        } else {
-            failed.push({ item, output });
         }
+        if (!build.success || after.kind !== 'current') {
+            failed.push({ item, output: build.output });
+        }
+    }
+    const key = normalizeProjectPath(root);
+    if (failed.length > 0) {
+        failedBuilds.set(key, failed.map(({ item }) => item));
+    } else {
+        failedBuilds.delete(key);
     }
 
     // The LS reloads each project on its Dependencies.toml change; this pulls anything still missing into it.
@@ -208,19 +221,12 @@ async function runDependencyUpdate(root: string, outdated: OutdatedPackage[]): P
 
 /**
  * Not `--locking-mode=soft`: under sticky it keeps the locked versions yet restamps distribution-version, hiding
- * the problem from this check. With sticky off the compiler re-resolves a lock from an older update. A fresh
- * target directory, because an up-to-date build cache skips resolution entirely, and it leaves the user's own
- * `target` alone.
+ * the problem from this check. With sticky off the compiler re-resolves a lock from an older update. `bal clean`
+ * first, because an up-to-date build cache skips resolution entirely.
  */
-async function rebuildWithoutSticky(packagePath: string): Promise<string> {
-    const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bal-dependency-update-'));
-    try {
-        const command = `${quoteShellPath(extension.ballerinaExtInstance.getBallerinaCmd())} build --sticky=false `
-            + `--target-dir ${quoteShellPath(targetDir)}`;
-        return (await runCommandWithOutput(command, packagePath, buildOutputChannel)).output;
-    } finally {
-        fs.rmSync(targetDir, { recursive: true, force: true });
-    }
+async function cleanBuildWithoutSticky(packagePath: string): Promise<{ success: boolean; output: string }> {
+    const bal = quoteShellPath(extension.ballerinaExtInstance.getBallerinaCmd());
+    return runCommandWithOutput(`${bal} clean && ${bal} build --sticky=false`, packagePath, buildOutputChannel);
 }
 
 /** Keeps Ballerina.toml's `distribution` in step with the lock; `bal build` never rewrites it. */
