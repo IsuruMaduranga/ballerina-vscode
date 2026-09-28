@@ -112,7 +112,7 @@ export async function captureWorkspaceSnapshot(messageId: string): Promise<Check
                     return { fileUri, bytes: Buffer.from(fileContent) };
                 } catch (error) {
                     console.error(`[Checkpoint] Failed to read file ${fileUri.fsPath}:`, error);
-                    return null;
+                    return { fileUri, bytes: null };
                 }
             }));
 
@@ -120,6 +120,12 @@ export async function captureWorkspaceSnapshot(messageId: string): Promise<Check
                 if (!entry) { continue; }
                 const relativePath = path.relative(workspaceRoot.fsPath, entry.fileUri.fsPath).split(path.sep).join('/');
                 fileList.push(relativePath);
+
+                // Unreadable at capture — locked by another process, or permission denied. Listing it
+                // without snapshotting it is what stops the restore deleting a file it never held.
+                if (!entry.bytes) {
+                    continue;
+                }
 
                 // Listed but not snapshotted: a snapshot holds strings, so bytes that do not survive
                 // a UTF-8 round trip cannot be reproduced. Being in fileList keeps a restore from
@@ -152,7 +158,8 @@ export async function captureWorkspaceSnapshot(messageId: string): Promise<Check
             workspaceSnapshot,
             fileList,
             snapshotSize: totalSize,
-            workspaceRoot: workspaceRoot.fsPath
+            workspaceRoot: workspaceRoot.fsPath,
+            ignorePatterns: config.ignorePatterns
         };
 
         return checkpoint;
@@ -199,8 +206,10 @@ export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtif
         }, async (progress) => {
             progress.report({ message: 'Reading current workspace...' });
 
-            const config = getCheckpointConfig();
-            const currentFiles = await getAllWorkspaceFiles(workspaceRoot, config.ignorePatterns);
+            // The patterns the snapshot was taken under, not today's: a pattern removed since would
+            // turn everything it used to hide into "not in the snapshot", and delete it.
+            const ignorePatterns = checkpoint.ignorePatterns ?? getCheckpointConfig().ignorePatterns;
+            const currentFiles = await getAllWorkspaceFiles(workspaceRoot, ignorePatterns);
             const currentFilePaths = new Set(
                 currentFiles.map(uri => path.relative(workspaceRoot.fsPath, uri.fsPath).split(path.sep).join('/'))
             );

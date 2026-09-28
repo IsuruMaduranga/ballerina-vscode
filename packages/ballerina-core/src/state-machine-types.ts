@@ -829,6 +829,8 @@ export interface Checkpoint {
     snapshotSize: number;
     /** Absolute root the paths above are relative to. Absent on checkpoints captured before it was recorded. */
     workspaceRoot?: string;
+    /** Exclude globs in force when this was captured; a restore must not re-read the live settings. */
+    ignorePatterns?: string[];
 }
 
 // ==================================

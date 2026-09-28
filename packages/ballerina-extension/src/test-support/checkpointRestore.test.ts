@@ -379,6 +379,47 @@ describe("what a checkpoint restore is allowed to touch", () => {
 
         expect(fs.readFileSync(at("Config.toml"), "utf8")).toBe(ORIGINAL_CONFIG);
     });
+    it("lists a file it could not read at capture, without snapshotting it", async () => {
+        fs.writeFileSync(at("locked.txt"), "held by another process\n");
+        const realReadFile = workspace.fs.readFile;
+        workspace.fs.readFile = (uri: { fsPath: string }) =>
+            uri.fsPath.endsWith("locked.txt")
+                ? Promise.reject(new Error("EBUSY"))
+                : realReadFile(uri);
+
+        try {
+            const captured: any = await captureWorkspaceSnapshot("msg-1");
+
+            // Listed so a restore leaves it alone; unsnapshotted because there is no content for it.
+            expect(captured.fileList).toContain("locked.txt");
+            expect(Object.keys(captured.workspaceSnapshot)).not.toContain("locked.txt");
+        } finally {
+            workspace.fs.readFile = realReadFile;
+        }
+    });
+
+    it("does not delete a file the capture could not read", async () => {
+        fs.writeFileSync(at("locked.txt"), "held by another process\n");
+        checkpoint.fileList.push("locked.txt");
+
+        await expect(restoreWorkspaceSnapshot(checkpoint, true)).resolves.toBe(true);
+
+        expect(fs.existsSync(at("locked.txt"))).toBe(true);
+    });
+
+    it("scans with the patterns recorded at capture, not the ones configured now", async () => {
+        const excludes: string[] = [];
+        workspace.findFiles = (_include?: unknown, exclude?: { pattern?: string }) => {
+            if (exclude?.pattern) { excludes.push(exclude.pattern); }
+            return Promise.resolve(["main.bal", "Config.toml"].map(name => Uri.file(at(name))));
+        };
+        checkpoint.ignorePatterns = ["**/captured-under-this/**"];
+
+        await expect(restoreWorkspaceSnapshot(checkpoint, true)).resolves.toBe(true);
+
+        expect(excludes.join(" ")).toContain("captured-under-this");
+    });
+
     it("records the root it captured against", async () => {
         const captured: any = await captureWorkspaceSnapshot("msg-1");
 

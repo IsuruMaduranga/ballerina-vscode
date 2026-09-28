@@ -249,6 +249,7 @@ function toPersistedCheckpoint(checkpoint: Checkpoint): Omit<PersistedCheckpoint
         snapshotSize: checkpoint.snapshotSize,
         workspaceSnapshot: checkpoint.workspaceSnapshot,
         workspaceRoot: checkpoint.workspaceRoot,
+        ignorePatterns: checkpoint.ignorePatterns,
     } as Omit<PersistedCheckpoint, 'schemaVersion'>;
 }
 
@@ -261,6 +262,7 @@ function fromPersistedCheckpoint(pc: PersistedCheckpoint): Checkpoint {
         snapshotSize: pc.snapshotSize,
         workspaceSnapshot: pc.workspaceSnapshot,
         workspaceRoot: (pc as { workspaceRoot?: string }).workspaceRoot,
+        ignorePatterns: (pc as { ignorePatterns?: string[] }).ignorePatterns,
     };
 }
 
