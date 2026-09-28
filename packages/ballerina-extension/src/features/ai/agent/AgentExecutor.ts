@@ -1201,7 +1201,8 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         assistantMessages: any[],
         errorCount: number
     ): void {
-        // Same exclusion as the follow-ups: migration and evals have no chat storage.
+        // Evals have no chat storage. Migration stages started from chat do, so this does not
+        // exclude them; startConsoleSummary's thread gate decides which turns publish.
         if (this._consoleSummaryScheduled || !this.config.chatStorage?.enabled) {
             return;
         }

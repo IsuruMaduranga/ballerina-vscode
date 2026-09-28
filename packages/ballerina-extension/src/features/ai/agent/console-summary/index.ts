@@ -30,12 +30,15 @@ import {
 } from "./prompt";
 import { consoleSummarySchema } from "./schema";
 
+export { markConsoleOriginThread } from "./origin";
+
 const TIMEOUT_MS = 15_000;
 
 // Registered by the Devant cloud editor build
 // Absent everywhere else, which reads as "inactive".
 const HAS_KEY_COMMAND = "devantEditor.hasAgentSummaryKey";
 const APPEND_COMMAND = "devantEditor.appendAgentSummary";
+const REMOVE_COMMAND = "devantEditor.removeAgentSummary";
 
 export interface ConsoleSummaryTurn {
     /** Generation this turn belongs to; republishing it replaces the console entry. */
@@ -50,12 +53,16 @@ export interface ConsoleSummaryTurn {
 }
 
 /**
- * Summarises a completed turn and publishes it to the Devant console, which shows
- * it under the chat message that launched this editor session.
+ * Summarises a completed turn and publishes it to the WSO2 Integration Platform
+ * console, which shows it under the chat message that launched this editor session.
  *
  * Fire-and-forget: never blocks turn completion, and every failure only means the
- * console shows no entry for this turn. Runs only in a cloud editor session that
- * a console plan launched — the editor answers that, since it owns the key.
+ * console shows no entry for this turn.
+ *
+ * Two gates decide whether a turn publishes. The editor's key means the session was
+ * opened with a console plan (it holds one only then). The thread's `consoleOrigin`
+ * means the turn belongs to the conversation that plan started: a new chat, or an
+ * older thread picked from history, never publishes.
  *
  * @returns whether publishing started, so the caller runs it at most once a turn.
  */
@@ -65,6 +72,9 @@ export function startConsoleSummary(turn: ConsoleSummaryTurn): boolean {
     }
     // Questions and explanations change nothing worth reporting.
     if (turn.modifiedFiles.length === 0 || turn.abortSignal.aborted) {
+        return false;
+    }
+    if (!chatStateStorage.getWorkspaceState(turn.projectRootPath)?.threads.get(turn.threadId)?.consoleOrigin) {
         return false;
     }
 
@@ -88,16 +98,23 @@ export function startConsoleSummary(turn: ConsoleSummaryTurn): boolean {
                 return;
             }
 
-            // Look up without creating: updateGeneration would recreate a deleted thread.
-            const gen = chatStateStorage.getWorkspaceState(turn.projectRootPath)?.threads.get(turn.threadId)?.generations.find((g) => g.id === turn.messageId);
-            if (!gen) {
+            // The turn can be undone while the summary is generated: reverted, or
+            // dropped by a restore to an earlier checkpoint (or a deleted thread).
+            if (!isLive(turn)) {
                 return;
             }
             const written = await commands.executeCommand<boolean>(APPEND_COMMAND, { summary, generationId: turn.messageId });
-            if (written) {
-                chatStateStorage.updateGeneration(turn.projectRootPath, turn.threadId, turn.messageId, { consoleSummary: summary });
+            if (!written) {
+                console.log(`[ConsoleSummary] Not published for ${turn.messageId}`);
+                return;
             }
-            console.log(`[ConsoleSummary] ${written ? "Published" : "Not published"} for ${turn.messageId}`);
+            // Undone during the append: the undo found nothing to remove yet, so remove it here.
+            if (!isLive(turn)) {
+                removeConsoleSummary(turn.messageId);
+                return;
+            }
+            chatStateStorage.updateGeneration(turn.projectRootPath, turn.threadId, turn.messageId, { consoleSummary: summary });
+            console.log(`[ConsoleSummary] Published for ${turn.messageId}`);
         } catch (error) {
             console.warn(`[ConsoleSummary] Failed for ${turn.messageId}:`, error);
         }
@@ -106,17 +123,26 @@ export function startConsoleSummary(turn: ConsoleSummaryTurn): boolean {
     return true;
 }
 
-/** Fire-and-forget: replaces a reverted turn's console entry. */
-export function retractConsoleSummary(generationId: string): void {
+/**
+ * Fire-and-forget: takes an undone turn's entry off the console, so the console
+ * shows nothing for it. Not gated on the key: after a console "start a new session"
+ * the editor has no key, but the entries it already published are still showing.
+ */
+export function removeConsoleSummary(generationId: string): void {
     void (async () => {
         try {
-            if (await isPublishingActive()) {
-                await commands.executeCommand<boolean>(APPEND_COMMAND, { summary: "The changes from this step were reverted.", generationId });
-            }
+            await commands.executeCommand<boolean>(REMOVE_COMMAND, { generationId });
         } catch (error) {
-            console.warn(`[ConsoleSummary] Revert update failed for ${generationId}:`, error);
+            // An editor image without the command, or no cloud editor at all.
+            console.warn(`[ConsoleSummary] Remove failed for ${generationId}:`, error);
         }
     })();
+}
+
+/** The turn's generation still exists and has not been reverted. Never creates a thread. */
+function isLive(turn: ConsoleSummaryTurn): boolean {
+    const gen = chatStateStorage.getWorkspaceState(turn.projectRootPath)?.threads.get(turn.threadId)?.generations.find((g) => g.id === turn.messageId);
+    return !!gen && gen.reviewState?.status !== "reverted";
 }
 
 async function isPublishingActive(): Promise<boolean> {

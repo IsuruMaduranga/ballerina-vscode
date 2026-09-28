@@ -31,6 +31,7 @@ import {
     extractLastTaskList,
     sanitizeSummary,
 } from '../features/ai/agent/console-summary/prompt';
+import { isConsoleScaffoldTurn } from '../features/ai/agent/console-summary/scaffold';
 
 const TOOL = 'TaskWrite';
 
@@ -139,5 +140,20 @@ describe('buildConsoleSummaryMessages', () => {
         const [, user] = buildConsoleSummaryMessages({ ...base, modifiedFiles });
         expect(String(user.content)).toContain('(and 5 more)');
         expect(String(user.content)).not.toContain('f34.bal');
+    });
+});
+
+describe('isConsoleScaffoldTurn', () => {
+    const env = { INITIAL_SCAFFOLD_PROMPT: 'Sync leads', INITIAL_SCAFFOLD_STEPS: 'Implementation plan for: Lead sync' };
+
+    it('matches only the explicitly flagged turn', () => {
+        expect(isConsoleScaffoldTurn(true, env)).toBe(true);
+        expect(isConsoleScaffoldTurn(false, env)).toBe(false);
+        expect(isConsoleScaffoldTurn(undefined, env)).toBe(false);
+    });
+
+    it('ignores the flag in a session not opened with a plan', () => {
+        expect(isConsoleScaffoldTurn(true, {})).toBe(false);
+        expect(isConsoleScaffoldTurn(true, { INITIAL_SCAFFOLD_STEPS: env.INITIAL_SCAFFOLD_STEPS })).toBe(false);
     });
 });
