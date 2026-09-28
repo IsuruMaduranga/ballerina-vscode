@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import { Range, TextDocument, Uri, workspace, WorkspaceEdit } from 'vscode';
 import { EVENT_TYPE, MACHINE_VIEW, isSamePath, normalizeProjectPath } from '@wso2/ballerina-core';
@@ -112,7 +113,14 @@ export async function updateDependenciesFromPanel(): Promise<void> {
         return;
     }
     const root = info.rootPath;
-    const failure = await updateDependencies(root, withFailedBuilds(root, findOutdated(root)));
+    let failure: string | undefined;
+    try {
+        failure = await updateDependencies(root, withFailedBuilds(root, findOutdated(root)));
+    } catch (error) {
+        // An escaped rejection would leave the screen on its spinner, which also ignores Update clicks.
+        console.error('>>> Error updating dependencies', error);
+        failure = "The dependencies couldn't be updated.";
+    }
     if (failure) {
         blockPanel(root, { kind: 'failed', message: failure });
         return;
@@ -161,8 +169,11 @@ function blockPanel(
     VisualizerWebview.showDependencyUpdateRequired({ rootPath: root, title: OUTDATED_TITLE, ...describeOutdated(), status });
 }
 
+/** `outdated` plus the packages whose last build failed, if still members of `root` and not already listed. */
 function withFailedBuilds(root: string, outdated: OutdatedPackage[]): OutdatedPackage[] {
+    const members = getWorkspacePackagePaths(root) ?? [root];
     const retries = (failedBuilds.get(normalizeProjectPath(root)) ?? [])
+        .filter((item) => members.some((member) => isSamePath(member, item.path)) && fs.existsSync(item.path))
         .filter((item) => !outdated.some((pending) => isSamePath(pending.path, item.path)));
     return [...outdated, ...retries];
 }
@@ -188,15 +199,20 @@ async function runDependencyUpdate(root: string, outdated: OutdatedPackage[]): P
             kind: 'updating',
             message: outdated.length > 1 ? `Updating dependencies of ${item.name}...` : 'Updating dependencies...'
         });
-        const build = await cleanBuildWithoutSticky(item.path);
-        // Both must hold: the exit code cannot say the lock moved forward, and a build can fail after it did.
-        const after = assessDependencyLock(item.path);
-        if (after.kind === 'current') {
-            await syncManifestDistribution(item.path, after.lockedVersion);
-            updated.push(item);
-        }
-        if (!build.success || after.kind !== 'current') {
-            failed.push({ item, output: build.output });
+        try {
+            const build = await cleanBuildWithoutSticky(item.path);
+            // Both must hold: the exit code cannot say the lock moved forward, and a build can fail after it did.
+            const after = assessDependencyLock(item.path);
+            if (after.kind === 'current') {
+                await syncManifestDistribution(item.path, after.lockedVersion);
+                updated.push(item);
+            }
+            if (!build.success || after.kind !== 'current') {
+                failed.push({ item, output: build.output });
+            }
+        } catch (error) {
+            console.error(`>>> Error updating the dependencies of ${item.name}`, error);
+            failed.push({ item, output: String(error) });
         }
     }
     const key = normalizeProjectPath(root);
@@ -229,7 +245,7 @@ async function cleanBuildWithoutSticky(packagePath: string): Promise<{ success: 
     return runCommandWithOutput(`${bal} clean && ${bal} build --sticky=false`, packagePath, buildOutputChannel);
 }
 
-/** Keeps Ballerina.toml's `distribution` in step with the lock; `bal build` never rewrites it. */
+/** Keeps Ballerina.toml's `distribution` in step with the lock; `bal build` never rewrites it. Never throws. */
 async function syncManifestDistribution(packagePath: string, lockedVersion: string): Promise<void> {
     const version = parseDistributionVersion(lockedVersion);
     if (!version) {
@@ -249,8 +265,13 @@ async function syncManifestDistribution(packagePath: string, lockedVersion: stri
     }
     const edit = new WorkspaceEdit();
     edit.replace(uri, new Range(document.positionAt(field.start), document.positionAt(field.end)), value);
-    if (await workspace.applyEdit(edit)) {
-        await document.save();
+    try {
+        if (await workspace.applyEdit(edit)) {
+            await document.save();
+        }
+    } catch (error) {
+        // Best effort: the lock is what moved the dependencies, so a read-only manifest does not fail the update.
+        console.error(`>>> Error syncing the distribution in ${uri.fsPath}`, error);
     }
 }
 
