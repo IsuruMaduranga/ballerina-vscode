@@ -50,7 +50,6 @@ import { DependencyCheckResult, getVisualizerCheckRoot } from './dependency-chec
 // detects such a lock from Dependencies.toml and offers to re-resolve it, or to go back to a matching version.
 // A root is a package or a workspace; a workspace is checked and updated as a whole, one lock per member.
 
-const WI_RELEASES_URL = 'https://github.com/wso2/product-integrator/releases';
 const UPDATE_DEPENDENCIES = 'Update Dependencies';
 const USE_EARLIER_VERSION = 'Use an Earlier Version';
 
@@ -341,19 +340,14 @@ async function reportUpdateFailure(failed: { item: OutdatedPackage; output: stri
 
 async function showEarlierVersionGuide(outdated: OutdatedPackage[]): Promise<void> {
     if (isInIntegratorApp()) {
-        const OPEN_RELEASES = 'Open Releases';
-        const selection = await window.showInformationMessage(
-            'Install an earlier version of WSO2 Integrator.',
+        await window.showInformationMessage(
+            'Switch to an earlier release of WSO2 Integrator.',
             {
                 modal: true,
-                detail: 'Earlier versions bundle the Ballerina version these dependencies were locked with, so the '
+                detail: 'Earlier releases bundle the Ballerina version these dependencies were locked with, so the '
                     + 'integration opens unchanged, with no dependency update needed.'
-            },
-            OPEN_RELEASES
+            }
         );
-        if (selection === OPEN_RELEASES) {
-            await env.openExternal(Uri.parse(WI_RELEASES_URL));
-        }
         return;
     }
 
