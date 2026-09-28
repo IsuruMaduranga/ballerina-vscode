@@ -1257,13 +1257,18 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
 
     /**
      * The version to build the service init model against: the version the project already resolves for the
-     * connector, else the version selected for a new dependency.
+     * connector, else the version selected for a new dependency. A package bundled with the distribution keeps
+     * the requested version.
      */
     private String resolveInitModelVersion(Project project, ServiceModelRequest request) {
         Optional<String> projectVersion = ConnectorVersionResolver.projectVersion(project, request.orgName(),
                 request.pkgName());
         if (projectVersion.isPresent()) {
             return projectVersion.get();
+        }
+        if (Utils.isDistributionModule(request.orgName(), request.pkgName())) {
+            // Bundled with the distribution, so no Central lookup is needed to select a version.
+            return request.version();
         }
         String minSupportedVersion = TriggerPropertiesRegistry.getInstance()
                 .forModule(request.orgName(), request.pkgName())

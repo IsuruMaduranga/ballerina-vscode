@@ -32,6 +32,8 @@ const ARG_KEY_DOC_URI = 'doc.uri';
 const ARG_KEY_PACKAGES = 'packages';
 const PULL_MODULE_COMMAND = 'PULL_MODULE';
 const RELOAD_WINDOW_COMMAND = 'workbench.action.reloadWindow';
+const DID_CHANGE_WATCHED_FILES = 'workspace/didChangeWatchedFiles';
+const FILE_CHANGE_TYPE_CHANGED = 2;
 const BALLERINA_TOML = 'Ballerina.toml';
 const DEPENDENCIES_TOML = 'Dependencies.toml';
 const MAIN_BAL = 'main.bal';
@@ -118,9 +120,11 @@ export function getPendingReloadConnectors(projectPath: string): ConnectorRefere
  * <li>Pulls the exact required versions through {@code PULL_MODULE}. A plain re-resolution pulls nothing,
  * since an older bala of each connector is already cached.</li>
  * <li>Raises explicit {@code Ballerina.toml} {@code [[dependency]]} pins to the pulled versions.</li>
- * <li>When a {@code Dependencies.toml} exists, runs {@code bal clean} and a {@code bal build} with the soft
- * locking mode, since the default mode only allows patch updates and the locked versions would otherwise keep
- * winning over the pulled ones.</li>
+ * <li>When {@code Dependencies.toml} locks an advised connector below its required version, runs
+ * {@code bal clean} and a {@code bal build} with the soft locking mode, since the default mode only allows patch
+ * updates and the locked versions would otherwise keep winning over the pulled ones. The language server is then
+ * told the lock file changed, so it resolves the new versions before the next request instead of waiting for the
+ * file watcher. A connector the project doesn't depend on yet needs no rebuild: nothing locks it.</li>
  * </ol>
  *
  * With {@code promptReload}, the upgraded connectors are recorded as waiting for a reload and the user is
@@ -152,12 +156,14 @@ export async function upgradeConnectors(
             }
 
             const dependenciesToml = path.join(projectPath, DEPENDENCIES_TOML);
-            if (fs.existsSync(dependenciesToml)) {
+            const outdated = await findOutdatedLocks(advice, dependenciesToml);
+            if (outdated.length > 0) {
                 progress.report({ message: REBUILDING_PROGRESS_MESSAGE });
-                if (!(await rebuild(advice, dependenciesToml, projectPath))) {
+                if (!(await rebuild(outdated, dependenciesToml, projectPath))) {
                     window.showErrorMessage(REBUILD_FAILED_MESSAGE);
                     return false;
                 }
+                await notifyDependenciesTomlChanged(dependenciesToml);
             }
 
             return true;
@@ -264,6 +270,16 @@ async function raiseDependencyPins(advice: ConnectorUpgradeAdvice[], projectPath
     return pinned[0].pin.document.save();
 }
 
+/** The advised connectors {@code Dependencies.toml} locks below their required version. */
+async function findOutdatedLocks(
+    advice: ConnectorUpgradeAdvice[], dependenciesToml: string
+): Promise<ConnectorUpgradeAdvice[]> {
+    const locked = await Promise.all(advice.map((item) =>
+        findLockedVersion(dependenciesToml, item.orgName, item.packageName)));
+    return advice.filter((item, i) =>
+        locked[i] !== undefined && compareVersions(locked[i], item.minSupportedVersion) < 0);
+}
+
 /**
  * Runs {@code bal clean} then a {@code bal build} that updates the lock file in place to the pulled versions.
  * The build counts as successful when the lock file resolves every advised connector to at least its
@@ -283,6 +299,20 @@ async function rebuild(
         findLockedVersion(dependenciesToml, item.orgName, item.packageName)));
     return locked.every((version, i) =>
         version !== undefined && compareVersions(version, advice[i].minSupportedVersion) >= 0);
+}
+
+/**
+ * Reloads the project in the language server now rather than when the file watcher event arrives, so a view that
+ * re-fetches its model right after the upgrade doesn't see the old locked versions.
+ */
+async function notifyDependenciesTomlChanged(dependenciesToml: string): Promise<void> {
+    try {
+        await StateMachine.langClient().sendNotification(DID_CHANGE_WATCHED_FILES, {
+            changes: [{ uri: Uri.file(dependenciesToml).toString(), type: FILE_CHANGE_TYPE_CHANGED }]
+        });
+    } catch (error) {
+        console.error('>>> Failed to notify the language server of the Dependencies.toml change', error);
+    }
 }
 
 /**
