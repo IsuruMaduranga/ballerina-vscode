@@ -98,6 +98,23 @@ public class PullModuleExecutorPackagesTest {
         Mockito.verify(logger).logTrace(Mockito.contains("ballerinax/rabbitmq:3.2.0': connection reset"));
     }
 
+    @Test(description = "A plain pull fails on every missing module")
+    public void testPlainPullFailsOnEveryMissingModule() {
+        List<String> missing = List.of("ballerinax/kafka", "myorg/typo");
+
+        Assert.assertEquals(PullModuleExecutor.failedModules(missing, List.of()), missing);
+    }
+
+    @Test(description = "An exact-version pull fails only on the missing modules of the requested packages")
+    public void testExactPullIgnoresUnrelatedMissingModules() {
+        List<String> missing = List.of("ballerinax/kafka", "ballerinax/kafka.admin:4.5.0", "myorg/typo",
+                "ballerinax/kafkaesque");
+
+        Assert.assertEquals(PullModuleExecutor.failedModules(missing, List.of(KAFKA)),
+                List.of("ballerinax/kafka", "ballerinax/kafka.admin:4.5.0"));
+        Assert.assertEquals(PullModuleExecutor.failedModules(List.of("myorg/typo"), List.of(KAFKA, MCP)), List.of());
+    }
+
     private static CommandArgument argument(JsonElement value) {
         JsonObject arg = new JsonObject();
         arg.addProperty("key", CommandConstants.ARG_KEY_PACKAGES);

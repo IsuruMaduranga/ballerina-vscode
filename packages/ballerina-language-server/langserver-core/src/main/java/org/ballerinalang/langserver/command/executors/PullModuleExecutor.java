@@ -205,7 +205,9 @@ public class PullModuleExecutor implements LSCommandExecutor {
         if (runningPull != null) {
             clientLogger.logTrace("Skipped resolving modules since a pull is already in progress for project: "
                     + projectKey);
-            return runningPull.thenRunAsync(() -> pullRequestedPackages(packages, clientLogger));
+            return packages.isEmpty() ? runningPull
+                    : runningPull.thenCompose(ignored -> resolveModules(fileUri, languageClient, workspaceManager,
+                            languageServerContext, sticky, packages));
         }
         return CompletableFuture
                 .runAsync(() -> {
@@ -314,8 +316,15 @@ public class PullModuleExecutor implements LSCommandExecutor {
                             );
                     if (missingModules.isEmpty()) {
                         throw new UserErrorException("Failed to pull modules!");
-                    } else if (!missingModules.get().isEmpty()) {
-                        String moduleNames = String.join(", ", missingModules.get());
+                    }
+                    List<String> failedModules = failedModules(missingModules.get(), packages);
+                    if (failedModules.size() < missingModules.get().size()) {
+                        clientLogger.logTrace("Ignored missing modules unrelated to the requested packages: "
+                                + missingModules.get().stream().filter(module -> !failedModules.contains(module))
+                                .collect(Collectors.joining(", ")));
+                    }
+                    if (!failedModules.isEmpty()) {
+                        String moduleNames = String.join(", ", failedModules);
                         throw new UserErrorException(String.format("Failed to pull modules: %s", moduleNames));
                     }
                 })
@@ -639,6 +648,24 @@ public class PullModuleExecutor implements LSCommandExecutor {
     }
 
     /**
+     * The missing modules that fail the pull. A plain pull fails on any missing module, while an exact-version
+     * pull fails only on the modules of the requested packages, so an unrelated unresolved import in the project
+     * doesn't fail the upgrade.
+     *
+     * @param missingModules the {@code org/module} names still missing after the pull
+     * @param packages       the exact package versions requested
+     * @return the missing modules that fail the pull
+     */
+    static List<String> failedModules(List<String> missingModules, List<PackageCoordinate> packages) {
+        if (packages.isEmpty()) {
+            return missingModules;
+        }
+        return missingModules.stream()
+                .filter(module -> packages.stream().anyMatch(pkg -> pkg.owns(module)))
+                .toList();
+    }
+
+    /**
      * An exact package version requested through {@link CommandConstants#ARG_KEY_PACKAGES}.
      *
      * @param org     the organization name
@@ -649,6 +676,13 @@ public class PullModuleExecutor implements LSCommandExecutor {
 
         String signature() {
             return org + "/" + name + ":" + version;
+        }
+
+        /** Whether the {@code org/module[:version]} module name is this package's default module or a submodule. */
+        boolean owns(String moduleName) {
+            String module = moduleName.split(":", 2)[0];
+            String prefix = org + "/" + name;
+            return module.equals(prefix) || module.startsWith(prefix + ".");
         }
     }
 

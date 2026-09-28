@@ -80,10 +80,9 @@ interface VersionEntry {
     version: string;
 }
 
-interface DependencyPin {
-    document: TextDocument;
-    versionRange: Range;
-    version: string;
+interface OutdatedLock {
+    item: ConnectorUpgradeAdvice;
+    lockedVersion: string;
 }
 
 /**
@@ -124,7 +123,10 @@ export function getPendingReloadConnectors(projectPath: string): ConnectorRefere
  * {@code bal clean} and a {@code bal build} with the soft locking mode, since the default mode only allows patch
  * updates and the locked versions would otherwise keep winning over the pulled ones. The language server is then
  * told the lock file changed, so it resolves the new versions before the next request instead of waiting for the
- * file watcher. A connector the project doesn't depend on yet needs no rebuild: nothing locks it.</li>
+ * file watcher. A connector locked across a compatibility boundary (a major version, or a minor version below
+ * 1.0.0) from its required version has its lock entry dropped first, since no locking mode crosses one. A
+ * connector the project doesn't depend on yet needs no rebuild: nothing locks it. A failed rebuild restores
+ * {@code Ballerina.toml} and {@code Dependencies.toml}, so neither points at a version the build never took.</li>
  * </ol>
  *
  * With {@code promptReload}, the upgraded connectors are recorded as waiting for a reload and the user is
@@ -150,16 +152,22 @@ export async function upgradeConnectors(
             }
 
             progress.report({ message: UPDATING_MANIFEST_PROGRESS_MESSAGE });
-            if (!(await raiseDependencyPins(advice, projectPath))) {
+            const ballerinaToml = path.join(projectPath, BALLERINA_TOML);
+            const originalManifest = await readFileOrUndefined(ballerinaToml);
+            if (!(await raiseDependencyPins(advice, ballerinaToml))) {
                 reportFailure(MANIFEST_UPDATE_FAILED_MESSAGE, advice);
                 return false;
             }
 
             const dependenciesToml = path.join(projectPath, DEPENDENCIES_TOML);
+            const originalLocks = await readFileOrUndefined(dependenciesToml);
             const outdated = await findOutdatedLocks(advice, dependenciesToml);
             if (outdated.length > 0) {
                 progress.report({ message: REBUILDING_PROGRESS_MESSAGE });
-                if (!(await rebuild(outdated, dependenciesToml, projectPath))) {
+                if (!(await unlockIncompatibleVersions(outdated, dependenciesToml)) ||
+                    !(await rebuild(outdated.map(({ item }) => item), dependenciesToml, projectPath))) {
+                    await restoreFile(ballerinaToml, originalManifest);
+                    await restoreFile(dependenciesToml, originalLocks);
                     window.showErrorMessage(REBUILD_FAILED_MESSAGE);
                     return false;
                 }
@@ -230,14 +238,14 @@ async function pullExactVersions(advice: ConnectorUpgradeAdvice[], projectPath: 
         version: item.minSupportedVersion
     }));
     try {
-        await StateMachine.langClient().executeCommand({
+        const result = await StateMachine.langClient().executeCommand({
             command: PULL_MODULE_COMMAND,
             arguments: [
                 { key: ARG_KEY_DOC_URI, value: fileUri },
                 { key: ARG_KEY_PACKAGES, value: packages }
             ]
         });
-        return true;
+        return result !== false;
     } catch (error) {
         console.error('>>> Connector upgrade pull failed', error);
         return false;
@@ -248,36 +256,95 @@ async function pullExactVersions(advice: ConnectorUpgradeAdvice[], projectPath: 
  * Raises every explicit {@code Ballerina.toml} pin of an advised connector to its pulled version. A pin that
  * is already at or above that version is left alone, so an upgrade never downgrades a connector.
  */
-async function raiseDependencyPins(advice: ConnectorUpgradeAdvice[], projectPath: string): Promise<boolean> {
-    const tomlPath = path.join(projectPath, BALLERINA_TOML);
-    const pins = await Promise.all(advice.map(async (item) => ({
-        item,
-        pin: await findDependencyPin(tomlPath, item.orgName, item.packageName)
-    })));
-    const pinned = pins.filter((entry): entry is { item: ConnectorUpgradeAdvice; pin: DependencyPin } =>
-        entry.pin !== undefined && compareVersions(entry.pin.version, entry.item.minSupportedVersion) < 0);
+async function raiseDependencyPins(advice: ConnectorUpgradeAdvice[], ballerinaToml: string): Promise<boolean> {
+    const document: TextDocument | undefined = await workspace.openTextDocument(Uri.file(ballerinaToml))
+        .then((opened) => opened, () => undefined);
+    if (!document) {
+        return true;
+    }
+    const text = document.getText();
+    const pinned = advice
+        .map((item) => ({ item, pin: findVersionEntry(text, TomlTable.Dependency, item.orgName, item.packageName) }))
+        .filter((entry): entry is { item: ConnectorUpgradeAdvice; pin: VersionEntry } =>
+            entry.pin !== undefined && compareVersions(entry.pin.version, entry.item.minSupportedVersion) < 0);
     if (pinned.length === 0) {
         return true;
     }
     const edit = new WorkspaceEdit();
     for (const { item, pin } of pinned) {
-        edit.replace(pin.document.uri, pin.versionRange, item.minSupportedVersion);
+        edit.replace(document.uri, new Range(document.positionAt(pin.start),
+            document.positionAt(pin.start + pin.version.length)), item.minSupportedVersion);
     }
     if (!(await workspace.applyEdit(edit))) {
         console.error('>>> Failed to apply Ballerina.toml edits for connector upgrade');
         return false;
     }
-    return pinned[0].pin.document.save();
+    return document.save();
+}
+
+/**
+ * Drops the {@code Dependencies.toml} entry of every outdated connector locked across a compatibility boundary
+ * from its required version, since no locking mode moves a locked version across one. The rebuild then resolves
+ * that connector afresh, while every other entry stays locked.
+ */
+async function unlockIncompatibleVersions(outdated: OutdatedLock[], dependenciesToml: string): Promise<boolean> {
+    const incompatible = outdated.filter(({ item, lockedVersion }) =>
+        !isCompatibleVersion(lockedVersion, item.minSupportedVersion));
+    if (incompatible.length === 0) {
+        return true;
+    }
+    try {
+        const text = await fs.promises.readFile(dependenciesToml, 'utf8');
+        const unlocked = incompatible.reduce((current, { item }) =>
+            removeTableEntry(current, TomlTable.Package, item.orgName, item.packageName), text);
+        await fs.promises.writeFile(dependenciesToml, unlocked, 'utf8');
+        return true;
+    } catch (error) {
+        console.error('>>> Failed to unlock connectors in Dependencies.toml', error);
+        return false;
+    }
+}
+
+/**
+ * Whether {@code left} and {@code right} are within the same compatibility range: the same major version, or the
+ * same minor version below 1.0.0. Locking modes only move a locked version within its range.
+ */
+export function isCompatibleVersion(left: string, right: string): boolean {
+    const [a, b] = [left, right].map((version) =>
+        version.split(/[-+]/)[0].split('.').map((part) => parseInt(part, 10) || 0));
+    return a[0] === b[0] && (a[0] !== 0 || (a[1] ?? 0) === (b[1] ?? 0));
 }
 
 /** The advised connectors {@code Dependencies.toml} locks below their required version. */
 async function findOutdatedLocks(
     advice: ConnectorUpgradeAdvice[], dependenciesToml: string
-): Promise<ConnectorUpgradeAdvice[]> {
+): Promise<OutdatedLock[]> {
     const locked = await Promise.all(advice.map((item) =>
         findLockedVersion(dependenciesToml, item.orgName, item.packageName)));
-    return advice.filter((item, i) =>
-        locked[i] !== undefined && compareVersions(locked[i], item.minSupportedVersion) < 0);
+    return advice
+        .map((item, i) => ({ item, lockedVersion: locked[i] }))
+        .filter((lock): lock is OutdatedLock =>
+            lock.lockedVersion !== undefined && compareVersions(lock.lockedVersion, lock.item.minSupportedVersion) < 0);
+}
+
+async function readFileOrUndefined(filePath: string): Promise<string | undefined> {
+    try {
+        return await fs.promises.readFile(filePath, 'utf8');
+    } catch {
+        return undefined;
+    }
+}
+
+/** Writes {@code original} back to {@code filePath} if the upgrade changed it. */
+async function restoreFile(filePath: string, original: string | undefined): Promise<void> {
+    if (original === undefined || (await readFileOrUndefined(filePath)) === original) {
+        return;
+    }
+    try {
+        await fs.promises.writeFile(filePath, original, 'utf8');
+    } catch (error) {
+        console.error(`>>> Failed to restore ${path.basename(filePath)} after a failed connector upgrade`, error);
+    }
 }
 
 /**
@@ -364,31 +431,6 @@ function reportFailure(message: string, advice: ConnectorUpgradeAdvice[]): void 
 }
 
 /**
- * Locates the {@code version} field of the {@code [[dependency]]} table matching
- * {@code orgName}/{@code packageName} in {@code Ballerina.toml}, or {@code undefined} if there is no
- * such {@code Ballerina.toml} or no matching pinned entry.
- */
-async function findDependencyPin(
-    tomlPath: string, orgName: string, packageName: string
-): Promise<DependencyPin | undefined> {
-    let document: TextDocument;
-    try {
-        document = await workspace.openTextDocument(Uri.file(tomlPath));
-    } catch {
-        return undefined;
-    }
-    const entry = findVersionEntry(document.getText(), TomlTable.Dependency, orgName, packageName);
-    if (!entry) {
-        return undefined;
-    }
-    return {
-        document,
-        versionRange: new Range(document.positionAt(entry.start), document.positionAt(entry.start + entry.version.length)),
-        version: entry.version
-    };
-}
-
-/**
  * Reads the version {@code Dependencies.toml} locks {@code orgName}/{@code packageName} to, straight from disk
  * so an open editor buffer never masks what the build wrote, or {@code undefined} if it is not locked.
  */
@@ -410,23 +452,38 @@ async function findLockedVersion(
 export function findVersionEntry(
     text: string, table: TomlTable, orgName: string, packageName: string
 ): VersionEntry | undefined {
+    const match = findTableEntry(text, table, orgName, packageName);
+    const versionMatch = match?.[0].match(/^\s*version\s*=\s*"([^"]+)"/m);
+    if (!match || !versionMatch || versionMatch.index === undefined) {
+        return undefined;
+    }
+    return {
+        start: match.index + versionMatch.index + versionMatch[0].indexOf(versionMatch[1]),
+        version: versionMatch[1]
+    };
+}
+
+/**
+ * Removes the {@code [[<table>]]} entry matching {@code orgName}/{@code packageName} from {@code text}, along with
+ * the blank lines up to the next table.
+ */
+export function removeTableEntry(text: string, table: TomlTable, orgName: string, packageName: string): string {
+    const match = findTableEntry(text, table, orgName, packageName);
+    return match ? text.slice(0, match.index) + text.slice(match.index + match[0].length) : text;
+}
+
+/** The {@code [[<table>]]} entry matching {@code orgName}/{@code packageName}, up to the next table. */
+function findTableEntry(
+    text: string, table: TomlTable, orgName: string, packageName: string
+): RegExpExecArray | undefined {
     const tableRegex = new RegExp(`\\[\\[${table}\\]\\](?:(?!^[ \\t]*\\[)[\\s\\S])*`, 'gm');
     let match: RegExpExecArray | null;
     while ((match = tableRegex.exec(text)) !== null) {
-        const block = match[0];
-        const orgMatch = block.match(/^\s*org\s*=\s*"([^"]+)"/m);
-        const nameMatch = block.match(/^\s*name\s*=\s*"([^"]+)"/m);
-        if (orgMatch?.[1] !== orgName || nameMatch?.[1] !== packageName) {
-            continue;
+        const orgMatch = match[0].match(/^\s*org\s*=\s*"([^"]+)"/m);
+        const nameMatch = match[0].match(/^\s*name\s*=\s*"([^"]+)"/m);
+        if (orgMatch?.[1] === orgName && nameMatch?.[1] === packageName) {
+            return match;
         }
-        const versionMatch = block.match(/^\s*version\s*=\s*"([^"]+)"/m);
-        if (!versionMatch || versionMatch.index === undefined) {
-            return undefined;
-        }
-        return {
-            start: match.index + versionMatch.index + versionMatch[0].indexOf(versionMatch[1]),
-            version: versionMatch[1]
-        };
     }
     return undefined;
 }

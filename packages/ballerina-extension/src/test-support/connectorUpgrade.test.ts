@@ -22,7 +22,13 @@ jest.mock("../utils/logger", () => ({ buildOutputChannel: {} }));
 jest.mock("../utils/config", () => ({ quoteShellPath: (value: string) => value }));
 jest.mock("../BalExtensionContext", () => ({ extension: {} }));
 
-import { compareVersions, findVersionEntry, TomlTable } from "../features/project/connector-upgrade";
+import {
+    compareVersions,
+    findVersionEntry,
+    isCompatibleVersion,
+    removeTableEntry,
+    TomlTable
+} from "../features/project/connector-upgrade";
 
 describe("compareVersions", () => {
     it.each([
@@ -112,5 +118,63 @@ describe("findVersionEntry", () => {
 
         expect(findVersionEntry(text, TomlTable.Package, "ballerinax", "kafka")?.version).toBe("4.5.0");
         expect(findVersionEntry(text, TomlTable.Package, "ballerina", "io")?.version).toBe("1.6.0");
+    });
+});
+
+describe("isCompatibleVersion", () => {
+    it.each([
+        ["4.2.0", "4.6.6"],
+        ["1.0.0", "1.19.1"],
+        ["0.12.0", "0.12.3"],
+        ["5.0.1-beta", "5.0.1"],
+    ])("treats %s and %s as compatible", (left, right) => {
+        expect(isCompatibleVersion(left, right)).toBe(true);
+    });
+
+    it.each([
+        ["4.9.0", "5.0.1"],
+        ["0.11.2", "0.12.0"],
+        ["0.9.4", "1.0.0"],
+    ])("treats %s and %s as incompatible", (left, right) => {
+        expect(isCompatibleVersion(left, right)).toBe(false);
+    });
+});
+
+describe("removeTableEntry", () => {
+    const lockFile = [
+        "[ballerina]",
+        'dependencies-toml-version = "2"',
+        "",
+        "[[package]]",
+        'org = "ballerinax"',
+        'name = "aws.sqs"',
+        'version = "4.1.3"',
+        "dependencies = [",
+        '\t{org = "ballerina", name = "jballerina.java"}',
+        "]",
+        "modules = [",
+        '\t{org = "ballerinax", packageName = "aws.sqs", moduleName = "aws.sqs"}',
+        "]",
+        "",
+        "[[package]]",
+        'org = "wso2"',
+        'name = "sqsproj"',
+        'version = "0.1.0"',
+        "dependencies = [",
+        '\t{org = "ballerinax", name = "aws.sqs"}',
+        "]",
+        "",
+    ].join("\n");
+
+    it("drops only the matching entry", () => {
+        const updated = removeTableEntry(lockFile, TomlTable.Package, "ballerinax", "aws.sqs");
+
+        expect(findVersionEntry(updated, TomlTable.Package, "ballerinax", "aws.sqs")).toBeUndefined();
+        expect(findVersionEntry(updated, TomlTable.Package, "wso2", "sqsproj")?.version).toBe("0.1.0");
+        expect(updated).toBe(lockFile.replace(/\[\[package\]\]\norg = "ballerinax"[\s\S]*?\n\n/, ""));
+    });
+
+    it("leaves the text unchanged when nothing matches", () => {
+        expect(removeTableEntry(lockFile, TomlTable.Package, "ballerinax", "kafka")).toBe(lockFile);
     });
 });

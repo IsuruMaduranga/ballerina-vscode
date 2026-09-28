@@ -33,8 +33,10 @@ import io.ballerina.servicemodelgenerator.extension.model.ResolvedConnectorVersi
 import io.ballerina.servicemodelgenerator.extension.model.ResolvedConnectorVersion.VersionSource;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -48,6 +50,8 @@ import java.util.function.Supplier;
 public final class ConnectorVersionResolver {
 
     private static final Duration CENTRAL_LOOKUP_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration CENTRAL_LOOKUP_TIMEOUT_WITH_CACHED = Duration.ofSeconds(2);
+    private static final Map<String, String> CENTRAL_LATEST_VERSIONS = new ConcurrentHashMap<>();
 
     private ConnectorVersionResolver() {
     }
@@ -73,13 +77,28 @@ public final class ConnectorVersionResolver {
      * The version to model a connector the project does not depend on yet against: the latest version on
      * Ballerina Central, else the newest cached version, else {@code minSupportedVersion}. Central and
      * cache lookups run concurrently, and a candidate below {@code minSupportedVersion} is never selected.
+     * Central's answer is remembered for the session but never used offline, and Central gets less time to
+     * answer when the cache already has a supported version.
      */
     public static ResolvedConnectorVersion resolveForNewDependency(String orgName, String packageName,
                                                                    String minSupportedVersion) {
         return resolveForNewDependency(minSupportedVersion,
-                () -> PackageUtil.isOffline() ? null
-                        : RemoteCentral.getInstance().latestPackageVersion(orgName, packageName),
+                () -> PackageUtil.isOffline() ? null : memoizedCentralLatest(orgName + "/" + packageName,
+                        () -> RemoteCentral.getInstance().latestPackageVersion(orgName, packageName)),
                 () -> PackageUtil.cachedVersion(orgName, packageName));
+    }
+
+    /** The remembered Central latest version for {@code key}, else the one {@code lookup} finds, remembered. */
+    static String memoizedCentralLatest(String key, Supplier<String> lookup) {
+        String remembered = CENTRAL_LATEST_VERSIONS.get(key);
+        if (remembered != null) {
+            return remembered;
+        }
+        String latest = lookup.get();
+        if (latest != null && !latest.isBlank()) {
+            CENTRAL_LATEST_VERSIONS.put(key, latest);
+        }
+        return latest;
     }
 
     static ResolvedConnectorVersion resolveForNewDependency(String minSupportedVersion,
@@ -92,15 +111,32 @@ public final class ConnectorVersionResolver {
                                                             Supplier<String> centralLatest,
                                                             Supplier<String> cachedLatest,
                                                             Duration centralTimeout) {
-        CompletableFuture<Optional<String>> central = lookup(centralLatest)
-                .completeOnTimeout(Optional.empty(), centralTimeout.toMillis(), TimeUnit.MILLISECONDS);
-        CompletableFuture<Optional<String>> cached = lookup(cachedLatest)
-                .completeOnTimeout(Optional.empty(), centralTimeout.toMillis(), TimeUnit.MILLISECONDS);
-        Optional<String> centralVersion = central.join().filter(version -> isSupported(version, minSupportedVersion));
+        Duration centralTimeoutWithCached = centralTimeout.compareTo(CENTRAL_LOOKUP_TIMEOUT_WITH_CACHED) < 0
+                ? centralTimeout : CENTRAL_LOOKUP_TIMEOUT_WITH_CACHED;
+        return resolveForNewDependency(minSupportedVersion, centralLatest, cachedLatest, centralTimeout,
+                centralTimeoutWithCached);
+    }
+
+    static ResolvedConnectorVersion resolveForNewDependency(String minSupportedVersion,
+                                                            Supplier<String> centralLatest,
+                                                            Supplier<String> cachedLatest,
+                                                            Duration centralTimeout,
+                                                            Duration centralTimeoutWithCached) {
+        long start = System.nanoTime();
+        CompletableFuture<Optional<String>> central = lookup(centralLatest);
+        Optional<String> cachedVersion = lookup(cachedLatest)
+                .completeOnTimeout(Optional.empty(), centralTimeout.toMillis(), TimeUnit.MILLISECONDS)
+                .join()
+                .filter(version -> isSupported(version, minSupportedVersion));
+        Duration timeout = cachedVersion.isPresent() ? centralTimeoutWithCached : centralTimeout;
+        long remainingMillis = Math.max(0, timeout.minusNanos(System.nanoTime() - start).toMillis());
+        Optional<String> centralVersion = central
+                .completeOnTimeout(Optional.empty(), remainingMillis, TimeUnit.MILLISECONDS)
+                .join()
+                .filter(version -> isSupported(version, minSupportedVersion));
         if (centralVersion.isPresent()) {
             return new ResolvedConnectorVersion(centralVersion.get(), VersionSource.CENTRAL_LATEST);
         }
-        Optional<String> cachedVersion = cached.join().filter(version -> isSupported(version, minSupportedVersion));
         return cachedVersion
                 .map(version -> new ResolvedConnectorVersion(version, VersionSource.LOCAL_CACHE_LATEST))
                 .orElseGet(() -> new ResolvedConnectorVersion(minSupportedVersion, VersionSource.MIN_SUPPORTED));

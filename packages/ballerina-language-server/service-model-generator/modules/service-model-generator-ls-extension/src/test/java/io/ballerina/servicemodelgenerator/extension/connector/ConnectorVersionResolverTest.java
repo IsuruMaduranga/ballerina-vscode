@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 /**
@@ -140,6 +141,58 @@ public class ConnectorVersionResolverTest {
                 "0.1.0", VersionSource.CENTRAL_LATEST);
         assertResolved(ConnectorVersionResolver.resolveForNewDependency("", () -> null, () -> "0.2.0"),
                 "0.2.0", VersionSource.LOCAL_CACHE_LATEST);
+    }
+
+    @Test
+    public void testSupportedCachedVersionShortensCentralWait() {
+        CountDownLatch centralBlocked = new CountDownLatch(1);
+        try {
+            long start = System.nanoTime();
+            ResolvedConnectorVersion resolved = ConnectorVersionResolver.resolveForNewDependency("1.2.0",
+                    () -> awaitThenReturn(centralBlocked, "9.9.9"), () -> "1.3.0", Duration.ofSeconds(30),
+                    CENTRAL_TEST_TIMEOUT);
+            Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
+            assertResolved(resolved, "1.3.0", VersionSource.LOCAL_CACHE_LATEST);
+            Assert.assertTrue(elapsed.compareTo(CENTRAL_TEST_TIMEOUT.multipliedBy(TIMEOUT_TOLERANCE_FACTOR)) < 0,
+                    "a supported cached version must cut the Central wait short, took " + elapsed);
+        } finally {
+            centralBlocked.countDown();
+        }
+    }
+
+    @Test
+    public void testCentralLatestIsRememberedForTheSession() {
+        AtomicInteger lookups = new AtomicInteger();
+        String key = "test-org/remembered-" + System.nanoTime();
+        Supplier<String> lookup = () -> {
+            lookups.incrementAndGet();
+            return "2.0.0";
+        };
+        Assert.assertEquals(ConnectorVersionResolver.memoizedCentralLatest(key, lookup), "2.0.0");
+        Assert.assertEquals(ConnectorVersionResolver.memoizedCentralLatest(key, lookup), "2.0.0");
+        Assert.assertEquals(lookups.get(), 1, "a remembered Central version must not be looked up again");
+    }
+
+    @Test
+    public void testFailedCentralLookupIsNotRemembered() {
+        AtomicInteger lookups = new AtomicInteger();
+        String key = "test-org/unreachable-" + System.nanoTime();
+        Supplier<String> lookup = () -> {
+            lookups.incrementAndGet();
+            return null;
+        };
+        Assert.assertNull(ConnectorVersionResolver.memoizedCentralLatest(key, lookup));
+        Assert.assertNull(ConnectorVersionResolver.memoizedCentralLatest(key, lookup));
+        Assert.assertEquals(lookups.get(), 2, "an unanswered Central lookup must be retried on the next open");
+    }
+
+    private static String awaitThenReturn(CountDownLatch latch, String version) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return version;
     }
 
     private void assertFallbackOnCentralTimeout(Supplier<String> cachedLatest, String version, VersionSource source) {
