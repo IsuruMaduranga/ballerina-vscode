@@ -271,7 +271,10 @@ export function GraphqlServiceEditor(props: GraphqlServiceEditorProps) {
             // `model.codedata.lineRange`, and a stale one would delete the wrong text.
             setServiceModel(res.service);
             if (!res?.service) {
-                setServiceResolutionError(res?.resolutionError);
+                setServiceResolutionError(res?.resolutionError ?? {
+                    code: "SERVICE_NOT_FOUND",
+                    message: "Unable to load the service model.",
+                });
             }
         } catch (error) {
             // The request itself failed, which says nothing about whether the service is still

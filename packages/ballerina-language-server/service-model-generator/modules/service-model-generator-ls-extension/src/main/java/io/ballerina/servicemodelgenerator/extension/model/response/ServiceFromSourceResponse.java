@@ -39,7 +39,7 @@ public record ServiceFromSourceResponse(Service service, String errorMsg, String
     }
 
     public ServiceFromSourceResponse(Throwable e) {
-        this(null, e.toString(), Arrays.toString(e.getStackTrace()),
+        this(null, e.toString(), Arrays.toString(ModelResolutionException.originStackTrace(e)),
                 e instanceof ModelResolutionException ex
                         ? ex.error() : null);
     }

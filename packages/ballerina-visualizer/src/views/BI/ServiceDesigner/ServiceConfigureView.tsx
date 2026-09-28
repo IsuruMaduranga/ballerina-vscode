@@ -589,6 +589,7 @@ export function ServiceConfigureView(props: ServiceConfigureProps) {
             console.error("No artifact returned after attaching listener");
             return;
         }
+        setPosition(updatedArtifact.position);
         setCurrentIdentifier(updatedArtifact.name);
         await fetchService(updatedArtifact.position);
         closeModal(POPUP_IDS.ATTACH_LISTENER);

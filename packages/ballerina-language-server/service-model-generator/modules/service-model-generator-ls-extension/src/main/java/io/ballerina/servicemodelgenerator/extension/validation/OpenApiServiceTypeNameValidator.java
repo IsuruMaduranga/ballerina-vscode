@@ -91,7 +91,7 @@ public final class OpenApiServiceTypeNameValidator {
                     ? Optional.of("Service type name '%s' conflicts with a type generated from the OpenAPI "
                     .formatted(name) + "specification")
                     : Optional.empty();
-        } catch (IOException ignored) {
+        } catch (IOException | RuntimeException ignored) {
             // The OpenAPI generator reports malformed or unreadable specifications through its existing
             // generation error path. This validator must not hide that more specific diagnostic.
             return Optional.empty();

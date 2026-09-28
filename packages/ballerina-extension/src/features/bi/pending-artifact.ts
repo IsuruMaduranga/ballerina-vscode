@@ -307,6 +307,9 @@ async function generatePendingArtifact(
             if (hasBlockingValidationErrors(result.validationErrors)) {
                 throw new Error(result.validationErrors.map((validationError) => validationError.message).join(" "));
             }
+            if (result.error) {
+                throw new Error(result.error);
+            }
             return;
         }
         case "AUTOMATION":

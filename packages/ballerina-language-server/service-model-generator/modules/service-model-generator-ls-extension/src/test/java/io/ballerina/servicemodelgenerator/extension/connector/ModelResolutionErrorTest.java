@@ -27,6 +27,7 @@ import io.ballerina.servicemodelgenerator.extension.model.response.ServiceInitMo
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import java.util.Arrays;
 import java.util.Optional;
 
 /**
@@ -106,6 +107,28 @@ public class ModelResolutionErrorTest {
 
         Assert.assertSame(exception.error(), error);
         Assert.assertEquals(exception.getMessage(), error.message());
+    }
+
+    @Test
+    public void testExplainedFailureReportsTheStackTraceOfItsCause() {
+        IllegalStateException cause = new IllegalStateException("builder bug");
+        ModelResolutionException explained = new ModelResolutionException(serviceNotFound(), cause);
+
+        Assert.assertSame(explained.getCause(), cause);
+        Assert.assertEquals(ModelResolutionException.originStackTrace(explained), cause.getStackTrace());
+        Assert.assertEquals(new ServiceInitModelResponse(explained).getStackTrace(),
+                Arrays.toString(cause.getStackTrace()));
+        Assert.assertEquals(new ServiceFromSourceResponse(explained).stacktrace(),
+                Arrays.toString(cause.getStackTrace()));
+    }
+
+    @Test
+    public void testFailureWithoutACauseReportsItsOwnStackTrace() {
+        ModelResolutionException unexplained = new ModelResolutionException(serviceNotFound());
+        IllegalStateException plain = new IllegalStateException("boom", new RuntimeException("inner"));
+
+        Assert.assertEquals(ModelResolutionException.originStackTrace(unexplained), unexplained.getStackTrace());
+        Assert.assertEquals(ModelResolutionException.originStackTrace(plain), plain.getStackTrace());
     }
 
     @Test

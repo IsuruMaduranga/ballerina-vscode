@@ -611,7 +611,7 @@ public final class Utils {
     private static PropertyType annotationPropertyType(SemanticModel semanticModel, AnnotationNode annotationNode,
                                                        String prefix) {
         PropertyType fallback = PropertyType.types(Value.FieldType.EXPRESSION);
-        if (semanticModel == null) {
+        if (semanticModel == null || prefix.isEmpty()) {
             return fallback;
         }
         Optional<Symbol> symbol;
@@ -639,7 +639,7 @@ public final class Utils {
         String packageInfo = moduleId.orgName() + COLON + moduleId.packageName() + COLON + moduleId.version();
         return new PropertyType.Builder()
                 .fieldType(Value.FieldType.RECORD_MAP_EXPRESSION)
-                .ballerinaType(prefix.isEmpty() ? typeName : prefix + COLON + typeName)
+                .ballerinaType(prefix + COLON + typeName)
                 .setMembers(List.of(new PropertyTypeMemberInfo(typeName, packageInfo, moduleId.packageName(),
                         "RECORD_TYPE", true)))
                 .build();

@@ -143,7 +143,7 @@ public class ServiceBuilderRouter {
             service = serviceBuilder.getModelFromSource(context);
         } catch (Throwable e) {
             sourceResolutionError(moduleID, schemaDriven).ifPresent(error -> {
-                throw new ModelResolutionException(error);
+                throw new ModelResolutionException(error, e);
             });
             if (e instanceof RuntimeException runtimeException) {
                 throw runtimeException;
@@ -168,8 +168,23 @@ public class ServiceBuilderRouter {
      * metadata by design, so a missing file explains nothing there and its real failure is kept instead.
      */
     private static Optional<ModelResolutionError> sourceResolutionError(ModuleID moduleID, boolean schemaDriven) {
+        return resolutionError(moduleID.orgName(), moduleID.packageName(), moduleID.moduleName(),
+                moduleID.version(), false, schemaDriven);
+    }
+
+    /** Explains why the init model of the requested connector could not be built, as for a service from source. */
+    public static Optional<ModelResolutionError> initResolutionError(ServiceModelRequest request) {
+        boolean schemaDriven = useSchemaDrivenPath(request.orgName(), request.moduleName(), request.version(),
+                request.isLocalRepository());
+        return resolutionError(request.orgName(), request.pkgName(), request.moduleName(), request.version(),
+                request.isLocalRepository(), schemaDriven);
+    }
+
+    private static Optional<ModelResolutionError> resolutionError(String orgName, String packageName,
+                                                                  String moduleName, String version,
+                                                                  boolean isLocalRepository, boolean schemaDriven) {
         return TriggerModelReader.getInstance().getSchemaDrivenResolutionError(
-                        moduleID.orgName(), moduleID.packageName(), moduleID.moduleName(), moduleID.version(), false)
+                        orgName, packageName, moduleName, version, isLocalRepository)
                 .filter(error -> schemaDriven
                         || !ModelResolutionError.TRIGGER_METADATA_NOT_FOUND.equals(error.code()));
     }

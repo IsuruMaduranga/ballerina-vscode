@@ -43,7 +43,6 @@ export function ServiceEditView(props: ServiceEditViewProps) {
 
     const loadServiceModel = async () => {
         setIsLoading(true);
-        setServiceModel(undefined);
         setResolutionError(undefined);
         const lineRange: LineRange = { startLine: { line: position.startLine, offset: position.startColumn }, endLine: { line: position.endLine, offset: position.endColumn } };
         try {
@@ -52,6 +51,7 @@ export function ServiceEditView(props: ServiceEditViewProps) {
                 if (res?.service) {
                     setServiceModel(res.service);
                 } else {
+                    setServiceModel(undefined);
                     setResolutionError(res?.resolutionError);
                 }
                 setIsLoading(false);

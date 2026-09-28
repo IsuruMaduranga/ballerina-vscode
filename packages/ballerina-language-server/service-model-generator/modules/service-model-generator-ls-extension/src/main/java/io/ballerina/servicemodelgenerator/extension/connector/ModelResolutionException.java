@@ -30,6 +30,18 @@ public class ModelResolutionException extends RuntimeException {
         this.error = error;
     }
 
+    /** Explains {@code cause}, which is kept so its stack trace still reaches the client. */
+    public ModelResolutionException(ModelResolutionError error, Throwable cause) {
+        super(error.message(), cause);
+        this.error = error;
+    }
+
+    /** The frames of the failure behind {@code e}: its cause's when {@code e} only explains that failure. */
+    public static StackTraceElement[] originStackTrace(Throwable e) {
+        return e instanceof ModelResolutionException && e.getCause() != null
+                ? e.getCause().getStackTrace() : e.getStackTrace();
+    }
+
     public ModelResolutionError error() {
         return error;
     }

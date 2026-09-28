@@ -86,6 +86,11 @@ public class OpenApiServiceTypeNameValidatorTest {
     }
 
     @Test
+    public void testLeavesAnInvalidSpecificationPathToTheGenerator() {
+        Assert.assertTrue(OpenApiServiceTypeNameValidator.validate(model("Weather", "bad\u0000path.yaml")).isEmpty());
+    }
+
+    @Test
     public void testIgnoresUnsetServiceTypeName() {
         Assert.assertTrue(OpenApiServiceTypeNameValidator.validate(model(null)).isEmpty());
     }

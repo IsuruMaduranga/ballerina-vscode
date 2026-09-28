@@ -1257,11 +1257,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
                     }
                 }
                 if (serviceInitModel == null) {
-                    Optional<ModelResolutionError> error =
-                            TriggerModelReader.getInstance().getSchemaDrivenResolutionError(
-                                    request.orgName(), request.pkgName(),
-                                    request.moduleName(), request.version(),
-                                    request.isLocalRepository());
+                    Optional<ModelResolutionError> error = ServiceBuilderRouter.initResolutionError(request);
                     if (error.isPresent()) {
                         throw new ModelResolutionException(error.get());
                     }
@@ -1273,12 +1269,9 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
                 return new ServiceInitModelResponse(serviceInitModel);
             } catch (Throwable e) {
                 if (!(e instanceof ModelResolutionException)) {
-                    Optional<ModelResolutionError> resolutionError =
-                            TriggerModelReader.getInstance().getSchemaDrivenResolutionError(
-                                    request.orgName(), request.pkgName(), request.moduleName(), request.version(),
-                                    request.isLocalRepository());
+                    Optional<ModelResolutionError> resolutionError = ServiceBuilderRouter.initResolutionError(request);
                     if (resolutionError.isPresent()) {
-                        return new ServiceInitModelResponse(new ModelResolutionException(resolutionError.get()));
+                        return new ServiceInitModelResponse(new ModelResolutionException(resolutionError.get(), e));
                     }
                 }
                 return new ServiceInitModelResponse(e);
