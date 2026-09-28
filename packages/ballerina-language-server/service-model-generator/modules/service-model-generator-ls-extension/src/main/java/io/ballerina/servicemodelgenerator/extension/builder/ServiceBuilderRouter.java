@@ -164,12 +164,15 @@ public class ServiceBuilderRouter {
     }
 
     /**
-     * Explains why a service could not be read from source. A connector on the legacy builder ships no trigger
-     * metadata by design, so a missing file explains nothing there and its real failure is kept instead.
+     * Explains why a service could not be read from source. A connector on the legacy builder is resolved by the
+     * compiler rather than from the Central cache, so no cache lookup can explain its failure and it is kept as is.
      */
     private static Optional<ModelResolutionError> sourceResolutionError(ModuleID moduleID, boolean schemaDriven) {
+        if (!schemaDriven) {
+            return Optional.empty();
+        }
         return resolutionError(moduleID.orgName(), moduleID.packageName(), moduleID.moduleName(),
-                moduleID.version(), false, schemaDriven);
+                moduleID.version(), false, true);
     }
 
     /** Explains why the init model of the requested connector could not be built, as for a service from source. */

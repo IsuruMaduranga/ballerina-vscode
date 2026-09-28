@@ -656,7 +656,7 @@ public class ServiceModelGeneratorService implements ExtendedLanguageServerServi
                         workspaceManager, request.filePath());
                 FunctionBadge.stamp(service);
                 return new ServiceFromSourceResponse(service);
-            } catch (Throwable e) {
+            } catch (ModelResolutionException e) {
                 return new ServiceFromSourceResponse(e);
             }
         });
