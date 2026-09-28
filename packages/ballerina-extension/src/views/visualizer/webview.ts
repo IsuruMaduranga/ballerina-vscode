@@ -334,15 +334,18 @@ export class VisualizerWebview {
                         <h1 class="welcome-title">${escapeHtml(productTitle)} cannot start</h1>
                         <p class="welcome-subtitle">
                             Your Ballerina ${escapeHtml(incompatibility.ballerinaVersion)} is
-                            incompatible with the current extension.
+                            incompatible with the current ${biExtension ? "extensions" : "extension"}.
                             <br><br>
                             Update Ballerina to
                             ${escapeHtml(incompatibility.requiredBallerinaVersion)} or later, or keep
-                            your current Ballerina version and use an earlier version of the extension.
+                            your current Ballerina version and
+                            ${biExtension
+                                ? "switch extensions to their previous versions"
+                                : "switch the extension to its previous version"}.
                         </p>
                         <div class="action-row">
                             <button class="action-button" id="update-ballerina">Update Ballerina</button>
-                            <button class="action-button secondary" id="use-earlier-version">Use an Earlier Version</button>
+                            <button class="action-button secondary" id="use-earlier-version">Use Previous Extension ${biExtension ? "Versions" : "Version"}</button>
                         </div>
                     </div>
                 </div>
