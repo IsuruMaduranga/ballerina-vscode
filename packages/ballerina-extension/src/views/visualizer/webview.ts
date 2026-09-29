@@ -365,22 +365,24 @@ export class VisualizerWebview {
             : dependencyUpdate
             ? `<div class="container" id="dependency-update-container">
                 <div class="loader-wrapper">
-                    <div class="welcome-content">
+                    <div class="welcome-content${dependencyUpdate.status ? " no-fade" : ""}">
                         <h1 class="welcome-title">${escapeHtml(dependencyUpdate.title)}</h1>
                         <p class="welcome-subtitle">${dependencyUpdate.paragraphs.map(escapeHtml).join("<br><br>")}</p>
                         ${dependencyUpdate.status?.kind === "updating"
-                            ? `<div class="logo-container"><div class="loader"></div></div>
-                            <p class="welcome-subtitle">${escapeHtml(dependencyUpdate.status.message)}</p>`
+                            ? `<div class="status-progress" role="status">
+                                <span class="status-spinner" aria-hidden="true"></span>
+                                <span>${escapeHtml(dependencyUpdate.status.message)}</span>
+                            </div>`
                             : `${dependencyUpdate.status?.kind === "failed"
-                                ? `<p class="status-error">${escapeHtml(dependencyUpdate.status.message)}
-                                    <a href="#" id="troubleshooting-docs">See the troubleshooting guide.</a></p>`
+                                ? `<p class="status-error">${escapeHtml(dependencyUpdate.status.message)}</p>
+                                <p class="status-links">
+                                    <a href="#" id="show-output">Show output</a> ·
+                                    <a href="#" id="troubleshooting-docs">See the troubleshooting guide</a>
+                                </p>`
                                 : ""}
                             <div class="action-row">
                                 <button class="action-button" id="update-dependencies">Update Dependencies</button>
                                 <button class="action-button secondary" id="use-earlier-version">${escapeHtml(dependencyUpdate.earlierVersionLabel)}</button>
-                                ${dependencyUpdate.status?.kind === "failed"
-                                    ? `<button class="action-button secondary" id="show-output">Show Output</button>`
-                                    : ""}
                             </div>`}
                     </div>
                 </div>
@@ -388,7 +390,7 @@ export class VisualizerWebview {
             <script>
                 const vscodeApi = acquireVsCodeApi();
                 const post = (id, command) => document.getElementById(id)?.addEventListener('click', (event) => {
-                    event.preventDefault(); // the docs link is an anchor
+                    event.preventDefault(); // the failure links are anchors
                     event.currentTarget.disabled = command === 'dependencyUpdate.update'; // re-rendered with progress
                     vscodeApi.postMessage({ command });
                 });
@@ -492,10 +494,44 @@ export class VisualizerWebview {
             }
             .status-error {
                 color: var(--vscode-errorForeground);
-                margin-top: 16px;
+                font-size: 13px;
+                margin: 20px 0 0;
             }
-            .status-error a {
+            .status-links {
+                font-size: 13px;
+                margin: 6px 0 0;
+            }
+            .status-links a {
                 color: var(--vscode-textLink-foreground);
+            }
+            /* Takes the action row's place, so it keeps the row's spacing and height. */
+            .status-progress {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                margin-top: 20px;
+                min-height: 26px;
+                color: var(--vscode-descriptionForeground);
+                font-size: 13px;
+            }
+            .status-spinner {
+                box-sizing: border-box;
+                width: 14px;
+                height: 14px;
+                border: 2px solid var(--vscode-progressBar-background);
+                border-right-color: transparent;
+                border-radius: 50%;
+                animation: status-spin 0.8s linear infinite;
+            }
+            @keyframes status-spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+            /* Status changes re-render the page; replaying the fade-in on each would flicker. */
+            .welcome-content.no-fade {
+                animation: none;
             }
             .welcome-title {
                 color: var(--vscode-foreground);
