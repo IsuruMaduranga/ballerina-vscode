@@ -33,8 +33,11 @@ import { McpOpenApiImportWizard } from "./McpOpenApiImportWizard";
 import { HeaderWrapper, NestedFormWrapper, StatusCard, StatusText } from "./ServiceCreationLayout";
 import {
     applyFormValuesToModel,
+    disambiguateFormKeys,
     collectRecordTypeFields,
     mapPropertiesToFormFields,
+    restoreFormKeys,
+    toFormValidationErrors,
     updateChoiceInModel,
 } from "./serviceInitModelUtils";
 
@@ -83,7 +86,13 @@ enum PullingStatus {
     SUCCESS = "success",
     ERROR = "error",
     UNSUPPORTED_VERSION = "unsupported_version",
+    NO_SUPPORTED_VERSION = "no_supported_version",
     UPDATING = "updating",
+}
+
+enum ModelResolutionIssueCode {
+    UNSUPPORTED_CONNECTOR_VERSION = "UNSUPPORTED_CONNECTOR_VERSION",
+    NO_SUPPORTED_VERSION_AVAILABLE = "NO_SUPPORTED_VERSION_AVAILABLE",
 }
 
 /** The design approach choice's properties for whichever option is currently selected (e.g. manual vs. import-from-spec). */
@@ -105,6 +114,7 @@ function PackagePullingStatus({ status, isLocalRepository, packageName, upgradeI
         case PullingStatus.FETCHING:
             return <RelativeLoader message="Loading package..." />;
         case PullingStatus.PULLING:
+        case PullingStatus.UPDATING:
             return (
                 <StatusCard>
                     {isLocalRepository ? (
@@ -146,18 +156,19 @@ function PackagePullingStatus({ status, isLocalRepository, packageName, upgradeI
                 <StatusCard>
                     <Icon name="bi-error" sx={{ color: ThemeColors.ERROR, fontSize: "18px" }} />
                     <StatusText variant="body2">
-                        A newer version is required to use this feature..
+                        A newer version of the {packageName} package is required to use this feature.
                     </StatusText>
                     <Button appearance="primary" onClick={onUpdateNow}>Update Now</Button>
                 </StatusCard>
             ) : null;
-        case PullingStatus.UPDATING:
+        case PullingStatus.NO_SUPPORTED_VERSION:
             return (
                 <StatusCard>
-                    <Icon name="bi-spinner" sx={{ color: ThemeColors.ON_SURFACE, fontSize: "18px" }} />
+                    <Icon name="bi-error" sx={{ color: ThemeColors.ERROR, fontSize: "18px" }} />
                     <StatusText variant="body2">
-                        {`Updating ${packageName}...`}
+                        {`No supported version of the ${packageName} package is available yet.`}
                     </StatusText>
+                    <Button appearance="secondary" onClick={onRetry}>Retry</Button>
                 </StatusCard>
             );
         default:
@@ -237,8 +248,9 @@ export function ServiceCreationView(props: ServiceCreationViewProps) {
                     title: res.serviceInitModel.displayName,
                     moduleName: res.serviceInitModel.moduleName
                 });
-                setServiceInitModel(res.serviceInitModel);
-                setFormFields(mapPropertiesToFormFields(res.serviceInitModel.properties));
+                const formModel = disambiguateFormKeys(res.serviceInitModel);
+                setServiceInitModel(formModel);
+                setFormFields(mapPropertiesToFormFields(formModel.properties));
                 setPullingStatus(undefined);
             } else if (didTimeout && res?.serviceInitModel) {
                 // If timer expired, show pulling status then load form
@@ -247,12 +259,16 @@ export function ServiceCreationView(props: ServiceCreationViewProps) {
                     title: res.serviceInitModel.displayName,
                     moduleName: res.serviceInitModel.moduleName
                 });
-                setServiceInitModel(res.serviceInitModel);
-                setFormFields(mapPropertiesToFormFields(res.serviceInitModel.properties));
+                const formModel = disambiguateFormKeys(res.serviceInitModel);
+                setServiceInitModel(formModel);
+                setFormFields(mapPropertiesToFormFields(formModel.properties));
                 setPullingStatus(undefined);
-            } else if (res?.issue?.code === "UNSUPPORTED_CONNECTOR_VERSION") {
+            } else if (res?.issue?.code === ModelResolutionIssueCode.UNSUPPORTED_CONNECTOR_VERSION) {
                 setUpgradeIssue(res.issue);
                 setPullingStatus(PullingStatus.UNSUPPORTED_VERSION);
+                return;
+            } else if (res?.issue?.code === ModelResolutionIssueCode.NO_SUPPORTED_VERSION_AVAILABLE) {
+                setPullingStatus(PullingStatus.NO_SUPPORTED_VERSION);
                 return;
             } else {
                 // The call resolved but came back with no model to show — treat it the same as a
@@ -365,7 +381,7 @@ export function ServiceCreationView(props: ServiceCreationViewProps) {
         setIsSaving(true);
         const res = await rpcClient
             .getServiceDesignerRpcClient()
-            .createServiceAndListener({ filePath: "", serviceInitModel: serviceModel });
+            .createServiceAndListener({ filePath: "", serviceInitModel: restoreFormKeys(serviceModel) });
 
         if (!isMountedRef.current) {
             return;
@@ -375,7 +391,7 @@ export function ServiceCreationView(props: ServiceCreationViewProps) {
         // hand the failures to it rather than leaving the user on a stuck "Saving" button. Only an
         // ERROR blocks — a WARNING rides along with a successful save and must not trap the form.
         if (hasBlockingValidationErrors(res.validationErrors)) {
-            setServerValidationErrors(res.validationErrors);
+            setServerValidationErrors(toFormValidationErrors(serviceModel, res.validationErrors));
             setIsSaving(false);
             return;
         }

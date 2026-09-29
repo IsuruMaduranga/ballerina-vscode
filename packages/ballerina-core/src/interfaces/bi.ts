@@ -222,6 +222,7 @@ export type FormFieldInputType = "TEXT" |
     "VIEW" |
     "SERVICE_PATH" |
     "ACTION_PATH" |
+    "RESOURCE_PATH" |
     "NUMBER" |
     "REPEATABLE_LIST" |
     "CONDITIONAL_FIELDS" |
@@ -344,7 +345,7 @@ export type CodeData = {
     id?: string;
     kind?: string;
     originalName?: string;
-    dependentProperty?: string[];
+    dependentProperty?: string;
     data?: { [key: string]: CodeDataValue };
 };
 
