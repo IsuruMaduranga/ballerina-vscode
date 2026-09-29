@@ -520,6 +520,42 @@ describe("what a checkpoint restore is allowed to touch", () => {
         expect(applied).toEqual([]);
     });
 
+    it("restores when the recorded root is the same directory reached through a symlink", async () => {
+        // VS Code can report /tmp/ws one session and /private/tmp/ws the next; same directory.
+        const linkedRoot = path.join(path.dirname(root), `${path.basename(root)}-link`);
+        fs.symlinkSync(root, linkedRoot, "dir");
+        checkpoint.workspaceRoot = linkedRoot;
+
+        try {
+            await expect(restoreWorkspaceSnapshot(checkpoint, true)).resolves.toBe(true);
+            expect(fs.readFileSync(at("Config.toml"), "utf8")).toBe(ORIGINAL_CONFIG);
+        } finally {
+            fs.rmSync(linkedRoot, { force: true });
+        }
+    });
+
+    it("refuses a path it cannot resolve, rather than falling back to a string compare", async () => {
+        // Running as root defeats the permission bits, so the EACCES this asserts on never happens.
+        if (process.getuid?.() === 0) {
+            return;
+        }
+        const dir = at("unreadable-dir");
+        fs.mkdirSync(dir);
+        fs.writeFileSync(path.join(dir, "secret.txt"), "original\n");
+        fs.chmodSync(dir, 0o000);
+        // Listed, so the deletion pass leaves it alone and the write is what gets tested.
+        checkpoint.fileList.push("unreadable-dir", "unreadable-dir/secret.txt");
+        checkpoint.workspaceSnapshot["unreadable-dir/secret.txt"] = "should not be written\n";
+
+        try {
+            await expect(restoreWorkspaceSnapshot(checkpoint, true)).resolves.toBe(true);
+        } finally {
+            fs.chmodSync(dir, 0o755);
+        }
+
+        expect(fs.readFileSync(path.join(dir, "secret.txt"), "utf8")).toBe("original\n");
+    });
+
     it("still restores a checkpoint captured before the root was recorded", async () => {
         delete checkpoint.workspaceRoot;
 

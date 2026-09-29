@@ -44,15 +44,21 @@ function isLosslessUtf8(bytes: Buffer): boolean {
     return Buffer.from(bytes.toString('utf8'), 'utf8').equals(bytes);
 }
 
-function realPathOfNearestAncestor(target: string): string {
+// Returns null when the path cannot be resolved for any reason other than not existing yet.
+// Walking up past an EACCES or ELOOP would rejoin the rest of the path as a plain string, which is
+// exactly the lexical comparison the callers resolve symlinks to avoid — so that case fails closed.
+function realPathOfNearestAncestor(target: string): string | null {
     let current = target;
     for (;;) {
         try {
             return path.join(fs.realpathSync(current), path.relative(current, target));
-        } catch {
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+                return null;
+            }
             const parent = path.dirname(current);
             if (parent === current) {
-                return target;
+                return null;
             }
             current = parent;
         }
@@ -66,7 +72,11 @@ function realPathOfNearestAncestor(target: string): string {
 function resolveInsideWorkspace(workspaceRoot: vscode.Uri, filePath: string): vscode.Uri | null {
     const target = path.resolve(workspaceRoot.fsPath, filePath);
     const realRoot = realPathOfNearestAncestor(workspaceRoot.fsPath);
-    return isPathInside(realRoot, realPathOfNearestAncestor(target)) ? vscode.Uri.file(target) : null;
+    const realTarget = realPathOfNearestAncestor(target);
+    if (!realRoot || !realTarget) {
+        return null;
+    }
+    return isPathInside(realRoot, realTarget) ? vscode.Uri.file(target) : null;
 }
 
 function openDocumentText(fileUri: vscode.Uri): string | undefined {
@@ -188,7 +198,9 @@ export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtif
     // into a different workspace rewrites files that never belonged to it and deletes everything
     // the snapshot does not list. Checkpoints captured before the root was recorded carry none,
     // and are let through rather than making every existing one unrevertible.
-    if (checkpoint.workspaceRoot && !isSamePath(checkpoint.workspaceRoot, workspaceRoot.fsPath)) {
+    const capturedRoot = checkpoint.workspaceRoot && realPathOfNearestAncestor(checkpoint.workspaceRoot);
+    const currentRoot = realPathOfNearestAncestor(workspaceRoot.fsPath);
+    if (checkpoint.workspaceRoot && !isSamePath(capturedRoot, currentRoot)) {
         const reason = `This checkpoint was taken in a different workspace (${checkpoint.workspaceRoot}), so it cannot be restored here.`;
         console.error(`[Checkpoint] Refusing a cross-root restore: ${reason}`);
         vscode.window.showErrorMessage(`Cannot restore checkpoint: ${reason}`);
