@@ -382,7 +382,7 @@ This project was migrated with **\`--keep-structure\`** enabled. Each \`.bal\` f
 to one original source file. The source filename and its directory path are encoded into the \`.bal\`
 filename. For ${filenameEncodingHint}.
 **Do not assume the \`.bal\` filename exactly matches the source filename** — use \`migration_source_list\`
-and \`file_list\` together to establish the mapping.
+together with the \`.bal\` paths listed in \`<codebase_structure>\` to establish the mapping.
 
 The BI standard layout (\`functions.bal\`, \`main.bal\`, \`data_mappings.bal\`, etc.) does NOT apply here.
 **Do NOT reorganize, rename, or merge files into the BI layout.**` : `### Default BI File Structure
@@ -491,7 +491,7 @@ For each **non-test** source file, determine its coverage status in the Ballerin
 
 **Do NOT apply ✅/⚠️/❌ to test files** — just list their paths in the TESTS section.
 
-${keepStructure ? `**Note (--keep-structure):** Each \`.bal\` file maps 1:1 to a source file. Use \`file_list\` and \`migration_source_list\` together to establish which \`.bal\` corresponds to which source file by comparing encoded file paths in the names.` : ""}
+${keepStructure ? `**Note (--keep-structure):** Each \`.bal\` file maps 1:1 to a source file. Use \`migration_source_list\` together with the \`.bal\` paths listed in \`<codebase_structure>\` to establish which \`.bal\` corresponds to which source file by comparing encoded file paths in the names.` : ""}
 
 **Step 4: Output your inventory**
 
@@ -581,7 +581,7 @@ For each source file in your work plan:
    type definitions — everything meaningful.
 3. **Locate the Ballerina counterpart**:
    ${keepStructure
-       ? '- Use `migration_source_list` + `file_list` to find the matching `.bal` file (names are encoded, not exact).'
+       ? '- Use `migration_source_list` with the `.bal` paths listed in `<codebase_structure>` to find the matching `.bal` file (names are encoded, not exact).'
        : '- Map to the appropriate BI layout file using the source file type table.'}
 4. **Verify completeness**: Does the Ballerina code implement every construct from the source?
    Check for: missing flows, stub functions, incomplete DataWeave translations, missing type definitions,
