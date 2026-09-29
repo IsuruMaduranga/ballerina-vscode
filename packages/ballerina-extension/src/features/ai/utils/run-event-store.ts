@@ -80,6 +80,21 @@ const MAX_BUFFERED_BYTES = 8 * 1024 * 1024;
 /** Retain buffers for at most this many distinct runs; evict the oldest beyond it. */
 const MAX_RETAINED_RUNS = 20;
 
+/**
+ * Events whose fold is plain concatenation. Consecutive events with the same key merge into one
+ * buffered entry, replayed as a single event with the chunks joined; a thinking delta keys on its
+ * block, since tool calls or a new reasoning block can sit between two deltas.
+ */
+function chunkOf(event: ChatNotify): { key: string; content: string } | undefined {
+    if (event.type === "content_block") {
+        return { key: "content", content: event.content };
+    }
+    if (event.type === "thinking_delta") {
+        return { key: `thinking:${event.thinkingId}`, content: event.content };
+    }
+    return undefined;
+}
+
 export class RunEventStore {
     private runs = new Map<string, RunState>();
 
@@ -173,17 +188,9 @@ export class RunEventStore {
 
         const eventBytes = this.eventSize(event);
         const last = state.runBuffer[state.runBuffer.length - 1];
-        // Events whose fold is plain concatenation merge into one buffered entry, replayed as a single
-        // event with the chunks joined. A thinking delta also needs the same block id: tool calls or a
-        // new reasoning block can sit between two deltas.
-        const isChunkable = event.type === "content_block" || event.type === "thinking_delta";
-        const canMergeIntoLast = isChunkable
-            && last?.contentChunks !== undefined
-            && last.event.type === event.type
-            && (event.type !== "thinking_delta"
-                || (last.event as { thinkingId?: string }).thinkingId === event.thinkingId);
-        if (canMergeIntoLast) {
-            last.contentChunks!.push({ seq, content: event.content });
+        const chunk = chunkOf(event);
+        if (chunk && last?.contentChunks && chunkOf(last.event)?.key === chunk.key) {
+            last.contentChunks.push({ seq, content: chunk.content });
             last.lastSeq = seq;
             last.sizeBytes += eventBytes;
             state.bufferedBytes += eventBytes;
@@ -193,8 +200,8 @@ export class RunEventStore {
                 event: storedEvent,
                 firstSeq: seq,
                 lastSeq: seq,
-                contentChunks: isChunkable
-                    ? [{ seq, content: event.content }]
+                contentChunks: chunk
+                    ? [{ seq, content: chunk.content }]
                     : undefined,
                 sizeBytes: eventBytes,
             });

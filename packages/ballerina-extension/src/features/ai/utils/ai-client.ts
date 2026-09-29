@@ -24,7 +24,7 @@ import { AIStateMachine } from "../../../views/ai-panel/aiMachine";
 import { BACKEND_URL } from "../utils";
 import { LLM_API_BASE_PATH } from "../constants";
 import { AIMachineEventType, AnthropicKeySecrets, AnthropicAwsSecrets, LoginMethod, BIIntelSecrets } from "@wso2/ballerina-core";
-import { AnthropicEffort, ProviderModelOptions, resolveProviderModelOptions, ThinkingDisplay } from "./provider-model-options";
+import { AnthropicEffort, resolveProviderModelOptions, ThinkingDisplay } from "./provider-model-options";
 
 export const ANTHROPIC_HAIKU = "claude-haiku-4-5-20251001";
 export const ANTHROPIC_SONNET = "claude-sonnet-5-5";
@@ -297,12 +297,11 @@ export const getProviderCacheControl = async (ttl?: CacheTtl): Promise<ProviderC
     }
 };
 
-export type { AnthropicEffort, ProviderModelOptions, ThinkingDisplay } from "./provider-model-options";
+export type { AnthropicEffort } from "./provider-model-options";
 
 /** Adaptive thinking at `effort` for the current login method; see `resolveProviderModelOptions`. */
-export const getProviderModelOptions = async (effort: AnthropicEffort, display?: ThinkingDisplay): Promise<ProviderModelOptions> => {
-    return resolveProviderModelOptions(await getLoginMethod(), effort, display);
-};
+export const getProviderModelOptions = async (effort: AnthropicEffort, display?: ThinkingDisplay) =>
+    resolveProviderModelOptions(await getLoginMethod() === LoginMethod.AWS_BEDROCK, effort, display);
 
 function isAnthropicModel(model: LanguageModel): boolean {
     if (typeof model === 'string') {

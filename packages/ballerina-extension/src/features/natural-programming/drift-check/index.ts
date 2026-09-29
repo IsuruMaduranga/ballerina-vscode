@@ -48,7 +48,7 @@ export async function validateDriftWithApiDocs(ballerinaSources: string): Promis
 
     const { object } = await generateObject({
         model: await getAnthropicClient(ANTHROPIC_SONNET),
-        maxOutputTokens: 8192,
+        maxOutputTokens: 16_000, // Thinking shares this cap with the reply.
         providerOptions: await getProviderModelOptions('medium'),
         schema: ApiDocsDriftResponseSchema,
         messages: [
@@ -77,7 +77,7 @@ export async function validateDriftWithDocumentation(params: DocumentationDriftC
 
     const { object } = await generateObject({
         model: await getAnthropicClient(ANTHROPIC_SONNET),
-        maxOutputTokens: 8192,
+        maxOutputTokens: 16_000, // Thinking shares this cap with the reply.
         providerOptions: await getProviderModelOptions('medium'),
         schema: DocumentationDriftResponseSchema,
         messages: [

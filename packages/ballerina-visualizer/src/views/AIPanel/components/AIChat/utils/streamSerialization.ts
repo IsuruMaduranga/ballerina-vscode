@@ -145,27 +145,39 @@ export function upsertComponent(
 }
 
 /**
- * Fold a `thinking_start`/`thinking_delta`/`thinking_end` event into the transcript,
- * keyed by the reasoning-block `id`.
+ * The three thinking events as both chat surfaces receive them. Only start and end carry a time,
+ * stamped by the host when it emits them.
+ */
+export type ThinkingEvent =
+    | { type: "thinking_start"; thinkingId: string; timestamp: number }
+    | { type: "thinking_delta"; thinkingId: string; content: string }
+    | { type: "thinking_end"; thinkingId: string; timestamp: number };
+
+/**
+ * The one fold both chat surfaces apply to a thinking event. Whichever surface saves last writes the
+ * persisted transcript, so both must produce the same bytes: a delta never stamps a local time, and
+ * start and end keep the host's, which also gives a replayed block its real duration.
+ */
+export function foldThinkingEvent(entries: StreamEntry[], evt: ThinkingEvent): StreamEntry[] {
+    return evt.type === "thinking_delta"
+        ? upsertThinking(entries, evt.thinkingId, evt.content, false)
+        : upsertThinking(entries, evt.thinkingId, "", evt.type === "thinking_end", evt.timestamp);
+}
+
+/**
+ * Fold one reasoning block's text and state into the transcript, keyed by its `id`.
  *
  * Follows the content_block merge-into-trailing-item pattern rather than
  * `upsertComponent`'s search-whole-transcript pattern: a reasoning block is always
- * the item actively being appended to, never a stale one elsewhere. An event whose
- * id doesn't match the trailing item opens a new item (also the defensive fallback
+ * the item actively being appended to, never a stale one elsewhere. An id that
+ * doesn't match the trailing item opens a new item (also the defensive fallback
  * for an orphaned delta after a flush).
- *
- * `timestamp` comes from the event itself for start/end (stamped extension-side at
- * emit time), so both surfaces persist identical bytes and a replayed block keeps
- * its true duration; callers fall back to local time only for orphaned deltas.
  */
 export function upsertThinking(
     entries: StreamEntry[],
     id: string,
     delta: string,
     done: boolean,
-    // Extension-stamped on start/end events; undefined for deltas — a delta that
-    // opens a new item (orphaned-delta append) must NOT stamp a locally-derived
-    // time, or the serialized bytes diverge across the two persisting surfaces.
     timestamp?: number,
 ): StreamEntry[] {
     if (entries.length > 0) {
@@ -183,6 +195,10 @@ export function upsertThinking(
             const items = [...lastEntry.items.slice(0, -1), updatedItem];
             return [...entries.slice(0, -1), { ...lastEntry, items }];
         }
+    }
+    if (done && delta === "") {
+        // The end of a block whose start is gone (a truncated replay): nothing to show.
+        return entries;
     }
     return appendToLastEntry(entries, {
         kind: "thinking",

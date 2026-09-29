@@ -21,9 +21,7 @@ import styled from "@emotion/styled";
 import MarkdownRenderer from "../MarkdownRenderer";
 import { describeThinkingDuration } from "../AIChat/utils/streamSerialization";
 import { ExpandIcon, ItemLabel, ItemRow, ItemsArea, ItemsInner, ToolIcon, breathe } from "./styles";
-import { StreamItem } from "./types";
-
-type ThinkingItem = Extract<StreamItem, { kind: "thinking" }>;
+import { ThinkingItem } from "./types";
 
 interface ThinkingSegmentProps {
     item: ThinkingItem;
@@ -61,16 +59,11 @@ const ThinkingBody = styled.div`
 
 const ThinkingSegment: React.FC<ThinkingSegmentProps> = ({ item, streamActive }) => {
     const loading = !item.done && streamActive;
-    // Open while the block is live so the user sees reasoning stream in; collapse
-    // once it completes. Manual toggles win until the done transition fires.
-    const [expanded, setExpanded] = useState(loading);
+    // Open while the block is live so the user sees reasoning stream in, closed once it
+    // completes; a manual toggle wins from then on.
+    const [toggled, setToggled] = useState<boolean | undefined>();
+    const expanded = toggled ?? loading;
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
-    useEffect(() => {
-        if (item.done) {
-            setExpanded(false);
-        }
-    }, [item.done]);
 
     useEffect(() => {
         if (!loading || item.startedAt === undefined) {
@@ -95,7 +88,7 @@ const ThinkingSegment: React.FC<ThinkingSegmentProps> = ({ item, streamActive })
             <ThinkingHeader
                 type="button"
                 aria-expanded={hasBody ? expanded : undefined}
-                onClick={() => hasBody && setExpanded((prev) => !prev)}
+                onClick={() => hasBody && setToggled(!expanded)}
             >
                 <ToolIcon loading={loading}>
                     <span className="codicon codicon-sparkle" />
