@@ -345,7 +345,7 @@ export type CodeData = {
     id?: string;
     kind?: string;
     originalName?: string;
-    dependentProperty?: string[];
+    dependentProperty?: string;
     data?: { [key: string]: CodeDataValue };
 };
 
