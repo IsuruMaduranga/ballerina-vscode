@@ -213,4 +213,22 @@ describe("Workflow Nodes", () => {
             expect(getNodeTitle(node)).toBe("Sleep");
         });
     });
+
+    // The palette titles these context reads by what they return, and the canvas must say the same
+    // thing for a call the language server still emits as a generic workflow module statement.
+    describe("context function titles", () => {
+        it.each([
+            ["currentTime", "Current Time"],
+            ["getWorkflowId", "Workflow ID"],
+            ["getWorkflowType", "Workflow Type"],
+            ["isReplaying", "Is Replaying"],
+        ])("titles a generic workflow module call to %s as %s", (symbol, title) => {
+            const node = {
+                codedata: { node: "EXPRESSION", org: "ballerina", module: "workflow", symbol },
+                metadata: { label: `workflow:${symbol}` },
+                properties: {},
+            } as any;
+            expect(getNodeTitle(node)).toBe(title);
+        });
+    });
 });

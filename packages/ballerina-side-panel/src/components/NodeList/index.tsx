@@ -192,7 +192,7 @@ namespace S {
     `;
 
     // Long node names wrap onto a second line instead of being cut: two columns of a side
-    // panel are too narrow for names like "Send Data to Child Workflow" on one line.
+    // panel are too narrow for a long activity or function name on one line.
     export const ComponentTitle = styled.div`
         flex: 1;
         min-width: 0;

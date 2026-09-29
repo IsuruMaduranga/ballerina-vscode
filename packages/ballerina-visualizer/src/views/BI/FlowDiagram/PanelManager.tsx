@@ -723,7 +723,7 @@ export function PanelManager(props: PanelManagerProps) {
             case SidePanelView.CONNECTION_CREATE:
                 return onBack;
             case SidePanelView.FORM:
-                return !showEditForm ? onBack : undefined;
+                return !showEditForm && canGoBack ? onBack : undefined;
             default:
                 return undefined;
         }

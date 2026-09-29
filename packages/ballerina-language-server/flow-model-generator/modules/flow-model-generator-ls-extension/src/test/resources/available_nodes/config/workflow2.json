@@ -37,7 +37,7 @@
             },
             {
               "metadata": {
-                "label": "Await Human Task",
+                "label": "Human Task",
                 "description": "Create a human task and wait for a human to complete it"
               },
               "codedata": {
@@ -47,7 +47,7 @@
             },
             {
               "metadata": {
-                "label": "Await Data Event",
+                "label": "Await Event",
                 "description": "Wait for a data event from outside the workflow"
               },
               "codedata": {
@@ -81,7 +81,7 @@
           "items": [
             {
               "metadata": {
-                "label": "Get Current Time",
+                "label": "Current Time",
                 "description": "Deterministic current time, safe to use inside workflow logic"
               },
               "codedata": {
@@ -101,7 +101,7 @@
             },
             {
               "metadata": {
-                "label": "Get Workflow ID",
+                "label": "Workflow ID",
                 "description": "The unique ID of this workflow instance"
               },
               "codedata": {
@@ -111,7 +111,7 @@
             },
             {
               "metadata": {
-                "label": "Get Workflow Type",
+                "label": "Workflow Type",
                 "description": "The type name of this workflow"
               },
               "codedata": {
@@ -121,7 +121,7 @@
             },
             {
               "metadata": {
-                "label": "Get Last Human Task Completion",
+                "label": "Task Completion",
                 "description": "The completion of the most recently completed human task, with who completed it"
               },
               "codedata": {
@@ -131,7 +131,7 @@
             },
             {
               "metadata": {
-                "label": "Get Last Review Decision",
+                "label": "Review Decision",
                 "description": "The decision of the most recent review task, with who decided it"
               },
               "codedata": {
@@ -154,7 +154,7 @@
           "items": [
             {
               "metadata": {
-                "label": "Run Child Workflow",
+                "label": "Run Child",
                 "description": "Start a child workflow and continue without waiting for its result"
               },
               "codedata": {
@@ -164,7 +164,7 @@
             },
             {
               "metadata": {
-                "label": "Call Child Workflow",
+                "label": "Call Child",
                 "description": "Run a child workflow and durably wait for its result"
               },
               "codedata": {
@@ -174,7 +174,7 @@
             },
             {
               "metadata": {
-                "label": "Wait for Child Workflow",
+                "label": "Await Child",
                 "description": "Durably wait for a started child workflow's result"
               },
               "codedata": {
@@ -184,7 +184,7 @@
             },
             {
               "metadata": {
-                "label": "Send Data to Child Workflow",
+                "label": "Send to Child",
                 "description": "Send a data event to a running child workflow"
               },
               "codedata": {
