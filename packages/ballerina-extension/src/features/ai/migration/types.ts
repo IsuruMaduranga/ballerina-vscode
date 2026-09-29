@@ -17,6 +17,12 @@
 /** globalState key – only one pending enhancement is allowed at a time */
 export const PENDING_MIGRATION_ENHANCEMENT_KEY = "ballerina.pendingMigrationEnhancement";
 
+/**
+ * globalState key older builds wrote the last migrated project root to. It is no
+ * longer read or written; `checkAndRunPendingEnhancement` clears it from existing installs.
+ */
+export const LEGACY_MIGRATION_PROJECT_ROOT_KEY = "ballerina.migrationProjectRoot";
+
 /** Hidden directory inside the project root that stores AI migration metadata. */
 export const AI_MIGRATION_DIR = ".ballerina-ai-migration";
 

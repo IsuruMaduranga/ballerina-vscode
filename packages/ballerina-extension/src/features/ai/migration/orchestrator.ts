@@ -44,6 +44,7 @@ import {
     AI_MIGRATION_DIR,
     ActiveMigrationSessionLocal,
     EnhanceTomlData,
+    LEGACY_MIGRATION_PROJECT_ROOT_KEY,
     MigrationContext,
     PackageEnhancementResult,
     PENDING_ENHANCEMENT_TTL_MS,
@@ -338,6 +339,9 @@ export function scheduleMigrationEnhancement(
  * Safe to call on every activation – a no-op when there is no pending entry.
  */
 export async function checkAndRunPendingEnhancement(): Promise<void> {
+    // Earlier builds kept the last migrated project root here; nothing reads it any more.
+    await extension.context.globalState.update(LEGACY_MIGRATION_PROJECT_ROOT_KEY, undefined);
+
     const stored = extension.context.globalState.get<PendingMigrationEnhancement>(
         PENDING_MIGRATION_ENHANCEMENT_KEY
     );
@@ -1749,30 +1753,38 @@ function _resolveCurrentProjectRoot(): string | undefined {
     // open project qualify: a remembered path from an earlier migration would leak
     // that project's enhancement state into unrelated projects.
     const candidates: string[] = [];
+    const addCandidate = (candidate: string | undefined) => {
+        if (candidate && !candidates.includes(candidate)) {
+            candidates.push(candidate);
+        }
+    };
 
-    const folders = workspace.workspaceFolders;
-    if (folders && folders.length > 0) {
-        candidates.push(folders[0].uri.fsPath);
-    }
-
-    // Also check the active Ballerina project path from the state machine —
-    // this is the most reliable source when the panel is opened manually
-    // without going through the migration wizard first. Its paths are not
-    // refreshed when workspace folders change and can come from a file opened
-    // outside the workspace, so only those inside an open folder qualify.
+    // The active Ballerina project from the state machine comes first: it is the
+    // project the user is working in, so it wins when several open folders were
+    // migrated. Its paths are not refreshed when workspace folders change and can
+    // come from a file opened outside the workspace, so only those inside an open
+    // folder qualify.
     try {
         const smCtx = StateMachine.context();
         const smProjectPath = smCtx?.projectPath;
         const smWorkspacePath = smCtx?.workspacePath;
-        if (smProjectPath && _isInOpenWorkspace(smProjectPath) && !candidates.includes(smProjectPath)) {
-            candidates.push(smProjectPath);
+        if (smProjectPath && _isInOpenWorkspace(smProjectPath)) {
+            addCandidate(smProjectPath);
         }
-        if (smWorkspacePath && _isInOpenWorkspace(smWorkspacePath) && !candidates.includes(smWorkspacePath)) {
-            candidates.push(smWorkspacePath);
+        if (smWorkspacePath && _isInOpenWorkspace(smWorkspacePath)) {
+            addCandidate(smWorkspacePath);
         }
         console.log("[MigrationEnhancement] StateMachine candidates:", smProjectPath, smWorkspacePath);
     } catch {
         // StateMachine may not be initialized yet — ignore
+    }
+
+    // Then every open workspace folder, in order. With several Ballerina projects
+    // open in a multi-root workspace the state machine loads none of them, and the
+    // migrated project need not be the first folder.
+    const folders = workspace.workspaceFolders ?? [];
+    for (const folder of folders) {
+        addCandidate(folder.uri.fsPath);
     }
 
     // Return the first candidate that actually contains the toml file.
@@ -1787,5 +1799,5 @@ function _resolveCurrentProjectRoot(): string | undefined {
 
     // No toml found in any candidate – still return the workspace folder so
     // the caller can decide (it will get null from readEnhanceToml and fall back).
-    return candidates[0];
+    return folders[0]?.uri.fsPath;
 }

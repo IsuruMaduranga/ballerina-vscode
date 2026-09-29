@@ -28,7 +28,8 @@
  *
  * The state machine's project path is not refreshed when workspace folders change and can come
  * from a `.bal` file opened outside the workspace, so it only counts when it lies inside an open
- * folder.
+ * folder. Every open workspace folder counts: with several Ballerina projects in a multi-root
+ * workspace the state machine loads none of them, and the migrated one need not come first.
  */
 
 import * as fs from "fs";
@@ -50,7 +51,14 @@ jest.mock("../features/ai/agent/AgentExecutor", () => ({ AgentExecutor: class {}
 jest.mock("../features/ai/utils/events", () => ({}));
 jest.mock("../features/ai/utils/ai-utils", () => ({}));
 jest.mock("../BalExtensionContext", () => ({
-    extension: { context: { globalState: { get: (key: string) => mockGlobalState[key], update: jest.fn() } } },
+    extension: {
+        context: {
+            globalState: {
+                get: (key: string) => mockGlobalState[key],
+                update: async (key: string, value: unknown) => { mockGlobalState[key] = value; },
+            },
+        },
+    },
 }));
 jest.mock("../stateMachine", () => ({ StateMachine: { context: () => mockStateMachineContext } }));
 jest.mock("../views/ai-panel/aiMachine", () => ({ AIStateMachine: {}, openAIPanelWithPrompt: jest.fn() }));
@@ -58,10 +66,12 @@ jest.mock("../utils", () => ({}));
 jest.mock("../utils/source-utils", () => ({ setMigrationEnhancementActive: jest.fn() }));
 
 import { workspace } from "vscode";
-import { getActiveMigrationSessionState, writeEnhanceToml } from "../features/ai/migration/orchestrator";
-
-/** The globalState key older builds wrote the last migrated project root to. */
-const LEGACY_MIGRATION_PROJECT_ROOT_KEY = "ballerina.migrationProjectRoot";
+import {
+    checkAndRunPendingEnhancement,
+    getActiveMigrationSessionState,
+    writeEnhanceToml,
+} from "../features/ai/migration/orchestrator";
+import { LEGACY_MIGRATION_PROJECT_ROOT_KEY } from "../features/ai/migration/types";
 
 /** Every state a migrated project can be left in: [label, aiFeatureUsed, fullyEnhanced]. */
 const MIGRATION_STATES: Array<[string, boolean, boolean]> = [
@@ -148,5 +158,40 @@ describe.each(MIGRATION_STATES)("the state machine points at a migrated project 
         mockStateMachineContext = { projectPath: migratedRoot };
 
         expect(getActiveMigrationSessionState()).toEqual({ isActive: false, aiFeatureUsed, fullyEnhanced });
+    });
+});
+
+describe.each(MIGRATION_STATES)("a multi-root workspace holds a migrated project that left %s", (_label, aiFeatureUsed, fullyEnhanced) => {
+    let plainRoot: string;
+    let migratedRoot: string;
+
+    beforeEach(() => {
+        plainRoot = makeProject("plain");
+        migratedRoot = makeProject("migrated");
+        writeEnhanceToml(migratedRoot, aiFeatureUsed, fullyEnhanced, "/source/project");
+        (workspace as any).workspaceFolders = [{ uri: { fsPath: plainRoot } }, { uri: { fsPath: migratedRoot } }];
+    });
+
+    it("reports its state when it is not the first folder and no project is loaded", () => {
+        mockStateMachineContext = {};
+
+        expect(getActiveMigrationSessionState()).toEqual({ isActive: false, aiFeatureUsed, fullyEnhanced });
+    });
+
+    it("reports the state of the project the state machine loaded when another folder was migrated too", () => {
+        writeEnhanceToml(plainRoot, !aiFeatureUsed, !fullyEnhanced, "/source/other");
+        mockStateMachineContext = { projectPath: migratedRoot };
+
+        expect(getActiveMigrationSessionState()).toEqual({ isActive: false, aiFeatureUsed, fullyEnhanced });
+    });
+});
+
+describe("the legacy migration project root in globalState", () => {
+    it("is cleared on activation", async () => {
+        mockGlobalState[LEGACY_MIGRATION_PROJECT_ROOT_KEY] = makeProject("migrated");
+
+        await checkAndRunPendingEnhancement();
+
+        expect(mockGlobalState[LEGACY_MIGRATION_PROJECT_ROOT_KEY]).toBeUndefined();
     });
 });
