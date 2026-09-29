@@ -173,8 +173,17 @@ export class RunEventStore {
 
         const eventBytes = this.eventSize(event);
         const last = state.runBuffer[state.runBuffer.length - 1];
-        if (event.type === "content_block" && last?.contentChunks) {
-            last.contentChunks.push({ seq, content: event.content });
+        // Events whose fold is plain concatenation merge into one buffered entry, replayed as a single
+        // event with the chunks joined. A thinking delta also needs the same block id: tool calls or a
+        // new reasoning block can sit between two deltas.
+        const isChunkable = event.type === "content_block" || event.type === "thinking_delta";
+        const canMergeIntoLast = isChunkable
+            && last?.contentChunks !== undefined
+            && last.event.type === event.type
+            && (event.type !== "thinking_delta"
+                || (last.event as { thinkingId?: string }).thinkingId === event.thinkingId);
+        if (canMergeIntoLast) {
+            last.contentChunks!.push({ seq, content: event.content });
             last.lastSeq = seq;
             last.sizeBytes += eventBytes;
             state.bufferedBytes += eventBytes;
@@ -184,7 +193,7 @@ export class RunEventStore {
                 event: storedEvent,
                 firstSeq: seq,
                 lastSeq: seq,
-                contentChunks: event.type === "content_block"
+                contentChunks: isChunkable
                     ? [{ seq, content: event.content }]
                     : undefined,
                 sizeBytes: eventBytes,

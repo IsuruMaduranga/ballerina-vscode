@@ -31,6 +31,8 @@ import { upsertToolResult,
     appendToLastEntry,
     upsertComponent,
     upsertRequestCard,
+    upsertThinking,
+    describeThinkingDuration,
     buildRequestCardData,
     buildPlanItem,
     applyPlanApprovalResolution,
@@ -130,7 +132,8 @@ type FoldableNotify = Extract<ChatNotify, {
     | "content_block" | "content_replace" | "tool_call" | "tool_result" | "chat_component"
     | "task_approval_request" | "plan_approval_resolved" | "connector_generation_notification"
     | "configuration_collection_event" | "clarify_event" | "skill_enable_event"
-    | "abort" | "compaction_disabled";
+    | "abort" | "compaction_disabled"
+    | "thinking_start" | "thinking_delta" | "thinking_end";
 }>;
 
 type UnmodelledNotifyType =
@@ -295,6 +298,16 @@ function applyContentEvent(prevContent: string, evt: FoldableNotify): string {
     }
     if (evt.type === "skill_enable_event") {
         return serializeStream(upsertRequestCard(entries, "skill_enable", buildRequestCardData("skill_enable", evt)), prevContent);
+    }
+    if (evt.type === "thinking_start" || evt.type === "thinking_delta" || evt.type === "thinking_end") {
+        // The mini shows a label-only row, but it folds the full item: a turn this surface persists
+        // must match the panel's byte for byte. Only start and end carry the host-stamped time.
+        const delta = evt.type === "thinking_delta" ? evt.content : "";
+        const timestamp = evt.type === "thinking_delta" ? undefined : evt.timestamp;
+        return serializeStream(
+            upsertThinking(entries, evt.thinkingId, delta, evt.type === "thinking_end", timestamp),
+            prevContent
+        );
     }
     if (evt.type === "abort") {
         return serializeStream(appendAbortMarker(entries), prevContent);
@@ -641,8 +654,29 @@ function toolRowNode(key: string, label: string, state: "running" | "pending" | 
 }
 
 /**
+ * A label-only thinking row: a spinner and "Thinking…" while the block streams, then a sparkle and
+ * its duration. The reasoning text itself is shown only in the panel.
+ */
+function thinkingRowNode(key: string, item: Extract<StreamItem, { kind: "thinking" }>, streaming: boolean): React.ReactNode {
+    const loading = !item.done && streaming;
+    return (
+        <ToolRow key={key}>
+            {loading ? (
+                <SpinIcon>
+                    <Codicon name="loading" />
+                </SpinIcon>
+            ) : (
+                <Codicon name="sparkle" />
+            )}
+            {loading ? "Thinking…" : describeThinkingDuration(item)}
+        </ToolRow>
+    );
+}
+
+/**
  * Render the persisted transcript: user bubbles, and assistant turns unpacked
- * from their `<agentstream>` timeline into markdown text + tool rows. Content
+ * from their `<agentstream>` timeline into markdown text, label-only thinking
+ * rows and tool rows. Content
  * with no `<agentstream>` blob (plain text) renders as a single markdown block.
  * Non-happy-path items (plan/config/…) are skipped — they escalate to the panel.
  */
@@ -683,6 +717,8 @@ function renderTranscript(msgs: MiniMsg[], streaming: boolean): React.ReactNode[
                     nodes.push(toolRowNode(key, getToolResultDisplay(item.toolName, item.toolOutput).label, streaming ? "running" : "pending"));
                 } else if (item.kind === "tool_result") {
                     nodes.push(toolRowNode(key, describeTool(item.toolName ?? "", undefined), item.failed ? "failed" : "done"));
+                } else if (item.kind === "thinking") {
+                    nodes.push(thinkingRowNode(key, item, streaming));
                 }
             });
         });
@@ -823,6 +859,9 @@ export function MiniChat({ anchor, onClose, takeInitialPrompt }: MiniChatProps) 
             case "clarify_event":
             case "skill_enable_event":
             case "compaction_disabled":
+            case "thinking_start":
+            case "thinking_delta":
+            case "thinking_end":
                 setMsgs((prev) => reduceEvent(prev, evt, gen));
                 break;
             default: {
