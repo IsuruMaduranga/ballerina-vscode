@@ -34,7 +34,7 @@ export async function generateExamplePayload(context: PayloadContext): Promise<o
         const { text } = await generateText({
             model: await getAnthropicClient(ANTHROPIC_SONNET),
             maxOutputTokens: 4096 * 2,
-            providerOptions: await getProviderModelOptions(),
+            providerOptions: await getProviderModelOptions('low'),
             system: systemPrompt,
             prompt: userPrompt,
             abortSignal: new AbortController().signal,

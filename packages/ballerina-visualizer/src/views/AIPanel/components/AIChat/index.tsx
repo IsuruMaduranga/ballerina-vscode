@@ -92,7 +92,7 @@ import { getOnboardingOpens, incrementOnboardingOpens, convertToUIMessages, isCo
 import { applyGenerationStatus, deriveReviewBarState, PanelMessage } from "./utils/reviewBarState";
 import { backTooltipFor, isNavigationPrompt, PanelRoute, routeInitialPrompt } from "./utils/panelNav";
 import { upsertToolResult,
-    serializeStream, parseStream, appendToLastEntry, upsertComponent, upsertRequestCard,
+    serializeStream, parseStream, appendToLastEntry, upsertComponent, upsertRequestCard, upsertThinking,
     buildRequestCardData, buildPlanItem, applyPlanApprovalResolution, appendAbortMarker, applyTaskWriteResult,
     COMPACTION_DISABLED_NOTICE,
 } from "./utils/streamSerialization";
@@ -1444,6 +1444,21 @@ const AIChat: React.FC = () => {
                     }
                 }
                 const updated = appendToLastEntry(entries, { kind: "text", text: content });
+                msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
+                return msgs;
+            });
+
+        } else if (type === "thinking_start" || type === "thinking_delta" || type === "thinking_end") {
+            const delta = type === "thinking_delta" ? response.content : "";
+            // Only start and end carry the host-stamped time; a delta must not stamp a local one, or
+            // the bytes this surface persists would differ from the mini chat's.
+            const timestamp = type === "thinking_delta" ? undefined : response.timestamp;
+            setMessages(prevMessages => {
+                const msgs = [...prevMessages];
+                const targetIndex = ensureAssistantMessage(msgs);
+                const last = msgs[targetIndex];
+                const entries = parseStream(last.content);
+                const updated = upsertThinking(entries, response.thinkingId, delta, type === "thinking_end", timestamp);
                 msgs[targetIndex] = { ...last, content: serializeStream(updated, last.content) };
                 return msgs;
             });

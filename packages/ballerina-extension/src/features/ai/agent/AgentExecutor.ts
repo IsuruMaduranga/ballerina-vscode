@@ -20,7 +20,8 @@ import { AICommandExecutor, AICommandConfig, AIExecutionResult } from '../execut
 import { Command, GenerateAgentCodeRequest, ProjectSource, ExecutionContext, SemanticDiff, ReviewModeData, PROJECT_KIND, LoginMethod } from '@wso2/ballerina-core';
 import { StateMachine } from '../../../stateMachine';
 import { FinishReason, LanguageModelUsage, ModelMessage, stepCountIs, SystemModelMessage, streamText, TextStreamPart } from 'ai';
-import { getAnthropicClient, getProviderCacheControl, getProviderModelOptions, addCacheControlToMessages, ANTHROPIC_SONNET } from '../utils/ai-client';
+import { getAnthropicClient, getProviderCacheControl, addCacheControlToMessages, ANTHROPIC_SONNET } from '../utils/ai-client';
+import { AnthropicEffort, resolveProviderModelOptions } from '../utils/provider-model-options';
 import { populateHistoryForAgent, getErrorMessage, getErrorCode, buildChatError } from '../utils/ai-utils';
 import { seedAiBaselines } from '../utils/project/ls-schema-notifications';
 import { mapWithConcurrency } from '../utils/concurrency';
@@ -80,8 +81,14 @@ import { workspace } from 'vscode';
 import { runningServicesManager } from './tools/running-service-manager';
 
 
-/** Per-response output cap, and what the context-usage widget reports as reserved. */
+/** Per-response output cap, and what the context-usage widget reports as reserved. Thinking counts against it. */
 const RESERVED_OUTPUT_TOKENS = 64_000;
+
+/**
+ * The Claude Sonnet 5.5 starting point for agentic coding. From `medium` up the model thinks briefly
+ * before almost every reply; `low` risks reporting changes done without checking them.
+ */
+const AGENT_EFFORT: AnthropicEffort = 'medium';
 
 // The SDK records response messages apart from the live step messages, so the prepareStep strip never reaches them.
 function toPersisted<T>(messages: T[]): T[] {
@@ -296,6 +303,12 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
     /** Tracks in-flight tool-call start times keyed by toolCallId for duration logging. */
     private readonly _pendingToolCalls = new Map<string, number>();
 
+    /**
+     * Reasoning blocks that got `thinking_start` but no `thinking_end` yet. Instance state because the
+     * abort, error and finish paths that must close them are separate methods.
+     */
+    private readonly _openThinkingIds = new Set<string>();
+
     /** A turn can reach both the finish and abort paths; suggestions must be scheduled once. */
     private _followupsScheduled = false;
 
@@ -430,7 +443,9 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             if (supportsCompaction(loginMethod) && compactionOptions === undefined) {
                 warnCompactionDisabledOnce(projectRootPath, this.config.eventHandler);
             }
-            const modelOptions = await getProviderModelOptions('xhigh');
+            // `summarized` streams reasoning summaries and the progress notes written between tool
+            // calls; under the default `omitted` both arrive empty and a long turn looks silent.
+            const modelOptions = resolveProviderModelOptions(loginMethod, AGENT_EFFORT, 'summarized');
             const providerOptions = compactionOptions
                 ? { anthropic: { ...(modelOptions as { anthropic?: object }).anthropic, ...compactionOptions.anthropic } }
                 : modelOptions;
@@ -722,6 +737,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                     // This handles the case where abort happens but doesn't throw an error
                     if (this.config.abortController.signal.aborted) {
                         console.log("[AgentExecutor] Detected abort after stream completion");
+                        this.flushOpenThinkingBlocks();
                         const abortError = new Error('Aborted by user');
                         abortError.name = 'AbortError';
                         throw abortError;
@@ -765,6 +781,8 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                 // Handle abort specifically
                 if (error.name === 'AbortError' || this.config.abortController.signal.aborted) {
                     console.log("[AgentExecutor] Aborted by user.");
+                    // Close open thinking rows before the partial transcript is saved.
+                    this.flushOpenThinkingBlocks();
 
                     // Get partial messages from SDK
                     let partialLLMMessages: any[] = [];
@@ -865,6 +883,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                 this.config.abortController.abort();
             }
 
+            this.flushOpenThinkingBlocks();
             this.config.eventHandler(buildChatError(error));
 
             // For other errors, return result with error
@@ -912,6 +931,23 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
                 }
                 break;
 
+            // Reasoning summaries and the progress notes written between tool calls.
+            case "reasoning-start":
+                this._openThinkingIds.add(part.id);
+                context.eventHandler({ type: "thinking_start", thinkingId: part.id, timestamp: Date.now() });
+                break;
+
+            case "reasoning-delta":
+                if (part.text) {
+                    context.eventHandler({ type: "thinking_delta", thinkingId: part.id, content: part.text });
+                }
+                break;
+
+            case "reasoning-end":
+                this._openThinkingIds.delete(part.id);
+                context.eventHandler({ type: "thinking_end", thinkingId: part.id, timestamp: Date.now() });
+                break;
+
             case "tool-error": {
                 // A tool whose execute() throws never reaches its own
                 // emitFileToolResult/eventHandler call, because tools emit their
@@ -955,11 +991,23 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
     }
 
     /**
+     * Sends `thinking_end` for every reasoning block that never got one (abort, stream error, or a
+     * provider that omits `reasoning-end`), so no thinking row stays loading forever.
+     */
+    private flushOpenThinkingBlocks(): void {
+        for (const id of this._openThinkingIds) {
+            this.config.eventHandler({ type: "thinking_end", thinkingId: id, timestamp: Date.now() });
+        }
+        this._openThinkingIds.clear();
+    }
+
+    /**
      * Handles stream errors with cleanup.
      * Clears review state to prevent stale data.
      */
     private async handleStreamError(error: Error, context: StreamContext): Promise<void> {
         console.error("[Agent] Stream error:", error);
+        this.flushOpenThinkingBlocks();
 
         const tempProjectPath = context.ctx.tempProjectPath!;
 
@@ -1049,6 +1097,8 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         },
     ): Promise<void> {
         const { turnMessages, turnUsage, finishReason, rawFinishReason, truncationRetries = 0 } = turn;
+        // reasoning-end normally closes every block before the stream finishes.
+        this.flushOpenThinkingBlocks();
         // 'length' covers both max_tokens and model_context_window_exceeded. Typed as the
         // SDK's `FinishReason`, not `string`: the provider hands up a `{ unified, raw }`
         // object that the SDK flattens, and an upgrade that stopped flattening it would make
