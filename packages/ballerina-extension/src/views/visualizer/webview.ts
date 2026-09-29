@@ -106,11 +106,15 @@ export class VisualizerWebview {
         // Posted by the blocked-startup panel, which never loads the React app's own messaging.
         this._disposables.push(this._panel.webview.onDidReceiveMessage(async (message) => {
             if (message?.command === 'jdkIncompatibility.updateBallerina') {
+                const blocked = VisualizerWebview.jdkIncompatibility;
                 VisualizerWebview.clearJdkIncompatibility();
                 // Pinned, since `bal dist update` may stay on the current update line.
-                await vscode.commands.executeCommand('ballerina.update-ballerina-visually', {
+                const updated = await vscode.commands.executeCommand<boolean>('ballerina.update-ballerina-visually', {
                     version: REQUIRED_BALLERINA_VERSION
                 });
+                if (updated === false && blocked) {
+                    VisualizerWebview.showJdkIncompatibility(blocked); // a failed update doesn't reload, so nothing else brings it back
+                }
             } else if (message?.command === 'useEarlierVersion') {
                 await vscode.env.openExternal(vscode.Uri.parse(EARLIER_VERSION_DOCS_URL));
             } else if (message?.command === 'dependencyUpdate.update') {

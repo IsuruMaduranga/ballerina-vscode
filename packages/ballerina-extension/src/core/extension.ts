@@ -433,7 +433,7 @@ export class BallerinaExtension {
                 debug("[INIT] Update Ballerina command registered");
 
                 commands.registerCommand('ballerina.update-ballerina-visually', (options?: BallerinaUpdateOptions) => {
-                    this.updateBallerinaVisually(options);
+                    return this.updateBallerinaVisually(options);
                 });
                 debug("[INIT] Update Ballerina visually command registered");
             } catch (error) {
@@ -759,8 +759,9 @@ export class BallerinaExtension {
 
     /**
      * With `version`, pulls that exact distribution instead of `bal dist update`, whose target isn't pinned.
+     * Resolves false only when the command is known to have failed.
      */
-    async updateBallerinaVisually(options?: BallerinaUpdateOptions) {
+    async updateBallerinaVisually(options?: BallerinaUpdateOptions): Promise<boolean> {
         try {
             await commands.executeCommand(SHARED_COMMANDS.SETUP_BALLERINA);
         } catch (error) {
@@ -768,7 +769,12 @@ export class BallerinaExtension {
         }
         const realPath = this.ballerinaHome ? fs.realpathSync.native(this.ballerinaHome) : "";
         const command = options?.version ? `bal dist pull ${options.version}` : 'bal dist update';
-        this.executeCommandWithProgress(realPath.includes("ballerina-home") ? command : `sudo ${command}`);
+        const elevated = !realPath.includes("ballerina-home");
+        const run = this.executeCommandWithProgress(elevated ? `sudo ${command}` : command);
+        if (elevated) {
+            return true; // runs in a terminal or a detached UAC process, which report no outcome
+        }
+        return run.then(() => true, () => false);
     }
 
     private async executeCommandWithProgress(command: string) {
