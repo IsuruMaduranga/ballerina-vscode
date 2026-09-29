@@ -74,6 +74,7 @@ import {
     removeConsoleSummary,
     startConsoleSummary,
 } from '../features/ai/agent/console-summary';
+import { getAnthropicClient } from '../features/ai/utils/ai-client';
 
 const ROOT = '/workspace';
 const THREAD = 'default';
@@ -130,6 +131,7 @@ beforeEach(() => {
     (chatStateStorage as any).storage.clear();
     executeCommand.mockReset();
     executeCommand.mockImplementation(async (id: string) => id === 'devantEditor.hasAgentSummaryKey' || id === 'devantEditor.appendAgentSummary');
+    (getAnthropicClient as jest.Mock).mockReset().mockImplementation(async () => ({}));
     generateObject.mockReset();
     generateObject.mockResolvedValue({ object: { summary: 'Built a service that syncs leads.' } });
     chatStateStorage.initializeWorkspace(ROOT);
@@ -223,6 +225,46 @@ describe('when the model gives nothing usable', () => {
         startConsoleSummary({ ...turn('gen-1'), abortSignal: stop.signal });
         await settle();
         warn.mockRestore();
+        expect(editorCalls()).toEqual([]);
+    });
+});
+
+describe('when the model client never resolves', () => {
+    beforeEach(() => {
+        markConsoleOriginThread(ROOT, THREAD, true);
+        (getAnthropicClient as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
+    });
+
+    afterEach(() => jest.useRealTimers());
+
+    it('publishes the fallback once the timeout passes', async () => {
+        jest.useFakeTimers({ doNotFake: ['setImmediate'] });
+        addGeneration('gen-1');
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        startConsoleSummary(turn('gen-1'));
+        await settle();
+        expect(editorCalls()).toEqual([]);
+        jest.advanceTimersByTime(15_000);
+        await settle();
+        warn.mockRestore();
+        expect(generateObject).not.toHaveBeenCalled();
+        expect(editorCalls()).toEqual([
+            ['devantEditor.appendAgentSummary', { summary: 'Updated 1 file.', generationId: 'gen-1' }],
+        ]);
+    });
+
+    it('publishes nothing when the user stops the turn', async () => {
+        addGeneration('gen-1');
+        const stop = new AbortController();
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        startConsoleSummary({ ...turn('gen-1'), abortSignal: stop.signal });
+        await settle();
+        stop.abort();
+        await settle();
+        // The wait ended at the stop rather than hanging on the client.
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('Summary generation failed for gen-1'), expect.anything());
+        warn.mockRestore();
+        expect(generateObject).not.toHaveBeenCalled();
         expect(editorCalls()).toEqual([]);
     });
 });

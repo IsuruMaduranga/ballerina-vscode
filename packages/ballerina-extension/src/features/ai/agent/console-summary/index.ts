@@ -169,14 +169,20 @@ async function generateSummary(
     input: Parameters<typeof buildConsoleSummaryMessages>[0],
     turnSignal: AbortSignal
 ): Promise<string> {
-    // Stopped by whichever comes first, the turn's signal or the timeout.
+    // Stopped by whichever comes first, the turn's signal or the timeout. Both
+    // bound client acquisition too: it can wait on a login or token refresh.
     const controller = new AbortController();
     const onTurnAbort = () => controller.abort();
     turnSignal.addEventListener("abort", onTurnAbort, { once: true });
+    // Stopped while the key was checked: the listener above will never fire.
+    if (turnSignal.aborted) {
+        controller.abort();
+    }
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
+        const model = await untilAborted(getAnthropicClient(ANTHROPIC_HAIKU), controller.signal);
         const { object } = await generateObject({
-            model: await getAnthropicClient(ANTHROPIC_HAIKU),
+            model,
             maxOutputTokens: 512,
             temperature: 0.2,
             messages: buildConsoleSummaryMessages(input),
@@ -192,6 +198,23 @@ async function generateSummary(
         clearTimeout(timer);
         turnSignal.removeEventListener("abort", onTurnAbort);
     }
+}
+
+/**
+ * Settles as `promise` does, or rejects once `signal` aborts, whichever comes first.
+ * For work that takes no signal of its own; it is left running, only no longer awaited.
+ */
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const onAbort = () => reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+        // Always handled, so a rejection after the abort is not reported as unhandled.
+        promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+        if (signal.aborted) {
+            onAbort();
+            return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+    });
 }
 
 /** Summaries published for earlier turns in the thread, oldest first. */
