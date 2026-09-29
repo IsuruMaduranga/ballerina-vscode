@@ -200,7 +200,7 @@ export async function restoreWorkspaceSnapshot(checkpoint: Checkpoint, skipArtif
     // and are let through rather than making every existing one unrevertible.
     const capturedRoot = checkpoint.workspaceRoot && realPathOfNearestAncestor(checkpoint.workspaceRoot);
     const currentRoot = realPathOfNearestAncestor(workspaceRoot.fsPath);
-    if (checkpoint.workspaceRoot && !isSamePath(capturedRoot, currentRoot)) {
+    if (checkpoint.workspaceRoot && (!capturedRoot || !currentRoot || !isSamePath(capturedRoot, currentRoot))) {
         const reason = `This checkpoint was taken in a different workspace (${checkpoint.workspaceRoot}), so it cannot be restored here.`;
         console.error(`[Checkpoint] Refusing a cross-root restore: ${reason}`);
         vscode.window.showErrorMessage(`Cannot restore checkpoint: ${reason}`);
