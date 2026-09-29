@@ -174,6 +174,8 @@ public class Constants {
         public static final String LAST_REVIEW_DECISION_DESCRIPTION =
                 "The decision of the most recent review task, with who decided it";
         public static final String CONTEXT_TASK_NAME_KEY = "taskName";
+        // Metadata key carrying how a palette node reads in source, e.g. "ctx->awaitHumanTask()"
+        public static final String CALL_SYNTAX_KEY = "callSyntax";
         public static final String CONTEXT_ASSIGNS_EXISTING_KEY = "assignsExisting";
         public static final String CONTEXT_TASK_NAME_LABEL = "Task Name";
         public static final String CONTEXT_TASK_NAME_DESCRIPTION =

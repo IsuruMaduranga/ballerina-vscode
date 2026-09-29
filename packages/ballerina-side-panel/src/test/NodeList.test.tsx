@@ -259,4 +259,23 @@ describe("NodeList (rpc-driven)", () => {
             .filter((el) => el.textContent === label && el.children.length === 0);
         expect(showingTheName).toHaveLength(1);
     });
+
+    // A short palette name ("Human Task") hides which context call the node stands for, so the
+    // tooltip carries the call form under the description. It is a code line, not the name, so
+    // the exact-name locators the e2e suite relies on still match one element.
+    it("shows a node's call syntax in its tooltip, without repeating the name", async () => {
+        const label = "Human Task";
+        const callSyntax = "ctx->awaitHumanTask()";
+        const item = { ...node("HUMAN_TASK", label), description: "Create a human task", callSyntax };
+        const { container, findByText } = renderWithRpc(
+            <NodeList {...props([{ title: "Steps", items: [item] }])} searchText="Human" />,
+            fakeRpc()
+        );
+
+        expect((await findByText(callSyntax)).tagName).toBe("CODE");
+        expect(container.querySelectorAll(`[title="${label}"]`)).toHaveLength(0);
+        const showingTheName = Array.from(container.querySelectorAll("div"))
+            .filter((el) => el.textContent === label && el.children.length === 0);
+        expect(showingTheName).toHaveLength(1);
+    });
 });

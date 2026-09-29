@@ -28,7 +28,10 @@
             {
               "metadata": {
                 "label": "Call Activity",
-                "description": "Call a workflow activity function"
+                "description": "Call a workflow activity function",
+                "data": {
+                  "callSyntax": "ctx->callActivity()"
+                }
               },
               "codedata": {
                 "node": "ACTIVITY_CALL"
@@ -38,7 +41,10 @@
             {
               "metadata": {
                 "label": "Human Task",
-                "description": "Create a human task and wait for a human to complete it"
+                "description": "Create a human task and wait for a human to complete it",
+                "data": {
+                  "callSyntax": "ctx->awaitHumanTask()"
+                }
               },
               "codedata": {
                 "node": "HUMAN_TASK"
@@ -48,7 +54,10 @@
             {
               "metadata": {
                 "label": "Await Event",
-                "description": "Wait for a data event from outside the workflow"
+                "description": "Wait for a data event from outside the workflow",
+                "data": {
+                  "callSyntax": "ctx->await()"
+                }
               },
               "codedata": {
                 "node": "WAIT_DATA"
@@ -58,7 +67,10 @@
             {
               "metadata": {
                 "label": "Sleep",
-                "description": "Pause workflow execution for a specified duration"
+                "description": "Pause workflow execution for a specified duration",
+                "data": {
+                  "callSyntax": "ctx.sleep()"
+                }
               },
               "codedata": {
                 "node": "SLEEP"
@@ -82,7 +94,10 @@
             {
               "metadata": {
                 "label": "Current Time",
-                "description": "Deterministic current time, safe to use inside workflow logic"
+                "description": "Deterministic current time, safe to use inside workflow logic",
+                "data": {
+                  "callSyntax": "ctx.currentTime()"
+                }
               },
               "codedata": {
                 "node": "WORKFLOW_CURRENT_TIME"
@@ -92,7 +107,10 @@
             {
               "metadata": {
                 "label": "Is Replaying",
-                "description": "Whether the workflow is currently replaying recorded history"
+                "description": "Whether the workflow is currently replaying recorded history",
+                "data": {
+                  "callSyntax": "ctx.isReplaying()"
+                }
               },
               "codedata": {
                 "node": "WORKFLOW_IS_REPLAYING"
@@ -102,7 +120,10 @@
             {
               "metadata": {
                 "label": "Workflow ID",
-                "description": "The unique ID of this workflow instance"
+                "description": "The unique ID of this workflow instance",
+                "data": {
+                  "callSyntax": "ctx.getWorkflowId()"
+                }
               },
               "codedata": {
                 "node": "WORKFLOW_GET_ID"
@@ -112,7 +133,10 @@
             {
               "metadata": {
                 "label": "Workflow Type",
-                "description": "The type name of this workflow"
+                "description": "The type name of this workflow",
+                "data": {
+                  "callSyntax": "ctx.getWorkflowType()"
+                }
               },
               "codedata": {
                 "node": "WORKFLOW_GET_TYPE"
@@ -122,7 +146,10 @@
             {
               "metadata": {
                 "label": "Task Completion",
-                "description": "The completion of the most recently completed human task, with who completed it"
+                "description": "The completion of the most recently completed human task, with who completed it",
+                "data": {
+                  "callSyntax": "ctx.lastHumanTaskCompletion()"
+                }
               },
               "codedata": {
                 "node": "WORKFLOW_LAST_HUMAN_TASK_COMPLETION"
@@ -132,7 +159,10 @@
             {
               "metadata": {
                 "label": "Review Decision",
-                "description": "The decision of the most recent review task, with who decided it"
+                "description": "The decision of the most recent review task, with who decided it",
+                "data": {
+                  "callSyntax": "ctx.lastReviewDecision()"
+                }
               },
               "codedata": {
                 "node": "WORKFLOW_LAST_REVIEW_DECISION"
@@ -155,7 +185,10 @@
             {
               "metadata": {
                 "label": "Run Child",
-                "description": "Start a child workflow and continue without waiting for its result"
+                "description": "Start a child workflow and continue without waiting for its result",
+                "data": {
+                  "callSyntax": "ctx->runChildWorkflow()"
+                }
               },
               "codedata": {
                 "node": "CHILD_WORKFLOW_RUN"
@@ -165,7 +198,10 @@
             {
               "metadata": {
                 "label": "Call Child",
-                "description": "Run a child workflow and durably wait for its result"
+                "description": "Run a child workflow and durably wait for its result",
+                "data": {
+                  "callSyntax": "ctx->callWorkflow()"
+                }
               },
               "codedata": {
                 "node": "CHILD_WORKFLOW_CALL"
@@ -175,7 +211,10 @@
             {
               "metadata": {
                 "label": "Await Child",
-                "description": "Durably wait for a started child workflow's result"
+                "description": "Durably wait for a started child workflow's result",
+                "data": {
+                  "callSyntax": "ctx->waitForChildWorkflow()"
+                }
               },
               "codedata": {
                 "node": "CHILD_WORKFLOW_WAIT"
@@ -185,7 +224,10 @@
             {
               "metadata": {
                 "label": "Send to Child",
-                "description": "Send a data event to a running child workflow"
+                "description": "Send a data event to a running child workflow",
+                "data": {
+                  "callSyntax": "ctx->sendDataToChildWorkflow()"
+                }
               },
               "codedata": {
                 "node": "CHILD_WORKFLOW_SEND_DATA"

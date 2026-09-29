@@ -167,6 +167,13 @@ namespace S {
         }
     `;
 
+    export const TooltipCode = styled.code`
+        display: block;
+        margin-top: 6px;
+        font-family: var(--vscode-editor-font-family);
+        opacity: 0.85;
+    `;
+
     export const Component = styled.div<{ enabled?: boolean }>`
         display: flex;
         flex-direction: row;
@@ -639,15 +646,16 @@ export function NodeList(props: NodeListProps) {
         }
     }
     
-    const renderTooltipContent = (description?: string): React.ReactNode | undefined => {
+    const renderTooltipContent = (description?: string, callSyntax?: string): React.ReactNode | undefined => {
         const cleaned = stripHtmlTags(description || "").trim();
-        if (!cleaned) {
+        if (!cleaned && !callSyntax) {
             return undefined;
         }
 
         return (
             <S.TooltipMarkdown>
-                <ReactMarkdown>{cleaned}</ReactMarkdown>
+                {cleaned && <ReactMarkdown>{cleaned}</ReactMarkdown>}
+                {callSyntax && <S.TooltipCode>{callSyntax}</S.TooltipCode>}
             </S.TooltipMarkdown>
         );
     };
@@ -663,10 +671,11 @@ export function NodeList(props: NodeListProps) {
                 {visibleNodes.length > 0 && (
                     <S.Grid columns={2}>
                         {visibleNodes.map((node, index) => {
+                            const tooltip = renderTooltipContent(node.description, node.callSyntax);
                             return (
                                 <Tooltip
                                     key={node.id + index}
-                                    content={renderTooltipContent(node.description)}
+                                    content={tooltip}
                                     position="bottom"
                                     offset={{top: 16, left: 20}}
                                     sx={{
@@ -685,7 +694,7 @@ export function NodeList(props: NodeListProps) {
                                             when the node describes itself, the browser's own with
                                             the name when it does not, so a name clipped at two
                                             lines can still be read. */}
-                                        <S.ComponentTitle title={node.description ? undefined : node.label}>
+                                        <S.ComponentTitle title={tooltip ? undefined : node.label}>
                                             {node.label}
                                         </S.ComponentTitle>
                                     </S.Component>
