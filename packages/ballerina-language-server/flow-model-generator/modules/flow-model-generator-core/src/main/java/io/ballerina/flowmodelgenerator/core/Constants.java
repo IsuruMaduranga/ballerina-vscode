@@ -202,7 +202,7 @@ public class Constants {
         public static final String BUILTIN_EMAIL_FUNCTION = "sendEmail";
 
         public static final String CALL_HUMAN_TASK_METHOD_NAME = "awaitHumanTask";
-        public static final String HUMAN_TASK_LABEL = "Await Task";
+        public static final String HUMAN_TASK_LABEL = "Human Task";
         public static final String HUMAN_TASK_DESCRIPTION = "Create a human task and wait for a human to complete it";
 
         public static final String SLEEP_METHOD_NAME = "sleep";

@@ -40,7 +40,7 @@
             },
             {
               "metadata": {
-                "label": "Await Task",
+                "label": "Human Task",
                 "description": "Create a human task and wait for a human to complete it",
                 "data": {
                   "method": "awaitHumanTask"

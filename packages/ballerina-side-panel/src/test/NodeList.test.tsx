@@ -260,11 +260,11 @@ describe("NodeList (rpc-driven)", () => {
         expect(showingTheName).toHaveLength(1);
     });
 
-    // A short palette name ("Await Task") hides which context method the node stands for, so the
+    // A short palette name ("Human Task") hides which context method the node stands for, so the
     // tooltip carries the method name under the description. It is a code line, not the name, so
     // the exact-name locators the e2e suite relies on still match one element.
     it("shows a node's context method in its tooltip, without repeating the name", async () => {
-        const label = "Await Task";
+        const label = "Human Task";
         const method = "awaitHumanTask";
         const item = { ...node("HUMAN_TASK", label), description: "Create a human task", method };
         const { container, findByText } = renderWithRpc(
