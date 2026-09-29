@@ -1550,6 +1550,11 @@ public final class Utils {
         return value.substring(0, 1).toUpperCase(Locale.ROOT) + value.substring(1).toLowerCase(Locale.ROOT);
     }
 
+    /** Whether {@code orgName}/{@code packageName} ships with the Ballerina distribution and needs no Central pull. */
+    public static boolean isDistributionModule(String orgName, String packageName) {
+        return BALLERINA.equals(orgName) && DISTRIBUTION_MODULES.contains(packageName);
+    }
+
     /**
      * Resolves a Ballerina module by organization, package, and module name.
      * If the module is not found locally, attempts to pull it from the central repository,
@@ -1571,7 +1576,7 @@ public final class Utils {
         if (isLocalRepository) {
             return;
         }
-        if (BALLERINA.equals(orgName) && DISTRIBUTION_MODULES.contains(packageName)) {
+        if (isDistributionModule(orgName, packageName)) {
             return;
         }
         Path balHomePath = RepoUtils.createAndGetHomeReposPath();
