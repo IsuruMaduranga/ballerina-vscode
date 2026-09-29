@@ -1739,13 +1739,16 @@ export function openMigratedProject(): void {
 // Internal helpers
 // ===========================================================================
 
+/** `true` when `candidate` is `folder` itself or lies inside it. */
+function _isInFolder(candidate: string, folder: string): boolean {
+    const relative = path.relative(folder, candidate);
+    const escapes = relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+    return !escapes;
+}
+
 /** `true` when `candidate` is one of the open workspace folders or lies inside one. */
 function _isInOpenWorkspace(candidate: string): boolean {
-    return (workspace.workspaceFolders ?? []).some((folder) => {
-        const relative = path.relative(folder.uri.fsPath, candidate);
-        const escapes = relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
-        return !escapes;
-    });
+    return (workspace.workspaceFolders ?? []).some((folder) => _isInFolder(candidate, folder.uri.fsPath));
 }
 
 function _resolveCurrentProjectRoot(): string | undefined {
@@ -1759,32 +1762,41 @@ function _resolveCurrentProjectRoot(): string | undefined {
         }
     };
 
-    // The active Ballerina project from the state machine comes first: it is the
-    // project the user is working in, so it wins when several open folders were
-    // migrated. Its paths are not refreshed when workspace folders change and can
-    // come from a file opened outside the workspace, so only those inside an open
-    // folder qualify.
+    // When the state machine has loaded a project, that project is the one the user
+    // is working in, so only its own paths qualify: the package, its Ballerina
+    // workspace, and the open folder holding it (a migration writes the toml at the
+    // workspace root, above the package). Another open folder's migration must not
+    // stand in for it. The state machine's paths are not refreshed when workspace
+    // folders change and can come from a file opened outside the workspace, so only
+    // those inside an open folder qualify.
+    const folders = workspace.workspaceFolders ?? [];
     try {
         const smCtx = StateMachine.context();
         const smProjectPath = smCtx?.projectPath;
         const smWorkspacePath = smCtx?.workspacePath;
-        if (smProjectPath && _isInOpenWorkspace(smProjectPath)) {
-            addCandidate(smProjectPath);
-        }
-        if (smWorkspacePath && _isInOpenWorkspace(smWorkspacePath)) {
-            addCandidate(smWorkspacePath);
+        for (const smPath of [smProjectPath, smWorkspacePath]) {
+            if (!smPath || !_isInOpenWorkspace(smPath)) {
+                continue;
+            }
+            addCandidate(smPath);
+            for (const folder of folders) {
+                if (_isInFolder(smPath, folder.uri.fsPath)) {
+                    addCandidate(folder.uri.fsPath);
+                }
+            }
         }
         console.log("[MigrationEnhancement] StateMachine candidates:", smProjectPath, smWorkspacePath);
     } catch {
         // StateMachine may not be initialized yet — ignore
     }
 
-    // Then every open workspace folder, in order. With several Ballerina projects
-    // open in a multi-root workspace the state machine loads none of them, and the
-    // migrated project need not be the first folder.
-    const folders = workspace.workspaceFolders ?? [];
-    for (const folder of folders) {
-        addCandidate(folder.uri.fsPath);
+    // With no project loaded, every open workspace folder qualifies, in order. With
+    // several Ballerina projects open in a multi-root workspace the state machine
+    // loads none of them, and the migrated project need not be the first folder.
+    if (candidates.length === 0) {
+        for (const folder of folders) {
+            addCandidate(folder.uri.fsPath);
+        }
     }
 
     // Return the first candidate that actually contains the toml file.

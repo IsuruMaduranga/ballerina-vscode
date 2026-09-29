@@ -28,8 +28,10 @@
  *
  * The state machine's project path is not refreshed when workspace folders change and can come
  * from a `.bal` file opened outside the workspace, so it only counts when it lies inside an open
- * folder. Every open workspace folder counts: with several Ballerina projects in a multi-root
- * workspace the state machine loads none of them, and the migrated one need not come first.
+ * folder. When it has loaded a project, only that project's paths count — including the folder
+ * holding it, since a migration writes the state file at the workspace root, above the package —
+ * so another open folder's migration never stands in for it. When it has loaded none (several
+ * Ballerina projects in a multi-root workspace), every open folder counts.
  */
 
 import * as fs from "fs";
@@ -178,9 +180,49 @@ describe.each(MIGRATION_STATES)("a multi-root workspace holds a migrated project
         expect(getActiveMigrationSessionState()).toEqual({ isActive: false, aiFeatureUsed, fullyEnhanced });
     });
 
+    it("reports no pending enhancement when the state machine loaded the other, never-migrated folder", () => {
+        mockStateMachineContext = { projectPath: plainRoot };
+
+        expect(getActiveMigrationSessionState()).toEqual({
+            isActive: false,
+            aiFeatureUsed: false,
+            fullyEnhanced: true,
+        });
+    });
+
     it("reports the state of the project the state machine loaded when another folder was migrated too", () => {
         writeEnhanceToml(plainRoot, !aiFeatureUsed, !fullyEnhanced, "/source/other");
         mockStateMachineContext = { projectPath: migratedRoot };
+
+        expect(getActiveMigrationSessionState()).toEqual({ isActive: false, aiFeatureUsed, fullyEnhanced });
+    });
+});
+
+describe.each(MIGRATION_STATES)("the state machine loaded a package of a migration that left %s", (_label, aiFeatureUsed, fullyEnhanced) => {
+    let migratedRoot: string;
+    let packageRoot: string;
+
+    beforeEach(() => {
+        // A migration writes a Ballerina workspace: the state file sits at its root, above the package.
+        migratedRoot = makeProject("migrated");
+        packageRoot = path.join(migratedRoot, "pkg");
+        fs.mkdirSync(packageRoot);
+        writeEnhanceToml(migratedRoot, aiFeatureUsed, fullyEnhanced, "/source/project");
+    });
+
+    it("reports the workspace root's state when that root is the open folder", () => {
+        (workspace as any).workspaceFolders = [{ uri: { fsPath: migratedRoot } }];
+        mockStateMachineContext = { projectPath: packageRoot, workspacePath: migratedRoot };
+
+        expect(getActiveMigrationSessionState()).toEqual({ isActive: false, aiFeatureUsed, fullyEnhanced });
+    });
+
+    it("reports the state of the open folder holding the package when no workspace path is set", () => {
+        (workspace as any).workspaceFolders = [
+            { uri: { fsPath: makeProject("plain") } },
+            { uri: { fsPath: migratedRoot } },
+        ];
+        mockStateMachineContext = { projectPath: packageRoot };
 
         expect(getActiveMigrationSessionState()).toEqual({ isActive: false, aiFeatureUsed, fullyEnhanced });
     });
