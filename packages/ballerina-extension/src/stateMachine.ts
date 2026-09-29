@@ -490,6 +490,7 @@ const stateMachine = createMachine<MachineContext>(
                                         type: 'text',
                                         text: `${planStepsWithInfoMessage}`,
                                         planMode: false,
+                                        consoleScaffold: true,
                                         autoSubmit: true
                                     });
                                 }
