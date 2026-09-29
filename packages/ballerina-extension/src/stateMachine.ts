@@ -1170,9 +1170,7 @@ export function updateView(refreshTreeView?: boolean, updatedIdentifier?: string
     if (lastView && lastView.location?.artifactType && lastView.location?.identifier) {
         newLocation = { ...lastView.location };
         const currentIdentifier = lastView.location?.identifier;
-        const parentIdentifier = lastView.location?.parentIdentifier;
         const candidates: ProjectStructureArtifactResponse[] = [];
-        const parentScopedCandidates: ProjectStructureArtifactResponse[] = [];
         let targetedArtifactType = lastView.location?.artifactType;
 
         if (targetedArtifactType === DIRECTORY_MAP.RESOURCE || targetedArtifactType === DIRECTORY_MAP.REMOTE) {
@@ -1196,17 +1194,10 @@ export function updateView(refreshTreeView?: boolean, updatedIdentifier?: string
                 const resource = artifact.resources.find(matchesIdentifier);
                 if (resource) {
                     candidates.push(resource);
-                    if (parentIdentifier && artifact.name === parentIdentifier) {
-                        parentScopedCandidates.push(resource);
-                    }
                 }
             }
         });
-        const currentArtifact = pickClosestArtifact(
-            parentScopedCandidates.length > 0 ? parentScopedCandidates : candidates,
-            lastView.location.documentUri,
-            lastView.location.position
-        );
+        const currentArtifact = pickClosestArtifact(candidates, lastView.location.documentUri, lastView.location.position);
 
         const newPosition = currentArtifact?.position || lastView.location.position;
         newLocation = { ...lastView.location, position: newPosition };
