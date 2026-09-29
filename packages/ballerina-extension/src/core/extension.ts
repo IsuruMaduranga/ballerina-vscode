@@ -85,13 +85,17 @@ import path from 'path';
 import * as glob from 'glob';
 import { RPCLayer } from "../RPCLayer";
 import { VisualizerWebview } from "../views/visualizer/webview";
+import { REQUIRED_BALLERINA_VERSION } from "../features/project/dependency-lock";
 
 const SWAN_LAKE_REGEX = /(s|S)wan( |-)(l|L)ake/g;
 
 export const EXTENSION_ID = 'wso2.ballerina';
-// Shown to the user, not compared against.
-const REQUIRED_BALLERINA_VERSION = '2201.14.0';
 const PREV_EXTENSION_ID = 'ballerina.ballerina';
+
+/** Arguments to `ballerina.update-ballerina-visually`; omitted, it runs `bal dist update`. */
+export interface BallerinaUpdateOptions {
+    version?: string;
+}
 export enum LANGUAGE {
     BALLERINA = 'ballerina',
     TOML = 'toml'
@@ -428,8 +432,8 @@ export class BallerinaExtension {
                 });
                 debug("[INIT] Update Ballerina command registered");
 
-                commands.registerCommand('ballerina.update-ballerina-visually', () => {
-                    this.updateBallerinaVisually();
+                commands.registerCommand('ballerina.update-ballerina-visually', (options?: BallerinaUpdateOptions) => {
+                    return this.updateBallerinaVisually(options);
                 });
                 debug("[INIT] Update Ballerina visually command registered");
             } catch (error) {
@@ -753,14 +757,24 @@ export class BallerinaExtension {
         });
     }
 
-    async updateBallerinaVisually() {
+    /**
+     * With `version`, pulls that exact distribution instead of `bal dist update`, whose target isn't pinned.
+     * Resolves false only when the command is known to have failed.
+     */
+    async updateBallerinaVisually(options?: BallerinaUpdateOptions): Promise<boolean> {
         try {
             await commands.executeCommand(SHARED_COMMANDS.SETUP_BALLERINA);
         } catch (error) {
             console.warn("[SETUP] Failed to open setup flow", error);
         }
         const realPath = this.ballerinaHome ? fs.realpathSync.native(this.ballerinaHome) : "";
-        this.executeCommandWithProgress(realPath.includes("ballerina-home") ? 'bal dist update' : 'sudo bal dist update');
+        const command = options?.version ? `bal dist pull ${options.version}` : 'bal dist update';
+        const elevated = !realPath.includes("ballerina-home");
+        const run = this.executeCommandWithProgress(elevated ? `sudo ${command}` : command);
+        if (elevated) {
+            return true; // runs in a terminal or a detached UAC process, which report no outcome
+        }
+        return run.then(() => true, () => false);
     }
 
     private async executeCommandWithProgress(command: string) {
@@ -1724,36 +1738,13 @@ export class BallerinaExtension {
         const message = `Your Ballerina ${this.ballerinaVersion} is incompatible with the current extension.`;
         sendTelemetryEvent(this, TM_EVENT_EXTENSION_INI_FAILED, CMP_EXTENSION_CORE, getMessageObject(message));
 
-        // The modal is transient, so the panel carries the same explanation.
+        // No popup: the visualizer screen explains, and offers updating Ballerina or the earlier-version docs.
         VisualizerWebview.showJdkIncompatibility({
             ballerinaVersion: this.ballerinaVersion,
             jdkMajorVersion,
             requiredJdkMajorVersion: REQUIRED_JDK_MAJOR_VERSION,
             requiredBallerinaVersion: REQUIRED_BALLERINA_VERSION
         });
-
-        const UPDATE_BALLERINA = 'Update Ballerina';
-        const INSTALL_PREVIOUS = 'Install Previous Extension Version';
-        const selection = await window.showWarningMessage(
-            message,
-            {
-                modal: true,
-                detail: `Update Ballerina to ${REQUIRED_BALLERINA_VERSION} or later, or keep your `
-                    + `current Ballerina version and install an older extension: expand the dropdown `
-                    + `next to Uninstall and pick "Install Specific Version...".`
-            },
-            UPDATE_BALLERINA,
-            INSTALL_PREVIOUS
-        );
-
-        if (selection === UPDATE_BALLERINA) {
-            // The setup view opens its own panel, which would otherwise inherit this state.
-            VisualizerWebview.clearJdkIncompatibility();
-            await commands.executeCommand('ballerina.update-ballerina-visually');
-        } else if (selection === INSTALL_PREVIOUS) {
-            // No VS Code command opens the version picker for a given extension; the page is closest.
-            await commands.executeCommand('extension.open', EXTENSION_ID);
-        }
         return false;
     }
 
