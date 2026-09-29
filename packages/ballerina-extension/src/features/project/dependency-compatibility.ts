@@ -18,7 +18,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Range, TextDocument, Uri, workspace, WorkspaceEdit } from 'vscode';
+import { Range, TextDocument, Uri, window, workspace, WorkspaceEdit } from 'vscode';
 import { EVENT_TYPE, MACHINE_VIEW, isSamePath, normalizeProjectPath } from '@wso2/ballerina-core';
 import { StateMachine, openView, reloadVisualizerApp } from '../../stateMachine';
 import { VisualizerWebview } from '../../views/visualizer/webview';
@@ -28,6 +28,7 @@ import { quoteShellPath } from '../../utils/config';
 import { extension } from '../../BalExtensionContext';
 import {
     BALLERINA_TOML,
+    DEPENDENCIES_TOML,
     compareDistributionVersions,
     OutdatedPackage,
     REQUIRED_BALLERINA_VERSION,
@@ -47,17 +48,13 @@ import { DependencyCheckResult, getVisualizerCheckRoot } from './dependency-chec
 // docs for going back to a matching version. No VS Code popups: the screen carries the choice, progress and outcome.
 // A root is a package or a workspace; a workspace is checked and updated as a whole, one lock per member.
 
-const OUTDATED_TITLE = 'Your project dependencies need to be updated.';
+const OUTDATED_TITLE = 'Your project dependencies need to be updated';
+const STATUS_BAR_MESSAGE_MS = 8000;
 
 /** Normalized keys, so repeated clicks on one root reached by different spellings share one update. */
 const updatesInFlight = new Map<string, Promise<string | undefined>>();
 /** Normalized root -> packages whose last update build failed; retried even if their lock already moved. */
 const failedBuilds = new Map<string, OutdatedPackage[]>();
-
-/** The Integrator app bundles its own distribution, so going back means an older app. */
-function isInIntegratorApp(): boolean {
-    return !!process.env.WSO2_INTEGRATOR_RUNTIME;
-}
 
 /** The packages under `root` whose locks need updating; empty when none do or the check does not apply. */
 function findOutdated(root: string | undefined): OutdatedPackage[] {
@@ -108,6 +105,8 @@ export function ensureDependenciesCompatible(filePath: string | undefined): bool
             ? { view: MACHINE_VIEW.WorkspaceOverview }
             : { view: MACHINE_VIEW.PackageOverview, projectPath: root });
     }
+    // So the cancelled launch doesn't read as a debugger failure.
+    window.setStatusBarMessage('Run cancelled: update the project dependencies first', STATUS_BAR_MESSAGE_MS);
     return false;
 }
 
@@ -130,6 +129,7 @@ export async function updateDependenciesFromPanel(): Promise<void> {
         return;
     }
     await reloadVisualizerApp();
+    window.setStatusBarMessage('$(check) Dependencies updated', STATUS_BAR_MESSAGE_MS); // not a popup
     const context = StateMachine.context();
     openView(EVENT_TYPE.OPEN_VIEW, context.projectPath
         ? { view: MACHINE_VIEW.PackageOverview, projectPath: context.projectPath }
@@ -140,25 +140,18 @@ export function showUpdateOutput(): void {
     buildOutputChannel.show();
 }
 
-/** Worded like the JDK screen; keeping the lock means an older app, or older Ballerina plus older extension(s). */
-function describeOutdated(): { paragraphs: string[]; earlierVersionLabel: string } {
-    const why = 'Your project dependencies were set up with an earlier Ballerina version, and some of the dependencies '
-        + `may be incompatible with Ballerina ${REQUIRED_BALLERINA_VERSION}.`;
-    if (isInIntegratorApp()) {
-        return {
-            paragraphs: [why, 'Update the dependencies, or keep them as they are by switching to an earlier release of '
-                + 'WSO2 Integrator.'],
-            earlierVersionLabel: 'Use a Previous Release'
-        };
-    }
-    // Same test the screen's title uses: with the Integrator extension there are two extensions to downgrade.
-    const extensions = VisualizerWebview.webviewTitle === VisualizerWebview.biTitle
-        ? 'switching extensions to their previous versions'
-        : 'switching the extension to its previous version';
+/** The why, the two ways out (details live in the docs), and what updating touches, naming packages in a workspace. */
+function describeOutdated(root: string, outdated: OutdatedPackage[]): { paragraphs: string[]; note: string } {
+    const packages = getWorkspacePackagePaths(root) && outdated.length > 0
+        ? ` Packages to update: ${outdated.map((item) => item.name).join(', ')}.`
+        : '';
     return {
-        paragraphs: [why, 'Update the dependencies, or keep them as they are by switching to a Ballerina version '
-            + `earlier than ${REQUIRED_BALLERINA_VERSION} and ${extensions}.`],
-        earlierVersionLabel: 'Use Previous Versions'
+        paragraphs: [
+            'Your project dependencies were set up with an earlier Ballerina version, and some of the dependencies are '
+                + `incompatible with Ballerina ${REQUIRED_BALLERINA_VERSION}.`,
+            'Update the dependencies, or keep them as they are by going back to earlier versions.'
+        ],
+        note: `Updating changes ${DEPENDENCIES_TOML} and ${BALLERINA_TOML} and needs network access.${packages}`
     };
 }
 
@@ -173,7 +166,9 @@ function blockPanel(
     // A re-check (navigation, Run) keeps the progress or failure already showing for this root.
     const showing = VisualizerWebview.dependencyUpdateRequired;
     const kept = status ?? (showing && isSamePath(showing.rootPath, root) ? showing.status : undefined);
-    VisualizerWebview.showDependencyUpdateRequired({ rootPath: root, title: OUTDATED_TITLE, ...describeOutdated(), status: kept });
+    VisualizerWebview.showDependencyUpdateRequired({
+        rootPath: root, title: OUTDATED_TITLE, ...describeOutdated(root, findOutdated(root)), status: kept
+    });
 }
 
 /** `outdated` plus the packages whose last build failed, if still members of `root` and not already listed. */

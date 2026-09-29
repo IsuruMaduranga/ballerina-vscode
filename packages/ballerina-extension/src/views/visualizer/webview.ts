@@ -39,6 +39,18 @@ import { isAiTouchedFile } from "../../rpc-managers/diagram-validity";
 import { setCompanionVisualizer } from "../ai-panel/activeFileContext";
 import { getStartupIntegrationProgress } from "../../features/bi/startup-progress";
 import { showUpdateOutput, updateDependenciesFromPanel } from "../../features/project/dependency-compatibility";
+import { getVisualizerCheckRoot } from "../../features/project/dependency-check-transitions";
+import { findOutdatedPackages, REQUIRED_BALLERINA_VERSION } from "../../features/project/dependency-lock";
+
+/** Whether the project in the visualizer has locks that will need updating once Ballerina is updated. */
+function hasOutdatedDependencies(context: { workspacePath?: string; projectPath?: string }): boolean {
+    const root = getVisualizerCheckRoot(context);
+    try {
+        return !!root && findOutdatedPackages(root).length > 0;
+    } catch {
+        return false;
+    }
+}
 
 /** Escapes text interpolated into the startup screen's HTML (integration names are user input). */
 function escapeHtml(value: string): string {
@@ -61,14 +73,17 @@ function toInlineJson(value: unknown): string {
 const TROUBLESHOOTING_DOCS_URL = "https://wso2.com/integration-platform/docs/develop/troubleshooting/ide-troubleshooting";
 /** Where both blocked screens send users who want to stay on an earlier version. Placeholder until its own page. */
 const EARLIER_VERSION_DOCS_URL = TROUBLESHOOTING_DOCS_URL;
+/** One label on both screens; a link, since it opens docs rather than downgrading anything. */
+const EARLIER_VERSION_LINK = `<a href="#" class="earlier-version-link" id="use-earlier-version">How to stay on an earlier version ↗</a>`;
 
 export interface DependencyUpdateRequiredInfo {
     /** The package, or the workspace whose members are checked together. */
     rootPath: string;
     title: string;
-    /** Why, then the two ways out, worded for the app or the extension(s). */
+    /** Why, then the two ways out. */
     paragraphs: string[];
-    earlierVersionLabel: string;
+    /** What updating changes, and which packages in a workspace. */
+    note: string;
     /** Shown in place of a popup: the update in progress, or why it failed. */
     status?: { kind: "updating"; message: string } | { kind: "failed"; message: string };
 }
@@ -103,7 +118,11 @@ export class VisualizerWebview {
         this._disposables.push(this._panel.webview.onDidReceiveMessage(async (message) => {
             if (message?.command === 'jdkIncompatibility.updateBallerina') {
                 VisualizerWebview.clearJdkIncompatibility();
-                await vscode.commands.executeCommand('ballerina.update-ballerina-visually');
+                // Pinned, since `bal dist update` may stay on the current update line; the setup view shows progress.
+                await vscode.commands.executeCommand('ballerina.update-ballerina-visually', {
+                    version: REQUIRED_BALLERINA_VERSION,
+                    quiet: true
+                });
             } else if (message?.command === 'useEarlierVersion') {
                 await vscode.env.openExternal(vscode.Uri.parse(EARLIER_VERSION_DOCS_URL));
             } else if (message?.command === 'dependencyUpdate.update') {
@@ -332,14 +351,16 @@ export class VisualizerWebview {
             : "Your project is being prepared. This may take a few moments.";
         const incompatibility = VisualizerWebview.jdkIncompatibility;
         const dependencyUpdate = VisualizerWebview.dependencyUpdateRequired;
+        // Tell users with an old distribution and old locks that a second screen follows the update.
+        const jdkThenDependencies = !!incompatibility && hasOutdatedDependencies(StateMachine.context());
         const body = incompatibility
             ? `<div class="container" id="jdk-incompatibility-container">
                 <div class="loader-wrapper">
                     <div class="welcome-content">
                         <h1 class="welcome-title">${escapeHtml(productTitle)} cannot start</h1>
                         <p class="welcome-subtitle">
-                            Your Ballerina ${escapeHtml(incompatibility.ballerinaVersion)} is
-                            incompatible with the current ${biExtension ? "extensions" : "extension"}.
+                            The installed Ballerina version, ${escapeHtml(incompatibility.ballerinaVersion)}, isn't
+                            compatible with the current ${biExtension ? "extensions" : "extension"}.
                             <br><br>
                             Update Ballerina to
                             ${escapeHtml(incompatibility.requiredBallerinaVersion)} or later, or keep
@@ -348,10 +369,13 @@ export class VisualizerWebview {
                                 ? "switch extensions to their previous versions"
                                 : "switch the extension to its previous version"}.
                         </p>
+                        ${jdkThenDependencies
+                            ? `<p class="welcome-subtitle status-note">After updating Ballerina, you'll also be asked to update this project's dependencies.</p>`
+                            : ""}
                         <div class="action-row">
                             <button class="action-button" id="update-ballerina">Update Ballerina</button>
-                            <button class="action-button secondary" id="use-earlier-version">Use Previous Extension ${biExtension ? "Versions" : "Version"}</button>
                         </div>
+                        <p class="status-links">${EARLIER_VERSION_LINK}</p>
                     </div>
                 </div>
             </div>
@@ -359,8 +383,10 @@ export class VisualizerWebview {
                 const vscodeApi = acquireVsCodeApi();
                 document.getElementById('update-ballerina').addEventListener('click', () =>
                     vscodeApi.postMessage({ command: 'jdkIncompatibility.updateBallerina' }));
-                document.getElementById('use-earlier-version').addEventListener('click', () =>
-                    vscodeApi.postMessage({ command: 'useEarlierVersion' }));
+                document.getElementById('use-earlier-version').addEventListener('click', (event) => {
+                    event.preventDefault(); // an anchor
+                    vscodeApi.postMessage({ command: 'useEarlierVersion' });
+                });
             </script>`
             : dependencyUpdate
             ? `<div class="container" id="dependency-update-container">
@@ -368,11 +394,13 @@ export class VisualizerWebview {
                     <div class="welcome-content${dependencyUpdate.status ? " no-fade" : ""}">
                         <h1 class="welcome-title">${escapeHtml(dependencyUpdate.title)}</h1>
                         <p class="welcome-subtitle">${dependencyUpdate.paragraphs.map(escapeHtml).join("<br><br>")}</p>
+                        <p class="welcome-subtitle status-note">${escapeHtml(dependencyUpdate.note)}</p>
                         ${dependencyUpdate.status?.kind === "updating"
                             ? `<div class="status-progress" role="status">
                                 <span class="status-spinner" aria-hidden="true"></span>
                                 <span>${escapeHtml(dependencyUpdate.status.message)}</span>
-                            </div>`
+                            </div>
+                            <p class="status-links">This can take a few minutes. · <a href="#" id="show-output">Show output</a></p>`
                             : `${dependencyUpdate.status?.kind === "failed"
                                 ? `<p class="status-error">${escapeHtml(dependencyUpdate.status.message)}</p>
                                 <p class="status-links">
@@ -382,15 +410,15 @@ export class VisualizerWebview {
                                 : ""}
                             <div class="action-row">
                                 <button class="action-button" id="update-dependencies">Update Dependencies</button>
-                                <button class="action-button secondary" id="use-earlier-version">${escapeHtml(dependencyUpdate.earlierVersionLabel)}</button>
-                            </div>`}
+                            </div>
+                            <p class="status-links">${EARLIER_VERSION_LINK}</p>`}
                     </div>
                 </div>
             </div>
             <script>
                 const vscodeApi = acquireVsCodeApi();
                 const post = (id, command) => document.getElementById(id)?.addEventListener('click', (event) => {
-                    event.preventDefault(); // the failure links are anchors
+                    event.preventDefault(); // the links are anchors
                     event.currentTarget.disabled = command === 'dependencyUpdate.update'; // re-rendered with progress
                     vscodeApi.postMessage({ command });
                 });
@@ -499,7 +527,14 @@ export class VisualizerWebview {
             }
             .status-links {
                 font-size: 13px;
-                margin: 6px 0 0;
+                margin: 12px 0 0;
+                color: var(--vscode-descriptionForeground);
+            }
+            .status-error + .status-links {
+                margin-top: 6px;
+            }
+            .welcome-subtitle.status-note {
+                margin-top: 12px; /* outranks .welcome-subtitle's margin: 0, which comes later */
             }
             .status-links a {
                 color: var(--vscode-textLink-foreground);

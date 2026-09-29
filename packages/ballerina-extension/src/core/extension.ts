@@ -91,6 +91,12 @@ const SWAN_LAKE_REGEX = /(s|S)wan( |-)(l|L)ake/g;
 
 export const EXTENSION_ID = 'wso2.ballerina';
 const PREV_EXTENSION_ID = 'ballerina.ballerina';
+
+/** Arguments to `ballerina.update-ballerina-visually`; omitted, it runs `bal dist update` with notifications. */
+export interface BallerinaUpdateOptions {
+    version?: string;
+    quiet?: boolean;
+}
 export enum LANGUAGE {
     BALLERINA = 'ballerina',
     TOML = 'toml'
@@ -427,8 +433,8 @@ export class BallerinaExtension {
                 });
                 debug("[INIT] Update Ballerina command registered");
 
-                commands.registerCommand('ballerina.update-ballerina-visually', () => {
-                    this.updateBallerinaVisually();
+                commands.registerCommand('ballerina.update-ballerina-visually', (options?: BallerinaUpdateOptions) => {
+                    this.updateBallerinaVisually(options);
                 });
                 debug("[INIT] Update Ballerina visually command registered");
             } catch (error) {
@@ -752,38 +758,44 @@ export class BallerinaExtension {
         });
     }
 
-    async updateBallerinaVisually() {
+    /**
+     * With `version`, pulls that exact distribution instead of `bal dist update`, whose target isn't pinned. With
+     * `quiet`, progress stays in the setup view and no notifications are shown.
+     */
+    async updateBallerinaVisually(options?: BallerinaUpdateOptions) {
         try {
             await commands.executeCommand(SHARED_COMMANDS.SETUP_BALLERINA);
         } catch (error) {
             console.warn("[SETUP] Failed to open setup flow", error);
         }
         const realPath = this.ballerinaHome ? fs.realpathSync.native(this.ballerinaHome) : "";
-        this.executeCommandWithProgress(realPath.includes("ballerina-home") ? 'bal dist update' : 'sudo bal dist update');
+        const command = options?.version ? `bal dist pull ${options.version}` : 'bal dist update';
+        this.executeCommandWithProgress(realPath.includes("ballerina-home") ? command : `sudo ${command}`, options?.quiet);
     }
 
-    private async executeCommandWithProgress(command: string) {
+    private async executeCommandWithProgress(command: string, quiet = false) {
         // Check if this is a sudo command (for macOS/Linux) or needs admin rights (Windows)
         const isSudoCommand = command.trim().startsWith('sudo');
-        window.showInformationMessage(`Executing: ${command}`);
+        const notify = quiet ? () => undefined : (message: string) => window.showInformationMessage(message);
+        notify(`Executing: ${command}`);
         if (isSudoCommand) {
             if (isWindows()) {
                 // Windows: Use PowerShell with "Run as Administrator"
-                return this.executeWindowsAdminCommand(command);
+                return this.executeWindowsAdminCommand(command, quiet);
             } else {
                 const terminal = window.createTerminal('Update Ballerina');
                 terminal.show();
                 terminal.sendText(command);
-                window.showInformationMessage('Please proceed with the sudo command to update the ballerina distribution');
+                notify('Please proceed with the sudo command to update the ballerina distribution');
             }
         } else {
             // Regular non-elevated command
-            return this.executeRegularCommand(command);
+            return this.executeRegularCommand(command, quiet);
         }
     }
 
     // Execute a regular (non-admin) command
-    private async executeRegularCommand(command: string): Promise<void> {
+    private async executeRegularCommand(command: string, quiet = false): Promise<void> {
         let progressStep = 0;
 
         // Send initial progress notification
@@ -845,11 +857,15 @@ export class BallerinaExtension {
                 this.notifyDownloadProgress(res);
 
                 if (code === 0) {
-                    window.showInformationMessage('Command executed successfully');
+                    if (!quiet) {
+                        window.showInformationMessage('Command executed successfully');
+                    }
                     commands.executeCommand('workbench.action.reloadWindow');
                     resolve();
                 } else {
-                    window.showErrorMessage(`Command failed with exit code ${code}`);
+                    if (!quiet) {
+                        window.showErrorMessage(`Command failed with exit code ${code}`);
+                    }
                     reject(new Error(`Command failed with exit code ${code}`));
                 }
             });
@@ -857,7 +873,7 @@ export class BallerinaExtension {
     }
 
     // Execute a command with administrator privileges on Windows
-    private async executeWindowsAdminCommand(command: string): Promise<void> {
+    private async executeWindowsAdminCommand(command: string, quiet = false): Promise<void> {
         let progressStep = 0;
 
         // Remove 'sudo' prefix if present
@@ -875,7 +891,9 @@ export class BallerinaExtension {
         this.notifyDownloadProgress(res);
 
         // Show a message to the user that they'll need to respond to the UAC prompt
-        window.showInformationMessage('Please confirm the User Account Control (UAC) prompt to run this command with administrator privileges');
+        if (!quiet) {
+            window.showInformationMessage('Please confirm the User Account Control (UAC) prompt to run this command with administrator privileges');
+        }
         await new Promise(() => {
             try {
                 // Execute the PowerShell command
@@ -932,7 +950,9 @@ export class BallerinaExtension {
                 step: -1
             };
             this.notifyDownloadProgress(res);
-            window.showErrorMessage(`Error executing admin command: ${errorMessage}`);
+            if (!quiet) {
+                window.showErrorMessage(`Error executing admin command: ${errorMessage}`);
+            }
         });
     }
 
