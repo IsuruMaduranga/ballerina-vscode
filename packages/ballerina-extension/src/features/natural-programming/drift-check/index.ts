@@ -49,7 +49,7 @@ export async function validateDriftWithApiDocs(ballerinaSources: string): Promis
     const { object } = await generateObject({
         model: await getAnthropicClient(ANTHROPIC_SONNET),
         maxOutputTokens: 8192,
-        providerOptions: await getProviderModelOptions(),
+        providerOptions: await getProviderModelOptions('medium'),
         schema: ApiDocsDriftResponseSchema,
         messages: [
             {
@@ -78,7 +78,7 @@ export async function validateDriftWithDocumentation(params: DocumentationDriftC
     const { object } = await generateObject({
         model: await getAnthropicClient(ANTHROPIC_SONNET),
         maxOutputTokens: 8192,
-        providerOptions: await getProviderModelOptions(),
+        providerOptions: await getProviderModelOptions('medium'),
         schema: DocumentationDriftResponseSchema,
         messages: [
             {

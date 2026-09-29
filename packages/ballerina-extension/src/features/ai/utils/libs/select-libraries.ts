@@ -69,7 +69,7 @@ export async function getSelectedLibraries(prompt: string, libraryType: Generati
     const { object, usage } = await generateObject({
         model: await getAnthropicClient(ANTHROPIC_SONNET),
         maxOutputTokens: 4096,
-        providerOptions: await getProviderModelOptions(),
+        providerOptions: await getProviderModelOptions('low'),
         system: { role: "system", content: getSystemPrompt(allLibraries), providerOptions: cacheOptions },
         messages: messages,
         schema: LibraryListSchema,

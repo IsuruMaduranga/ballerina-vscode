@@ -28,6 +28,9 @@ const WEB_TOOL_NOTIFICATION_TYPE = "webtool";
 export const WEB_SEARCH_TOOL_NAME = "web_search";
 export const WEB_FETCH_TOOL_NAME = "web_fetch";
 
+/** Runs of the fetcher before giving up when it answers without calling web_fetch. */
+const WEB_FETCH_ATTEMPTS = 2;
+
 approvalManager.registerNotificationHandler(WEB_TOOL_NOTIFICATION_TYPE, (active) => {
     sendWebToolToggleNotification(active);
 });
@@ -46,7 +49,8 @@ function getProviderToolFactory(candidateNames: string[]): ((args: Record<string
     return null;
 }
 
-function extractToolOutput(result: any): string {
+/** The fetched content, or a failure line; `undefined` when the model answered without calling the tool. */
+function extractToolOutput(result: any): string | undefined {
     try {
         for (const step of result.steps ?? []) {
             if (Array.isArray(step?.toolResults) && step.toolResults.length > 0) {
@@ -67,7 +71,7 @@ function extractToolOutput(result: any): string {
     } catch {
         // fall through
     }
-    return result.text;
+    return undefined;
 }
 
 async function requestApprovalIfNeeded(
@@ -140,7 +144,7 @@ async function executeWebSearch(
         console.log(`[WebTools] search | query: ${input.query} | context: ${input.context}`);
         const result = await generateText({
             model: await getAnthropicClient(ANTHROPIC_SONNET),
-            providerOptions: await getProviderModelOptions(),
+            providerOptions: await getProviderModelOptions('low'),
             system: WEB_SEARCH_SYSTEM_PROMPT,
             prompt: `Context: ${input.context}\n\nSearch query: ${input.query}\n\nSearch the web and provide a detailed, accurate answer based on the results.`,
             tools: {
@@ -221,23 +225,33 @@ async function executeWebFetch(
         const blockedDomains = sanitizeDomainList(input.blocked_domains);
 
         console.log(`[WebTools] fetch | url: ${input.url}`);
-        const result = await generateText({
-            model: await getAnthropicClient(ANTHROPIC_SONNET),
-            providerOptions: await getProviderModelOptions(),
-            system: 'You are a web fetcher. Your only job is to invoke the web_fetch tool with the given URL. STRICT RULES: (1) Do NOT write any text before the tool call. (2) Do NOT write any text after the tool call. (3) Do NOT summarize, describe, or explain the result. The tool result is consumed programmatically — any text you emit is ignored and wastes tokens.',
-            prompt: `URL: ${input.url}`,
-            tools: {
-                web_fetch: fetchFactory({
-                    maxUses: 3,
-                    ...(allowedDomains ? { allowedDomains } : {}),
-                    ...(blockedDomains ? { blockedDomains } : {}),
-                }),
-            },
-            toolChoice: { type: 'tool', toolName: 'web_fetch' },
-            stopWhen: hasToolCall('web_fetch'),
-        });
-
-        const content = extractToolOutput(result);
+        // Claude Sonnet 5.5 rejects a forced tool choice, so the prompt asks for the call and the
+        // result is checked for it; a run that answered without fetching is retried once.
+        let content: string | undefined;
+        for (let attempt = 1; attempt <= WEB_FETCH_ATTEMPTS && content === undefined; attempt++) {
+            const result = await generateText({
+                model: await getAnthropicClient(ANTHROPIC_SONNET),
+                providerOptions: await getProviderModelOptions('low'),
+                system: 'You are a web fetcher. Your only job is to invoke the web_fetch tool with the given URL. STRICT RULES: (1) Do NOT write any text before the tool call. (2) Do NOT write any text after the tool call. (3) Do NOT summarize, describe, or explain the result. The tool result is consumed programmatically — any text you emit is ignored and wastes tokens.',
+                prompt: `URL: ${input.url}`,
+                tools: {
+                    web_fetch: fetchFactory({
+                        maxUses: 3,
+                        ...(allowedDomains ? { allowedDomains } : {}),
+                        ...(blockedDomains ? { blockedDomains } : {}),
+                    }),
+                },
+                stopWhen: hasToolCall('web_fetch'),
+            });
+            content = extractToolOutput(result);
+            if (content === undefined) {
+                console.warn(`[WebTools] fetch | attempt ${attempt} answered without calling web_fetch`);
+            }
+        }
+        if (content === undefined) {
+            eventHandler({ type: "tool_result", toolName: WEB_FETCH_TOOL_NAME, toolOutput: { url: input.url }, toolCallId, failed: true });
+            return `Web fetch failed: the fetcher did not call web_fetch for ${input.url}.`;
+        }
         console.log(`[WebTools] fetch | done | length: ${content?.length ?? 0}`);
 
         eventHandler({ type: "tool_result", toolName: WEB_FETCH_TOOL_NAME, toolOutput: { url: input.url }, toolCallId });
