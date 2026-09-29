@@ -657,6 +657,29 @@ function isPositionWithinRange(position: NodePosition, artifactPosition: NodePos
     return position.startLine === artifactPosition.startLine && position.startColumn === artifactPosition.startColumn;
 }
 
+/**
+ * Picks the artifact that best matches a tracked location when several candidates share an identifier
+ * (e.g. the `onConsumerRecord` functions of two Kafka services). Candidates in `documentUri` are preferred,
+ * and among those the one starting closest to `position` wins.
+ */
+export function pickClosestArtifact(
+    candidates: ProjectStructureArtifactResponse[],
+    documentUri?: string,
+    position?: NodePosition
+): ProjectStructureArtifactResponse | undefined {
+    if (candidates.length <= 1) {
+        return candidates[0];
+    }
+    const inDocument = documentUri ? candidates.filter(candidate => isSamePath(candidate.path, documentUri)) : [];
+    const pool = inDocument.length > 0 ? inDocument : candidates;
+    if (!position) {
+        return pool[0];
+    }
+    const distance = (candidate: ProjectStructureArtifactResponse) =>
+        candidate.position ? Math.abs(candidate.position.startLine - position.startLine) : Number.MAX_SAFE_INTEGER;
+    return pool.reduce((best, candidate) => distance(candidate) < distance(best) ? candidate : best);
+}
+
 function isPositionWithinBlock(position: NodePosition, artifactPosition: NodePosition) {
     return position.startLine > artifactPosition.startLine && position.endLine < artifactPosition.endLine;
 }
