@@ -591,54 +591,54 @@ public class AvailableNodesGenerator {
             Category steps = new Category.Builder(null).name(Category.Name.WORKFLOW_STEPS)
                     .items(List.of(
                             workflowNode(Workflow.CALL_ACTIVITY_LABEL, Workflow.CALL_ACTIVITY_DESCRIPTION,
-                                    NodeKind.ACTIVITY_CALL, remoteCall(Workflow.CALL_ACTIVITY_METHOD_NAME)),
+                                    NodeKind.ACTIVITY_CALL, Workflow.CALL_ACTIVITY_METHOD_NAME),
                             workflowNode(Workflow.HUMAN_TASK_LABEL, Workflow.HUMAN_TASK_DESCRIPTION,
-                                    NodeKind.HUMAN_TASK, remoteCall(Workflow.CALL_HUMAN_TASK_METHOD_NAME)),
+                                    NodeKind.HUMAN_TASK, Workflow.CALL_HUMAN_TASK_METHOD_NAME),
                             workflowNode(Workflow.WAIT_DATA_LABEL, Workflow.WAIT_DATA_DESCRIPTION,
-                                    NodeKind.WAIT_DATA, remoteCall(Workflow.AWAIT_METHOD_NAME)),
+                                    NodeKind.WAIT_DATA, Workflow.AWAIT_METHOD_NAME),
                             workflowNode(Workflow.SLEEP_LABEL, Workflow.SLEEP_DESCRIPTION, NodeKind.SLEEP,
-                                    methodCall(Workflow.SLEEP_METHOD_NAME))))
+                                    Workflow.SLEEP_METHOD_NAME)))
                     .build();
 
             Category childWorkflows = new Category.Builder(null).name(Category.Name.CHILD_WORKFLOWS)
                     .items(List.of(
                             workflowNode(Workflow.RUN_CHILD_WORKFLOW_LABEL, Workflow.RUN_CHILD_WORKFLOW_DESCRIPTION,
                                     NodeKind.CHILD_WORKFLOW_RUN,
-                                    remoteCall(Workflow.RUN_CHILD_WORKFLOW_METHOD_NAME)),
+                                    Workflow.RUN_CHILD_WORKFLOW_METHOD_NAME),
                             workflowNode(Workflow.CALL_CHILD_WORKFLOW_LABEL, Workflow.CALL_CHILD_WORKFLOW_DESCRIPTION,
                                     NodeKind.CHILD_WORKFLOW_CALL,
-                                    remoteCall(Workflow.CALL_CHILD_WORKFLOW_METHOD_NAME)),
+                                    Workflow.CALL_CHILD_WORKFLOW_METHOD_NAME),
                             workflowNode(Workflow.WAIT_CHILD_WORKFLOW_LABEL, Workflow.WAIT_CHILD_WORKFLOW_DESCRIPTION,
                                     NodeKind.CHILD_WORKFLOW_WAIT,
-                                    remoteCall(Workflow.WAIT_CHILD_WORKFLOW_METHOD_NAME)),
+                                    Workflow.WAIT_CHILD_WORKFLOW_METHOD_NAME),
                             workflowNode(Workflow.SEND_DATA_CHILD_WORKFLOW_LABEL,
                                     Workflow.SEND_DATA_CHILD_WORKFLOW_DESCRIPTION,
                                     NodeKind.CHILD_WORKFLOW_SEND_DATA,
-                                    remoteCall(Workflow.SEND_DATA_CHILD_WORKFLOW_METHOD_NAME))))
+                                    Workflow.SEND_DATA_CHILD_WORKFLOW_METHOD_NAME)))
                     .build();
 
             Category workflowFunctions = new Category.Builder(null).name(Category.Name.WORKFLOW_FUNCTIONS)
                     .items(List.of(
                             workflowNode(Workflow.CURRENT_TIME_LABEL, Workflow.CURRENT_TIME_DESCRIPTION,
                                     NodeKind.WORKFLOW_CURRENT_TIME,
-                                    methodCall(Workflow.CURRENT_TIME_METHOD_NAME)),
+                                    Workflow.CURRENT_TIME_METHOD_NAME),
                             workflowNode(Workflow.IS_REPLAYING_LABEL, Workflow.IS_REPLAYING_DESCRIPTION,
                                     NodeKind.WORKFLOW_IS_REPLAYING,
-                                    methodCall(Workflow.IS_REPLAYING_METHOD_NAME)),
+                                    Workflow.IS_REPLAYING_METHOD_NAME),
                             workflowNode(Workflow.GET_WORKFLOW_ID_LABEL, Workflow.GET_WORKFLOW_ID_DESCRIPTION,
                                     NodeKind.WORKFLOW_GET_ID,
-                                    methodCall(Workflow.GET_WORKFLOW_ID_METHOD_NAME)),
+                                    Workflow.GET_WORKFLOW_ID_METHOD_NAME),
                             workflowNode(Workflow.GET_WORKFLOW_TYPE_LABEL, Workflow.GET_WORKFLOW_TYPE_DESCRIPTION,
                                     NodeKind.WORKFLOW_GET_TYPE,
-                                    methodCall(Workflow.GET_WORKFLOW_TYPE_METHOD_NAME)),
+                                    Workflow.GET_WORKFLOW_TYPE_METHOD_NAME),
                             workflowNode(Workflow.LAST_HUMAN_TASK_COMPLETION_LABEL,
                                     Workflow.LAST_HUMAN_TASK_COMPLETION_DESCRIPTION,
                                     NodeKind.WORKFLOW_LAST_HUMAN_TASK_COMPLETION,
-                                    methodCall(Workflow.LAST_HUMAN_TASK_COMPLETION_METHOD_NAME)),
+                                    Workflow.LAST_HUMAN_TASK_COMPLETION_METHOD_NAME),
                             workflowNode(Workflow.LAST_REVIEW_DECISION_LABEL,
                                     Workflow.LAST_REVIEW_DECISION_DESCRIPTION,
                                     NodeKind.WORKFLOW_LAST_REVIEW_DECISION,
-                                    methodCall(Workflow.LAST_REVIEW_DECISION_METHOD_NAME))))
+                                    Workflow.LAST_REVIEW_DECISION_METHOD_NAME)))
                     .build();
 
             workflowNodes.add(steps);
@@ -676,22 +676,14 @@ public class AvailableNodesGenerator {
                 true);
     }
 
-    // A short palette name hides which context call the node stands for; the call form travels
+    // A short palette name hides which context method the node stands for; the method name travels
     // with the node so the panel can show it beside the description.
-    private static AvailableNode workflowNode(String label, String description, NodeKind kind, String callSyntax) {
+    private static AvailableNode workflowNode(String label, String description, NodeKind kind, String method) {
         return new AvailableNode(
                 new Metadata.Builder<>(null).label(label).description(description)
-                        .data(Workflow.CALL_SYNTAX_KEY, callSyntax).build(),
+                        .data(Workflow.METHOD_KEY, method).build(),
                 new Codedata.Builder<>(null).node(kind).build(),
                 true);
-    }
-
-    private static String remoteCall(String methodName) {
-        return Workflow.DEFAULT_CTX_PARAM_NAME + "->" + methodName + "()";
-    }
-
-    private static String methodCall(String methodName) {
-        return Workflow.DEFAULT_CTX_PARAM_NAME + "." + methodName + "()";
     }
 
     private void setStopNode(NonTerminalNode node) {

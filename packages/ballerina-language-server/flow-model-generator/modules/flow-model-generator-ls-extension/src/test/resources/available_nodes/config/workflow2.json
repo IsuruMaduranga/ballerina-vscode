@@ -30,7 +30,7 @@
                 "label": "Call Activity",
                 "description": "Call a workflow activity function",
                 "data": {
-                  "callSyntax": "ctx->callActivity()"
+                  "method": "callActivity"
                 }
               },
               "codedata": {
@@ -43,7 +43,7 @@
                 "label": "Human Task",
                 "description": "Create a human task and wait for a human to complete it",
                 "data": {
-                  "callSyntax": "ctx->awaitHumanTask()"
+                  "method": "awaitHumanTask"
                 }
               },
               "codedata": {
@@ -56,7 +56,7 @@
                 "label": "Await Event",
                 "description": "Wait for a data event from outside the workflow",
                 "data": {
-                  "callSyntax": "ctx->await()"
+                  "method": "await"
                 }
               },
               "codedata": {
@@ -69,7 +69,7 @@
                 "label": "Sleep",
                 "description": "Pause workflow execution for a specified duration",
                 "data": {
-                  "callSyntax": "ctx.sleep()"
+                  "method": "sleep"
                 }
               },
               "codedata": {
@@ -96,7 +96,7 @@
                 "label": "Current Time",
                 "description": "Deterministic current time, safe to use inside workflow logic",
                 "data": {
-                  "callSyntax": "ctx.currentTime()"
+                  "method": "currentTime"
                 }
               },
               "codedata": {
@@ -109,7 +109,7 @@
                 "label": "Is Replaying",
                 "description": "Whether the workflow is currently replaying recorded history",
                 "data": {
-                  "callSyntax": "ctx.isReplaying()"
+                  "method": "isReplaying"
                 }
               },
               "codedata": {
@@ -122,7 +122,7 @@
                 "label": "Workflow ID",
                 "description": "The unique ID of this workflow instance",
                 "data": {
-                  "callSyntax": "ctx.getWorkflowId()"
+                  "method": "getWorkflowId"
                 }
               },
               "codedata": {
@@ -135,7 +135,7 @@
                 "label": "Workflow Type",
                 "description": "The type name of this workflow",
                 "data": {
-                  "callSyntax": "ctx.getWorkflowType()"
+                  "method": "getWorkflowType"
                 }
               },
               "codedata": {
@@ -148,7 +148,7 @@
                 "label": "Task Completion",
                 "description": "The completion of the most recently completed human task, with who completed it",
                 "data": {
-                  "callSyntax": "ctx.lastHumanTaskCompletion()"
+                  "method": "lastHumanTaskCompletion"
                 }
               },
               "codedata": {
@@ -161,7 +161,7 @@
                 "label": "Review Decision",
                 "description": "The decision of the most recent review task, with who decided it",
                 "data": {
-                  "callSyntax": "ctx.lastReviewDecision()"
+                  "method": "lastReviewDecision"
                 }
               },
               "codedata": {
@@ -187,7 +187,7 @@
                 "label": "Run Child",
                 "description": "Start a child workflow and continue without waiting for its result",
                 "data": {
-                  "callSyntax": "ctx->runChildWorkflow()"
+                  "method": "runChildWorkflow"
                 }
               },
               "codedata": {
@@ -200,7 +200,7 @@
                 "label": "Call Child",
                 "description": "Run a child workflow and durably wait for its result",
                 "data": {
-                  "callSyntax": "ctx->callWorkflow()"
+                  "method": "callWorkflow"
                 }
               },
               "codedata": {
@@ -213,7 +213,7 @@
                 "label": "Await Child",
                 "description": "Durably wait for a started child workflow's result",
                 "data": {
-                  "callSyntax": "ctx->waitForChildWorkflow()"
+                  "method": "waitForChildWorkflow"
                 }
               },
               "codedata": {
@@ -226,7 +226,7 @@
                 "label": "Send to Child",
                 "description": "Send a data event to a running child workflow",
                 "data": {
-                  "callSyntax": "ctx->sendDataToChildWorkflow()"
+                  "method": "sendDataToChildWorkflow"
                 }
               },
               "codedata": {

@@ -121,8 +121,8 @@ export type NodeMetadata = {
     module?: string;
     type?: string;
     agentInfo?: AgentNodeInfo;
-    // How a workflow palette node reads in source, e.g. "ctx->awaitHumanTask()"; shown in its tooltip
-    callSyntax?: string;
+    // The workflow context method a palette node stands for, e.g. "awaitHumanTask"; shown in its tooltip
+    method?: string;
 };
 
 export type ParentMetadata = {

@@ -646,16 +646,16 @@ export function NodeList(props: NodeListProps) {
         }
     }
     
-    const renderTooltipContent = (description?: string, callSyntax?: string): React.ReactNode | undefined => {
+    const renderTooltipContent = (description?: string, method?: string): React.ReactNode | undefined => {
         const cleaned = stripHtmlTags(description || "").trim();
-        if (!cleaned && !callSyntax) {
+        if (!cleaned && !method) {
             return undefined;
         }
 
         return (
             <S.TooltipMarkdown>
                 {cleaned && <ReactMarkdown>{cleaned}</ReactMarkdown>}
-                {callSyntax && <S.TooltipCode>{callSyntax}</S.TooltipCode>}
+                {method && <S.TooltipCode>{method}</S.TooltipCode>}
             </S.TooltipMarkdown>
         );
     };
@@ -671,7 +671,7 @@ export function NodeList(props: NodeListProps) {
                 {visibleNodes.length > 0 && (
                     <S.Grid columns={2}>
                         {visibleNodes.map((node, index) => {
-                            const tooltip = renderTooltipContent(node.description, node.callSyntax);
+                            const tooltip = renderTooltipContent(node.description, node.method);
                             return (
                                 <Tooltip
                                     key={node.id + index}
