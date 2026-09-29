@@ -85,15 +85,22 @@ export function startConsoleSummary(turn: ConsoleSummaryTurn): boolean {
             }
 
             const tasks = extractLastTaskList(turn.assistantMessages, TASK_WRITE_TOOL_NAME);
-            const generated = await generateSummary({
+            const input = {
                 userQuery: turn.userQuery,
                 tasks,
                 modifiedFiles: turn.modifiedFiles,
                 assistantText: extractAssistantText(turn.assistantMessages),
                 errorCount: turn.errorCount,
                 earlierSummaries: getEarlierSummaries(turn.projectRootPath, turn.threadId, turn.messageId),
-            }, turn.abortSignal);
-            const summary = generated || buildFallbackSummary(tasks, turn.modifiedFiles);
+            };
+            let summary: string;
+            try {
+                summary = await generateSummary(input, turn.abortSignal);
+            } catch (error) {
+                // A completed turn still gets an entry, built from what the turn recorded.
+                console.warn(`[ConsoleSummary] Summary generation failed for ${turn.messageId}, using the fallback:`, error);
+                summary = buildFallbackSummary(tasks, turn.modifiedFiles);
+            }
             if (!summary || turn.abortSignal.aborted) {
                 return;
             }
@@ -154,7 +161,10 @@ async function isPublishingActive(): Promise<boolean> {
     }
 }
 
-/** Best-effort: any failure resolves to an empty string and the caller falls back. */
+/**
+ * Asks the model for the turn's summary. Throws when there is nothing usable to
+ * publish: the call failed or timed out, or the reply was empty once sanitized.
+ */
 async function generateSummary(
     input: Parameters<typeof buildConsoleSummaryMessages>[0],
     turnSignal: AbortSignal
@@ -173,10 +183,11 @@ async function generateSummary(
             schema: consoleSummarySchema,
             abortSignal: controller.signal,
         });
-        return sanitizeSummary(object.summary);
-    } catch (error) {
-        console.warn("[ConsoleSummary] Summary generation failed:", error);
-        return "";
+        const summary = sanitizeSummary(object.summary);
+        if (!summary) {
+            throw new Error("The model returned an empty summary");
+        }
+        return summary;
     } finally {
         clearTimeout(timer);
         turnSignal.removeEventListener("abort", onTurnAbort);

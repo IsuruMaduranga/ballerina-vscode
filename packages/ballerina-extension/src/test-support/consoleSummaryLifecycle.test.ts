@@ -184,6 +184,49 @@ describe('across a reload', () => {
     });
 });
 
+describe('when the model gives nothing usable', () => {
+    beforeEach(() => markConsoleOriginThread(ROOT, THREAD, true));
+
+    it('publishes the fallback when the model call fails', async () => {
+        addGeneration('gen-1');
+        generateObject.mockRejectedValue(new Error('model unavailable'));
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        startConsoleSummary(turn('gen-1'));
+        await settle();
+        warn.mockRestore();
+        expect(editorCalls()).toEqual([
+            ['devantEditor.appendAgentSummary', { summary: 'Updated 1 file.', generationId: 'gen-1' }],
+        ]);
+        expect(generation('gen-1')?.consoleSummary).toBe('Updated 1 file.');
+    });
+
+    it('publishes the fallback when the reply is empty once sanitized', async () => {
+        addGeneration('gen-1');
+        generateObject.mockResolvedValue({ object: { summary: '```\nservice / on ep {}\n```' } });
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        startConsoleSummary(turn('gen-1'));
+        await settle();
+        warn.mockRestore();
+        expect(editorCalls()).toEqual([
+            ['devantEditor.appendAgentSummary', { summary: 'Updated 1 file.', generationId: 'gen-1' }],
+        ]);
+    });
+
+    it('publishes nothing when the user stops the turn during generation', async () => {
+        addGeneration('gen-1');
+        const stop = new AbortController();
+        generateObject.mockImplementation(async () => {
+            stop.abort();
+            throw Object.assign(new Error('Aborted'), { name: 'AbortError' });
+        });
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        startConsoleSummary({ ...turn('gen-1'), abortSignal: stop.signal });
+        await settle();
+        warn.mockRestore();
+        expect(editorCalls()).toEqual([]);
+    });
+});
+
 describe('undoing a turn while its summary is in flight', () => {
     beforeEach(() => markConsoleOriginThread(ROOT, THREAD, true));
 
