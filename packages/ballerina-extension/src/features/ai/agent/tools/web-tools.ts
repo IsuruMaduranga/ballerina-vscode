@@ -28,8 +28,6 @@ const WEB_TOOL_NOTIFICATION_TYPE = "webtool";
 export const WEB_SEARCH_TOOL_NAME = "web_search";
 export const WEB_FETCH_TOOL_NAME = "web_fetch";
 
-/** Runs of the fetcher before giving up when it answers without calling web_fetch. */
-const WEB_FETCH_ATTEMPTS = 2;
 
 approvalManager.registerNotificationHandler(WEB_TOOL_NOTIFICATION_TYPE, (active) => {
     sendWebToolToggleNotification(active);
@@ -227,32 +225,27 @@ async function executeWebFetch(
         console.log(`[WebTools] fetch | url: ${input.url}`);
         // Claude Sonnet 5.5 rejects a forced tool choice, so the prompt asks for the call and the
         // result is checked for it; a run that answered without fetching is retried once.
-        let content: string | undefined;
-        for (let attempt = 1; attempt <= WEB_FETCH_ATTEMPTS && content === undefined; attempt++) {
-            const result = await generateText({
-                model: await getAnthropicClient(ANTHROPIC_SONNET),
-                providerOptions: await getProviderModelOptions('low'),
-                system: 'You are a web fetcher. Your only job is to invoke the web_fetch tool with the given URL. STRICT RULES: (1) Do NOT write any text before the tool call. (2) Do NOT write any text after the tool call. (3) Do NOT summarize, describe, or explain the result. The tool result is consumed programmatically — any text you emit is ignored and wastes tokens.',
-                prompt: `URL: ${input.url}`,
-                tools: {
-                    web_fetch: fetchFactory({
-                        maxUses: 3,
-                        ...(allowedDomains ? { allowedDomains } : {}),
-                        ...(blockedDomains ? { blockedDomains } : {}),
-                    }),
-                },
-                stopWhen: hasToolCall('web_fetch'),
-            });
-            content = extractToolOutput(result);
-            if (content === undefined) {
-                console.warn(`[WebTools] fetch | attempt ${attempt} answered without calling web_fetch`);
-            }
-        }
+        const [model, providerOptions] = await Promise.all([getAnthropicClient(ANTHROPIC_SONNET), getProviderModelOptions('low')]);
+        const runFetch = async () => extractToolOutput(await generateText({
+            model,
+            providerOptions,
+            system: 'You are a web fetcher. Your only job is to invoke the web_fetch tool with the given URL. STRICT RULES: (1) Do NOT write any text before the tool call. (2) Do NOT write any text after the tool call. (3) Do NOT summarize, describe, or explain the result. The tool result is consumed programmatically — any text you emit is ignored and wastes tokens.',
+            prompt: `URL: ${input.url}`,
+            tools: {
+                web_fetch: fetchFactory({
+                    maxUses: 3,
+                    ...(allowedDomains ? { allowedDomains } : {}),
+                    ...(blockedDomains ? { blockedDomains } : {}),
+                }),
+            },
+            stopWhen: hasToolCall('web_fetch'),
+        }));
+        const content = (await runFetch()) ?? (await runFetch());
         if (content === undefined) {
             eventHandler({ type: "tool_result", toolName: WEB_FETCH_TOOL_NAME, toolOutput: { url: input.url }, toolCallId, failed: true });
             return `Web fetch failed: the fetcher did not call web_fetch for ${input.url}.`;
         }
-        console.log(`[WebTools] fetch | done | length: ${content?.length ?? 0}`);
+        console.log(`[WebTools] fetch | done | length: ${content.length}`);
 
         eventHandler({ type: "tool_result", toolName: WEB_FETCH_TOOL_NAME, toolOutput: { url: input.url }, toolCallId });
         return content || 'Web fetch completed.';

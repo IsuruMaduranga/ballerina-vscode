@@ -49,6 +49,7 @@ import {
     upsertComponent,
     upsertRequestCard,
     upsertThinking,
+    foldThinkingEvent,
     describeThinkingDuration,
     buildRequestCardData,
     buildPlanItem,
@@ -420,17 +421,17 @@ describe("upsertThinking", () => {
         ]);
     });
 
-    it("both surfaces' identical call sequences serialize byte-identically", () => {
-        // The panel and the mini fold from the same events; the store is
-        // last-writer-wins, so the bytes must match.
-        const fold = () => {
-            let entries: StreamEntry[] = [floating([{ kind: "text", text: "before" }])];
-            entries = upsertThinking(entries, "r1", "", false, 1000);
-            entries = upsertThinking(entries, "r1", "reason", false, 1200);
-            entries = upsertThinking(entries, "r1", "", true, 3000);
-            return serializeStream(entries, "");
-        };
-        expect(fold()).toBe(fold());
+    it("foldThinkingEvent takes start and end times from the events and never stamps a delta", () => {
+        let entries: StreamEntry[] = [];
+        entries = foldThinkingEvent(entries, { type: "thinking_start", thinkingId: "r1", timestamp: 1000 });
+        entries = foldThinkingEvent(entries, { type: "thinking_delta", thinkingId: "r1", content: "reason" });
+        entries = foldThinkingEvent(entries, { type: "thinking_end", thinkingId: "r1", timestamp: 3000 });
+        expect(entries[0].items).toEqual([
+            { kind: "thinking", id: "r1", text: "reason", done: true, startedAt: 1000, endedAt: 3000 },
+        ]);
+        // A delta that opens a block (its start was lost) carries no time of its own.
+        const orphan = foldThinkingEvent([], { type: "thinking_delta", thinkingId: "r2", content: "late" });
+        expect(thinkingAt(orphan, 0).startedAt).toBeUndefined();
     });
 
     it("a different id opens a new item instead of merging", () => {
@@ -457,6 +458,11 @@ describe("upsertThinking", () => {
         // stamping one would make the serialized bytes differ per surface.
         expect(thinkingAt(entries, 2).startedAt).toBeUndefined();
         expect(serializeStream(entries, "")).not.toContain("startedAt\":2");
+    });
+
+    it("ignores the end of a block whose start is gone, instead of adding an empty row", () => {
+        const entries = appendToLastEntry([], { kind: "text", text: "before" });
+        expect(upsertThinking(entries, "r1", "", true, 5000)).toBe(entries);
     });
 
     it("a repeated end keeps the first endedAt (duration is fixed at close time)", () => {

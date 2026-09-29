@@ -19,20 +19,8 @@
 /**
  * Thinking and effort options for Claude Sonnet calls, kept apart from ai-client.ts so Jest can load
  * them: ai-client pulls in vscode and auth, and the `@wso2/ballerina-core` barrel drags in the ESM-only
- * `vscode-ws-jsonrpc`. ai-client wraps `resolveProviderModelOptions` with the login-method lookup.
+ * `vscode-ws-jsonrpc`, so callers pass whether the login method is Bedrock rather than the enum.
  */
-
-/**
- * The string values of the `LoginMethod` enum (`ballerina-core/state-machine-types.ts`). Enum members
- * are assignable to this union, so callers pass `LoginMethod` directly.
- */
-export type LoginMethodValue =
-    | 'biIntel'
-    | 'anthropic_key'
-    | 'aws_bedrock'
-    | 'vertex_ai'
-    | 'anthropic_aws'
-    | 'aws_unified';
 
 export type AnthropicEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
@@ -56,12 +44,12 @@ export type ProviderModelOptions =
  * writes `thinking` and `output_config.effort` into the request itself.
  */
 export function resolveProviderModelOptions(
-    loginMethod: LoginMethodValue,
+    isBedrock: boolean,
     effort: AnthropicEffort,
     display?: ThinkingDisplay,
 ): ProviderModelOptions {
     const displayOption = display ? { display } : {};
-    if (loginMethod === 'aws_bedrock') {
+    if (isBedrock) {
         return { bedrock: { reasoningConfig: { type: 'adaptive', ...displayOption, maxReasoningEffort: effort } } };
     }
     return { anthropic: { thinking: { type: 'adaptive', ...displayOption }, effort } };

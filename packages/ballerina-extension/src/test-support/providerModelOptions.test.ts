@@ -16,33 +16,31 @@
  * under the License.
  */
 
-import { LoginMethodValue, resolveProviderModelOptions } from '../features/ai/utils/provider-model-options';
-
-const ANTHROPIC_NAMESPACE_METHODS: LoginMethodValue[] = ['biIntel', 'anthropic_key', 'vertex_ai', 'anthropic_aws', 'aws_unified'];
+import { resolveProviderModelOptions } from '../features/ai/utils/provider-model-options';
 
 describe('resolveProviderModelOptions', () => {
-    it.each(ANTHROPIC_NAMESPACE_METHODS)('%s gets adaptive thinking with the effort in the anthropic namespace', (method) => {
-        expect(resolveProviderModelOptions(method, 'medium', 'summarized')).toEqual({
+    it('puts adaptive thinking and the effort in the anthropic namespace outside Bedrock', () => {
+        expect(resolveProviderModelOptions(false, 'medium', 'summarized')).toEqual({
             anthropic: { thinking: { type: 'adaptive', display: 'summarized' }, effort: 'medium' },
         });
     });
 
-    it('Bedrock gets the same settings through reasoningConfig, which its Converse provider reads', () => {
-        expect(resolveProviderModelOptions('aws_bedrock', 'low', 'summarized')).toEqual({
+    it('gives Bedrock the same settings through reasoningConfig, which its Converse provider reads', () => {
+        expect(resolveProviderModelOptions(true, 'low', 'summarized')).toEqual({
             bedrock: { reasoningConfig: { type: 'adaptive', display: 'summarized', maxReasoningEffort: 'low' } },
         });
     });
 
     it('leaves display out when none is asked for, so the API default applies', () => {
-        expect(resolveProviderModelOptions('anthropic_key', 'low')).toEqual({
+        expect(resolveProviderModelOptions(false, 'low')).toEqual({
             anthropic: { thinking: { type: 'adaptive' }, effort: 'low' },
         });
-        expect(resolveProviderModelOptions('aws_bedrock', 'high')).toEqual({
+        expect(resolveProviderModelOptions(true, 'high')).toEqual({
             bedrock: { reasoningConfig: { type: 'adaptive', maxReasoningEffort: 'high' } },
         });
     });
 
-    it.each([...ANTHROPIC_NAMESPACE_METHODS, 'aws_bedrock' as const])('%s never sends disabled thinking, which Sonnet 5.5 rejects', (method) => {
-        expect(JSON.stringify(resolveProviderModelOptions(method, 'low'))).not.toContain('disabled');
+    it.each([false, true])('never sends disabled thinking, which Sonnet 5.5 rejects (Bedrock: %s)', (isBedrock) => {
+        expect(JSON.stringify(resolveProviderModelOptions(isBedrock, 'low'))).not.toContain('disabled');
     });
 });

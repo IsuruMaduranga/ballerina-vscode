@@ -24,14 +24,14 @@ import { AgentRunStatus, ChatNotify, GetRunStatusResponse, UIChatMessage } from 
 import { Codicon, Icon } from "@wso2/ui-toolkit";
 import MarkdownRenderer from "../../views/AIPanel/components/MarkdownRenderer";
 import CodeContextCard from "../../views/AIPanel/components/CodeContextCard";
-import { StreamItem } from "../../views/AIPanel/components/AgentStreamView/types";
+import { StreamItem, ThinkingItem } from "../../views/AIPanel/components/AgentStreamView/types";
 import { upsertToolResult,
     serializeStream,
     parseStream,
     appendToLastEntry,
     upsertComponent,
     upsertRequestCard,
-    upsertThinking,
+    foldThinkingEvent,
     describeThinkingDuration,
     buildRequestCardData,
     buildPlanItem,
@@ -300,14 +300,8 @@ function applyContentEvent(prevContent: string, evt: FoldableNotify): string {
         return serializeStream(upsertRequestCard(entries, "skill_enable", buildRequestCardData("skill_enable", evt)), prevContent);
     }
     if (evt.type === "thinking_start" || evt.type === "thinking_delta" || evt.type === "thinking_end") {
-        // The mini shows a label-only row, but it folds the full item: a turn this surface persists
-        // must match the panel's byte for byte. Only start and end carry the host-stamped time.
-        const delta = evt.type === "thinking_delta" ? evt.content : "";
-        const timestamp = evt.type === "thinking_delta" ? undefined : evt.timestamp;
-        return serializeStream(
-            upsertThinking(entries, evt.thinkingId, delta, evt.type === "thinking_end", timestamp),
-            prevContent
-        );
+        // The mini shows a label-only row, but it folds the full item, as the panel does.
+        return serializeStream(foldThinkingEvent(entries, evt), prevContent);
     }
     if (evt.type === "abort") {
         return serializeStream(appendAbortMarker(entries), prevContent);
@@ -657,18 +651,21 @@ function toolRowNode(key: string, label: string, state: "running" | "pending" | 
  * A label-only thinking row: a spinner and "Thinking…" while the block streams, then a sparkle and
  * its duration. The reasoning text itself is shown only in the panel.
  */
-function thinkingRowNode(key: string, item: Extract<StreamItem, { kind: "thinking" }>, streaming: boolean): React.ReactNode {
-    const loading = !item.done && streaming;
-    return (
-        <ToolRow key={key}>
-            {loading ? (
+function thinkingRowNode(key: string, item: ThinkingItem, streaming: boolean): React.ReactNode {
+    if (!item.done && streaming) {
+        return (
+            <ToolRow key={key}>
                 <SpinIcon>
                     <Codicon name="loading" />
                 </SpinIcon>
-            ) : (
-                <Codicon name="sparkle" />
-            )}
-            {loading ? "Thinking…" : describeThinkingDuration(item)}
+                Thinking…
+            </ToolRow>
+        );
+    }
+    return (
+        <ToolRow key={key}>
+            <Codicon name="sparkle" />
+            {describeThinkingDuration(item)}
         </ToolRow>
     );
 }
@@ -718,7 +715,8 @@ function renderTranscript(msgs: MiniMsg[], streaming: boolean): React.ReactNode[
                 } else if (item.kind === "tool_result") {
                     nodes.push(toolRowNode(key, describeTool(item.toolName ?? "", undefined), item.failed ? "failed" : "done"));
                 } else if (item.kind === "thinking") {
-                    nodes.push(thinkingRowNode(key, item, streaming));
+                    // Only the last message can still be streaming; an older block left open stays still.
+                    nodes.push(thinkingRowNode(key, item, streaming && mi === msgs.length - 1));
                 }
             });
         });
