@@ -235,7 +235,7 @@
       {
         "id": "43849",
         "metadata": {
-          "label": "Task Completion",
+          "label": "Last Completion",
           "description": "The completion of the most recently completed human task, with who completed it"
         },
         "codedata": {
@@ -305,7 +305,7 @@
       {
         "id": "44848",
         "metadata": {
-          "label": "Review Decision",
+          "label": "Last Decision",
           "description": "The decision of the most recent review task, with who decided it"
         },
         "codedata": {
@@ -467,7 +467,7 @@
       {
         "id": "46801",
         "metadata": {
-          "label": "Review Decision",
+          "label": "Last Decision",
           "description": "The decision of the most recent review task, with who decided it"
         },
         "codedata": {

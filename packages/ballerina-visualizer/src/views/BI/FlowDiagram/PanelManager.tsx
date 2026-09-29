@@ -709,6 +709,10 @@ export function PanelManager(props: PanelManagerProps) {
         }
     };
 
+    const DURABLE_AGENT_DECLARATION_NODES = new Set(["DURABLE_AGENT_HUMAN_TASK", "DURABLE_AGENT_REGISTER_EVENT"]);
+    const isDurableAgentDeclarationForm = (node?: FlowNode) =>
+        node?.codedata?.node !== undefined && DURABLE_AGENT_DECLARATION_NODES.has(node.codedata.node);
+
     const onBackCallback = (() => {
         switch (sidePanelView) {
             case SidePanelView.NEW_TOOL_CUSTOM:
@@ -723,7 +727,12 @@ export function PanelManager(props: PanelManagerProps) {
             case SidePanelView.CONNECTION_CREATE:
                 return onBack;
             case SidePanelView.FORM:
-                return !showEditForm && canGoBack ? onBack : undefined;
+                // A durable agent's task and event declaration forms open with nothing behind
+                // them: Back would land on a stale node list aimed at the wrong line. Every other
+                // form keeps its fallback (a knowledge base returns to its list, the rest to the
+                // node list) when the stack is empty.
+                return !showEditForm && (canGoBack || !isDurableAgentDeclarationForm(selectedNode))
+                    ? onBack : undefined;
             default:
                 return undefined;
         }

@@ -227,8 +227,8 @@ describe("Workflow Nodes", () => {
             ["getWorkflowId", "Workflow ID"],
             ["getWorkflowType", "Workflow Type"],
             ["isReplaying", "Is Replaying"],
-            ["lastHumanTaskCompletion", "Task Completion"],
-            ["lastReviewDecision", "Review Decision"],
+            ["lastHumanTaskCompletion", "Last Completion"],
+            ["lastReviewDecision", "Last Decision"],
         ])("titles a generic workflow module call to %s as %s", (symbol, title) => {
             expect(getNodeTitle(workflowModuleCall(symbol))).toBe(title);
         });

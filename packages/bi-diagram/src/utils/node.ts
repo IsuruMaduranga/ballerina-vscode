@@ -77,8 +77,8 @@ const WORKFLOW_MODULE_FUNCTION_TITLES: Record<string, string> = {
     isReplaying: "Is Replaying",
     getWorkflowId: "Workflow ID",
     getWorkflowType: "Workflow Type",
-    lastHumanTaskCompletion: "Task Completion",
-    lastReviewDecision: "Review Decision",
+    lastHumanTaskCompletion: "Last Completion",
+    lastReviewDecision: "Last Decision",
     sleep: "Sleep"
 };
 

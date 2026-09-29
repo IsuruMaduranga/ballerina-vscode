@@ -129,7 +129,7 @@ public class Constants {
         public static final String AWAIT_METHOD_NAME = "await";
         public static final String CALL_ACTIVITY_LABEL = "Call Activity";
         public static final String CALL_ACTIVITY_DESCRIPTION = "Call a workflow activity function";
-        public static final String WAIT_DATA_LABEL = "Await Event";
+        public static final String WAIT_DATA_LABEL = "Await Data";
         public static final String WAIT_DATA_DESCRIPTION = "Wait for a data event from outside the workflow";
 
         // Child workflow composition (Context remote methods)
@@ -166,11 +166,11 @@ public class Constants {
         public static final String GET_WORKFLOW_TYPE_LABEL = "Workflow Type";
         public static final String GET_WORKFLOW_TYPE_DESCRIPTION = "The type name of this workflow";
         public static final String LAST_HUMAN_TASK_COMPLETION_METHOD_NAME = "lastHumanTaskCompletion";
-        public static final String LAST_HUMAN_TASK_COMPLETION_LABEL = "Task Completion";
+        public static final String LAST_HUMAN_TASK_COMPLETION_LABEL = "Last Completion";
         public static final String LAST_HUMAN_TASK_COMPLETION_DESCRIPTION =
                 "The completion of the most recently completed human task, with who completed it";
         public static final String LAST_REVIEW_DECISION_METHOD_NAME = "lastReviewDecision";
-        public static final String LAST_REVIEW_DECISION_LABEL = "Review Decision";
+        public static final String LAST_REVIEW_DECISION_LABEL = "Last Decision";
         public static final String LAST_REVIEW_DECISION_DESCRIPTION =
                 "The decision of the most recent review task, with who decided it";
         public static final String CONTEXT_TASK_NAME_KEY = "taskName";
@@ -202,7 +202,7 @@ public class Constants {
         public static final String BUILTIN_EMAIL_FUNCTION = "sendEmail";
 
         public static final String CALL_HUMAN_TASK_METHOD_NAME = "awaitHumanTask";
-        public static final String HUMAN_TASK_LABEL = "Human Task";
+        public static final String HUMAN_TASK_LABEL = "Await Task";
         public static final String HUMAN_TASK_DESCRIPTION = "Create a human task and wait for a human to complete it";
 
         public static final String SLEEP_METHOD_NAME = "sleep";
