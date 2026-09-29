@@ -23,6 +23,7 @@ import {
     EVENT_TYPE,
     FunctionModel,
     LineRange,
+    ModelResolutionError,
     MACHINE_VIEW,
     ProjectStructureArtifactResponse,
     ComponentInfo,
@@ -44,6 +45,7 @@ import { TitleBar } from "../../../components/TitleBar";
 import { TopNavigationBar } from "../../../components/TopNavigationBar";
 import { isPositionChanged } from "../../../utils/utils";
 import { AddServiceElementDropdown, DropdownOptionProps } from "./components/AddServiceElementDropdown";
+import { ConnectorUpgradeBanner } from "./components/ConnectorUpgradeBanner";
 import { MoreOptionsDropdown } from "./components/MoreOptionsDropdown";
 import { ResourceAccordion } from "./components/ResourceAccordion";
 import { ResourceAccordionV2 } from "./components/ResourceAccordionV2";
@@ -63,6 +65,7 @@ import {
     repeatBehaviorOf,
 } from "./Forms/TriggerHandlerForm/payloadComposer";
 import { getTryItAIDefaultPromptService, getTryItDropdownOptions, TryItOptionValue, TryItQuickPickItem } from "../shared/tryIt";
+import { ServiceModelError } from "./ServiceModelError";
 
 const LoadingContainer = styled.div`
     display: flex;
@@ -181,6 +184,8 @@ export function ServiceDesigner(props: ServiceDesignerProps) {
 
     // ----- service/function model + save state -----
     const [serviceModel, setServiceModel] = useState<ServiceModel>(undefined);
+    const [serviceResolutionError, setServiceResolutionError] = useState<ModelResolutionError>(undefined);
+    const [isServiceLoading, setIsServiceLoading] = useState(true);
     const [functionModel, setFunctionModel] = useState<FunctionModel>(undefined);
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [serverValidationErrors, setServerValidationErrors] = useState<ValidationResult[]>([]);
@@ -319,6 +324,8 @@ export function ServiceDesigner(props: ServiceDesignerProps) {
 
     // ----- service model fetch -----
     const fetchService = (targetPosition: NodePosition) => {
+        setIsServiceLoading(true);
+        setServiceResolutionError(undefined);
         const lineRange: LineRange = {
             startLine: { line: targetPosition.startLine, offset: targetPosition.startColumn },
             endLine: { line: targetPosition.endLine, offset: targetPosition.endColumn },
@@ -330,13 +337,26 @@ export function ServiceDesigner(props: ServiceDesignerProps) {
                 .then((res) => {
                     if (!isMountedRef.current) return;
                     console.log("Service Model: ", res.service);
+                    if (!res?.service) {
+                        setServiceModel(undefined);
+                        setServiceResolutionError(res?.resolutionError);
+                        setIsServiceLoading(false);
+                        return;
+                    }
                     if (addMore) {
                         handleNewResourceFunction();
                     }
                     setServiceModel(res.service);
                     setServiceMetaInfo(res.service);
                     setIsSaving(false);
+                    setIsServiceLoading(false);
                     prevPosition.current = targetPosition;
+                })
+                .catch((error) => {
+                    console.error("Error fetching service model: ", error);
+                    if (isMountedRef.current) {
+                        setIsServiceLoading(false);
+                    }
                 });
         } catch (error) {
             console.log("Error fetching service model: ", error);
@@ -966,9 +986,14 @@ export function ServiceDesigner(props: ServiceDesignerProps) {
     return (
         <View>
             <TopNavigationBar projectPath={projectPath} />
-            {!serviceModel && (
+            {!serviceModel && isServiceLoading && (
                 <LoadingContainer>
                     <LoadingRing message="Loading Service..." />
+                </LoadingContainer>
+            )}
+            {!serviceModel && !isServiceLoading && (
+                <LoadingContainer>
+                    <ServiceModelError error={serviceResolutionError} onRetry={() => fetchService(positionRef.current)} />
                 </LoadingContainer>
             )}
             {
@@ -1028,6 +1053,7 @@ export function ServiceDesigner(props: ServiceDesignerProps) {
                         />
 
                         <ServiceContainer>
+                            <ConnectorUpgradeBanner orgName={serviceModel.orgName} packageName={serviceModel.packageName} />
                             {/* Service Metadata - Compact View */}
                             {(listeners.length > 0 || readonlyProperties.size > 0) && (
                                 <ServiceMetadataContainer>
