@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { traverseFlow } from "@wso2/ballerina-core";
+import { traverseFlow, type FlowNode } from "@wso2/ballerina-core";
 
 import {
     HUMAN_TASK_ROLES_LABEL_WIDTH,
@@ -65,6 +65,16 @@ const createFlowNode = (id: string, nodeKind: string): TestFlowNode => ({
 });
 
 const createFlow = (nodes: TestFlowNode[]) => ({ nodes } as any);
+
+// A `workflow:<symbol>()` call as the language server emits it before a dedicated node kind exists.
+const workflowModuleCall = (symbol: string): FlowNode => ({
+    id: symbol,
+    codedata: { node: "EXPRESSION", org: "ballerina", module: "workflow", symbol } as FlowNode["codedata"],
+    metadata: { label: `workflow:${symbol}`, description: "" },
+    properties: {},
+    branches: [],
+    returning: false,
+});
 
 describe("Workflow Nodes", () => {
     it("maps workflow node kinds to workflow node types", () => {
@@ -205,12 +215,7 @@ describe("Workflow Nodes", () => {
         });
 
         it("titles a generic workflow module call to sleep as Sleep", () => {
-            const node = {
-                codedata: { node: "EXPRESSION", org: "ballerina", module: "workflow", symbol: "sleep" },
-                metadata: { label: "workflow:sleep" },
-                properties: {},
-            } as any;
-            expect(getNodeTitle(node)).toBe("Sleep");
+            expect(getNodeTitle(workflowModuleCall("sleep"))).toBe("Sleep");
         });
     });
 
@@ -222,13 +227,10 @@ describe("Workflow Nodes", () => {
             ["getWorkflowId", "Workflow ID"],
             ["getWorkflowType", "Workflow Type"],
             ["isReplaying", "Is Replaying"],
+            ["lastHumanTaskCompletion", "Task Completion"],
+            ["lastReviewDecision", "Review Decision"],
         ])("titles a generic workflow module call to %s as %s", (symbol, title) => {
-            const node = {
-                codedata: { node: "EXPRESSION", org: "ballerina", module: "workflow", symbol },
-                metadata: { label: `workflow:${symbol}` },
-                properties: {},
-            } as any;
-            expect(getNodeTitle(node)).toBe(title);
+            expect(getNodeTitle(workflowModuleCall(symbol))).toBe(title);
         });
     });
 });
