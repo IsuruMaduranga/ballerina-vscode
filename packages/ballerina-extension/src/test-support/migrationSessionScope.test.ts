@@ -17,21 +17,9 @@
  */
 
 /**
- * The AI Chat migration card (`MigrationContextCard`) is driven by
- * `getActiveMigrationSessionState`, and must reflect the state file of the *open* project only:
- * a project without `.ballerina-ai-migration/state.toml` was never migrated and shows no card.
- *
- * Earlier builds persisted the last migrated project's root in globalState and fell back to it
- * when the open project had no state file, so every unrelated project inherited that project's
- * "continue / start enhancement" card. Existing installs still carry that key, so the tests
- * below seed it to pin that it is no longer consulted.
- *
- * The state machine's project path is not refreshed when workspace folders change and can come
- * from a `.bal` file opened outside the workspace, so it only counts when it lies inside an open
- * folder. When it has loaded a project, only that project's paths count — including the folder
- * holding it, since a migration writes the state file at the workspace root, above the package —
- * so another open folder's migration never stands in for it. When it has loaded none (several
- * Ballerina projects in a multi-root workspace), every open folder counts.
+ * The AI Chat migration card (`MigrationContextCard`) is driven by `getActiveMigrationSessionState`
+ * and must reflect the state file of the open project only. The legacy globalState key older builds
+ * fell back to is seeded where it used to leak state, to pin that it is no longer consulted.
  */
 
 import * as fs from "fs";
@@ -67,7 +55,8 @@ jest.mock("../views/ai-panel/aiMachine", () => ({ AIStateMachine: {}, openAIPane
 jest.mock("../utils", () => ({}));
 jest.mock("../utils/source-utils", () => ({ setMigrationEnhancementActive: jest.fn() }));
 
-import { workspace } from "vscode";
+import { Uri, workspace } from "./__mocks__/vscode";
+import { extension } from "../BalExtensionContext";
 import {
     checkAndRunPendingEnhancement,
     getActiveMigrationSessionState,
@@ -91,7 +80,7 @@ function makeProject(name: string): string {
 }
 
 function openProject(projectRoot: string): void {
-    (workspace as any).workspaceFolders = [{ uri: { fsPath: projectRoot } }];
+    workspace.workspaceFolders = [{ uri: Uri.file(projectRoot) }];
     mockStateMachineContext = { projectPath: projectRoot };
 }
 
@@ -145,7 +134,7 @@ describe.each(MIGRATION_STATES)("the state machine points at a migrated project 
     });
 
     it("is ignored when that project is outside the open workspace", () => {
-        (workspace as any).workspaceFolders = [{ uri: { fsPath: plainRoot } }];
+        workspace.workspaceFolders = [{ uri: Uri.file(plainRoot) }];
         mockStateMachineContext = { projectPath: migratedRoot, workspacePath: migratedRoot };
 
         expect(getActiveMigrationSessionState()).toEqual({
@@ -156,7 +145,7 @@ describe.each(MIGRATION_STATES)("the state machine points at a migrated project 
     });
 
     it("is used when that project is another folder of the open workspace", () => {
-        (workspace as any).workspaceFolders = [{ uri: { fsPath: plainRoot } }, { uri: { fsPath: migratedRoot } }];
+        workspace.workspaceFolders = [{ uri: Uri.file(plainRoot) }, { uri: Uri.file(migratedRoot) }];
         mockStateMachineContext = { projectPath: migratedRoot };
 
         expect(getActiveMigrationSessionState()).toEqual({ isActive: false, aiFeatureUsed, fullyEnhanced });
@@ -171,7 +160,7 @@ describe.each(MIGRATION_STATES)("a multi-root workspace holds a migrated project
         plainRoot = makeProject("plain");
         migratedRoot = makeProject("migrated");
         writeEnhanceToml(migratedRoot, aiFeatureUsed, fullyEnhanced, "/source/project");
-        (workspace as any).workspaceFolders = [{ uri: { fsPath: plainRoot } }, { uri: { fsPath: migratedRoot } }];
+        workspace.workspaceFolders = [{ uri: Uri.file(plainRoot) }, { uri: Uri.file(migratedRoot) }];
     });
 
     it("reports its state when it is not the first folder and no project is loaded", () => {
@@ -181,6 +170,17 @@ describe.each(MIGRATION_STATES)("a multi-root workspace holds a migrated project
     });
 
     it("reports no pending enhancement when the state machine loaded the other, never-migrated folder", () => {
+        mockStateMachineContext = { projectPath: plainRoot };
+
+        expect(getActiveMigrationSessionState()).toEqual({
+            isActive: false,
+            aiFeatureUsed: false,
+            fullyEnhanced: true,
+        });
+    });
+
+    it("reports no pending enhancement when the migrated folder comes first and the state machine loaded the other", () => {
+        workspace.workspaceFolders = [{ uri: Uri.file(migratedRoot) }, { uri: Uri.file(plainRoot) }];
         mockStateMachineContext = { projectPath: plainRoot };
 
         expect(getActiveMigrationSessionState()).toEqual({
@@ -211,16 +211,16 @@ describe.each(MIGRATION_STATES)("the state machine loaded a package of a migrati
     });
 
     it("reports the workspace root's state when that root is the open folder", () => {
-        (workspace as any).workspaceFolders = [{ uri: { fsPath: migratedRoot } }];
+        workspace.workspaceFolders = [{ uri: Uri.file(migratedRoot) }];
         mockStateMachineContext = { projectPath: packageRoot, workspacePath: migratedRoot };
 
         expect(getActiveMigrationSessionState()).toEqual({ isActive: false, aiFeatureUsed, fullyEnhanced });
     });
 
     it("reports the state of the open folder holding the package when no workspace path is set", () => {
-        (workspace as any).workspaceFolders = [
-            { uri: { fsPath: makeProject("plain") } },
-            { uri: { fsPath: migratedRoot } },
+        workspace.workspaceFolders = [
+            { uri: Uri.file(makeProject("plain")) },
+            { uri: Uri.file(migratedRoot) },
         ];
         mockStateMachineContext = { projectPath: packageRoot };
 
@@ -235,5 +235,13 @@ describe("the legacy migration project root in globalState", () => {
         await checkAndRunPendingEnhancement();
 
         expect(mockGlobalState[LEGACY_MIGRATION_PROJECT_ROOT_KEY]).toBeUndefined();
+    });
+
+    it("is not written to once it is gone", async () => {
+        const update = jest.spyOn(extension.context.globalState, "update");
+
+        await checkAndRunPendingEnhancement();
+
+        expect(update).not.toHaveBeenCalled();
     });
 });

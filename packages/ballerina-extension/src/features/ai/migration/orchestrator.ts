@@ -336,11 +336,14 @@ export function scheduleMigrationEnhancement(
  * - `aiFeatureUsed = false` → project opened without AI; session + notification shown
  * - `fullyEnhanced = true` → nothing to do
  *
- * Safe to call on every activation – a no-op when there is no pending entry.
+ * Safe to call on every activation – a no-op when there is no pending entry, apart
+ * from clearing the legacy project-root key once from installs that still hold it.
  */
 export async function checkAndRunPendingEnhancement(): Promise<void> {
     // Earlier builds kept the last migrated project root here; nothing reads it any more.
-    await extension.context.globalState.update(LEGACY_MIGRATION_PROJECT_ROOT_KEY, undefined);
+    if (extension.context.globalState.get(LEGACY_MIGRATION_PROJECT_ROOT_KEY) !== undefined) {
+        await extension.context.globalState.update(LEGACY_MIGRATION_PROJECT_ROOT_KEY, undefined);
+    }
 
     const stored = extension.context.globalState.get<PendingMigrationEnhancement>(
         PENDING_MIGRATION_ENHANCEMENT_KEY
@@ -873,8 +876,7 @@ export function setMigrationModelId(modelId: string): void {
  */
 export async function runMigrationAgent(): Promise<void> {
     // Determine the project root (workspace folder)
-    const projectRoot = _resolveCurrentProjectRoot()
-        ?? workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const projectRoot = _resolveCurrentProjectRoot();
 
     if (!projectRoot) {
         window.showErrorMessage("Migration enhancement: unable to determine project root.");
@@ -1746,11 +1748,6 @@ function _isInFolder(candidate: string, folder: string): boolean {
     return !escapes;
 }
 
-/** `true` when `candidate` is one of the open workspace folders or lies inside one. */
-function _isInOpenWorkspace(candidate: string): boolean {
-    return (workspace.workspaceFolders ?? []).some((folder) => _isInFolder(candidate, folder.uri.fsPath));
-}
-
 function _resolveCurrentProjectRoot(): string | undefined {
     // Build a list of candidate paths to check for the toml file. Only paths of the
     // open project qualify: a remembered path from an earlier migration would leak
@@ -1775,15 +1772,12 @@ function _resolveCurrentProjectRoot(): string | undefined {
         const smProjectPath = smCtx?.projectPath;
         const smWorkspacePath = smCtx?.workspacePath;
         for (const smPath of [smProjectPath, smWorkspacePath]) {
-            if (!smPath || !_isInOpenWorkspace(smPath)) {
+            const containing = smPath ? folders.filter((folder) => _isInFolder(smPath, folder.uri.fsPath)) : [];
+            if (containing.length === 0) {
                 continue;
             }
             addCandidate(smPath);
-            for (const folder of folders) {
-                if (_isInFolder(smPath, folder.uri.fsPath)) {
-                    addCandidate(folder.uri.fsPath);
-                }
-            }
+            containing.forEach((folder) => addCandidate(folder.uri.fsPath));
         }
         console.log("[MigrationEnhancement] StateMachine candidates:", smProjectPath, smWorkspacePath);
     } catch {
@@ -1809,7 +1803,8 @@ function _resolveCurrentProjectRoot(): string | undefined {
         }
     }
 
-    // No toml found in any candidate – still return the workspace folder so
-    // the caller can decide (it will get null from readEnhanceToml and fall back).
-    return folders[0]?.uri.fsPath;
+    // No toml found in any candidate – still return the loaded project (or, with
+    // none loaded, the first workspace folder) so the caller can decide (it will
+    // get null from readEnhanceToml and fall back).
+    return candidates[0];
 }

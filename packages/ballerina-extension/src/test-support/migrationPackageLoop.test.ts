@@ -113,7 +113,7 @@ jest.mock("../utils", () => ({
 }));
 jest.mock("../utils/source-utils", () => ({ setMigrationEnhancementActive: jest.fn() }));
 
-import { workspace } from "vscode";
+import { Uri, workspace } from "./__mocks__/vscode";
 import {
     abortMigrationAgent,
     readEnhanceToml,
@@ -147,7 +147,7 @@ function emittedText(): string {
 beforeEach(() => {
     mockProjectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "migration-loop-"));
     // The migration panel runs inside the migrated project's window, so that project is the open one.
-    (workspace as any).workspaceFolders = [{ uri: { fsPath: mockProjectRoot } }];
+    workspace.workspaceFolders = [{ uri: Uri.file(mockProjectRoot) }];
     mockWorkspacePackages = [...PACKAGES];
     mockAgentCalls = [];
     mockEvents = [];
