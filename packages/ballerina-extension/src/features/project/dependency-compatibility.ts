@@ -141,17 +141,17 @@ export function showUpdateOutput(): void {
 }
 
 /** The why, the two ways out (details live in the docs), and what updating touches, naming packages in a workspace. */
-function describeOutdated(root: string, outdated: OutdatedPackage[]): { paragraphs: string[]; note: string } {
+function describeOutdated(root: string, outdated: OutdatedPackage[]): { paragraphs: string[]; note: string[] } {
     const packages = getWorkspacePackagePaths(root) && outdated.length > 0
-        ? ` Packages to update: ${outdated.map((item) => item.name).join(', ')}.`
-        : '';
+        ? [`Packages to update: ${outdated.map((item) => item.name).join(', ')}.`]
+        : [];
     return {
         paragraphs: [
             'Your project dependencies were set up with an earlier Ballerina version, and some of the dependencies are '
                 + `incompatible with Ballerina ${REQUIRED_BALLERINA_VERSION}.`,
             'Update the dependencies, or keep them as they are by going back to earlier versions.'
         ],
-        note: `Updating changes ${DEPENDENCIES_TOML} and ${BALLERINA_TOML} and needs network access.${packages}`
+        note: [`Updating changes ${DEPENDENCIES_TOML} and ${BALLERINA_TOML} and needs network access.`, ...packages]
     };
 }
 

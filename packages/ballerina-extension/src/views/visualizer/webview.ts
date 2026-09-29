@@ -39,18 +39,7 @@ import { isAiTouchedFile } from "../../rpc-managers/diagram-validity";
 import { setCompanionVisualizer } from "../ai-panel/activeFileContext";
 import { getStartupIntegrationProgress } from "../../features/bi/startup-progress";
 import { showUpdateOutput, updateDependenciesFromPanel } from "../../features/project/dependency-compatibility";
-import { getVisualizerCheckRoot } from "../../features/project/dependency-check-transitions";
-import { findOutdatedPackages, REQUIRED_BALLERINA_VERSION } from "../../features/project/dependency-lock";
-
-/** Whether the project in the visualizer has locks that will need updating once Ballerina is updated. */
-function hasOutdatedDependencies(context: { workspacePath?: string; projectPath?: string }): boolean {
-    const root = getVisualizerCheckRoot(context);
-    try {
-        return !!root && findOutdatedPackages(root).length > 0;
-    } catch {
-        return false;
-    }
-}
+import { REQUIRED_BALLERINA_VERSION } from "../../features/project/dependency-lock";
 
 /** Escapes text interpolated into the startup screen's HTML (integration names are user input). */
 function escapeHtml(value: string): string {
@@ -82,8 +71,8 @@ export interface DependencyUpdateRequiredInfo {
     title: string;
     /** Why, then the two ways out. */
     paragraphs: string[];
-    /** What updating changes, and which packages in a workspace. */
-    note: string;
+    /** What updating changes, then which packages in a workspace, one line each. */
+    note: string[];
     /** Shown in place of a popup: the update in progress, or why it failed. */
     status?: { kind: "updating"; message: string } | { kind: "failed"; message: string };
 }
@@ -289,7 +278,11 @@ export class VisualizerWebview {
     /** Records the failure and re-renders an open panel; the HTML is built once at creation. */
     /** Cleared before any action that opens a panel of its own, which would otherwise inherit this. */
     public static clearJdkIncompatibility(): void {
+        if (!VisualizerWebview.jdkIncompatibility) {
+            return;
+        }
         VisualizerWebview.jdkIncompatibility = undefined;
+        VisualizerWebview.rerender(); // an open panel still holds the static blocked HTML
     }
 
     public static showJdkIncompatibility(info: {
@@ -351,8 +344,6 @@ export class VisualizerWebview {
             : "Your project is being prepared. This may take a few moments.";
         const incompatibility = VisualizerWebview.jdkIncompatibility;
         const dependencyUpdate = VisualizerWebview.dependencyUpdateRequired;
-        // Tell users with an old distribution and old locks that a second screen follows the update.
-        const jdkThenDependencies = !!incompatibility && hasOutdatedDependencies(StateMachine.context());
         const body = incompatibility
             ? `<div class="container" id="jdk-incompatibility-container">
                 <div class="loader-wrapper">
@@ -369,9 +360,6 @@ export class VisualizerWebview {
                                 ? "switch extensions to their previous versions"
                                 : "switch the extension to its previous version"}.
                         </p>
-                        ${jdkThenDependencies
-                            ? `<p class="welcome-subtitle status-note">After updating Ballerina, you'll also be asked to update this project's dependencies.</p>`
-                            : ""}
                         <div class="action-row">
                             <button class="action-button" id="update-ballerina">Update Ballerina</button>
                         </div>
@@ -394,7 +382,7 @@ export class VisualizerWebview {
                     <div class="welcome-content${dependencyUpdate.status ? " no-fade" : ""}">
                         <h1 class="welcome-title">${escapeHtml(dependencyUpdate.title)}</h1>
                         <p class="welcome-subtitle">${dependencyUpdate.paragraphs.map(escapeHtml).join("<br><br>")}</p>
-                        <p class="welcome-subtitle status-note">${escapeHtml(dependencyUpdate.note)}</p>
+                        <p class="welcome-subtitle status-note">${dependencyUpdate.note.map(escapeHtml).join("<br>")}</p>
                         ${dependencyUpdate.status?.kind === "updating"
                             ? `<div class="status-progress" role="status">
                                 <span class="status-spinner" aria-hidden="true"></span>
