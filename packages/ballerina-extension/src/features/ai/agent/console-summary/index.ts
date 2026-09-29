@@ -67,7 +67,7 @@ export interface ConsoleSummaryTurn {
  * @returns whether publishing started, so the caller runs it at most once a turn.
  */
 export function startConsoleSummary(turn: ConsoleSummaryTurn): boolean {
-    if (process.env.AI_TEST_ENV || !process.env.CLOUD_ENV) {
+    if (!process.env.CLOUD_ENV) {
         return false;
     }
     // Questions and explanations change nothing worth reporting.
