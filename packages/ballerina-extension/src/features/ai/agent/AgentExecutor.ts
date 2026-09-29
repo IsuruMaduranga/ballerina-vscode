@@ -445,7 +445,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             }
             // `summarized` streams reasoning summaries and the progress notes written between tool
             // calls; under the default `omitted` both arrive empty and a long turn looks silent.
-            const modelOptions = resolveProviderModelOptions(loginMethod, AGENT_EFFORT, 'summarized');
+            const modelOptions = resolveProviderModelOptions(loginMethod === LoginMethod.AWS_BEDROCK, AGENT_EFFORT, 'summarized');
             const providerOptions = compactionOptions
                 ? { anthropic: { ...(modelOptions as { anthropic?: object }).anthropic, ...compactionOptions.anthropic } }
                 : modelOptions;
@@ -737,7 +737,6 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                     // This handles the case where abort happens but doesn't throw an error
                     if (this.config.abortController.signal.aborted) {
                         console.log("[AgentExecutor] Detected abort after stream completion");
-                        this.flushOpenThinkingBlocks();
                         const abortError = new Error('Aborted by user');
                         abortError.name = 'AbortError';
                         throw abortError;

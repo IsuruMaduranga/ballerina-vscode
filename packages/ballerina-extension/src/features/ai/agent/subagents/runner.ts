@@ -20,7 +20,8 @@
 
 import { generateText, ModelMessage, stepCountIs } from "ai";
 import { buildSubagentMessages, collectResponseMessages } from "./messages";
-import { addCacheControlToMessages, AnthropicEffort, ANTHROPIC_HAIKU, ANTHROPIC_SONNET, getAnthropicClient, getProviderCacheControl, getProviderModelOptions, ThinkingDisplay } from "../../utils/ai-client";
+import { addCacheControlToMessages, ANTHROPIC_HAIKU, ANTHROPIC_SONNET, getAnthropicClient, getProviderCacheControl, getProviderModelOptions } from "../../utils/ai-client";
+import { AnthropicEffort, ThinkingDisplay } from "../../utils/provider-model-options";
 import { accumulateModelUsage } from "../../utils/events";
 import { getSubagentDefinition } from "./definitions";
 import { describeSubagentStep, SubagentProgress } from "./progress";
@@ -35,7 +36,7 @@ export const SUBAGENT_MAX_OUTPUT_TOKENS = 16_000;
  * Sonnet subagents search and extract library facts, which the Sonnet 5.5 guidance runs at `low`
  * (owner, 2026-09-29). Haiku 4.5 takes neither adaptive thinking nor `effort`, so it gets no options.
  */
-export const SUBAGENT_EFFORT: AnthropicEffort = "low";
+const SUBAGENT_EFFORT: AnthropicEffort = "low";
 
 /**
  * Overrides for a run's thinking, for measuring other settings. `display: "summarized"` returns readable
@@ -62,13 +63,10 @@ export interface RunSubagentParams {
 export async function runSubagent(params: RunSubagentParams): Promise<SubagentResult> {
     const definition = getSubagentDefinition(params.type);
     const modelId = params.model === "haiku" ? ANTHROPIC_HAIKU : ANTHROPIC_SONNET;
-    const [model, cacheControl, reasoningOptions] = await Promise.all([
-        getAnthropicClient(modelId),
-        getProviderCacheControl(),
-        params.model === "haiku"
-            ? Promise.resolve(undefined)
-            : getProviderModelOptions(params.reasoning?.effort ?? SUBAGENT_EFFORT, params.reasoning?.display),
-    ]);
+    const [model, cacheControl] = await Promise.all([getAnthropicClient(modelId), getProviderCacheControl()]);
+    const reasoningOptions = params.model === "haiku"
+        ? undefined
+        : await getProviderModelOptions(params.reasoning?.effort ?? SUBAGENT_EFFORT, params.reasoning?.display);
 
     const conversation = buildSubagentMessages(params.prompt, params.previousMessages, definition.followUpHint);
 
@@ -83,7 +81,7 @@ export async function runSubagent(params: RunSubagentParams): Promise<SubagentRe
         stopWhen: stepCountIs(SUBAGENT_MAX_STEPS),
         maxOutputTokens: SUBAGENT_MAX_OUTPUT_TOKENS,
         abortSignal: params.abortSignal,
-        providerOptions: reasoningOptions as any,
+        providerOptions: reasoningOptions,
         // The final step (report text, no tool calls) is followed at once by the completion result, so
         // only steps that called tools are worth announcing.
         onStepFinish: onProgress ? (step) => {
