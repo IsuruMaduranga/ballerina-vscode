@@ -563,19 +563,23 @@ public final class TriggerModelSynthesizer {
             return;
         }
         boolean isBasePath = identifier.form() != null && identifier.form().contains(IdentifierSpec.FORM_BASE_PATH);
+        boolean isStringLiteral = !isBasePath && identifier.form() != null
+                && identifier.form().contains(IdentifierSpec.FORM_STRING_LITERAL);
+        String label = isBasePath ? "Service Path" : isStringLiteral ? "Service Identifier" : "Identifier";
         boolean optional = IdentifierSpec.PRESENCE_OPTIONAL.equals(identifier.presence());
-        List<TriggerUISchemaModel.PropertyType> types = isBasePath
-                ? List.of(new TriggerUISchemaModel.PropertyType("SERVICE_PATH", true, "string", null, null, null,
-                        null, null))
+        String placeholder = isBasePath ? "/" : isStringLiteral ? "\"\"" : null;
+        List<TriggerUISchemaModel.PropertyType> types = isBasePath || isStringLiteral
+                ? List.of(new TriggerUISchemaModel.PropertyType(isBasePath ? "SERVICE_PATH" : "STRING_LITERAL", true,
+                        "string", null, null, null, null, null))
                 : List.of(new TriggerUISchemaModel.PropertyType("TEXT", true, "string", null, null, null, null,
                                 null),
                         new TriggerUISchemaModel.PropertyType("EXPRESSION", false, "string", null, null, null,
                                 null, null));
         TriggerUISchemaModel.Property property = new TriggerUISchemaModel.Property(
-                new TriggerUISchemaModel.Metadata(isBasePath ? "Service Path" : "Identifier",
+                new TriggerUISchemaModel.Metadata(label,
                         isBasePath ? "The base path this service is exposed on"
                                 : "The identifier for this service", null, null, null, null, null, null, null, null),
-                true, true, optional, false, isBasePath ? "/" : null, null, types, null, null, null,
+                true, true, optional, false, placeholder, null, types, null, null, null,
                 cdType(isBasePath ? ARG_TYPE_SERVICE_BASE_PATH : CD_TYPE_STRING_LITERAL), null);
         initProperties.put(IDENTIFIER_KEY, property);
     }

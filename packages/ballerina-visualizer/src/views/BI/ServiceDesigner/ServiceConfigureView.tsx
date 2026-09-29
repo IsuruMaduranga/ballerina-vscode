@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import styled from "@emotion/styled";
-import { ConfigProperties, ConfigVariable, DIRECTORY_MAP, getPrimaryInputType, isSamePath, LineRange, ListenerModel, NodePosition, ProjectStructureArtifactResponse, PropertyModel, ServiceModel } from "@wso2/ballerina-core";
+import { ConfigProperties, ConfigVariable, DIRECTORY_MAP, getPrimaryInputType, isSamePath, LineRange, ListenerModel, ModelResolutionError, NodePosition, ProjectStructureArtifactResponse, PropertyModel, ServiceModel } from "@wso2/ballerina-core";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { Button, Codicon, Icon, LinkButton, ProgressRing, SidePanelBody, SplitView, TabPanel, ThemeColors, TreeView, TreeViewItem, Typography, View, ViewContent } from "@wso2/ui-toolkit";
 import { TopNavigationBar } from "../../../components/TopNavigationBar";
@@ -30,6 +30,7 @@ import { LoadingRing } from "../../../components/Loader";
 import { getReadableListenerName } from "./utils";
 import { ConnectorUpgradeBanner } from "./components/ConnectorUpgradeBanner";
 import { POPUP_IDS, useModalStack } from "../../../Context";
+import { ServiceModelError } from "./ServiceModelError";
 
 const Container = styled.div`
     width: 100%;
@@ -167,6 +168,8 @@ export function ServiceConfigureView(props: ServiceConfigureProps) {
 
     const { rpcClient } = useRpcContext();
     const [serviceModel, setServiceModel] = useState<ServiceModel>(undefined);
+    const [serviceResolutionError, setServiceResolutionError] = useState<ModelResolutionError>(undefined);
+    const [isServiceLoading, setIsServiceLoading] = useState(true);
     const [listeners, setListeners] = useState<ProjectStructureArtifactResponse[]>([]);
 
     const [currentIdentifier, setCurrentIdentifier] = useState<string | null>(null);
@@ -416,6 +419,8 @@ export function ServiceConfigureView(props: ServiceConfigureProps) {
     };
 
     const fetchService = (targetPosition: NodePosition) => {
+        setIsServiceLoading(true);
+        setServiceResolutionError(undefined);
         const lineRange: LineRange = {
             startLine: { line: targetPosition.startLine, offset: targetPosition.startColumn },
             endLine: { line: targetPosition.endLine, offset: targetPosition.endColumn },
@@ -426,6 +431,12 @@ export function ServiceConfigureView(props: ServiceConfigureProps) {
                 .getServiceModelFromCode({ filePath: props.filePath, codedata: { lineRange } })
                 .then((res) => {
                     console.log("Service Model: ", res.service);
+                    if (!res?.service) {
+                        setServiceModel(undefined);
+                        setServiceResolutionError(res?.resolutionError);
+                        setIsServiceLoading(false);
+                        return;
+                    }
                     // Set the service model
                     setServiceModel(res.service);
                     setConfigTitle(`${getDisplayServiceName(res.service)} Configuration`);
@@ -440,9 +451,15 @@ export function ServiceConfigureView(props: ServiceConfigureProps) {
                     // Reset change state on load - Save button should be disabled until user makes changes
                     setChangeMap({});
                     setDirtyFormMap({});
+                    setIsServiceLoading(false);
+                })
+                .catch((error) => {
+                    console.error("Error fetching service model: ", error);
+                    setIsServiceLoading(false);
                 });
         } catch (error) {
             console.log("Error fetching service model: ", error);
+            setIsServiceLoading(false);
         }
     };
 
@@ -573,6 +590,7 @@ export function ServiceConfigureView(props: ServiceConfigureProps) {
             console.error("No artifact returned after attaching listener");
             return;
         }
+        setPosition(updatedArtifact.position);
         setCurrentIdentifier(updatedArtifact.name);
         await fetchService(updatedArtifact.position);
         closeModal(POPUP_IDS.ATTACH_LISTENER);
@@ -705,9 +723,14 @@ export function ServiceConfigureView(props: ServiceConfigureProps) {
     return (
         <View>
             <TopNavigationBar projectPath={props.projectPath} />
-            {!serviceModel && (
+            {!serviceModel && isServiceLoading && (
                 <LoadingContainer>
                     <LoadingRing message="Loading service..." />
+                </LoadingContainer>
+            )}
+            {!serviceModel && !isServiceLoading && (
+                <LoadingContainer>
+                    <ServiceModelError error={serviceResolutionError} onRetry={() => fetchService(position)} />
                 </LoadingContainer>
             )}
             {
