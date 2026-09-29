@@ -107,10 +107,9 @@ export class VisualizerWebview {
         this._disposables.push(this._panel.webview.onDidReceiveMessage(async (message) => {
             if (message?.command === 'jdkIncompatibility.updateBallerina') {
                 VisualizerWebview.clearJdkIncompatibility();
-                // Pinned, since `bal dist update` may stay on the current update line; the setup view shows progress.
+                // Pinned, since `bal dist update` may stay on the current update line.
                 await vscode.commands.executeCommand('ballerina.update-ballerina-visually', {
-                    version: REQUIRED_BALLERINA_VERSION,
-                    quiet: true
+                    version: REQUIRED_BALLERINA_VERSION
                 });
             } else if (message?.command === 'useEarlierVersion') {
                 await vscode.env.openExternal(vscode.Uri.parse(EARLIER_VERSION_DOCS_URL));
