@@ -19,18 +19,26 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FormDiagnostics, InputType, Property } from "@wso2/ballerina-core";
 import { Form, FormField, FormFieldEditorProps, FormValues, S, useFormContext, useModeSwitcherContext } from "../..";
+import { ErrorBanner, RequiredFormInput } from "@wso2/ui-toolkit";
 import { Codicon } from "@wso2/ui-toolkit/lib/components/Codicon/Codicon";
 import { ScrollableList, ScrollableListRef } from "@wso2/ui-toolkit/lib/components/ScrollableList/ScrollableList";
 import ModeSwitcher from "../ModeSwitcher";
-import { getArraySubFormFieldFromTypes, stringToRawArrayElements, buildStringArray, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
+import { getArraySubFormFieldFromTypes, getRepeatableErrorMessages, stringToRawArrayElements, buildStringArray, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
 import { InputMode } from "./MultiModeExpressionEditor/ChipExpressionEditor/types";
 import { getInputModeFromTypes } from "./MultiModeExpressionEditor/ChipExpressionEditor/utils";
 
 export const FormArrayEditor = (props: FormFieldEditorProps & {
     onChange: (value: any) => void;
     value: any;
+    error?: string;
 }) => {
     const [repeatableFields, setRepeatableFields] = useState<FormField[]>([]);
+    const [fieldDiagnostics, setFieldDiagnostics] = useState(props.field.diagnostics);
+
+    useEffect(() => {
+        setFieldDiagnostics(props.field.diagnostics);
+    }, [props.field.diagnostics]);
+
     const { expressionEditor } = useFormContext();
     const elementDiagnosticsRef = useRef<FormDiagnostics[]>([]);
     const prevDiagnosticsRef = useRef<Record<string, string>>({});
@@ -39,10 +47,14 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
     const modeSwitcherContext = useModeSwitcherContext();
 
     const handleAddNewItem = () => {
+        setFieldDiagnostics([]);
         const key = crypto.randomUUID();
         if (!(props.field.types[0] as any).template) return;
         const newField = getArraySubFormFieldFromTypes(key, (props.field.types[0] as any).template.types as InputType[])
-        setRepeatableFields(prev => [...prev, newField]);
+        const newRepeatableFields = [...repeatableFields, newField];
+        setRepeatableFields(newRepeatableFields);
+        props.onChange(newRepeatableFields);
+        props.handleFormValidation?.(undefined, true);
         // Wait for the dom update
         setTimeout(() => {
             scrollableListRef.current?.scrollToBottom();
@@ -50,6 +62,7 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
     }
 
     const handleFormOnChange = (_fieldKey: string, value: any, _allValues: FormValues, parentKey: string) => {
+        setFieldDiagnostics([]);
         const newRepeatableFields = repeatableFields.map((formField) => {
             if (formField.key === parentKey) {
                 return { ...formField, value };
@@ -66,9 +79,11 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
     }
 
     const handleDeleteItem = (keyToDelete: string) => {
+        setFieldDiagnostics([]);
         const newRepeatableFields = repeatableFields.filter((formField) => formField.key !== keyToDelete);
         setRepeatableFields(newRepeatableFields);
         props.onChange(newRepeatableFields);
+        props.handleFormValidation?.(undefined, true);
     };
 
     const handleSetDiagnosticsInfoChange = (diagnostics: FormDiagnostics) => {
@@ -211,6 +226,8 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
 
     }, [props.value, props.field.types]);
 
+    const errorMessages = getRepeatableErrorMessages(fieldDiagnostics, props.error);
+
     return (
         <S.Container>
             <S.Header>
@@ -219,6 +236,7 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
                         <S.HeaderContainer>
                             <S.LabelContainer>
                                 <S.Label>{props.field.label}</S.Label>
+                                {!props.field.optional && <RequiredFormInput />}
                             </S.LabelContainer>
                         </S.HeaderContainer>
                         <S.EditorMdContainer>
@@ -285,6 +303,7 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
 
                     ))}
             </ScrollableList>
+            {errorMessages.length > 0 && <ErrorBanner errorMsg={errorMessages.join("\n")} />}
             <S.AddNewButton
                 onClick={handleAddNewItem}
                 appearance="icon"

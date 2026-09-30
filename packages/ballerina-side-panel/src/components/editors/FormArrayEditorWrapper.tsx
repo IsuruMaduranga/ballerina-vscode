@@ -21,6 +21,7 @@ import { Controller } from "react-hook-form";
 import { useFormContext } from "../../context";
 import { FormArrayEditor } from "./FormArrayEditor";
 import { FormFieldEditorProps } from "./EditorFactory";
+import { buildRequiredRepeatableRule } from "./utils";
 
 export const FormArrayEditorWrapper = (props: FormFieldEditorProps) => {
     const { form } = useFormContext();
@@ -36,11 +37,13 @@ export const FormArrayEditorWrapper = (props: FormFieldEditorProps) => {
         <Controller
             name={props.field.key}
             control={control}
-            render={({ field }) => (
+            rules={{ validate: buildRequiredRepeatableRule({ isRequired: !props.field.optional, label: props.field.label }) }}
+            render={({ field, fieldState }) => (
                 <FormArrayEditor
                     {...props}
                     value={field.value}
                     onChange={field.onChange}
+                    error={fieldState.error?.message}
                 />
             )}
         />

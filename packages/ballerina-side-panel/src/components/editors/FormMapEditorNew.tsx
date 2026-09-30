@@ -16,24 +16,42 @@
  * under the License.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { debounce } from "lodash";
 import styled from "@emotion/styled";
 import { FormDiagnostics, InputType, Property } from "@wso2/ballerina-core";
 import { Form, FormValues, S, useFormContext, useModeSwitcherContext, FormField, FormFieldEditorProps } from "../..";
+import { ErrorBanner, RequiredFormInput } from "@wso2/ui-toolkit";
 import { Codicon } from "@wso2/ui-toolkit/lib/components/Codicon/Codicon";
 import { ScrollableList, ScrollableListRef } from "@wso2/ui-toolkit/lib/components/ScrollableList/ScrollableList";
 import ModeSwitcher from "../ModeSwitcher";
-import { getMapSubFormFieldFromTypes, buildStringMap, stringToRawObjectEntries, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
+import { getMapSubFormFieldFromTypes, getRepeatableErrorMessages, buildStringMap, stringToRawObjectEntries, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
 import { InputMode } from "./MultiModeExpressionEditor/ChipExpressionEditor/types";
 import { getInputModeFromTypes } from "./MultiModeExpressionEditor/ChipExpressionEditor/utils";
 
 export const FormMapEditorNew = (props: FormFieldEditorProps & {
     onChange: (value: any) => void;
     value: any;
+    error?: string;
 }) => {
     const [repeatableFields, setRepeatableFields] = useState<FormField[][]>([]);
+    const [fieldDiagnostics, setFieldDiagnostics] = useState(props.field.diagnostics);
+
+    useEffect(() => {
+        setFieldDiagnostics(props.field.diagnostics);
+    }, [props.field.diagnostics]);
+
     const scrollableListRef = useRef<ScrollableListRef>(null);
     const elementDiagnosticsRef = useRef<FormDiagnostics[]>([]);
+    const handleFormValidationRef = useRef(props.handleFormValidation);
+    handleFormValidationRef.current = props.handleFormValidation;
+
+    const validateFieldDebounced = useMemo(
+        () => debounce(() => handleFormValidationRef.current?.(undefined, true), 500),
+        []
+    );
+
+    useEffect(() => () => validateFieldDebounced.cancel(), [validateFieldDebounced]);
     const { expressionEditor } = useFormContext();
 
     const modeSwitcherContext = useModeSwitcherContext();
@@ -154,10 +172,14 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
     };
 
     const handleAddNewItem = () => {
+        setFieldDiagnostics([]);
         const key = crypto.randomUUID();
         if (!(props.field.types[0] as any).template) return;
         const newField = getMapSubFormFieldFromTypes(key, (props.field.types[0] as any).template.types as InputType[])
-        setRepeatableFields(prev => [...prev, newField]);
+        const newRepeatableFields = [...repeatableFields, newField];
+        setRepeatableFields(newRepeatableFields);
+        props.onChange(processToOutputFormat(newRepeatableFields));
+        props.handleFormValidation?.(undefined, true);
         // Wait for the dom update
         setTimeout(() => {
             scrollableListRef.current?.scrollToBottom();
@@ -165,6 +187,7 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
     }
 
     const handleFormOnChange = (fieldKey: string, value: any, _allValues: FormValues, _parentKey: string) => {
+        setFieldDiagnostics([]);
         const newRepeatableFields = repeatableFields.map((formFields) => {
             // Check if any field in this array matches the fieldKey
             const fieldIndex = formFields.findIndex(field => field.key === fieldKey);
@@ -177,6 +200,9 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
         });
         setRepeatableFields(newRepeatableFields);
         props.onChange(processToOutputFormat(newRepeatableFields));
+        if (fieldKey.startsWith("mp-key-")) {
+            validateFieldDebounced();
+        }
     }
 
     const handleModeSwitchValueChange = () => {
@@ -189,9 +215,11 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
     }
 
     const handleDeleteItem = (keyToDelete: string) => {
+        setFieldDiagnostics([]);
         const newRepeatableFields = repeatableFields.filter((formField) => formField[0].key !== keyToDelete);
         setRepeatableFields(newRepeatableFields);
         props.onChange(processToOutputFormat(newRepeatableFields));
+        props.handleFormValidation?.(undefined, true);
     };
 
     useEffect(() => {
@@ -277,6 +305,8 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
         }
     });
 
+    const errorMessages = getRepeatableErrorMessages(fieldDiagnostics, props.error);
+
     return (
         <S.Container>
             <S.Header>
@@ -285,6 +315,7 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
                         <S.HeaderContainer>
                             <S.LabelContainer>
                                 <S.Label>{props.field.label}</S.Label>
+                                {!props.field.optional && <RequiredFormInput />}
                             </S.LabelContainer>
                         </S.HeaderContainer>
                         <S.EditorMdContainer>
@@ -368,6 +399,7 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
                         );
                     })}
             </ScrollableList>
+            {errorMessages.length > 0 && <ErrorBanner errorMsg={errorMessages.join("\n")} />}
             <S.AddNewButton
                 onClick={handleAddNewItem}
                 appearance="icon"

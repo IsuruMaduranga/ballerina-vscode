@@ -78,6 +78,41 @@ export const buildRequiredRule = ({ isRequired, label, message }: RequiredRuleOp
 };
 
 /**
+ * Builds the rule that keeps a required repeatable list or map from being left empty. The editor holds its
+ * value as an array of elements, an object of entries, or the source text after a mode switch, so each of
+ * those shapes is checked for at least one entry.
+ */
+export const buildRequiredRepeatableRule = ({ isRequired, label }: RequiredRuleOptions) => {
+    return (value: unknown) => {
+        if (!isRequired) {
+            return true;
+        }
+        let hasEntries = false;
+        if (Array.isArray(value)) {
+            hasEntries = value.length > 0;
+        } else if (isRecord(value)) {
+            hasEntries = Object.keys(value).length > 0;
+        } else if (typeof value === "string") {
+            const trimmed = value.trim();
+            hasEntries = trimmed !== "" && trimmed !== "[]" && trimmed.replace(/\s/g, "") !== "{}";
+        }
+        return hasEntries || `${label ?? "This field"} is required`;
+    };
+};
+
+/**
+ * Collects the messages to show under a repeatable list or map: the form's own error for the field and the
+ * diagnostics the language server attached to the field as a whole. The diagnostics arrive either as a flat
+ * list or wrapped in a `{ hasDiagnostics, diagnostics }` object, so both shapes are read.
+ */
+export const getRepeatableErrorMessages = (fieldDiagnostics: unknown, error?: string): string[] => {
+    const diagnostics: { message?: string }[] = Array.isArray(fieldDiagnostics)
+        ? fieldDiagnostics
+        : ((fieldDiagnostics as { diagnostics?: { message?: string }[] })?.diagnostics ?? []);
+    return [...new Set([error, ...diagnostics.map((diagnostic) => diagnostic?.message)].filter(Boolean))];
+};
+
+/**
  * Translates a raw Ballerina compiler diagnostic for an identifier/name field into a
  * clearer, user-facing message. Validity is still decided entirely by the language server;
  * this only rewords the common cryptic diagnostics and falls back to the original message
