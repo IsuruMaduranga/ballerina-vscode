@@ -984,6 +984,8 @@ export interface Generation {
     codeContext?: CodeContext;
     /** Post-turn follow-up suggestions; runtime-only, not persisted across a restart */
     followupSuggestions?: FollowupSuggestion[];
+    /** Summary of this turn published to the WSO2 Integration Platform console (cloud editor only). Persisted, so a revert after a reload can still remove it */
+    consoleSummary?: string;
     /** Generation metadata */
     metadata: GenerationMetadata;
 }
@@ -1000,6 +1002,8 @@ export interface ChatThread {
     generations: Generation[];
     /** Session ID for backend correlation */
     sessionId?: string;
+    /** The console plan this cloud editor session was opened with started this thread; only its turns publish console summaries */
+    consoleOrigin?: boolean;
     /** Thread creation timestamp */
     createdAt: number;
     /** Last update timestamp */
