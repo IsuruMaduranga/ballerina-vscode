@@ -661,6 +661,10 @@ function isPositionWithinRange(position: NodePosition, artifactPosition: NodePos
  * Picks the artifact that best matches a tracked location when several candidates share an identifier
  * (e.g. the `onConsumerRecord` functions of two Kafka services). Candidates in `documentUri` are preferred,
  * and among those the one starting closest to `position` wins.
+ *
+ * `position` is the last known location, which may predate the latest edit, so edits that shift same-file
+ * candidates by more than half the distance between them can pick the wrong one. History entries other than
+ * the current one are not shifted by edits, so going back after such edits is subject to the same limit.
  */
 export function pickClosestArtifact(
     candidates: ProjectStructureArtifactResponse[],

@@ -909,10 +909,18 @@ const stateMachine = createMachine<MachineContext>(
     }
 });
 
-/** Builds the navigation key of a view opened at `position` in `documentUri`; see `VisualizerLocation.navigationKey`. */
+/**
+ * Builds the navigation key of a view opened at `position` in `documentUri`. The key is set only when a view is opened
+ * and is kept unchanged across later view updates, so saving does not remount the diagram. Re-opening the artifact already on screen reuses its key, since that key may still hold the position from before an edit.
+ */
 function toNavigationKey(documentUri?: string, position?: NodePosition): string | undefined {
     if (!documentUri || !position || position.startLine === undefined) {
         return undefined;
+    }
+    const current = getLastHistory()?.location;
+    if (current?.navigationKey && isSamePath(current.documentUri, documentUri)
+        && current.position?.startLine === position.startLine && current.position?.startColumn === position.startColumn) {
+        return current.navigationKey;
     }
     return `${documentUri}:${position.startLine}:${position.startColumn}`;
 }
