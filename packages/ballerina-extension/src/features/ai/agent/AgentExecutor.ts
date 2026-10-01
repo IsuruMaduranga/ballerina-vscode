@@ -26,6 +26,7 @@ import { populateHistoryForAgent, getErrorMessage, getErrorCode, buildChatError 
 import { seedAiBaselines } from '../utils/project/ls-schema-notifications';
 import { mapWithConcurrency } from '../utils/concurrency';
 import { getSystemPrompt, getUserPrompt } from './prompts';
+import { isWebSearchEnabled } from './tools/web-search-setting';
 import { shouldFailForMissingCompaction } from './compaction-gate';
 import { FollowupSituation, startFollowupSuggestions } from './followups';
 import { startConsoleSummary } from './console-summary';
@@ -445,7 +446,8 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const { allDisabled, projectSkills, userSkills, disabledSkillMetas } =
                 loadSkillsContext(projectRootPath || null);
 
-            const userMessageContent = getUserPrompt(params, tempProjectPath, projects, projectSkills, agentsMd.text, {
+            const webSearchEnabled = isWebSearchEnabled();
+            const userMessageContent = getUserPrompt(params, tempProjectPath, projects, projectSkills, webSearchEnabled, agentsMd.text, {
                 omitCodebaseDump: this.config.toolOptions?.omitCodebaseDump,
                 codebaseMapText: this.config.toolOptions?.codebaseMapText,
             });
@@ -519,7 +521,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                 threadId,
                 migrationSourcePath: this.config.toolOptions?.migrationSourcePath,
                 runningServices: runningServicesManager,
-                webSearchEnabled: params.webSearchEnabled ?? false,
+                webSearchEnabled,
                 ctx: this.config.executionContext,
                 specContext: this.buildSpecContext(threadId),
                 // TODO(auto-memory): temporarily disabled for this release.

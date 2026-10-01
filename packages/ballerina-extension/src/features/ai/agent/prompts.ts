@@ -333,6 +333,7 @@ export function getUserPrompt(
     tempProjectPath: string,
     projects: ProjectSource[],
     projectSkills: ProjectSkillMeta[],
+    webSearchEnabled: boolean,
     agentsMdBlockText?: string,
     codebase?: { omitCodebaseDump?: boolean; codebaseMapText?: string },
 ) {
@@ -435,7 +436,7 @@ ${queryParts.join('\n\n')}
         text: getGenerationType(params.isPlanMode)
     });
 
-    if (params.webSearchEnabled) {
+    if (webSearchEnabled) {
         content.push({
             type: 'text' as const,
             text: getWebToolsHint()
@@ -459,7 +460,7 @@ ${queryParts.join('\n\n')}
 }
 
 export function getWebToolsHint(): string {
-    return `<system-reminder>The user has enabled web tools. Use ${WEB_SEARCH_TOOL_NAME} for live or up-to-date information. Use ${WEB_FETCH_TOOL_NAME} when the user provides a URL. Invoke these tools proactively when the query suggests current data or external content is needed.</system-reminder>`;
+    return `<system-reminder>Web search is enabled: ${WEB_SEARCH_TOOL_NAME} and ${WEB_FETCH_TOOL_NAME} run without asking the user for approval. Use ${WEB_SEARCH_TOOL_NAME} for live or up-to-date information, and ${WEB_FETCH_TOOL_NAME} when the user provides a URL.</system-reminder>`;
 }
 
 function getGenerationType(isPlanMode: boolean): string {

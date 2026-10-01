@@ -300,6 +300,12 @@
                         "Trace request/response messages with parameters and content"
                     ]
                 },
+                "ballerina.copilot.enableWebSearch": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "window",
+                    "description": "Let the WSO2 Integrator Copilot search the web and read web pages without asking first. When off, it asks for approval before each web search or fetch."
+                },
                 "ballerina.copilot.enableMcpTools": {
                     "type": "boolean",
                     "default": false,
