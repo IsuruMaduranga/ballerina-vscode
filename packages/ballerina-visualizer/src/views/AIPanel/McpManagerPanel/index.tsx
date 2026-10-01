@@ -22,7 +22,7 @@ import { Button, Codicon } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { McpLoadErrorsDTO, McpMutableScope, McpScope, McpServerConfigDTO, McpServerStatusDTO } from "@wso2/ballerina-core";
 
-import { AIChatView, DangerActionButton, PrimaryActionButton, SecondaryActionButton } from "../styles";
+import { AIChatView, DangerActionButton, PrimaryActionButton, SecondaryActionButton, ToggleSwitch } from "../styles";
 import AddMcpServerModal from "../components/AIChatInput/AddMcpServerModal";
 import { Loader } from "../components/Loader";
 import { SettingsToggle as HeaderInlineToggle } from "../components/SettingsToggle";
@@ -397,44 +397,6 @@ const TogglePendingSlot = styled.span`
     justify-content: center;
     color: var(--vscode-descriptionForeground);
     flex-shrink: 0;
-`;
-
-const ToggleSwitch = styled.button<{ $on: boolean }>`
-    width: 30px;
-    height: 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    position: relative;
-    flex-shrink: 0;
-    background: ${(p: { $on: boolean }) => (p.$on
-        ? "var(--vscode-button-background)"
-        : "var(--vscode-input-background)")};
-    border: 1px solid ${(p: { $on: boolean }) => (p.$on
-        ? "var(--vscode-contrastBorder, var(--vscode-button-background))"
-        : "var(--vscode-contrastBorder, var(--vscode-checkbox-border, var(--vscode-descriptionForeground)))")};
-    transition: background 0.15s, border-color 0.15s;
-
-    &::after {
-        content: "";
-        position: absolute;
-        box-sizing: border-box;
-        top: 1px;
-        left: ${(p: { $on: boolean }) => (p.$on ? "15px" : "1px")};
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        background: ${(p: { $on: boolean }) => (p.$on
-            ? "var(--vscode-button-foreground)"
-            : "var(--vscode-descriptionForeground)")};
-        border: 1px solid var(--vscode-contrastBorder, transparent);
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-        transition: left 0.15s, background 0.15s;
-    }
-
-    &:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
 `;
 
 const ActionButton = SecondaryActionButton;
