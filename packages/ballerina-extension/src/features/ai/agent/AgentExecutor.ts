@@ -85,10 +85,11 @@ import { runningServicesManager } from './tools/running-service-manager';
 const RESERVED_OUTPUT_TOKENS = 64_000;
 
 /**
- * The Claude Sonnet 5.5 starting point for agentic coding. From `medium` up the model thinks briefly
- * before almost every reply; `low` risks reporting changes done without checking them.
+ * `high`, not `medium`: on integration-design requests Sonnet 5.5 at `medium` skipped rate-limit
+ * retries and batching that it handled at `high`, for about the same cost (cache reads dominate
+ * input). `low` risks reporting changes done without checking them.
  */
-const AGENT_EFFORT: AnthropicEffort = 'medium';
+const AGENT_EFFORT: AnthropicEffort = 'high';
 
 // The SDK records response messages apart from the live step messages, so the prepareStep strip never reaches them.
 function toPersisted<T>(messages: T[]): T[] {
