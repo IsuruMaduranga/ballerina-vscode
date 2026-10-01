@@ -95,7 +95,7 @@ export const buildRequiredRepeatableRule = ({ isRequired, label }: RequiredRuleO
             hasEntries = Object.keys(value).length > 0;
         } else if (typeof value === "string") {
             const compact = value.replace(/\s/g, "");
-            hasEntries = compact !== "" && compact !== "[]" && compact !== "{}";
+            hasEntries = compact !== "";
         }
         return hasEntries || `${label ?? "This field"} is required`;
     };

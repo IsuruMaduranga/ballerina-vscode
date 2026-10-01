@@ -37,8 +37,14 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
     const [fieldDiagnostics, setFieldDiagnostics] = useState(props.field.diagnostics);
 
     useEffect(() => {
+        const serverValue = props.field.value;
+        const currentValue = props.value;
+        const valuesMatch = Array.isArray(serverValue) && Array.isArray(currentValue)
+            ? isEqual(getArrayElementValues(serverValue), getArrayElementValues(currentValue))
+            : serverValue === currentValue;
+        if (!valuesMatch) return;
         setFieldDiagnostics(props.field.diagnostics);
-    }, [props.field.diagnostics]);
+    }, [props.field.diagnostics, props.field.value, props.value]);
 
     const { expressionEditor } = useFormContext();
     const elementDiagnosticsRef = useRef<FormDiagnostics[]>([]);

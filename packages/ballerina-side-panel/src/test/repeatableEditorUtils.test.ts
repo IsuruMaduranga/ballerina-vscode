@@ -87,11 +87,6 @@ describe("buildRequiredRepeatableRule", () => {
         ["an empty object", {}],
         ["an empty string", ""],
         ["undefined", undefined],
-        ["empty array source", "[]"],
-        ["empty array source with spaces", "[ ]"],
-        ["empty array source over lines", "[\n]"],
-        ["empty map source with spaces", "{ }"],
-        ["empty map source over lines", "{\n}"],
     ])("rejects %s for a required field", (_desc, value) => {
         expect(required(value)).toBe("Items is required");
     });
@@ -101,6 +96,12 @@ describe("buildRequiredRepeatableRule", () => {
         ["an object with an entry", { key: "value" }],
         ["array source with an element", "[a]"],
         ["map source with an entry", "{ key: value }"],
+        ["empty array source", "[]"],
+        ["empty array source with spaces", "[ ]"],
+        ["empty array source over lines", "[\n]"],
+        ["empty map source", "{}"],
+        ["empty map source with spaces", "{ }"],
+        ["empty map source over lines", "{\n}"],
     ])("accepts %s for a required field", (_desc, value) => {
         expect(required(value)).toBe(true);
     });

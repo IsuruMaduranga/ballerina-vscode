@@ -779,8 +779,11 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
             // level so that the exp mode also can show the diagnostics. Property-level diagnostics don't have a
             // `range`, so use a simple message-based dedupe and provide explicit typing to satisfy TypeScript.
             if (isRepeatableList && !(Array.isArray(propertyDiagnostics) && propertyDiagnostics.length > 0)) {
+                const repeatableListValue = nodeProperties?.[field.key]?.value;
                 const collectedDiagnostics = (
-                    nodeProperties?.[field.key]?.value?.map((val: any) => val?.diagnostics?.diagnostics) ?? []
+                    Array.isArray(repeatableListValue)
+                        ? repeatableListValue.map((val: any) => val?.diagnostics?.diagnostics)
+                        : []
                 ).flat().filter(Boolean) as Array<{ message?: string; severity?: string }>;
 
                 propertyDiagnostics = collectedDiagnostics.filter((d, i, arr) =>
@@ -1352,7 +1355,9 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
             let diagnostics: DiagnosticMessage[] = [];
             if (property?.types?.length === 1 && getPrimaryInputType(property.types)?.fieldType === "REPEATABLE_LIST") {
                 // For repeatable list, check diagnostics for each element in the list
-                const valueDiagnostics = (property.value as any[])?.map((val) => val?.diagnostics?.diagnostics ?? []).flat() ?? [];
+                const valueDiagnostics = Array.isArray(property.value)
+                    ? property.value.map((val: any) => val?.diagnostics?.diagnostics ?? []).flat()
+                    : [];
                 diagnostics = [...diagnostics, ...valueDiagnostics];
             } else if (property?.types?.some(t => t.fieldType === "REPEATABLE_MAP") && typeof property.value === 'object' && property.value !== null && !Array.isArray(property.value)) {
                 // For repeatable map, check diagnostics for each entry in the map

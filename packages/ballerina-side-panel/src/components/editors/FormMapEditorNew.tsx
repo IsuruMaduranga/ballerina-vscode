@@ -38,8 +38,15 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
     const [fieldDiagnostics, setFieldDiagnostics] = useState(props.field.diagnostics);
 
     useEffect(() => {
+        const serverValue = props.field.value;
+        const currentValue = props.value;
+        const valuesMatch = serverValue && typeof serverValue === "object" && !Array.isArray(serverValue)
+            && currentValue && typeof currentValue === "object" && !Array.isArray(currentValue)
+            ? isEqual(getMapEntryValues(serverValue), getMapEntryValues(currentValue))
+            : serverValue === currentValue;
+        if (!valuesMatch) return;
         setFieldDiagnostics(props.field.diagnostics);
-    }, [props.field.diagnostics]);
+    }, [props.field.diagnostics, props.field.value, props.value]);
 
     const scrollableListRef = useRef<ScrollableListRef>(null);
     const handleFormValidationRef = useRef(props.handleFormValidation);
@@ -185,7 +192,6 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
         setRepeatableFields(newRepeatableFields);
         emitChange(newRepeatableFields);
         validateFieldDebounced.cancel();
-        props.handleFormValidation?.(undefined, true);
         // Wait for the dom update
         setTimeout(() => {
             scrollableListRef.current?.scrollToBottom();

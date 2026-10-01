@@ -56,6 +56,7 @@ function renderArray(field: FormField, defaultValue: unknown = "") {
     const utils = renderWithForm(
         <FormArrayEditorWrapper
             field={field}
+            fieldInputType={field.types[0]}
             openSubPanel={() => {}}
             handleFormValidation={handleFormValidation}
         />,
@@ -69,6 +70,7 @@ function renderMap(field: FormField, defaultValue: unknown = "") {
     const utils = renderWithForm(
         <FormMapEditorWrapper
             field={field}
+            fieldInputType={field.types[0]}
             openSubPanel={() => {}}
             handleFormValidation={handleFormValidation}
         />,
@@ -121,14 +123,14 @@ describe("FormArrayEditor add and delete flows", () => {
 });
 
 describe("FormMapEditorNew add and delete flows", () => {
-    it("adds a row without changing the value until a key is typed and requests a forced validation", () => {
+    it("adds an empty row without requesting redundant validation", () => {
         const { getForm, handleFormValidation } = renderMap(repeatableField({ fieldType: "REPEATABLE_MAP" }));
 
         fireEvent.click(screen.getByText("Initialize Map"));
 
         expect(screen.getAllByTestId("row-form")).toHaveLength(1);
         expect(getForm().getValues("items")).toBe("");
-        expect(handleFormValidation).toHaveBeenCalledWith(undefined, true);
+        expect(handleFormValidation).not.toHaveBeenCalled();
     });
 
     it("clears the value when the last entry is deleted and requests a forced validation", () => {
