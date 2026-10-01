@@ -69,9 +69,10 @@ describe("web tool helpers", () => {
         expect(answerText([dynamicFilteringStep])).toBe("**Ballerina 2201.13.0** is the latest update.");
     });
 
-    it("keeps every text part when no text follows the last tool part", () => {
-        expect(answerText([{ content: [{ type: "text", text: "Partial note." }, { type: "tool-call" }, { type: "tool-result" }] }]))
-            .toBe("Partial note.");
+    it("has no answer when the step ends on a tool part, so notes before it are not passed off as one", () => {
+        const step = { content: [{ type: "text", text: "Partial note." }, { type: "tool-call" }, { type: "tool-result" }] };
+        expect(answerText([step])).toBe("");
+        expect(formatReaderAnswer("https://example.com", answerText([step]), "length").failed).toBe(true);
     });
 
     it("reads the last step and handles a run with no tools or no steps", () => {

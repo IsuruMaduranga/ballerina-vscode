@@ -48,13 +48,14 @@ const TOOL_PART_TYPES = new Set(['tool-call', 'tool-result', 'tool-error']);
  * The model's answer: the text after its last tool part. With dynamic filtering, the search or
  * fetch runs inside code execution in one step, and the model writes notes between its calls
  * ("Result is a string; parse it."); `result.text` joins those notes onto the front of the answer.
- * A step with no text after its last tool part keeps all of its text, so nothing is lost.
+ * A step that ends on a tool part has no answer, so its notes are never passed off as one; a step
+ * with no tool parts returns all of its text.
  */
 export function answerText(steps: StepLike[] | undefined): string {
     const content = steps?.[steps.length - 1]?.content ?? [];
     const lastToolPart = content.reduce((last, part, i) => (TOOL_PART_TYPES.has(part?.type) ? i : last), -1);
     const joinText = (parts: typeof content) => parts.filter(part => part?.type === 'text').map(part => part.text ?? '').join('');
-    return joinText(content.slice(lastToolPart + 1)) || joinText(content);
+    return joinText(content.slice(lastToolPart + 1));
 }
 
 /**
