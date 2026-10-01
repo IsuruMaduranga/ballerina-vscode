@@ -165,6 +165,36 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
         props.onChange(newRepeatableFields);
     }, [props.value]);
 
+    /**
+     * Reads the diagnostics attached to an element of the array value, which arrive either as a flat list or
+     * wrapped in a `{ hasDiagnostics, diagnostics }` object.
+     */
+    const getElementDiagnostics = (element: any): any[] => {
+        const diagnostics = Array.isArray(element?.diagnostics) ? element.diagnostics : element?.diagnostics?.diagnostics;
+        return Array.isArray(diagnostics) ? diagnostics : [];
+    };
+
+    /**
+     * Loads the element diagnostics the language server returns with refreshed fields onto the existing elements.
+     * The elements are kept as they are, so a refresh does not remount them or drop the diagnostics of an element
+     * the server did not report on.
+     */
+    useEffect(() => {
+        if (!Array.isArray(props.field.value) || props.field.value.length === 0) return;
+        if (props.field.value.length !== repeatableFields.length) return;
+        if (!isEqual(getArrayElementValues(props.field.value), getArrayElementValues(repeatableFields))) return;
+        const serverDiagnostics: FormDiagnostics[] = repeatableFields.map((field, index) => ({
+            key: field.key,
+            diagnostics: getElementDiagnostics((props.field.value as any[])[index])
+        }));
+        const serverKeys = new Set(serverDiagnostics.map(diag => diag.key));
+        elementDiagnosticsRef.current = [
+            ...elementDiagnosticsRef.current.filter(diag => !serverKeys.has(diag.key)),
+            ...serverDiagnostics
+        ];
+        setRepeatableFields(repeatableFields.map(applyDiagnosticsToField));
+    }, [props.field.value]);
+
     useEffect(() => {
         if (!props.value) return;
         if (Array.isArray(props.value) &&
