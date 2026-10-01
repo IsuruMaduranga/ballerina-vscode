@@ -18,50 +18,34 @@
 
 import * as vscode from "vscode";
 
-import { isWebSearchEnabled, setWebSearchEnabled, WEB_SEARCH_SETTING } from "../features/ai/agent/tools/web-search-setting";
+import { isWebSearchEnabled } from "../features/ai/agent/tools/web-search-setting";
 
 const ws = vscode.workspace as any;
 const originalGetConfiguration = ws.getConfiguration;
 
-/** Stubs the `ballerina` section with the given scope values and records every update. */
-function stubSetting(values: { globalValue?: boolean; workspaceValue?: boolean }) {
-    const updates: Array<{ key: string; value: unknown; target: unknown }> = [];
+/** Stubs the `ballerina` section so `get` returns the given effective value, or the caller's default. */
+function stubSetting(effective: boolean | undefined) {
     ws.getConfiguration = () => ({
-        get: (_key: string, defaultValue?: boolean) => values.workspaceValue ?? values.globalValue ?? defaultValue,
-        inspect: () => ({ defaultValue: true, ...values }),
-        update: (key: string, value: unknown, target: unknown) => {
-            updates.push({ key, value, target });
-            return Promise.resolve();
-        },
+        get: (_key: string, defaultValue?: boolean) => effective ?? defaultValue,
+        inspect: () => undefined,
+        update: () => Promise.resolve(),
     });
-    return updates;
 }
 
 afterEach(() => {
     ws.getConfiguration = originalGetConfiguration;
 });
 
+// Writes go through the settings panel's generic Copilot toggle (setCopilotToggleSetting), which
+// updates the workspace value when the workspace sets one.
 describe("web search setting", () => {
     it("is on by default", () => {
-        stubSetting({});
+        stubSetting(undefined);
         expect(isWebSearchEnabled()).toBe(true);
     });
 
-    it("writes the user value when no workspace value is set", async () => {
-        const updates = stubSetting({});
-        await setWebSearchEnabled(false);
-        expect(updates).toEqual([{ key: WEB_SEARCH_SETTING, value: false, target: vscode.ConfigurationTarget.Global }]);
-    });
-
-    it("writes the user value over an existing user value", async () => {
-        const updates = stubSetting({ globalValue: false });
-        await setWebSearchEnabled(true);
-        expect(updates).toEqual([{ key: WEB_SEARCH_SETTING, value: true, target: vscode.ConfigurationTarget.Global }]);
-    });
-
-    it("writes the workspace value when the workspace overrides the setting", async () => {
-        const updates = stubSetting({ globalValue: false, workspaceValue: true });
-        await setWebSearchEnabled(false);
-        expect(updates).toEqual([{ key: WEB_SEARCH_SETTING, value: false, target: vscode.ConfigurationTarget.Workspace }]);
+    it("follows an explicit value", () => {
+        stubSetting(false);
+        expect(isWebSearchEnabled()).toBe(false);
     });
 });

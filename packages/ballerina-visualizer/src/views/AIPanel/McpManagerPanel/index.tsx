@@ -22,10 +22,10 @@ import { Button, Codicon } from "@wso2/ui-toolkit";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { McpLoadErrorsDTO, McpMutableScope, McpScope, McpServerConfigDTO, McpServerStatusDTO } from "@wso2/ballerina-core";
 
-import { AIChatView, DangerActionButton, PrimaryActionButton, SecondaryActionButton, ToggleSwitch } from "../styles";
+import { AIChatView, DangerActionButton, PrimaryActionButton, SecondaryActionButton } from "../styles";
 import AddMcpServerModal from "../components/AIChatInput/AddMcpServerModal";
 import { Loader } from "../components/Loader";
-import { SettingsToggle as HeaderInlineToggle } from "../components/SettingsToggle";
+import { SettingsToggle, SettingsToggle as HeaderInlineToggle } from "../components/SettingsToggle";
 
 interface Props {
     onClose: () => void;
@@ -666,7 +666,7 @@ export const McpManagerPanel: React.FC<Props> = ({ onClose, backTooltip }) => {
                                     <span className="codicon codicon-loading codicon-modifier-spin" style={{ fontSize: 12 }} />
                                 </TogglePendingSlot>
                             ) : (
-                                <ToggleSwitch
+                                <SettingsToggle
                                     type="button"
                                     role="switch"
                                     aria-checked={s.enabled}

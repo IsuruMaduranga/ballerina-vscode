@@ -79,7 +79,6 @@ import {
     SetCopilotOrbVisibleRequest,
     CopilotToggleSettings,
     SetCopilotToggleSettingRequest,
-    SetWebSearchEnabledRequest,
     McpLoadErrorsDTO,
     AgentsMdFileInfoDTO,
     ParseSkillFileRequest,
@@ -178,8 +177,6 @@ export const setCopilotOrbVisible: RequestType<SetCopilotOrbVisibleRequest, void
 export const getCopilotOrbVisible: RequestType<void, boolean> = { method: `${_preFix}/getCopilotOrbVisible` };
 export const getCopilotToggleSettings: RequestType<void, CopilotToggleSettings> = { method: `${_preFix}/getCopilotToggleSettings` };
 export const setCopilotToggleSetting: RequestType<SetCopilotToggleSettingRequest, void> = { method: `${_preFix}/setCopilotToggleSetting` };
-export const setWebSearchEnabled: RequestType<SetWebSearchEnabledRequest, void> = { method: `${_preFix}/setWebSearchEnabled` };
-export const getWebSearchEnabled: RequestType<void, boolean> = { method: `${_preFix}/getWebSearchEnabled` };
 export const getMcpWorkspaceContext: RequestType<void, McpWorkspaceContextResponse> = { method: `${_preFix}/getMcpWorkspaceContext` };
 export const getMcpLoadErrors: RequestType<void, McpLoadErrorsDTO> = { method: `${_preFix}/getMcpLoadErrors` };
 export const mcpServersChanged: NotificationType<McpServerStatusDTO[]> = { method: `${_preFix}/mcpServersChanged` };
