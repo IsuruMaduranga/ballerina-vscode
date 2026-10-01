@@ -15,8 +15,8 @@
 // under the License.
 
 /**
- * Pure helpers for web_fetch's reader call, kept apart from web-tools.ts so Jest can load them:
- * web-tools pulls in vscode through the AI client.
+ * Pure helpers for the web tools' nested model calls, kept apart from web-tools.ts so Jest can load
+ * them: web-tools pulls in vscode through the AI client.
  */
 
 export const READER_FETCH_FAILED_PREFIX = 'Fetch failed:';
@@ -31,7 +31,22 @@ Rules:
 
 interface StepLike {
     toolCalls?: unknown[];
-    content?: Array<{ type?: string }>;
+    content?: Array<{ type?: string; text?: string }>;
+}
+
+const TOOL_PART_TYPES = new Set(['tool-call', 'tool-result', 'tool-error']);
+
+/**
+ * The model's answer: the text after its last tool part. With dynamic filtering, the search or
+ * fetch runs inside code execution in one step, and the model writes notes between its calls
+ * ("Result is a string; parse it."); `result.text` joins those notes onto the front of the answer.
+ * A step with no text after its last tool part keeps all of its text, so nothing is lost.
+ */
+export function answerText(steps: StepLike[] | undefined): string {
+    const content = steps?.[steps.length - 1]?.content ?? [];
+    const lastToolPart = content.reduce((last, part, i) => (TOOL_PART_TYPES.has(part?.type) ? i : last), -1);
+    const joinText = (parts: typeof content) => parts.filter(part => part?.type === 'text').map(part => part.text ?? '').join('');
+    return joinText(content.slice(lastToolPart + 1)) || joinText(content);
 }
 
 /**
