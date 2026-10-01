@@ -28,6 +28,7 @@ import { mapWithConcurrency } from '../utils/concurrency';
 import { getSystemPrompt, getUserPrompt } from './prompts';
 import { isWebSearchEnabled } from './tools/web-search-setting';
 import { shouldFailForMissingCompaction } from './compaction-gate';
+import { createModelRefusalError, MODEL_REFUSAL_ERROR_NAME, RefusalStopDetails } from './model-refusal';
 import { FollowupSituation, startFollowupSuggestions } from './followups';
 import { startConsoleSummary } from './console-summary';
 import { prepareAgentsMdForTurn } from './agents-md';
@@ -690,6 +691,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
 
                     let attemptFinishReason: FinishReason | undefined;
                     let attemptRawFinishReason: string | undefined;
+                    let attemptStopDetails: RefusalStopDetails | undefined;
 
                     for await (const part of fullStream) {
                         // Handle compaction block detection inline (text-start/text-delta)
@@ -739,6 +741,11 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                             continue;
                         }
 
+                        // The refusal category and explanation ride on the step's provider metadata.
+                        if (part.type === 'finish-step') {
+                            attemptStopDetails = (part.providerMetadata?.anthropic?.stopDetails as RefusalStopDetails | undefined) ?? attemptStopDetails;
+                        }
+
                         await this.handleStreamPart(part, streamContext);
                     }
 
@@ -755,6 +762,15 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         const abortError = new Error('Aborted by user');
                         abortError.name = 'AbortError';
                         throw abortError;
+                    }
+
+                    // A decline (stop_reason "refusal") is not a finished turn: end it as an error so
+                    // the reason shows in the chat, partial work is kept, and no follow-ups run.
+                    if (attemptFinishReason === 'content-filter') {
+                        const refusal = createModelRefusalError(attemptStopDetails);
+                        console.warn(`[AgentExecutor] ${refusal.message}`);
+                        await this.handleStreamError(refusal, streamContext);
+                        throw refusal;
                     }
 
                     const attemptResponse = await response;
