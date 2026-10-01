@@ -3925,6 +3925,15 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     seedCapabilityValue(nodeProps[key], value);
                 }
             }
+            // The add template hides an entry's name and description (registering asks for the policies
+            // alone); an existing entry is where they are set, so the edit form shows them.
+            if (capability?.type === "activity") {
+                for (const key of ["name", "description"]) {
+                    if (nodeProps?.[key]) {
+                        nodeProps[key].hidden = false;
+                    }
+                }
+            }
             node.codedata.lineRange = lineRange;
             node.codedata.isNew = false;
             applyDurableAgentObjectTarget(node);

@@ -33,6 +33,7 @@ interface FieldType {
 export interface SeedableProperty {
     value?: unknown;
     types?: FieldType[];
+    hidden?: boolean;
 }
 
 // The modes that hold text rather than source. A doc box is one of them: it is a single mode, but a
