@@ -25,7 +25,7 @@ import { ErrorBanner, RequiredFormInput } from "@wso2/ui-toolkit";
 import { Codicon } from "@wso2/ui-toolkit/lib/components/Codicon/Codicon";
 import { ScrollableList, ScrollableListRef } from "@wso2/ui-toolkit/lib/components/ScrollableList/ScrollableList";
 import ModeSwitcher from "../ModeSwitcher";
-import { getMapEntryValues, getMapSubFormFieldFromTypes, getRepeatableErrorMessages, buildStringMap, stringToRawObjectEntries, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
+import { getMapEntryValues, getMapSubFormFieldFromTypes, normalizeDiagnostics, getRepeatableErrorMessages, buildStringMap, stringToRawObjectEntries, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
 import { InputMode } from "./MultiModeExpressionEditor/ChipExpressionEditor/types";
 import { getInputModeFromTypes } from "./MultiModeExpressionEditor/ChipExpressionEditor/utils";
 
@@ -184,6 +184,7 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
         const newRepeatableFields = [...repeatableFields, newField];
         setRepeatableFields(newRepeatableFields);
         emitChange(newRepeatableFields);
+        validateFieldDebounced.cancel();
         props.handleFormValidation?.(undefined, true);
         // Wait for the dom update
         setTimeout(() => {
@@ -224,6 +225,7 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
         const newRepeatableFields = repeatableFields.filter((formField) => formField[0].key !== keyToDelete);
         setRepeatableFields(newRepeatableFields);
         emitChange(newRepeatableFields);
+        validateFieldDebounced.cancel();
         props.handleFormValidation?.(undefined, true);
     };
 
@@ -244,9 +246,7 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
         if (props.field.value && typeof props.field.value === 'object' && !Array.isArray(props.field.value)) {
             Object.entries(props.field.value as Record<string, any>).forEach(([entryKey, entryVal]) => {
                 if (entryVal?.diagnostics) {
-                    // diagnostics may be a Diagnostic object { hasDiagnostics, diagnostics: [] } or already a flat array
-                    const diags = entryVal.diagnostics;
-                    diagnosticsMap[entryKey] = Array.isArray(diags) ? diags : (diags?.diagnostics ?? []);
+                    diagnosticsMap[entryKey] = normalizeDiagnostics(entryVal.diagnostics);
                 }
             });
         }
@@ -276,8 +276,7 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
         const valuesMap: Record<string, string> = {};
         Object.entries(props.field.value as Record<string, any>).forEach(([entryKey, entryVal]) => {
             if (entryVal?.diagnostics) {
-                const diags = entryVal.diagnostics;
-                diagnosticsMap[entryKey] = Array.isArray(diags) ? diags : (diags?.diagnostics ?? []);
+                diagnosticsMap[entryKey] = normalizeDiagnostics(entryVal.diagnostics);
                 valuesMap[entryKey] = String(entryVal?.value ?? "");
             }
         });

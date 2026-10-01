@@ -133,7 +133,7 @@ import { SidePanelView } from "../../FlowDiagram/PanelManager";
 import { ConnectionKind, useCreateNode } from "../../../../components/ConnectionSelector";
 import { getFilteredTypesByKind } from "../../TypeEditor/utils";
 import { useModalStack } from "../../../../Context";
-import { getArraySubFormFieldFromTypes, stringToRawArrayElements, stringToRawObjectEntries } from "@wso2/ballerina-side-panel/lib/components/editors/utils";
+import { getArrayElementValues, getArraySubFormFieldFromTypes, stringToRawArrayElements, stringToRawObjectEntries } from "@wso2/ballerina-side-panel/lib/components/editors/utils";
 import { useAssistantName } from "../../../../hooks/useProductMode";
 
 interface FlowNodeTypeEditorState {
@@ -699,6 +699,8 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
         formImportsRef.current = getImportsForFormFields(sortedFields);
     };
 
+    const diagnosticsRequestRef = useRef(0);
+
     const setDiagnosticsToFields = (data: FormValues, nodeWithDiagnostics: FlowNode) => {
         setFormDiagnostics(nodeWithDiagnostics?.diagnostics?.diagnostics ?? []);
         const updatedFields = fields.map((field) => {
@@ -725,9 +727,7 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
                             initialValues = stringToRawArrayElements(data[field.key]);
                         } else {
                             // When the value is an array (from FormArrayEditor), extract values directly
-                            initialValues = (data[field.key] as any[]).map((val: any) =>
-                                typeof val === 'string' ? val : String(val?.value ?? '')
-                            );
+                            initialValues = getArrayElementValues(data[field.key] as any[]);
                         }
                         const initialFields = initialValues.map((val, index) => {
                             const key = crypto.randomUUID();
@@ -894,8 +894,11 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
             const validationData = buildValidationData(data);
 
             const updatedNode = mergeFormDataWithFlowNode(validationData, targetLineRange, dirtyFields);
+            const requestId = ++diagnosticsRequestRef.current;
             const nodeWithDiagnostics = await getFormWithDiagnostics(updatedNode);
-            setDiagnosticsToFields(data, nodeWithDiagnostics!);
+            if (requestId === diagnosticsRequestRef.current) {
+                setDiagnosticsToFields(data, nodeWithDiagnostics!);
+            }
         }
     };
 
@@ -1379,8 +1382,11 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
         if (node && targetLineRange && !skipFormValidation) {
             const validationData = buildValidationData(data);
             const updatedNode = mergeFormDataWithFlowNode(validationData, targetLineRange, dirtyFields);
+            const requestId = ++diagnosticsRequestRef.current;
             const nodeWithDiagnostics = await getFormWithDiagnostics(updatedNode);
-            setDiagnosticsToFields(data, nodeWithDiagnostics!);
+            if (requestId === diagnosticsRequestRef.current) {
+                setDiagnosticsToFields(data, nodeWithDiagnostics!);
+            }
 
             // HACK: Ignore top-level hasDiagnostics when LS does not send property-level diagnostic messages.
             if (nodeWithDiagnostics?.diagnostics?.hasDiagnostics && hasPropertyDiagnosticMessages(nodeWithDiagnostics)) {

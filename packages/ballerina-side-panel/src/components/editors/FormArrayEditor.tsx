@@ -24,7 +24,7 @@ import { ErrorBanner, RequiredFormInput } from "@wso2/ui-toolkit";
 import { Codicon } from "@wso2/ui-toolkit/lib/components/Codicon/Codicon";
 import { ScrollableList, ScrollableListRef } from "@wso2/ui-toolkit/lib/components/ScrollableList/ScrollableList";
 import ModeSwitcher from "../ModeSwitcher";
-import { getArrayElementValues, getArraySubFormFieldFromTypes, getRepeatableErrorMessages, stringToRawArrayElements, buildStringArray, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
+import { getArrayElementValues, getArraySubFormFieldFromTypes, normalizeDiagnostics, getRepeatableErrorMessages, stringToRawArrayElements, buildStringArray, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
 import { InputMode } from "./MultiModeExpressionEditor/ChipExpressionEditor/types";
 import { getInputModeFromTypes } from "./MultiModeExpressionEditor/ChipExpressionEditor/utils";
 
@@ -166,18 +166,10 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
     }, [props.value]);
 
     /**
-     * Reads the diagnostics attached to an element of the array value, which arrive either as a flat list or
-     * wrapped in a `{ hasDiagnostics, diagnostics }` object.
-     */
-    const getElementDiagnostics = (element: any): any[] => {
-        const diagnostics = Array.isArray(element?.diagnostics) ? element.diagnostics : element?.diagnostics?.diagnostics;
-        return Array.isArray(diagnostics) ? diagnostics : [];
-    };
-
-    /**
      * Loads the element diagnostics the language server returns with refreshed fields onto the existing elements.
-     * The elements are kept as they are, so a refresh does not remount them or drop the diagnostics of an element
-     * the server did not report on.
+     * The server checked the same values the elements hold, so its result replaces each element's diagnostics,
+     * including clearing them when it reports none. The elements are kept as they are, so a refresh does not
+     * remount them.
      */
     useEffect(() => {
         if (!Array.isArray(props.field.value) || props.field.value.length === 0) return;
@@ -185,14 +177,19 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
         if (!isEqual(getArrayElementValues(props.field.value), getArrayElementValues(repeatableFields))) return;
         const serverDiagnostics: FormDiagnostics[] = repeatableFields.map((field, index) => ({
             key: field.key,
-            diagnostics: getElementDiagnostics((props.field.value as any[])[index])
+            diagnostics: normalizeDiagnostics((props.field.value as any[])[index]?.diagnostics)
         }));
         const serverKeys = new Set(serverDiagnostics.map(diag => diag.key));
         elementDiagnosticsRef.current = [
             ...elementDiagnosticsRef.current.filter(diag => !serverKeys.has(diag.key)),
             ...serverDiagnostics
         ];
-        setRepeatableFields(repeatableFields.map(applyDiagnosticsToField));
+        const applied = repeatableFields.map(applyDiagnosticsToField);
+        prevDiagnosticsRef.current = applied.reduce((acc: Record<string, string>, f) => {
+            acc[f.key] = makeDiagnosticsKey(f.diagnostics as any[]);
+            return acc;
+        }, {});
+        setRepeatableFields(applied);
     }, [props.field.value]);
 
     useEffect(() => {
@@ -208,17 +205,10 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
                 keyArray.push(key);
                 return {
                     key: `ar-elm-${key}`,
-                    diagnostics: Array.isArray(val.diagnostics)
-                        ? val.diagnostics.map((diag: any) => ({
-                            message: diag.message,
-                            severity: mapDiagnosticsServerityToFormSeverity(diag.severity),
-                        }))
-                        : Array.isArray(val.diagnostics?.diagnostics)
-                            ? val.diagnostics.diagnostics.map((diag: any) => ({
-                                message: diag.message,
-                                severity: mapDiagnosticsServerityToFormSeverity(diag.severity),
-                            }))
-                            : []
+                    diagnostics: normalizeDiagnostics(val?.diagnostics).map((diag: any) => ({
+                        message: diag.message,
+                        severity: mapDiagnosticsServerityToFormSeverity(diag.severity),
+                    })) as any[]
                 }
             });
             elementDiagnosticsRef.current = initialDioagnostics;
@@ -226,7 +216,7 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
         // An array holds the elements already, so the values are read from it directly. Building a string out of it
         // and splitting it back apart loses an element that contains a comma, such as a string template.
         const initialValues: string[] = Array.isArray(props.value)
-            ? props.value.map((val: any) => (typeof val === "string" ? val : String(val?.value ?? "")))
+            ? getArrayElementValues(props.value)
             : stringToRawArrayElements(buildStringArray(props.value));
         if (!Array.isArray(props.value)) {
             initialValues.forEach((val: any, index: number) => {
