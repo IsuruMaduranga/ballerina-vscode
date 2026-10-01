@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { capabilityValueText, seedCapabilityValue, SeedableProperty } from "./capabilityFieldValues";
+import { capabilityValueText, revealActivityIdentity, seedCapabilityValue, SeedableProperty } from "./capabilityFieldValues";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { TraceAnimationEvent } from "@wso2/ballerina-core";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
@@ -3925,14 +3925,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     seedCapabilityValue(nodeProps[key], value);
                 }
             }
-            // The add template hides an entry's name and description (registering asks for the policies
-            // alone); an existing entry is where they are set, so the edit form shows them.
             if (capability?.type === "activity") {
-                for (const key of ["name", "description"]) {
-                    if (nodeProps?.[key]) {
-                        nodeProps[key].hidden = false;
-                    }
-                }
+                revealActivityIdentity(nodeProps);
             }
             node.codedata.lineRange = lineRange;
             node.codedata.isNew = false;
