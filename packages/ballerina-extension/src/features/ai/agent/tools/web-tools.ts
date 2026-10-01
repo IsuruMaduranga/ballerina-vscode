@@ -21,7 +21,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { CopilotEventHandler } from '../../utils/events';
 import { approvalManager } from '../../state/ApprovalManager';
 import { getAnthropicClient, getProviderModelOptions, ANTHROPIC_SONNET } from '../../utils/ai-client';
-import { answerText, formatReaderAnswer, readerCalledATool, WEB_FETCH_READER_SYSTEM_PROMPT } from './web-tool-helpers';
+import { answerText, formatReaderAnswer, readerCalledATool, retryOnce, webFetchFailure, WEB_FETCH_READER_SYSTEM_PROMPT } from './web-tool-helpers';
 
 export const WEB_SEARCH_TOOL_NAME = "web_search";
 export const WEB_FETCH_TOOL_NAME = "web_fetch";
@@ -195,9 +195,13 @@ async function executeWebFetch(
                     web_fetch: fetchFactory({ maxUses: 3, ...domainOptions(input) }),
                 },
             });
-            return readerCalledATool(result.steps) ? formatReaderAnswer(input.url, answerText(result.steps), result.finishReason) : undefined;
+            if (!readerCalledATool(result.steps)) { return undefined; }
+            // A reader whose every fetch failed may still write a summary; report the failure instead.
+            const failure = webFetchFailure(result.steps);
+            if (failure) { return { output: `Web fetch failed for ${input.url}: ${failure}`, failed: true }; }
+            return formatReaderAnswer(input.url, answerText(result.steps), result.finishReason);
         };
-        const { output, failed } = (await runReader()) ?? (await runReader())
+        const { output, failed } = (await retryOnce(runReader))
             ?? { output: `Web fetch failed: the reader did not fetch ${input.url}.`, failed: true };
         console.log(`[WebTools] fetch | done | failed: ${failed} | length: ${output.length}`);
 

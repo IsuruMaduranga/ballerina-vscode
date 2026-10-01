@@ -29,9 +29,17 @@ Rules:
 - If the page does not answer the question, say so, then summarize what the page does cover.
 - If the fetch fails, reply with "${READER_FETCH_FAILED_PREFIX}" followed by the reason.`;
 
+interface PartLike {
+    type?: string;
+    text?: string;
+    toolName?: string;
+    output?: unknown;
+    error?: unknown;
+}
+
 interface StepLike {
     toolCalls?: unknown[];
-    content?: Array<{ type?: string; text?: string }>;
+    content?: PartLike[];
 }
 
 const TOOL_PART_TYPES = new Set(['tool-call', 'tool-result', 'tool-error']);
@@ -58,6 +66,35 @@ export function readerCalledATool(steps: StepLike[] | undefined): boolean {
     return (steps ?? []).some(step =>
         (step.toolCalls?.length ?? 0) > 0
         || (step.content ?? []).some(part => part?.type === 'tool-result' || part?.type === 'tool-error'));
+}
+
+/**
+ * Runs `attempt` once more when it returns `undefined` (the reader answered without fetching),
+ * and returns the first result, or `undefined` when both attempts came back empty.
+ */
+export async function retryOnce<T>(attempt: () => Promise<T | undefined>): Promise<T | undefined> {
+    return (await attempt()) ?? (await attempt());
+}
+
+/** The provider's error code on a failed web_fetch part, e.g. `url_not_accessible`. */
+function fetchErrorCode(part: PartLike): string {
+    const detail = (part.type === 'tool-error' ? part.error : part.output) as { errorCode?: string } | undefined;
+    return detail?.errorCode ?? 'unknown error';
+}
+
+/**
+ * Why the reader's fetches failed, when every web_fetch in the run failed; `undefined` when one
+ * succeeded or the run has no web_fetch result to judge (the reader's text decides then). The SDK
+ * reports a failed provider fetch as a `tool-error` part, or as a `tool-result` whose output is a
+ * `web_fetch_tool_result_error`.
+ */
+export function webFetchFailure(steps: StepLike[] | undefined): string | undefined {
+    const fetchParts = (steps ?? []).flatMap(step => step.content ?? [])
+        .filter(part => part?.toolName === 'web_fetch' && (part.type === 'tool-result' || part.type === 'tool-error'));
+    const failed = (part: PartLike) => part.type === 'tool-error'
+        || (part.output as { type?: string } | undefined)?.type === 'web_fetch_tool_result_error';
+    if (fetchParts.length === 0 || fetchParts.some(part => !failed(part))) { return undefined; }
+    return Array.from(new Set(fetchParts.map(fetchErrorCode))).join(', ');
 }
 
 /**
