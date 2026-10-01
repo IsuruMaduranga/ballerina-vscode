@@ -153,6 +153,8 @@ import {
     getCopilotOrbVisible,
     getCopilotToggleSettings,
     setCopilotToggleSetting,
+    setWebSearchEnabled,
+    getWebSearchEnabled,
     getMcpWorkspaceContext,
     getMcpLoadErrors,
     getAgentsMdFileInfo,
@@ -169,6 +171,7 @@ import {
     SetCopilotOrbVisibleRequest,
     CopilotToggleSettings,
     SetCopilotToggleSettingRequest,
+    SetWebSearchEnabledRequest,
     McpLoadErrorsDTO,
     AgentsMdFileInfoDTO,
     listThreads,
@@ -515,6 +518,14 @@ export class AiPanelRpcClient implements AIPanelAPI {
 
     setCopilotToggleSetting(params: SetCopilotToggleSettingRequest): Promise<void> {
         return this._messenger.sendRequest(setCopilotToggleSetting, HOST_EXTENSION, params);
+    }
+
+    setWebSearchEnabled(params: SetWebSearchEnabledRequest): Promise<void> {
+        return this._messenger.sendRequest(setWebSearchEnabled, HOST_EXTENSION, params);
+    }
+
+    getWebSearchEnabled(): Promise<boolean> {
+        return this._messenger.sendRequest(getWebSearchEnabled, HOST_EXTENSION);
     }
 
     getMcpWorkspaceContext(): Promise<McpWorkspaceContextResponse> {
