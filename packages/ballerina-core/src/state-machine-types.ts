@@ -180,6 +180,7 @@ export interface VisualizerLocation {
     projectInfo?: ProjectInfo;
     identifier?: string;
     parentIdentifier?: string;
+    navigationKey?: string;
     artifactType?: DIRECTORY_MAP;
     position?: NodePosition;
     syntaxTree?: STNode;
