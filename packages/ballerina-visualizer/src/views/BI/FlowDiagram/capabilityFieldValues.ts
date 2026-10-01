@@ -85,8 +85,14 @@ function textSource(source: string): boolean {
     return stringLiteral(source) || plainTemplateBody(source) !== undefined;
 }
 
+/** The text a literal or a plain template denotes: a literal is unescaped, a template's body is taken as written. */
 function literalText(source: string): string {
-    const body = plainTemplateBody(source) ?? source.slice(1, -1);
+    const template = plainTemplateBody(source);
+    if (template !== undefined) {
+        // Ballerina keeps a template's backslashes: `string \`C:\\temp\`` is the seven characters C:\temp.
+        return template;
+    }
+    const body = source.slice(1, -1);
     let text = "";
     for (let i = 0; i < body.length; i++) {
         if (body[i] !== "\\" || i === body.length - 1) {

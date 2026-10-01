@@ -221,7 +221,9 @@ describe("seedCapabilityValue", () => {
     // must read back as text on the canvas and in the box (wso2/product-integrator#2623).
     it("reads a template the text box wrote as text, and an interpolating one as source", () => {
         expect(capabilityValueText("string `Lookup bill`")).toBe("Lookup bill");
-        expect(capabilityValueText('string `Say \\"hi\\"`')).toBe('Say "hi"');
+        // A template keeps its backslashes, so its body reads back exactly as written.
+        expect(capabilityValueText('string `Say \\"hi\\"`')).toBe('Say \\"hi\\"');
+        expect(capabilityValueText('string `C:\\temp`')).toBe('C:\\temp');
         expect(capabilityValueText("string ``")).toBe("");
         expect(capabilityValueText("string `Bill ${id}`")).toBe("string `Bill ${id}`");
 

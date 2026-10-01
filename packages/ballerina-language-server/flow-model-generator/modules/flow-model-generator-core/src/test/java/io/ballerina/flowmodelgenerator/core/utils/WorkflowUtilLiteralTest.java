@@ -177,7 +177,9 @@ public class WorkflowUtilLiteralTest {
             + "one that interpolates stays source (wso2/product-integrator#2623)")
     public void testCapabilityNameReadsPlainTemplate() {
         Assert.assertEquals(WorkflowUtil.capabilityName("string `Lookup bill`"), "Lookup bill");
-        Assert.assertEquals(WorkflowUtil.capabilityName("string `Say \\\"hi\\\"`"), "Say \"hi\"");
+        // A template keeps its backslashes, so its body reads back as written.
+        Assert.assertEquals(WorkflowUtil.capabilityName("string `Say \\\"hi\\\"`"), "Say \\\"hi\\\"");
+        Assert.assertEquals(WorkflowUtil.capabilityName("string `C:\\temp`"), "C:\\temp");
         Assert.assertEquals(WorkflowUtil.capabilityName("\"Lookup bill\""), "Lookup bill");
         Assert.assertEquals(WorkflowUtil.capabilityName("string `Bill ${id}`"), "string `Bill ${id}`");
         Assert.assertEquals(WorkflowUtil.capabilityName("string ``"), "");

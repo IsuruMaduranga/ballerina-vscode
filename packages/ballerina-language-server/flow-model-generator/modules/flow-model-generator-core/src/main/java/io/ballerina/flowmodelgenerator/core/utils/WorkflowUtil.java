@@ -618,9 +618,10 @@ public class WorkflowUtil {
         if (source.length() >= 2 && source.startsWith("\"") && source.endsWith("\"")) {
             return unescapeLiteralBody(source.substring(1, source.length() - 1));
         }
+        // A template keeps its backslashes as written, so its body is the text itself.
         String template = plainTemplateBody(source);
         if (template != null) {
-            return unescapeLiteralBody(template);
+            return template;
         }
         return source.startsWith("'") ? source.substring(1) : source;
     }
