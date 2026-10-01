@@ -746,6 +746,8 @@ export interface AgentRunStatus {
     label?: string;
     /** True while the Copilot chat panel is open — ambient indicators hide themselves then. */
     aiPanelOpen: boolean;
+    /** `ballerina.copilot.showOrb` is off; Copilot is reached from the editor title bar's Copilot button. */
+    orbHidden?: boolean;
     /** Generation (run) the status belongs to, when a run is/was active. */
     generationId?: string;
     /** Epoch millis of the last status change. */
