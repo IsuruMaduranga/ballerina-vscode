@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import { formatReaderAnswer, readerCalledATool } from "../features/ai/agent/tools/web-fetch-reader";
+import { answerText, formatReaderAnswer, readerCalledATool } from "../features/ai/agent/tools/web-tool-helpers";
 
-describe("web_fetch reader", () => {
+describe("web tool helpers", () => {
     it("counts a direct web_fetch call as a fetch", () => {
         expect(readerCalledATool([{ toolCalls: [{ toolName: "web_fetch" }], content: [{ type: "text" }] }])).toBe(true);
     });
@@ -52,5 +52,31 @@ describe("web_fetch reader", () => {
         const { output, failed } = formatReaderAnswer("https://example.com", "Partial", "length");
         expect(failed).toBe(false);
         expect(output).toBe("Source: https://example.com\n\nPartial\n\n(The answer was cut off at the reader's output limit.)");
+    });
+
+    // The part order of a live web_search_20260209 call: notes between code-execution calls, then the answer.
+    const dynamicFilteringStep = {
+        content: [
+            { type: "tool-call" }, { type: "tool-call" }, { type: "tool-result" }, { type: "source" }, { type: "tool-result" },
+            { type: "text", text: "Result is a string; parse it." },
+            { type: "tool-call" }, { type: "tool-result" }, { type: "reasoning" },
+            { type: "tool-call" }, { type: "tool-result" }, { type: "source" }, { type: "tool-result" },
+            { type: "text", text: "**Ballerina 2201.13.0**" }, { type: "text", text: " is the latest update." },
+        ],
+    };
+
+    it("answers with the text after the last tool part, dropping the notes between calls", () => {
+        expect(answerText([dynamicFilteringStep])).toBe("**Ballerina 2201.13.0** is the latest update.");
+    });
+
+    it("keeps every text part when no text follows the last tool part", () => {
+        expect(answerText([{ content: [{ type: "text", text: "Partial note." }, { type: "tool-call" }, { type: "tool-result" }] }]))
+            .toBe("Partial note.");
+    });
+
+    it("reads the last step and handles a run with no tools or no steps", () => {
+        expect(answerText([{ content: [{ type: "text", text: "old" }] }, { content: [{ type: "text", text: "Answer." }] }])).toBe("Answer.");
+        expect(answerText([])).toBe("");
+        expect(answerText(undefined)).toBe("");
     });
 });
