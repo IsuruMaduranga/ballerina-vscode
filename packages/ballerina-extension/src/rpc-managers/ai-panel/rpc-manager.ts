@@ -102,7 +102,7 @@ import {
 } from "../../features/ai/agent/agents-md";
 import { ConfigurationTarget } from "vscode";
 import { getMcpClientManager, ensureMcpConfigFileExists, writeMcpServer, updateMcpServer, deleteMcpServer, isMcpToolsEnabled, MCP_ENABLE_SETTING } from "../../features/ai/agent/mcp";
-import { isWebSearchEnabled, WEB_SEARCH_SETTING } from "../../features/ai/agent/tools/web-search-setting";
+import { isWebSearchEnabled, setWebSearchEnabled } from "../../features/ai/agent/tools/web-search-setting";
 import { notifyMcpServersChanged, notifyMcpLoadErrorsChanged } from "../../RPCLayer";
 import * as os from "os";
 import * as fs from 'fs';
@@ -1646,8 +1646,7 @@ User reverted the last made changes. The files have been restored to the state b
     }
 
     async setWebSearchEnabled(params: SetWebSearchEnabledRequest): Promise<void> {
-        await workspace.getConfiguration('ballerina')
-            .update(WEB_SEARCH_SETTING, !!params?.enabled, ConfigurationTarget.Global);
+        await setWebSearchEnabled(!!params?.enabled);
     }
 
     async getAgentsMdFileInfo(): Promise<AgentsMdFileInfoDTO> {

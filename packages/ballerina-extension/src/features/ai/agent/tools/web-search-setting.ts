@@ -20,9 +20,21 @@ import * as vscode from "vscode";
 export const WEB_SEARCH_SETTING = "copilot.enableWebSearch";
 
 /**
- * Whether web_search and web_fetch run without asking. When off, each call asks the user
- * for approval first. Read at the start of every run, so a change applies from the next message.
+ * Whether the main agent's web_search and web_fetch run without asking. When off, each of its calls
+ * asks the user for approval first; the LibraryResearcher subagent's web access stays on. Read at the
+ * start of every run, so a change applies from the next message.
  */
 export function isWebSearchEnabled(): boolean {
     return vscode.workspace.getConfiguration("ballerina").get<boolean>(WEB_SEARCH_SETTING, true);
+}
+
+/**
+ * Sets the switch where it takes effect: a workspace value overrides the user value, so when the
+ * workspace sets this setting the workspace value is updated, and otherwise the user value is.
+ */
+export async function setWebSearchEnabled(enabled: boolean): Promise<void> {
+    const config = vscode.workspace.getConfiguration("ballerina");
+    const workspaceValue = config.inspect<boolean>(WEB_SEARCH_SETTING)?.workspaceValue;
+    const target = workspaceValue === undefined ? vscode.ConfigurationTarget.Global : vscode.ConfigurationTarget.Workspace;
+    await config.update(WEB_SEARCH_SETTING, enabled, target);
 }

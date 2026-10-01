@@ -254,6 +254,7 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
     const pendingToggles = useRef(new Set<GeneralToggleKey>());
     // undefined until the setting loads, so the switch never shows a guess.
     const [webSearchEnabled, setWebSearchEnabled] = useState<boolean | undefined>(undefined);
+    const [webSearchSaving, setWebSearchSaving] = useState(false);
     // TODO(auto-memory): memory UI state temporarily disabled for this release — restore once the memory feature is refined.
     // const [clearing, setClearing] = React.useState<'workspace' | 'all' | null>(null);
     // const [clearError, setClearError] = React.useState<string | null>(null);
@@ -331,15 +332,20 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
         return () => { cancelled = true; };
     }, [rpcClient]);
 
+    // One save at a time; after a failed save the switch shows the stored value again.
     const handleToggleWebSearch = async () => {
-        if (webSearchEnabled === undefined) return;
+        if (webSearchEnabled === undefined || webSearchSaving) return;
         const next = !webSearchEnabled;
+        const aiPanel = rpcClient.getAiPanelRpcClient();
         setWebSearchEnabled(next);
+        setWebSearchSaving(true);
         try {
-            await rpcClient.getAiPanelRpcClient().setWebSearchEnabled({ enabled: next });
+            await aiPanel.setWebSearchEnabled({ enabled: next });
         } catch (err) {
             console.warn("[settings] setWebSearchEnabled failed:", err);
-            setWebSearchEnabled(!next);
+            setWebSearchEnabled(await aiPanel.getWebSearchEnabled().catch(() => !next));
+        } finally {
+            setWebSearchSaving(false);
         }
     };
 
@@ -477,7 +483,7 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
                         <SettingInfo>
                             <SettingLabel>Web search</SettingLabel>
                             <SettingDescription>
-                                Search the web and read pages without asking first. When off, each search or fetch asks for your approval.
+                                Search the web and read pages without asking first. When off, each search or fetch the Copilot makes asks for your approval. Library research always has web access.
                             </SettingDescription>
                         </SettingInfo>
                         <ToggleSwitch
@@ -486,7 +492,7 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
                             aria-checked={!!webSearchEnabled}
                             aria-label="Web search"
                             $on={!!webSearchEnabled}
-                            disabled={webSearchEnabled === undefined}
+                            disabled={webSearchEnabled === undefined || webSearchSaving}
                             title={webSearchEnabled ? "Turn off web search" : "Turn on web search"}
                             onClick={handleToggleWebSearch}
                         />

@@ -304,7 +304,7 @@
                     "type": "boolean",
                     "default": true,
                     "scope": "window",
-                    "description": "Let the WSO2 Integrator Copilot search the web and read web pages without asking first. When off, it asks for approval before each web search or fetch."
+                    "description": "Let the WSO2 Integrator Copilot search the web and read web pages without asking first. When off, it asks for approval before each web search or fetch. Library research always has web access."
                 },
                 "ballerina.copilot.enableMcpTools": {
                     "type": "boolean",
