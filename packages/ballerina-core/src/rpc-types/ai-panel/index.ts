@@ -80,7 +80,6 @@ import {
     SetCopilotOrbVisibleRequest,
     CopilotToggleSettings,
     SetCopilotToggleSettingRequest,
-    SetWebSearchEnabledRequest,
     McpLoadErrorsDTO,
     AgentsMdFileInfoDTO,
     ThreadSummary,
@@ -213,8 +212,6 @@ export interface AIPanelAPI {
     getCopilotOrbVisible: () => Promise<boolean>;
     getCopilotToggleSettings: () => Promise<CopilotToggleSettings>;
     setCopilotToggleSetting: (params: SetCopilotToggleSettingRequest) => Promise<void>;
-    setWebSearchEnabled: (params: SetWebSearchEnabledRequest) => Promise<void>;
-    getWebSearchEnabled: () => Promise<boolean>;
     getMcpWorkspaceContext: () => Promise<McpWorkspaceContextResponse>;
     getMcpLoadErrors: () => Promise<McpLoadErrorsDTO>;
     getAgentsMdFileInfo: () => Promise<AgentsMdFileInfoDTO>;

@@ -83,7 +83,6 @@ import {
     CopilotToggleSetting,
     CopilotToggleSettings,
     SetCopilotToggleSettingRequest,
-    SetWebSearchEnabledRequest,
     McpLoadErrorsDTO,
     AgentsMdFileInfoDTO,
     ThreadSummary,
@@ -102,7 +101,6 @@ import {
 } from "../../features/ai/agent/agents-md";
 import { ConfigurationTarget } from "vscode";
 import { getMcpClientManager, ensureMcpConfigFileExists, writeMcpServer, updateMcpServer, deleteMcpServer, isMcpToolsEnabled, MCP_ENABLE_SETTING } from "../../features/ai/agent/mcp";
-import { isWebSearchEnabled, setWebSearchEnabled } from "../../features/ai/agent/tools/web-search-setting";
 import { notifyMcpServersChanged, notifyMcpLoadErrorsChanged } from "../../RPCLayer";
 import * as os from "os";
 import * as fs from 'fs';
@@ -207,6 +205,7 @@ const COPILOT_CONFIG_SECTION = 'ballerina.copilot';
 /** Mirrors the defaults declared for these settings in package.json. */
 const COPILOT_TOGGLE_DEFAULTS: CopilotToggleSettings = {
     followupSuggestions: true,
+    enableWebSearch: true,
 };
 
 // Shown when a flow ends without a connection id. "cancelled" and "superseded" are dropped by the
@@ -1639,14 +1638,6 @@ User reverted the last made changes. The files have been restored to the state b
             ? ConfigurationTarget.Workspace
             : ConfigurationTarget.Global;
         await config.update(params.key, !!params.value, target);
-    }
-
-    async getWebSearchEnabled(): Promise<boolean> {
-        return isWebSearchEnabled();
-    }
-
-    async setWebSearchEnabled(params: SetWebSearchEnabledRequest): Promise<void> {
-        await setWebSearchEnabled(!!params?.enabled);
     }
 
     async getAgentsMdFileInfo(): Promise<AgentsMdFileInfoDTO> {
