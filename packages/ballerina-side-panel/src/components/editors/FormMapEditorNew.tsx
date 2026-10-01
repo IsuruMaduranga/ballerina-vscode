@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { debounce } from "lodash";
+import { debounce, isEqual } from "lodash";
 import styled from "@emotion/styled";
 import { FormDiagnostics, InputType, Property } from "@wso2/ballerina-core";
 import { Form, FormValues, S, useFormContext, useModeSwitcherContext, FormField, FormFieldEditorProps } from "../..";
@@ -25,7 +25,7 @@ import { ErrorBanner, RequiredFormInput } from "@wso2/ui-toolkit";
 import { Codicon } from "@wso2/ui-toolkit/lib/components/Codicon/Codicon";
 import { ScrollableList, ScrollableListRef } from "@wso2/ui-toolkit/lib/components/ScrollableList/ScrollableList";
 import ModeSwitcher from "../ModeSwitcher";
-import { getMapSubFormFieldFromTypes, getRepeatableErrorMessages, buildStringMap, stringToRawObjectEntries, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
+import { getMapEntryValues, getMapSubFormFieldFromTypes, getRepeatableErrorMessages, buildStringMap, stringToRawObjectEntries, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
 import { InputMode } from "./MultiModeExpressionEditor/ChipExpressionEditor/types";
 import { getInputModeFromTypes } from "./MultiModeExpressionEditor/ChipExpressionEditor/utils";
 
@@ -99,6 +99,14 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
             }
         });
         return output;
+    }
+
+    /**
+     * Emits the entries of the map, or clears the value when the map has no entries left.
+     */
+    const emitChange = (fields: FormField[][]) => {
+        const output = processToOutputFormat(fields);
+        props.onChange(Object.keys(output).length > 0 ? output : "");
     }
 
     const processToInputFormat = (input: Record<string, unknown>): FormField[][] => {
@@ -178,7 +186,7 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
         const newField = getMapSubFormFieldFromTypes(key, (props.field.types[0] as any).template.types as InputType[])
         const newRepeatableFields = [...repeatableFields, newField];
         setRepeatableFields(newRepeatableFields);
-        props.onChange(processToOutputFormat(newRepeatableFields));
+        emitChange(newRepeatableFields);
         props.handleFormValidation?.(undefined, true);
         // Wait for the dom update
         setTimeout(() => {
@@ -199,7 +207,7 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
             return formFields;
         });
         setRepeatableFields(newRepeatableFields);
-        props.onChange(processToOutputFormat(newRepeatableFields));
+        emitChange(newRepeatableFields);
         if (fieldKey.startsWith("mp-key-")) {
             validateFieldDebounced();
         }
@@ -218,14 +226,14 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
         setFieldDiagnostics([]);
         const newRepeatableFields = repeatableFields.filter((formField) => formField[0].key !== keyToDelete);
         setRepeatableFields(newRepeatableFields);
-        props.onChange(processToOutputFormat(newRepeatableFields));
+        emitChange(newRepeatableFields);
         props.handleFormValidation?.(undefined, true);
     };
 
     useEffect(() => {
         if (!props.value) return;
         if (typeof props.value !== 'string' &&
-            JSON.stringify(props.value) === JSON.stringify(processToOutputFormat(repeatableFields))) {
+            isEqual(getMapEntryValues(props.value), getMapEntryValues(processToOutputFormat(repeatableFields)))) {
             return;
         }
         let processedInputValue: string | FormField[][] = "";

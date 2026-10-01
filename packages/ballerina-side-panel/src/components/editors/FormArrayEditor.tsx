@@ -17,13 +17,14 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
+import { isEqual } from "lodash";
 import { FormDiagnostics, InputType, Property } from "@wso2/ballerina-core";
 import { Form, FormField, FormFieldEditorProps, FormValues, S, useFormContext, useModeSwitcherContext } from "../..";
 import { ErrorBanner, RequiredFormInput } from "@wso2/ui-toolkit";
 import { Codicon } from "@wso2/ui-toolkit/lib/components/Codicon/Codicon";
 import { ScrollableList, ScrollableListRef } from "@wso2/ui-toolkit/lib/components/ScrollableList/ScrollableList";
 import ModeSwitcher from "../ModeSwitcher";
-import { getArraySubFormFieldFromTypes, getRepeatableErrorMessages, stringToRawArrayElements, buildStringArray, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
+import { getArrayElementValues, getArraySubFormFieldFromTypes, getRepeatableErrorMessages, stringToRawArrayElements, buildStringArray, getRecordTypeFields, mapDiagnosticsServerityToFormSeverity, getPropertyFromFormField } from "./utils";
 import { InputMode } from "./MultiModeExpressionEditor/ChipExpressionEditor/types";
 import { getInputModeFromTypes } from "./MultiModeExpressionEditor/ChipExpressionEditor/utils";
 
@@ -82,7 +83,7 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
         setFieldDiagnostics([]);
         const newRepeatableFields = repeatableFields.filter((formField) => formField.key !== keyToDelete);
         setRepeatableFields(newRepeatableFields);
-        props.onChange(newRepeatableFields);
+        props.onChange(newRepeatableFields.length > 0 ? newRepeatableFields : "");
         props.handleFormValidation?.(undefined, true);
     };
 
@@ -166,7 +167,10 @@ export const FormArrayEditor = (props: FormFieldEditorProps & {
 
     useEffect(() => {
         if (!props.value) return;
-        if (JSON.stringify(props.value) === JSON.stringify(repeatableFields)) return;
+        if (Array.isArray(props.value) &&
+            isEqual(getArrayElementValues(props.value), getArrayElementValues(repeatableFields))) {
+            return;
+        }
         const keyArray: string[] = [];
         if (Array.isArray(props.value)) {
             const initialDioagnostics: FormDiagnostics[] = props.value.map((val: any) => {

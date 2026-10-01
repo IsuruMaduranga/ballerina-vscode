@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { useRef } from "react";
 import { startCase } from "lodash";
 import { FormField } from "../Form/types";
 import { ExpressionProperty, getPrimaryInputType, InputType, RecordTypeField } from "@wso2/ballerina-core";
@@ -98,6 +99,45 @@ export const buildRequiredRepeatableRule = ({ isRequired, label }: RequiredRuleO
         }
         return hasEntries || `${label ?? "This field"} is required`;
     };
+};
+
+/**
+ * Reads the element values of a repeatable list held as an array of elements, so two lists can be compared by
+ * what they hold regardless of the keys and diagnostics attached to each element.
+ */
+export const getArrayElementValues = (elements: unknown[]): string[] => {
+    return elements.map((element: any) => (typeof element === "string" ? element : String(element?.value ?? "")));
+};
+
+/**
+ * Reads the key and value of each entry of a repeatable map held as the entries object the editor emits, so two
+ * maps can be compared by what they hold regardless of the keys and diagnostics attached to each entry.
+ */
+export const getMapEntryValues = (entries: Record<string, unknown>): [string, string][] => {
+    return Object.entries(entries).map(([entryKey, entry]: [string, any]) => [entryKey, String(entry?.value ?? "")]);
+};
+
+/**
+ * Returns the error to show for a required repeatable list or map. The form clears its errors whenever it resets
+ * on refreshed fields, and does not validate the field again until the next submit. Hence, once the form has
+ * reported an error for the field, the rule is evaluated on the current value so the error stays until an entry
+ * is added.
+ */
+export const useRepeatableRequiredError = (
+    value: unknown,
+    fieldError: string | undefined,
+    validateRequired: (value: unknown) => true | string
+): string | undefined => {
+    const hasReportedErrorRef = useRef(false);
+    if (fieldError) {
+        hasReportedErrorRef.current = true;
+        return fieldError;
+    }
+    if (!hasReportedErrorRef.current) {
+        return undefined;
+    }
+    const result = validateRequired(value);
+    return result === true ? undefined : result;
 };
 
 /**

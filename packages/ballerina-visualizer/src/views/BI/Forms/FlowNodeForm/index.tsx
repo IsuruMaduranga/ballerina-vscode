@@ -715,7 +715,10 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
 
             // Update value from current form data and update diagnostics
             if (data[field.key] !== undefined) {
-                if (isContainingRepeatableList && Array.isArray(nodeProperties?.[field.key]?.value)) {
+                if ((isContainingRepeatableList || isContainingRepeatableMap) && data[field.key] === "") {
+                    updatedField.value = "";
+                }
+                else if (isContainingRepeatableList && Array.isArray(nodeProperties?.[field.key]?.value)) {
                     if (selectedInputType?.fieldType === "REPEATABLE_LIST") {
                         let initialValues: string[];
                         if (typeof data[field.key] === 'string') {
