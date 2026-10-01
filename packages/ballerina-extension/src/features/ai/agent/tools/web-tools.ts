@@ -21,7 +21,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { CopilotEventHandler } from '../../utils/events';
 import { approvalManager } from '../../state/ApprovalManager';
 import { getAnthropicClient, getProviderModelOptions, ANTHROPIC_SONNET } from '../../utils/ai-client';
-import { formatReaderAnswer, readerCalledATool, WEB_FETCH_READER_SYSTEM_PROMPT } from './web-fetch-reader';
+import { answerText, formatReaderAnswer, readerCalledATool, WEB_FETCH_READER_SYSTEM_PROMPT } from './web-tool-helpers';
 
 export const WEB_SEARCH_TOOL_NAME = "web_search";
 export const WEB_FETCH_TOOL_NAME = "web_fetch";
@@ -122,7 +122,7 @@ async function executeWebSearch(
             },
         });
 
-        const content = result.text || 'Web search completed but returned no content.';
+        const content = answerText(result.steps) || 'Web search completed but returned no content.';
         console.log(`[WebTools] search | done | length: ${content.length}`);
 
         eventHandler({ type: "tool_result", toolName: WEB_SEARCH_TOOL_NAME, toolOutput: { query: input.query }, toolCallId });
@@ -195,7 +195,7 @@ async function executeWebFetch(
                     web_fetch: fetchFactory({ maxUses: 3, ...domainOptions(input) }),
                 },
             });
-            return readerCalledATool(result.steps) ? formatReaderAnswer(input.url, result.text, result.finishReason) : undefined;
+            return readerCalledATool(result.steps) ? formatReaderAnswer(input.url, answerText(result.steps), result.finishReason) : undefined;
         };
         const { output, failed } = (await runReader()) ?? (await runReader())
             ?? { output: `Web fetch failed: the reader did not fetch ${input.url}.`, failed: true };
