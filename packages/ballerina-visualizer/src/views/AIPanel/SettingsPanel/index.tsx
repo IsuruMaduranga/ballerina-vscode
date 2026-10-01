@@ -20,7 +20,7 @@ import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { Button, Codicon, Icon } from "@wso2/ui-toolkit";
 
-import { AIChatView, DangerActionButton, PrimaryActionButton, SuccessActionButton, ToggleSwitch } from "../styles";
+import { AIChatView, DangerActionButton, PrimaryActionButton, SuccessActionButton } from "../styles";
 import { AIMachineEventType, AgentsMdFileInfoDTO, CopilotToggleSetting, McpServerStatusDTO, SkillEntry } from "@wso2/ballerina-core";
 import { CustomizeRow, CustomizeEntry } from "./CustomizeRow";
 import { SettingsToggle } from "../components/SettingsToggle";
@@ -224,12 +224,18 @@ const GENERAL_TOGGLES: GeneralToggle[] = [
         label: "Follow-up suggestions",
         description: "Suggest follow-up actions after Copilot responds.",
     },
+    {
+        key: "enableWebSearch",
+        label: "Web search",
+        description: "Search the web and read pages without asking first. When off, each search or fetch Copilot makes asks for your approval. Library research always has web access.",
+    },
 ];
 
 /** Until the host reports, each switch shows its setting's default. */
 const GENERAL_TOGGLE_DEFAULTS: Record<GeneralToggleKey, boolean> = {
     showOrb: true,
     followupSuggestions: true,
+    enableWebSearch: true,
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -252,9 +258,6 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
     const [toggles, setToggles] = useState(GENERAL_TOGGLE_DEFAULTS);
     /** Switches with a write in flight; a second click waits for the host to answer. */
     const pendingToggles = useRef(new Set<GeneralToggleKey>());
-    // undefined until the setting loads, so the switch never shows a guess.
-    const [webSearchEnabled, setWebSearchEnabled] = useState<boolean | undefined>(undefined);
-    const [webSearchSaving, setWebSearchSaving] = useState(false);
     // TODO(auto-memory): memory UI state temporarily disabled for this release — restore once the memory feature is refined.
     // const [clearing, setClearing] = React.useState<'workspace' | 'all' | null>(null);
     // const [clearError, setClearError] = React.useState<string | null>(null);
@@ -321,31 +324,6 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
             setToggles(t => ({ ...t, [key]: !next }));
         } finally {
             pendingToggles.current.delete(key);
-        }
-    };
-
-    useEffect(() => {
-        let cancelled = false;
-        rpcClient.getAiPanelRpcClient().getWebSearchEnabled()
-            .then(v => { if (!cancelled) setWebSearchEnabled(v); })
-            .catch(() => { /* noop */ });
-        return () => { cancelled = true; };
-    }, [rpcClient]);
-
-    // One save at a time; after a failed save the switch shows the stored value again.
-    const handleToggleWebSearch = async () => {
-        if (webSearchEnabled === undefined || webSearchSaving) return;
-        const next = !webSearchEnabled;
-        const aiPanel = rpcClient.getAiPanelRpcClient();
-        setWebSearchEnabled(next);
-        setWebSearchSaving(true);
-        try {
-            await aiPanel.setWebSearchEnabled({ enabled: next });
-        } catch (err) {
-            console.warn("[settings] setWebSearchEnabled failed:", err);
-            setWebSearchEnabled(await aiPanel.getWebSearchEnabled().catch(() => !next));
-        } finally {
-            setWebSearchSaving(false);
         }
     };
 
@@ -474,29 +452,6 @@ export const SettingsPanel = (props: SettingsPanelProps) => {
                             />
                         </SettingRow>
                     ))}
-                </Section>
-
-                {/* Web access */}
-                <Section>
-                    <SectionHeader>Web access</SectionHeader>
-                    <SettingRow>
-                        <SettingInfo>
-                            <SettingLabel>Web search</SettingLabel>
-                            <SettingDescription>
-                                Search the web and read pages without asking first. When off, each search or fetch the Copilot makes asks for your approval. Library research always has web access.
-                            </SettingDescription>
-                        </SettingInfo>
-                        <ToggleSwitch
-                            type="button"
-                            role="switch"
-                            aria-checked={!!webSearchEnabled}
-                            aria-label="Web search"
-                            $on={!!webSearchEnabled}
-                            disabled={webSearchEnabled === undefined || webSearchSaving}
-                            title={webSearchEnabled ? "Turn off web search" : "Turn on web search"}
-                            onClick={handleToggleWebSearch}
-                        />
-                    </SettingRow>
                 </Section>
 
                 {/* Integrations */}

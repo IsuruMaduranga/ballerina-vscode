@@ -19,7 +19,8 @@
 import React, { useState } from "react";
 import styled from "@emotion/styled";
 import { SkillEntry, SkillTier } from "@wso2/ballerina-core";
-import { SecondaryActionButton, DangerActionButton, ToggleSwitch as SharedToggleSwitch } from "../../styles";
+import { SecondaryActionButton, DangerActionButton } from "../../styles";
+import { SettingsToggle } from "../SettingsToggle";
 
 // ─── Styled components (mirrors McpManagerPanel's compact row) ───────────────
 
@@ -113,7 +114,7 @@ const RowIconButton = styled.button<{ $danger?: boolean }>`
     .codicon { font-size: 14px; }
 `;
 
-const ToggleSwitch = styled(SharedToggleSwitch)`
+const ToggleSwitch = styled(SettingsToggle)`
     order: 2;
 `;
 

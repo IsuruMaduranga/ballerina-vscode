@@ -142,9 +142,6 @@ import {
     getCopilotToggleSettings,
     setCopilotToggleSetting,
     SetCopilotToggleSettingRequest,
-    setWebSearchEnabled,
-    SetWebSearchEnabledRequest,
-    getWebSearchEnabled,
     getMcpWorkspaceContext,
     getMcpLoadErrors,
     OpenMcpConfigRequest,
@@ -260,8 +257,6 @@ export function registerAiPanelRpcHandlers(messenger: Messenger) {
     messenger.onRequest(getCopilotOrbVisible, () => rpcManger.getCopilotOrbVisible());
     messenger.onRequest(getCopilotToggleSettings, () => rpcManger.getCopilotToggleSettings());
     messenger.onRequest(setCopilotToggleSetting, (args: SetCopilotToggleSettingRequest) => rpcManger.setCopilotToggleSetting(args));
-    messenger.onRequest(setWebSearchEnabled, (args: SetWebSearchEnabledRequest) => rpcManger.setWebSearchEnabled(args));
-    messenger.onRequest(getWebSearchEnabled, () => rpcManger.getWebSearchEnabled());
     messenger.onRequest(getMcpWorkspaceContext, () => rpcManger.getMcpWorkspaceContext());
     messenger.onRequest(getMcpLoadErrors, () => rpcManger.getMcpLoadErrors());
     messenger.onRequest(getAgentsMdFileInfo, () => rpcManger.getAgentsMdFileInfo());

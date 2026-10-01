@@ -16,7 +16,7 @@
 
 import * as vscode from "vscode";
 
-/** Key within the `ballerina` configuration section. */
+/** Key within the `ballerina` configuration section; the settings panel toggles it as `ballerina.copilot.enableWebSearch`. */
 export const WEB_SEARCH_SETTING = "copilot.enableWebSearch";
 
 /**
@@ -26,15 +26,4 @@ export const WEB_SEARCH_SETTING = "copilot.enableWebSearch";
  */
 export function isWebSearchEnabled(): boolean {
     return vscode.workspace.getConfiguration("ballerina").get<boolean>(WEB_SEARCH_SETTING, true);
-}
-
-/**
- * Sets the switch where it takes effect: a workspace value overrides the user value, so when the
- * workspace sets this setting the workspace value is updated, and otherwise the user value is.
- */
-export async function setWebSearchEnabled(enabled: boolean): Promise<void> {
-    const config = vscode.workspace.getConfiguration("ballerina");
-    const workspaceValue = config.inspect<boolean>(WEB_SEARCH_SETTING)?.workspaceValue;
-    const target = workspaceValue === undefined ? vscode.ConfigurationTarget.Global : vscode.ConfigurationTarget.Workspace;
-    await config.update(WEB_SEARCH_SETTING, enabled, target);
 }
