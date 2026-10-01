@@ -59,8 +59,6 @@ import { approvalViewManager } from '../state/ApprovalViewManager';
 import {
     detectAppliedCompaction,
     estimateFloorTokens,
-    extractCompactionSummary,
-    stripAnalysisFromCompactionBlocks,
     COMPACTION_BLOCK_PREFIX,
     SUMMARIZATION_PROMPT,
 } from '@wso2/copilot-utilities/context-management';
@@ -91,12 +89,6 @@ const RESERVED_OUTPUT_TOKENS = 64_000;
  * input). `low` risks reporting changes done without checking them.
  */
 const AGENT_EFFORT: AnthropicEffort = 'high';
-
-// The SDK records response messages apart from the live step messages, so the prepareStep strip never reaches them.
-function toPersisted<T>(messages: T[]): T[] {
-    stripAnalysisFromCompactionBlocks(messages);
-    return messages;
-}
 
 /** Built once; the tool names come from the registry so the advice cannot go stale. */
 const TRUNCATION_RECOVERY_NOTE = buildTruncationRecoveryNote(
@@ -515,7 +507,6 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const useContentBasedDetection = false;
             let isCompactionBlock = false;
             let compactionContent = '';
-            let cleanedCompactionSummary: string | undefined;
             // Counts compactions in this turn so each renders as its own card (upsertComponent
             // keys by id), instead of a raw <compaction> text block that would show as literal text.
             let compactionCount = 0;
@@ -563,11 +554,8 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             // calls or text), with a stream-end fallback for a block left open at stream end.
             const flushCompactionBlock = () => {
                 isCompactionBlock = false;
-                const summary = extractCompactionSummary(compactionContent);
-                cleanedCompactionSummary = summary || compactionContent;
                 streamContext.wasCompactionTurn = true;
-                // The summary stays internal (kept only in cleanedCompactionSummary for prepareStep);
-                // it is never forwarded to the webview or the persisted transcript.
+                // The summary stays internal: it is never forwarded to the webview.
                 this.config.eventHandler({ type: 'compaction_end' });
                 // Reset context widget to near-zero after compaction
                 this.config.eventHandler({
@@ -593,14 +581,14 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         abortSignal: this.config.abortController.signal,
                         providerOptions: providerOptions as any,
 
-                        // Strip <analysis> blocks from compaction entries before each subsequent step
-                        // to avoid re-sending thousands of reasoning tokens.
-                        // Also apply incremental cache control to the last message so Anthropic caches the
+                        // Never edit the compaction block or any earlier assistant content here: Claude
+                        // Sonnet 5.5 binds each thinking block to the conversation before it, from the latest
+                        // compaction block on, and an edited prefix gets the thinking dropped or the request
+                        // rejected. That is why the compaction summary's <analysis> is no longer stripped;
+                        // Sonnet 5.5 summaries carry none.
+                        // Applies incremental cache control to the last message so Anthropic caches the
                         // growing conversation history on each step.
                         prepareStep: async ({ messages: stepMessages }) => {
-                            if (cleanedCompactionSummary) {
-                                stripAnalysisFromCompactionBlocks(stepMessages);
-                            }
                             // Anthropic requires tool_use.input to be an object; an unparseable or schema-invalid
                             // streamed input is left as a non-object on the tool-call part and 400s every later request.
                             sanitizeMessages(stepMessages);
@@ -638,7 +626,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                                 chatStateStorage.updateGeneration(this.chatStoreKey, threadId, this.config.generationId, {
                                     modelMessages: [
                                         { role: "user", content: userMessageContent },
-                                        ...toPersisted([...carriedMessages, ...stepMessages]),
+                                        ...carriedMessages, ...stepMessages,
                                     ],
                                 });
                                 updateAndSaveChat(this.config.generationId, Command.Agent, this.config.eventHandler);
@@ -800,7 +788,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         chatStateStorage.updateGeneration(projectRootPath, threadId, this.config.generationId, {
                             modelMessages: [
                                 { role: "user", content: streamContext.userMessageContent },
-                                ...toPersisted(partialLLMMessages),
+                                ...partialLLMMessages,
                                 {
                                     role: "user",
                                     content: `<abort_notification>
@@ -1068,7 +1056,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
             chatStateStorage.updateGeneration(projectRootPath, threadId, context.messageId, {
                 modelMessages: [
                     { role: "user", content: context.userMessageContent },
-                    ...toPersisted(messagesToSave),
+                    ...messagesToSave,
                 ],
             });
             updateAndSaveChat(context.messageId, Command.Agent, context.eventHandler);
@@ -1076,6 +1064,10 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
 
         // A quota failure gets a Continue chip with no model call — the webview keeps it hidden
         // until the limit resets, so the user can pick the work back up then.
+        // A decline gets no follow-ups: a retry chip would send the same request back.
+        if (error.name === MODEL_REFUSAL_ERROR_NAME) {
+            return;
+        }
         const situation: FollowupSituation = getErrorCode(error) === 'usage_limit' ? 'usage_limit' : 'error';
         this.maybeScheduleFollowups(context, messagesToSave, situation, getErrorMessage(error));
     }
@@ -1292,7 +1284,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
         chatStateStorage.updateGeneration(projectRootPath, threadId, context.messageId, {
             modelMessages: [
                 { role: "user", content: context.userMessageContent },
-                ...toPersisted(assistantMessages),
+                ...assistantMessages,
             ],
         });
 
