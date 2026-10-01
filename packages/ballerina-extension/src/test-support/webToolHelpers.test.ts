@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { answerText, formatReaderAnswer, readerCalledATool } from "../features/ai/agent/tools/web-tool-helpers";
+import { answerText, formatReaderAnswer, readerCalledATool, retryOnce, webFetchFailure } from "../features/ai/agent/tools/web-tool-helpers";
 
 describe("web tool helpers", () => {
     it("counts a direct web_fetch call as a fetch", () => {
@@ -78,5 +78,45 @@ describe("web tool helpers", () => {
         expect(answerText([{ content: [{ type: "text", text: "old" }] }, { content: [{ type: "text", text: "Answer." }] }])).toBe("Answer.");
         expect(answerText([])).toBe("");
         expect(answerText(undefined)).toBe("");
+    });
+
+    describe("webFetchFailure", () => {
+        const fetched = { type: "tool-result", toolName: "web_fetch", output: { type: "web_fetch_result", url: "https://example.com" } };
+        const thrown = { type: "tool-error", toolName: "web_fetch", error: { type: "web_fetch_tool_result_error", errorCode: "url_not_accessible" } };
+        const reported = { type: "tool-result", toolName: "web_fetch", output: { type: "web_fetch_tool_result_error", errorCode: "too_many_requests" } };
+
+        it("reports the error codes when every fetch failed", () => {
+            expect(webFetchFailure([{ content: [{ type: "tool-call" }, thrown, reported, { type: "text", text: "The page seems down." }] }]))
+                .toBe("url_not_accessible, too_many_requests");
+        });
+
+        it("lets a later successful fetch recover from an earlier failure", () => {
+            expect(webFetchFailure([{ content: [thrown, fetched, { type: "text", text: "Answer." }] }])).toBeUndefined();
+        });
+
+        it("leaves runs without a web_fetch result to the reader's text", () => {
+            expect(webFetchFailure([{ content: [{ type: "tool-result", toolName: "code_execution" }, { type: "text", text: "x" }] }])).toBeUndefined();
+            expect(webFetchFailure(undefined)).toBeUndefined();
+        });
+    });
+
+    describe("retryOnce", () => {
+        it("does not retry when the first attempt returns a result", async () => {
+            const attempt = jest.fn().mockResolvedValueOnce("fetched");
+            await expect(retryOnce(attempt)).resolves.toBe("fetched");
+            expect(attempt).toHaveBeenCalledTimes(1);
+        });
+
+        it("retries once when the first attempt returns nothing", async () => {
+            const attempt = jest.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce("fetched");
+            await expect(retryOnce(attempt)).resolves.toBe("fetched");
+            expect(attempt).toHaveBeenCalledTimes(2);
+        });
+
+        it("returns nothing after two empty attempts, without a third", async () => {
+            const attempt = jest.fn().mockResolvedValue(undefined);
+            await expect(retryOnce(attempt)).resolves.toBeUndefined();
+            expect(attempt).toHaveBeenCalledTimes(2);
+        });
     });
 });
