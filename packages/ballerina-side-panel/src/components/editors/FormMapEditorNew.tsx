@@ -42,7 +42,6 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
     }, [props.field.diagnostics]);
 
     const scrollableListRef = useRef<ScrollableListRef>(null);
-    const elementDiagnosticsRef = useRef<FormDiagnostics[]>([]);
     const handleFormValidationRef = useRef(props.handleFormValidation);
     handleFormValidationRef.current = props.handleFormValidation;
 
@@ -136,8 +135,6 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
     };
 
     const handleSetDiagnosticsInfoChange = (diagnostics: FormDiagnostics) => {
-        const existingDiagnostics = elementDiagnosticsRef.current.filter(d => d.key !== diagnostics.key);
-        elementDiagnosticsRef.current = [...existingDiagnostics, diagnostics];
         setRepeatableFields(prev => prev.map(fieldPair => {
             const valueField = fieldPair[1];
             if (valueField.key !== diagnostics.key) return fieldPair;
@@ -276,10 +273,12 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
         if (!props.field.value || typeof props.field.value !== 'object' || Array.isArray(props.field.value)) return;
 
         const diagnosticsMap: Record<string, any[]> = {};
+        const valuesMap: Record<string, string> = {};
         Object.entries(props.field.value as Record<string, any>).forEach(([entryKey, entryVal]) => {
             if (entryVal?.diagnostics) {
                 const diags = entryVal.diagnostics;
                 diagnosticsMap[entryKey] = Array.isArray(diags) ? diags : (diags?.diagnostics ?? []);
+                valuesMap[entryKey] = String(entryVal?.value ?? "");
             }
         });
 
@@ -288,10 +287,7 @@ export const FormMapEditorNew = (props: FormFieldEditorProps & {
             return prev.map(fieldPair => {
                 const keyVal = fieldPair[0].value as string;
                 if (!keyVal || diagnosticsMap[keyVal] === undefined) return fieldPair;
-                // Don't overwrite diagnostics that have already been locally managed
-                // (e.g. cleared or updated via an inner value field mode change).
-                const isLocallyManaged = elementDiagnosticsRef.current.some(d => d.key === fieldPair[1].key);
-                if (isLocallyManaged) return fieldPair;
+                if (String(fieldPair[1].value ?? "") !== valuesMap[keyVal]) return fieldPair;
                 return [
                     fieldPair[0],
                     { ...fieldPair[1], diagnostics: diagnosticsMap[keyVal] }
