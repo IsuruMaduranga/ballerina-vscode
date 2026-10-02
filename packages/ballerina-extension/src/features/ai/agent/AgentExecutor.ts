@@ -28,10 +28,17 @@ import { mapWithConcurrency } from '../utils/concurrency';
 import { getSystemPrompt, getUserPrompt } from './prompts';
 import { isWebSearchEnabled } from './tools/web-search-setting';
 import { shouldFailForMissingCompaction } from './compaction-gate';
+import {
+    buildCompactionContinuation,
+    findCompactionSummary,
+    isCompactionPause,
+    MAX_COMPACTION_RESTARTS,
+} from './compaction-restart';
+import { COMPACT_SYSTEM_REMINDER_AUTO_TRIGGERED } from './compaction-prompt';
 import { createModelRefusalError, MODEL_REFUSAL_ERROR_NAME, RefusalStopDetails } from './model-refusal';
 import { FollowupSituation, startFollowupSuggestions } from './followups';
 import { startConsoleSummary } from './console-summary';
-import { prepareAgentsMdForTurn } from './agents-md';
+import { AgentsMdTurnPrep, prepareAgentsMdForRestart, prepareAgentsMdForTurn } from './agents-md';
 import { resolveChatStoreKey } from './chatStoreKey';
 // TODO(auto-memory): temporarily disabled for this release.
 // import { executeAutoDream, isMemoryEnabled } from '../memory/autoDream';
@@ -116,6 +123,15 @@ function supportsCompaction(loginMethod: LoginMethod): boolean {
 }
 
 /**
+ * Whether compaction pauses after its block so the turn restarts from its own summary
+ * (see compaction-restart.ts). Verified live on the Anthropic API and through the WSO2 proxy;
+ * Vertex AI and Claude Platform on AWS keep the block in history verbatim until verified.
+ */
+function supportsCompactionPause(loginMethod: LoginMethod): boolean {
+    return loginMethod === LoginMethod.ANTHROPIC_KEY || loginMethod === LoginMethod.BI_INTEL;
+}
+
+/**
  * Server-side compaction trigger, in input tokens. Higher than MI's 200K because BI re-sends
  * the whole project source each turn; 500K sits well within Claude Sonnet's 1M window.
  */
@@ -130,6 +146,9 @@ function buildCompactionProviderOptions(loginMethod: LoginMethod, floorTokens: n
     // Disable when the fixed per-turn floor (system prompt + whole-codebase dump) already
     // exceeds the trigger — compaction would otherwise fire every turn against empty history.
     if (floorTokens >= COMPACT_TRIGGER_TOKENS) { return undefined; }
+    // Only a pausing provider restarts the turn with its context rebuilt, so only there may the
+    // summary leave that context out. The field is omitted elsewhere rather than sent as false.
+    const pause = supportsCompactionPause(loginMethod);
     return {
         anthropic: {
             contextManagement: {
@@ -137,7 +156,8 @@ function buildCompactionProviderOptions(loginMethod: LoginMethod, floorTokens: n
                     {
                         type: 'compact_20260112' as const,
                         trigger: { type: 'input_tokens' as const, value: COMPACT_TRIGGER_TOKENS },
-                        instructions: SUMMARIZATION_PROMPT,
+                        ...(pause ? { pauseAfterCompaction: true } : {}),
+                        instructions: pause ? COMPACT_SYSTEM_REMINDER_AUTO_TRIGGERED : SUMMARIZATION_PROMPT,
                     },
                 ],
             },
@@ -400,27 +420,29 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const model = await getAnthropicClient(ANTHROPIC_SONNET);
 
             const projectRootPath = this.config.executionContext.workspacePath || this.config.executionContext.projectPath || '';
-            const agentsMd = await prepareAgentsMdForTurn(workspaceId || '', threadId);
-            if (agentsMd.hashToPersist !== undefined) {
-                const generation = chatStateStorage.getGeneration(this.chatStoreKey, threadId, this.config.generationId);
-                if (generation) {
-                    chatStateStorage.updateGeneration(this.chatStoreKey, threadId, this.config.generationId, {
-                        metadata: {
-                            ...generation.metadata,
-                            agentsMdLastReadHash: agentsMd.hashToPersist,
-                        },
-                    });
-                }
-            }
-
             const { allDisabled, projectSkills, userSkills, disabledSkillMetas } =
                 loadSkillsContext(projectRootPath || null);
 
             const webSearchEnabled = isWebSearchEnabled();
-            const userMessageContent = getUserPrompt(params, tempProjectPath, projects, projectSkills, webSearchEnabled, agentsMd.text, {
-                omitCodebaseDump: this.config.toolOptions?.omitCodebaseDump,
-                codebaseMapText: this.config.toolOptions?.codebaseMapText,
-            });
+            // The turn's user message, built here and again on every compaction restart.
+            const buildTurnPrompt = (turnProjects: ProjectSource[], agentsMd: AgentsMdTurnPrep) => {
+                if (agentsMd.hashToPersist !== undefined) {
+                    const generation = chatStateStorage.getGeneration(this.chatStoreKey, threadId, this.config.generationId);
+                    if (generation) {
+                        chatStateStorage.updateGeneration(this.chatStoreKey, threadId, this.config.generationId, {
+                            metadata: {
+                                ...generation.metadata,
+                                agentsMdLastReadHash: agentsMd.hashToPersist,
+                            },
+                        });
+                    }
+                }
+                return getUserPrompt(params, tempProjectPath, turnProjects, projectSkills, webSearchEnabled, agentsMd.text, {
+                    omitCodebaseDump: this.config.toolOptions?.omitCodebaseDump,
+                    codebaseMapText: this.config.toolOptions?.codebaseMapText,
+                });
+            };
+            const userMessageContent = buildTurnPrompt(projects, await prepareAgentsMdForTurn(workspaceId || '', threadId));
 
             // Estimate fixed overhead (system prompt + codebase) to decide if compaction is viable
             // TODO(auto-memory): memory-augmented prompt disabled for this release — using base system prompt.
@@ -530,6 +552,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const carriedMessages: ModelMessage[] = [];
             let carriedUsage: LanguageModelUsage | undefined;
             let truncationRetries = 0;
+            let compactionRestarts = 0;
 
             // `response`/`totalUsage` belong to one streamText call, so they are reassigned
             // per attempt below, before any handler reads them.
@@ -614,9 +637,11 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                                 console.log(`[AgentExecutor] Server cleared ${appliedCompaction.clearedToolUses} tool uses`);
                             }
 
-                            // Persist partial modelMessages after each step so chat is recoverable mid-stream
+                            // Persist partial modelMessages after each step so chat is recoverable mid-stream.
+                            // A compaction pause is skipped: the restart replaces this history at once.
+                            const compactionPaused = isCompactionPause(step.rawFinishReason);
                             const stepMessages = step.response?.messages ?? [];
-                            if (stepMessages.length > 0) {
+                            if (stepMessages.length > 0 && !compactionPaused) {
                                 // `stepMessages` is this attempt's share only; count what is
                                 // actually written, or a resume looks like it lost history.
                                 const savedCount = 1 + carriedMessages.length + stepMessages.length;
@@ -626,14 +651,16 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                                 console.log(`[AgentExecutor] Step ${step.stepNumber} saving ${savedCount} message(s) to chat storage${carriedNote}`);
                                 chatStateStorage.updateGeneration(this.chatStoreKey, threadId, this.config.generationId, {
                                     modelMessages: [
-                                        { role: "user", content: userMessageContent },
+                                        { role: "user", content: streamContext.userMessageContent },
                                         ...carriedMessages, ...stepMessages,
                                     ],
                                 });
                                 updateAndSaveChat(this.config.generationId, Command.Agent, this.config.eventHandler);
                             }
 
-                            if (step.usage) {
+                            // A compaction pause's usage is the summarized request; the meter stays at
+                            // the reset the compaction block made until the restarted request reports.
+                            if (step.usage && !compactionPaused) {
                                 const inputTokens = step.usage.inputTokens || 0;
                                 const cacheReadTokens = step.usage.inputTokenDetails?.cacheReadTokens || 0;
                                 const cacheWriteTokens = step.usage.inputTokenDetails?.cacheWriteTokens || 0;
@@ -654,7 +681,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                                         cacheReadInputTokens: cacheReadTokens,
                                         outputTokens,
                                     },
-                                    breakdown: computeTokenBreakdown([systemMessage, ...allMessages], tools, accToolCallChars, accToolResultChars, inputTokens, (userMessageContent[0] as any)?.text?.length ?? 0),
+                                    breakdown: computeTokenBreakdown([systemMessage, ...allMessages], tools, accToolCallChars, accToolResultChars, inputTokens, (streamContext.userMessageContent[0] as any)?.text?.length ?? 0),
                                 });
                             }
                         },
@@ -751,6 +778,46 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
 
                     const attemptResponse = await response;
                     const attemptMessages = (attemptResponse.messages ?? []) as ModelMessage[];
+
+                    // Compaction paused after its block. Restart the turn from our own message holding
+                    // the summary: the model's thinking from here on is signed against a conversation
+                    // that starts at that message, which is replayed unchanged on every later request.
+                    if (isCompactionPause(attemptRawFinishReason)) {
+                        const summary = findCompactionSummary(attemptMessages);
+                        if (!summary || compactionRestarts >= MAX_COMPACTION_RESTARTS) {
+                            const error = new Error(!summary
+                                ? 'Context compaction returned no summary, so this request cannot continue. Start a new chat to continue the work.'
+                                : `Context was compacted ${MAX_COMPACTION_RESTARTS} times in one request and is still too large. Start a new chat to continue the work.`);
+                            // The last step save holds the history before the pause; the paused block is not kept.
+                            await this.handleStreamError(error, streamContext, { savePartialResponse: false });
+                            throw error;
+                        }
+                        compactionRestarts++;
+                        console.log(`[AgentExecutor] Compaction paused the turn; restarting from its summary (${compactionRestarts}/${MAX_COMPACTION_RESTARTS})`);
+                        carriedUsage = addUsage(carriedUsage, await totalUsage);
+                        // The summary leaves out the turn's context blocks (the compaction prompt says
+                        // they come back), so rebuild the turn's prompt from the workspace as it is now.
+                        const [restartAgentsMd, currentProjects] = await Promise.all([
+                            prepareAgentsMdForRestart(workspaceId || ''),
+                            // The prompt reads no project source when the dump is off.
+                            this.config.toolOptions?.omitCodebaseDump
+                                ? projects
+                                : getProjectSource(params.operationType, this.config.executionContext),
+                        ]);
+                        const continuation = buildCompactionContinuation(summary, buildTurnPrompt(currentProjects, restartAgentsMd));
+                        carriedMessages.length = 0;
+                        allMessages.length = 0;
+                        allMessages.push(continuation);
+                        accToolCallChars = 0;
+                        accToolResultChars = 0;
+                        streamContext.userMessageContent = continuation.content;
+                        // Saved before the next request, so an abort in between keeps the restarted shape.
+                        chatStateStorage.updateGeneration(this.chatStoreKey, threadId, this.config.generationId, {
+                            modelMessages: [continuation],
+                            restartedFromSummary: true,
+                        });
+                        continue;
+                    }
 
                     // A truncated attempt never ran its last tool call, so the change it
                     // carried is missing while earlier ones are already on disk. Hand the
@@ -1011,7 +1078,7 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
      * Handles stream errors with cleanup.
      * Clears review state to prevent stale data.
      */
-    private async handleStreamError(error: Error, context: StreamContext): Promise<void> {
+    private async handleStreamError(error: Error, context: StreamContext, { savePartialResponse = true } = {}): Promise<void> {
         console.error("[Agent] Stream error:", error);
         this.flushOpenThinkingBlocks();
 
@@ -1061,11 +1128,13 @@ Generation stopped by user. The last in-progress task was not saved. Any complet
 
         // Save partial LLM messages to storage and emit save_chat (mirrors abort path)
         let messagesToSave: any[] = [];
-        try {
-            const partialResponse = await context.response;
-            messagesToSave = [...(context.carriedMessages ?? []), ...(partialResponse.messages || [])];
-        } catch (e) {
-            console.warn("[AgentExecutor] Could not retrieve partial response messages on error:", e);
+        if (savePartialResponse) {
+            try {
+                const partialResponse = await context.response;
+                messagesToSave = [...(context.carriedMessages ?? []), ...(partialResponse.messages || [])];
+            } catch (e) {
+                console.warn("[AgentExecutor] Could not retrieve partial response messages on error:", e);
+            }
         }
 
         if (messagesToSave.length > 0) {
