@@ -1023,6 +1023,8 @@ export interface Generation {
     followupSuggestions?: FollowupSuggestion[];
     /** Summary of this turn published to the WSO2 Integration Platform console (cloud editor only). Persisted, so a revert after a reload can still remove it */
     consoleSummary?: string;
+    /** This turn restarted from its own summary after a server-side compaction: `modelMessages` begins with that summary, and the model's history starts here. Persisted */
+    restartedFromSummary?: boolean;
     /** Generation metadata */
     metadata: GenerationMetadata;
 }
