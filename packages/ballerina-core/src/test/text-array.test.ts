@@ -57,6 +57,12 @@ describe("a TEXT_SET field and the source it stands for", () => {
         [['He said "hi"'], '"He said \\"hi\\""'],
         [["", "  "], ""],
         [[], ""],
+        // The list editor hands items over as text-mode string templates.
+        [["string `MANAGER\n`"], '"MANAGER"'],
+        [["string `finance`", "string `manager`"], '["finance", "manager"]'],
+        [["string ``"], ""],
+        [['"finance"'], '"finance"'],
+        [["string `team-${teamId}`"], "string `team-${teamId}`"],
     ])("%j writes as %s", (items, expected) => {
         expect(textArraySource(items)).toBe(expected);
     });

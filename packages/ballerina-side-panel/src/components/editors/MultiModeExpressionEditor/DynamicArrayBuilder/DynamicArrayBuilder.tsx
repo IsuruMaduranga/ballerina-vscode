@@ -46,6 +46,7 @@ export const DynamicArrayBuilder = (props: DynamicArrayBuilderProps) => {
     const expressionSetType = expressionFieldProps.field.types.find(t => t.fieldType === "EXPRESSION_SET" || t.fieldType === "TEXT_SET");
     const minItems = expressionSetType?.minItems ?? 1;
     const defaultItems = expressionSetType?.defaultItems ?? 1;
+    const isTextSet = expressionSetType?.fieldType === "TEXT_SET";
 
     const [isInitialized, setIsInitialized] = useState(false);
     const currentValuesRef = useRef<string[]>([]);
@@ -146,7 +147,8 @@ export const DynamicArrayBuilder = (props: DynamicArrayBuilderProps) => {
 
     const handleInputChange = (index: number, newValue: string) => {
         const updatedArray = [...currentValuesRef.current];
-        updatedArray[index] = newValue;
+        // A text item is one name, so Enter must not put a line break into it.
+        updatedArray[index] = isTextSet && typeof newValue === "string" ? newValue.replace(/[\r\n]+/g, "") : newValue;
         currentValuesRef.current = updatedArray;
         updateArrayValue(updatedArray, { shouldValidate: true, shouldDirty: true });
     };
@@ -185,7 +187,7 @@ export const DynamicArrayBuilder = (props: DynamicArrayBuilderProps) => {
                         //show the type related editor in the field editor and the whole editor should
                         //have a switch to show the array editor mode and the expression mode.
                         //Exception: TEXT_SET uses StringTemplateEditorConfig for TEXT mode
-                        configuration={expressionSetType?.fieldType === "TEXT_SET" ? new StringTemplateEditorConfig() : new ChipExpressionEditorDefaultConfiguration()}
+                        configuration={isTextSet ? new StringTemplateEditorConfig() : new ChipExpressionEditorDefaultConfiguration()}
                         placeholder={expressionFieldProps.field.placeholder}
                         onNormalizeValue={(normalizedValue) => {
                             const updatedArray = [...currentValuesRef.current];
