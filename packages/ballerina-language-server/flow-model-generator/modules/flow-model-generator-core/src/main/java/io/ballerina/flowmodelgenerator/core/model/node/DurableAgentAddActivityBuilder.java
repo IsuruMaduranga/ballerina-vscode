@@ -19,6 +19,7 @@
 package io.ballerina.flowmodelgenerator.core.model.node;
 
 import io.ballerina.compiler.api.SemanticModel;
+import io.ballerina.compiler.api.symbols.Documentation;
 import io.ballerina.compiler.api.symbols.FunctionSymbol;
 import io.ballerina.compiler.api.symbols.ParameterSymbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
@@ -138,10 +139,39 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 .stepOut()
                 .addProperty(ACTIVITY_KEY);
         // The fields follow the ActivityDecl record: activity, name, description, bindings, then the policies.
-        addActivityIdentityProperties();
+        Optional<FunctionSymbol> activity = preSelected.isEmpty()
+                ? Optional.empty() : findActivity(context, preSelected);
+        String descriptionPlaceholder = activity.flatMap(FunctionSymbol::documentation)
+                .flatMap(Documentation::description).orElse("");
+        addActivityIdentityProperties(WorkflowUtil.stripModulePrefix(preSelected), descriptionPlaceholder.strip());
         addBindingProperties(context, preSelected);
         addPolicyProperties();
         properties().checkError(true);
+    }
+
+    // The activity function an entry names, looked up as addBindingProperties does.
+    private static Optional<FunctionSymbol> findActivity(TemplateContext context, String activityName) {
+        String unqualifiedName = WorkflowUtil.stripModulePrefix(activityName);
+        Package currentPackage = PackageUtil.loadProject(context.workspaceManager(), context.filePath())
+                .currentPackage();
+        PackageUtil.getCompilation(currentPackage);
+        for (Module module : currentPackage.modules()) {
+            try {
+                Optional<FunctionSymbol> activity = module.getCompilation().getSemanticModel().moduleSymbols()
+                        .stream()
+                        .filter(symbol -> symbol.kind() == SymbolKind.FUNCTION)
+                        .map(symbol -> (FunctionSymbol) symbol)
+                        .filter(WorkflowUtil::isActivityFunction)
+                        .filter(symbol -> unqualifiedName.equals(symbol.getName().orElse("")))
+                        .findFirst();
+                if (activity.isPresent()) {
+                    return activity;
+                }
+            } catch (RuntimeException e) {
+                // A module that does not compile has no symbols to offer.
+            }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -226,8 +256,9 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
     }
 
     // The declaration's optional name/description. Registering an activity asks nothing beyond the policies,
-    // so they stay hidden; the designer reveals them when an existing entry is edited, and values round-trip.
-    private void addActivityIdentityProperties() {
+    // so they stay hidden; the designer shows them read-only on an existing entry, with what the runtime uses
+    // when they are not declared (the function's name and doc) as placeholders, and values round-trip.
+    private void addActivityIdentityProperties(String namePlaceholder, String descriptionPlaceholder) {
         properties().custom()
                 .metadata()
                     .label(ACTIVITY_NAME_LABEL)
@@ -239,6 +270,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                     .selected(true)
                     .stepOut()
                 .value("")
+                .placeholder(namePlaceholder)
                 .editable(true)
                 .optional(true)
                 .hidden(true)
@@ -255,6 +287,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                     .selected(true)
                     .stepOut()
                 .value("")
+                .placeholder(descriptionPlaceholder)
                 .editable(true)
                 .optional(true)
                 .hidden(true)

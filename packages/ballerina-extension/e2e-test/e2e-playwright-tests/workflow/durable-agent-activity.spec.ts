@@ -91,23 +91,22 @@ export default function createTests() {
             logStep('Open the registered entry and check its edit form');
             await capability.click({ force: true });
             await saveButton.waitFor({ state: 'visible', timeout: 60000 });
-            // An existing entry is where its name and description are set, so the edit form shows them.
+            // The name and description show what the runtime uses, read-only: the function's name and doc comment.
             await expect(webview.getByText('Activity Name', { exact: true })).toBeVisible();
             await expect(webview.getByText('Activity Description', { exact: true })).toBeVisible();
             await expect(webview.getByRole('combobox', { name: 'Api' })).toHaveText(/billingApi/);
+            const name = webview.getByTestId('readonly-field-name');
+            await expect(name).toContainText('lookupBill');
+            const description = webview.locator('vscode-text-area#description');
+            await expect(description).toHaveAttribute('placeholder', 'Look up a bill activity');
+            await expect(description).toHaveAttribute('readonly', 'true');
+            await expect(name.locator('.cm-content, textarea, input')).toHaveCount(0);
 
-            logStep('Name the entry and check the canvas shows the text, not the template');
-            // The text box writes a `string `...`` template; the canvas must read it back as text
-            // (wso2/product-integrator#2623).
-            await webview.getByTestId('ex-editor-name').locator('.cm-content, textarea, input').first().click({ force: true });
-            await page.page.keyboard.type('Lookup bill');
-            await page.page.waitForTimeout(1000);
+            logStep('Saving the edit form leaves the entry without a name');
             await saveButton.click({ force: true });
-            await expect.poll(() => fs.readFileSync(path.join(newProjectPath, 'main.bal'), 'utf-8'), {
-                timeout: 60000,
-            }).toMatch(/name:\s*string `Lookup bill`/);
-            await webview.getByTestId('durable-agent-capability-activity-Lookup_bill').waitFor({ timeout: 60000 });
-            await expect(webview.locator('title', { hasText: 'string `' })).toHaveCount(0);
+            await page.page.waitForTimeout(3000);
+            expect(fs.readFileSync(path.join(newProjectPath, 'main.bal'), 'utf-8')).not.toMatch(/activity:\s*lookupBill[^}]*name:/);
+            await webview.getByTestId('durable-agent-capability-activity-lookupBill').waitFor({ timeout: 60000 });
         });
 
         test('Create a new activity from the agent and register it', async () => {
