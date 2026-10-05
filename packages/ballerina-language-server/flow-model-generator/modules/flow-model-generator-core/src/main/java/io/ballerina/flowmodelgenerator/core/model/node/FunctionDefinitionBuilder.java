@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * Represents the properties of a function definition node.
@@ -58,6 +59,7 @@ public class FunctionDefinitionBuilder extends NodeBuilder {
     public static final String METADATA_PARAMETERS_KEY = "parameters";
 
     private static final Gson gson = new Gson();
+    private static final Pattern ERROR_TYPE_PATTERN = Pattern.compile("\\berror\\b");
 
     public static Property getParameterSchema() {
         return ParameterSchemaHolder.PARAMETER_SCHEMA;
@@ -190,17 +192,23 @@ public class FunctionDefinitionBuilder extends NodeBuilder {
         sourceBuilder.token().keyword(SyntaxKind.CLOSE_PAREN_TOKEN);
 
         // Write the return type
+        Codedata codedata = sourceBuilder.flowNode.codedata();
+        boolean isNewDefinition = codedata.lineRange() == null || Boolean.TRUE.equals(codedata.isNew());
         Optional<Property> returnType = sourceBuilder.getProperty(Property.TYPE_KEY);
-        if (returnType.isPresent() && !returnType.get().value().toString().isEmpty()) {
+        String returnTypeText = returnType.map(property -> property.value().toString().trim()).orElse("");
+        boolean isActivity = codedata.node() == NodeKind.ACTIVITY || codedata.node() == NodeKind.ACTIVITY_CREATION;
+        if (isNewDefinition && isActivity) {
+            returnTypeText = withErrorReturn(returnTypeText);
+        }
+        if (!returnTypeText.isEmpty()) {
             sourceBuilder.token()
                     .keyword(SyntaxKind.RETURNS_KEYWORD)
-                    .name(returnType.get().value().toString());
+                    .name(returnTypeText);
         }
 
         // Generate text edits based on the line range. If a line range exists, update the signature of the existing
         // function. Otherwise, create a new function definition in "functions.bal".
-        Codedata codedata = sourceBuilder.flowNode.codedata();
-        if (codedata.lineRange() == null || Boolean.TRUE.equals(codedata.isNew())) {
+        if (isNewDefinition) {
             sourceBuilder
                     .token()
                         .openBrace()
@@ -226,5 +234,13 @@ public class FunctionDefinitionBuilder extends NodeBuilder {
             Map<String, Property> nodeProperties = formBuilder.build();
             return nodeProperties.get("");
         }
+    }
+
+    // A new activity can error: connection actions added to its body use `check`, as ActivityGenerator assumes.
+    private static String withErrorReturn(String returnType) {
+        if (returnType.isEmpty()) {
+            return "error?";
+        }
+        return ERROR_TYPE_PATTERN.matcher(returnType).find() ? returnType : returnType + "|error";
     }
 }
