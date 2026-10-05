@@ -340,6 +340,9 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
     const [isAiUserAuthenticated, setIsAiUserAuthenticated] = useState(false);
     const formImportsRef = useRef<FormImports>({});
     const [typeEditorState, setTypeEditorState] = useState<FlowNodeTypeEditorState>({ isOpen: false, newTypeValue: "" });
+    // The live editor of the type field that opened "Create New Type", so the created type lands in that field,
+    // also when it sits inside a sub-form (a Data Waits entry) whose values live in a nested form.
+    const typeHelperOnChangeRef = useRef<(newType: string, newCursorPosition: number) => void>();
      const [isTypeEditorOpen, setIsTypeEditorOpen] = useState<boolean>(false);
     const [editingTypeName, setEditingTypeName] = useState<string>("");
     const [visualizableField, setVisualizableField] = useState<VisualizableField>();
@@ -1015,10 +1018,12 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
         });
         setBaseFields(updatedFields);
         const newTypeValue = typeof newType === 'string' ? newType : f[editingField?.key];
+        typeHelperOnChangeRef.current = undefined;
         setTypeEditorState({ isOpen, fieldKey: editingField?.key, newTypeValue });
     };
 
     const handleOpenFormTypeEditor = (open: boolean, typeName?: string, editingField?: FormField) => {
+        typeHelperOnChangeRef.current = undefined;
         setTypeEditorState((prevState) => ({
             ...prevState,
             fieldKey: editingField?.key,
@@ -1492,15 +1497,22 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
     };
 
     const onTypeChange = async (type: Type) => {
+        if (type.codedata.node === "RECORD") {
+            handleSelectedTypeChange(convertRecordTypeToCompletionItem(type));
+        }
+        const writeToEditor = typeHelperOnChangeRef.current;
+        if (writeToEditor) {
+            // A dirty field keeps its value over a base-field update, so the type goes through the field's editor.
+            typeHelperOnChangeRef.current = undefined;
+            writeToEditor(type.name, type.name.length);
+            return;
+        }
         const updatedFields = fields.map((field) => {
             if (field.key === typeEditorState.fieldKey) {
                 return { ...field, value: type.name };
             }
             return field;
         });
-        if (type.codedata.node === "RECORD") {
-            handleSelectedTypeChange(convertRecordTypeToCompletionItem(type));
-        }
         setBaseFields(updatedFields);
     };
 
@@ -1590,6 +1602,7 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
     ) => {
         const formField = fields.find(f => f.key === fieldKey);
         const handleCreateNewType = (typeName: string) => {
+            typeHelperOnChangeRef.current = onChange;
             onTypeCreate();
             setTypeEditorState({ isOpen: true, newTypeValue: typeName, fieldKey: fieldKey });
         }
