@@ -145,10 +145,12 @@ export const DynamicArrayBuilder = (props: DynamicArrayBuilderProps) => {
         }
     }, [arrayValues, isInitialized, minItems, defaultItems, updateArrayValue]);
 
+    // A text item is one name, so neither Enter nor normalization may put a line break into it.
+    const textItem = (value: string) => isTextSet && typeof value === "string" ? value.replace(/[\r\n]+/g, "") : value;
+
     const handleInputChange = (index: number, newValue: string) => {
         const updatedArray = [...currentValuesRef.current];
-        // A text item is one name, so Enter must not put a line break into it.
-        updatedArray[index] = isTextSet && typeof newValue === "string" ? newValue.replace(/[\r\n]+/g, "") : newValue;
+        updatedArray[index] = textItem(newValue);
         currentValuesRef.current = updatedArray;
         updateArrayValue(updatedArray, { shouldValidate: true, shouldDirty: true });
     };
@@ -191,7 +193,7 @@ export const DynamicArrayBuilder = (props: DynamicArrayBuilderProps) => {
                         placeholder={expressionFieldProps.field.placeholder}
                         onNormalizeValue={(normalizedValue) => {
                             const updatedArray = [...currentValuesRef.current];
-                            updatedArray[index] = normalizedValue;
+                            updatedArray[index] = textItem(normalizedValue);
                             currentValuesRef.current = updatedArray;
                             updateArrayValue(updatedArray, { shouldValidate: false, shouldDirty: false });
                         }}
