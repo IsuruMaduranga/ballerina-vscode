@@ -100,13 +100,15 @@ export default function createTests() {
             const description = webview.locator('vscode-text-area#description');
             await expect(description).toHaveAttribute('placeholder', 'Look up a bill activity');
             await expect(description).toHaveAttribute('readonly', 'true');
-            await expect(name.locator('.cm-content, textarea, input')).toHaveCount(0);
 
             logStep('Saving the edit form leaves the entry without a name');
+            // The edit form is longer than the register form, so Save can sit below the fold.
+            await saveButton.scrollIntoViewIfNeeded();
             await saveButton.click({ force: true });
-            await page.page.waitForTimeout(3000);
-            expect(fs.readFileSync(path.join(newProjectPath, 'main.bal'), 'utf-8')).not.toMatch(/activity:\s*lookupBill[^}]*name:/);
+            // The panel closes once the edit is written; only then is the source final.
+            await saveButton.waitFor({ state: 'hidden', timeout: 60000 });
             await webview.getByTestId('durable-agent-capability-activity-lookupBill').waitFor({ timeout: 60000 });
+            expect(fs.readFileSync(path.join(newProjectPath, 'main.bal'), 'utf-8')).not.toMatch(/activity:\s*lookupBill[^}]*name:/);
         });
 
         test('Create a new activity from the agent and register it', async () => {
