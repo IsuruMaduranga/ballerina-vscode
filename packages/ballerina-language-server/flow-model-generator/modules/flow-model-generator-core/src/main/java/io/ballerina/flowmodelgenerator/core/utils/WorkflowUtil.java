@@ -1374,16 +1374,17 @@ public class WorkflowUtil {
     // its text, a literal stays, and an interpolated template is an expression.
     private static String roleItemSource(String item) {
         String trimmed = item.trim();
-        if (trimmed.startsWith("string `") && trimmed.endsWith("`")) {
-            String content = trimmed.substring("string `".length(), trimmed.length() - 1);
+        String content = trimmed.startsWith("string `") && trimmed.endsWith("`")
+                ? trimmed.substring("string `".length(), trimmed.length() - 1) : null;
+        // One template only: `string `a` + string `b`` is an expression of two.
+        if (content != null && !content.contains("`")) {
             if (content.contains("${")) {
                 return trimmed;
             }
             String text = content.trim();
             return text.isEmpty() ? "" : stringLiteral(text);
         }
-        boolean quoted = trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"");
-        if (quoted && !closingQuoteEscaped(trimmed)) {
+        if (isStringLiteral(trimmed)) {
             return trimmed;
         }
         return trimmed.isEmpty() ? "" : stringLiteral(trimmed);
