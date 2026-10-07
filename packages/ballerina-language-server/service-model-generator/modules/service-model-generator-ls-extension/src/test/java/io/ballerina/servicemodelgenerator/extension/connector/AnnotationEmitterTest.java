@@ -92,6 +92,11 @@ public class AnnotationEmitterTest {
                 "@ftp:FunctionConfig {moveTo: processedDirectoryPath}");
     }
 
+    @Test
+    public void testExpressionTypedQuotedLiteralIsNotDoubleQuoted() {
+        Assert.assertEquals(emitLeaf("\"abc\"", "EXPRESSION"), "@ftp:FunctionConfig {moveTo: \"abc\"}");
+    }
+
     private static String emitLeaf(String value, String selectedFieldType) {
         TriggerUISchemaModel.Property base = leaf(true, value, "moveTo", false);
         List<TriggerUISchemaModel.PropertyType> types = List.of(

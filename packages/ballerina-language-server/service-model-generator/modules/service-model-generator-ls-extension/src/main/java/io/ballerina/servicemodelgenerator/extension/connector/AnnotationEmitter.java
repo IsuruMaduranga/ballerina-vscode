@@ -215,8 +215,7 @@ public final class AnnotationEmitter {
     }
 
     private static boolean isExpressionForm(TriggerUISchemaModel.Property node, String raw) {
-        TriggerUISchemaModel.PropertyType selected = selectedType(node);
-        if (selected != null && Value.FieldType.EXPRESSION.name().equals(selected.fieldType())) {
+        if (Value.FieldType.EXPRESSION.name().equals(PayloadComposer.selectedFieldType(node))) {
             return true;
         }
         return STRING_TEMPLATE_PATTERN.matcher(raw.trim()).matches();
@@ -224,17 +223,7 @@ public final class AnnotationEmitter {
 
     /** Whether the node's selected (or sole) declared type is a plain {@code string}. */
     private static boolean isStringTyped(TriggerUISchemaModel.Property node) {
-        TriggerUISchemaModel.PropertyType selected = selectedType(node);
+        TriggerUISchemaModel.PropertyType selected = PayloadComposer.selectedType(node);
         return selected != null && STRING_TYPE.equals(selected.ballerinaType());
-    }
-
-    private static TriggerUISchemaModel.PropertyType selectedType(TriggerUISchemaModel.Property node) {
-        if (node.types() == null || node.types().isEmpty()) {
-            return null;
-        }
-        return node.types().stream()
-                .filter(type -> Boolean.TRUE.equals(type.selected()))
-                .findFirst()
-                .orElse(node.types().getFirst());
     }
 }
