@@ -200,6 +200,7 @@ public class WorkflowUtilLiteralTest {
         // Text that is not one template or one literal is a role name as typed, never an expression.
         Assert.assertEquals(WorkflowUtil.roleSource(roleList("string `a` + string `b`")),
                 "\"string `a` + string `b`\"");
+        Assert.assertEquals(WorkflowUtil.roleSource(roleList("string`MANAGER`")), "\"string`MANAGER`\"");
         Assert.assertEquals(WorkflowUtil.roleSource(roleList("\"finance\" + \"manager\"")),
                 "\"\\\"finance\\\" + \\\"manager\\\"\"");
     }

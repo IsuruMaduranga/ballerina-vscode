@@ -106,7 +106,7 @@ export function parseTextArraySource(source: string): string[] | undefined {
 }
 
 // One template only: `string \`a\` + string \`b\`` is an expression of two.
-const STRING_TEMPLATE = /^string\s*`([^`]*)`$/;
+const STRING_TEMPLATE = /^string `([^`]*)`$/;
 
 /**
  * An item's source: a text editor hands items over as string templates, so one without interpolation is
