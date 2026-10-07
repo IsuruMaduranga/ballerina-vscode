@@ -383,10 +383,7 @@ async function getViewBySTRange(documentUri: string, position: NodePosition, pro
                     documentUri: documentUri,
                     position: node.syntaxTree.position,
                     metadata: {
-                        // Opened from a position rather than an artifact: a workflow function is
-                        // told apart by its annotation.
-                        enableSequenceDiagram: extension.ballerinaExtInstance.enableSequenceDiagramView()
-                            && !await isWorkflowFunctionIn(documentUri, node.syntaxTree),
+                        enableSequenceDiagram: extension.ballerinaExtInstance.enableSequenceDiagramView(),
                     }
                 },
                 dataMapperDepth: 0
@@ -534,6 +531,10 @@ function findViewByArtifact(
                 };
             case DIRECTORY_MAP.AUTOMATION:
             case DIRECTORY_MAP.FUNCTION:
+            case DIRECTORY_MAP.WORKFLOW:
+            // A durable agentic workflow artifact opens as a BI diagram at the declaration's
+            // range, where the flow model renders the agent model canvas.
+            case DIRECTORY_MAP.DURABLE_AGENT:
             case DIRECTORY_MAP.ACTIVITY:
             case DIRECTORY_MAP.REMOTE:
                 return {
@@ -549,25 +550,6 @@ function findViewByArtifact(
                     },
                     dataMapperDepth: 0
                 };
-            case DIRECTORY_MAP.WORKFLOW:
-            // A durable agentic workflow artifact opens as a BI diagram at the declaration's
-            // range, where the flow model renders the agent model canvas. Neither kind offers the
-            // sequence diagram: its generator knows nothing of the workflow model and draws a
-            // wrong picture rather than an unsupported one.
-            case DIRECTORY_MAP.DURABLE_AGENT:
-                return {
-                    location: {
-                        view: MACHINE_VIEW.BIDiagram,
-                        documentUri: currentDocumentUri,
-                        identifier: dir.name,
-                        position: dir.position,
-                        artifactType: dir.type,
-                        metadata: {
-                            enableSequenceDiagram: false,
-                        }
-                    },
-                    dataMapperDepth: 0
-                };
             case DIRECTORY_MAP.AGENT:
                 // A durable agent shares the Agents section but opens its own model canvas.
                 if (dir.kind === DIRECTORY_MAP.DURABLE_AGENT) {
@@ -579,7 +561,7 @@ function findViewByArtifact(
                             position: dir.position,
                             artifactType: DIRECTORY_MAP.DURABLE_AGENT,
                             metadata: {
-                                enableSequenceDiagram: false,
+                                enableSequenceDiagram: extension.ballerinaExtInstance.enableSequenceDiagramView(),
                             }
                         },
                         dataMapperDepth: 0
@@ -753,42 +735,4 @@ function getSTByRangeReq(documentUri: string, position: NodePosition) {
             }
         }
     };
-}
-
-/**
- * Whether a function definition carries `@workflow:Workflow`. The sequence diagram generator
- * knows nothing of the workflow model, so such a function must not offer the toggle.
- */
-export function isWorkflowFunction(syntaxTree: any, workflowPrefixes: ReadonlySet<string>): boolean {
-    const annotations: any[] = syntaxTree?.metadata?.annotations ?? [];
-    return annotations.some((annotation) => {
-        const reference = annotation?.annotReference;
-        return reference?.identifier?.value === "Workflow" && workflowPrefixes.has(reference?.modulePrefix?.value);
-    });
-}
-
-// The prefixes ballerina/workflow is imported under in a module part: its alias, else `workflow`.
-export function workflowModulePrefixes(modulePart: any): Set<string> {
-    const prefixes = new Set<string>();
-    for (const declaration of modulePart?.imports ?? []) {
-        const moduleName = (declaration?.moduleName ?? []).map((part: any) => part?.value ?? "").join("");
-        if (declaration?.orgName?.orgName?.value === "ballerina" && moduleName === "workflow") {
-            prefixes.add(declaration?.prefix?.prefix?.value ?? "workflow");
-        }
-    }
-    return prefixes;
-}
-
-// Reads the file's imports only when the function carries a qualified Workflow annotation at all.
-async function isWorkflowFunctionIn(documentUri: string, syntaxTree: any): Promise<boolean> {
-    const annotations: any[] = syntaxTree?.metadata?.annotations ?? [];
-    const qualified = annotations.some((annotation) => annotation?.annotReference?.identifier?.value === "Workflow"
-        && annotation?.annotReference?.modulePrefix);
-    if (!qualified) {
-        return false;
-    }
-    const file = await StateMachine.langClient()
-        .getSyntaxTree({ documentIdentifier: { uri: Uri.file(documentUri).toString() } })
-        .catch(() => undefined) as any;
-    return isWorkflowFunction(syntaxTree, workflowModulePrefixes(file?.syntaxTree));
 }
