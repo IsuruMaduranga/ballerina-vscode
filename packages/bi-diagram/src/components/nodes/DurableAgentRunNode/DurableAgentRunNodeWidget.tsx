@@ -977,6 +977,7 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                         return (
                             <g key={`${item.kind}-${itemName}-${index}`} transform={`translate(0, ${rowOffsetY(index)})`}>
                                 <circle
+                                    data-testid={`durable-agent-capability-${item.kind}-${sanitizeId(itemName)}`}
                                     cx="220"
                                     cy="24"
                                     r="22"
@@ -1270,6 +1271,7 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                             transform={`translate(0, ${rowOffsetY(index + 1)})`}
                         >
                             <circle
+                                data-testid={`durable-agent-capability-${item.kind}-${sanitizeId(itemName)}`}
                                 cx="80"
                                 cy="24"
                                 r="22"

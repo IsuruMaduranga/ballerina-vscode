@@ -880,6 +880,7 @@ export function NodeList(props: NodeListProps) {
                                                             <Tooltip key={`${group.title}-${actionIndex}`} content={tooltipText}>
                                                                 <Button
                                                                     appearance="icon"
+                                                                    data-testid={`node-list-action-${action.handlerKey}`}
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         handler();
