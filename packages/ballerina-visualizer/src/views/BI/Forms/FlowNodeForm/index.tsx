@@ -1045,6 +1045,7 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
                 return;
             }
             resetStack();
+            typeHelperOnChangeRef.current = undefined;
         }
         setTypeEditorState({ ...typeEditorState, isOpen: state });
     }
@@ -1496,9 +1497,13 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
         handleExpressionEditorCancel();
     };
 
-    const onTypeChange = async (type: Type) => {
+    const onTypeChange = async (type: Type, outermost = true) => {
         if (type.codedata.node === "RECORD") {
             handleSelectedTypeChange(convertRecordTypeToCompletionItem(type));
+        }
+        // A type made inside another belongs to that type's field; the form's field takes the outermost one.
+        if (!outermost) {
+            return;
         }
         const writeToEditor = typeHelperOnChangeRef.current;
         if (writeToEditor) {
@@ -2075,7 +2080,7 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
                                 newType={peekTypeStack() ? peekTypeStack().isDirty : false}
                                 newTypeValue={typeEditorState.newTypeValue}
                                 isGraphql={isGraphql}
-                                onTypeChange={onTypeChange}
+                                onTypeChange={(type) => onTypeChange(type, i === 0)}
                                 onSaveType={onSaveType}
                                 onTypeCreate={() => { }}
                                 isPopupTypeForm={true}
@@ -2218,7 +2223,7 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
                                 newType={peekTypeStack() ? peekTypeStack().isDirty : false}
                                 newTypeValue={typeEditorState.newTypeValue}
                                 isGraphql={isGraphql}
-                                onTypeChange={onTypeChange}
+                                onTypeChange={(type) => onTypeChange(type, i === 0)}
                                 onSaveType={onSaveType}
                                 onTypeCreate={() => { }}
                                 isPopupTypeForm={true}
@@ -2418,7 +2423,7 @@ export const FlowNodeForm = forwardRef<FormExpressionEditorRef, FlowNodeFormProp
                             newTypeValue={typeEditorState.newTypeValue}
                             isPopupTypeForm={true}
                             isGraphql={isGraphql}
-                            onTypeChange={onTypeChange}
+                            onTypeChange={(type) => onTypeChange(type, i === 0)}
                             onSaveType={onSaveType}
                             onTypeCreate={() => { }}
                             getNewTypeCreateForm={getNewTypeCreateForm}
