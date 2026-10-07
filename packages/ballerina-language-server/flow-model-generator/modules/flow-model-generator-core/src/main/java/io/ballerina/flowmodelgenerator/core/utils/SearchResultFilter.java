@@ -25,6 +25,8 @@ import io.ballerina.projects.Project;
 import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * The filters shared by the library and connector searches, so that every search surfaces the same packages whether
@@ -34,6 +36,7 @@ import java.util.Set;
  */
 public final class SearchResultFilter {
 
+    private static final Logger LOGGER = Logger.getLogger(SearchResultFilter.class.getName());
     private static final Set<String> ALLOWED_ORGANIZATIONS = Set.of("ballerina", "ballerinax", "wso2");
     private static final Set<String> BLACKLISTED_CONNECTOR_NAME_PATTERNS = Set.of("ModelProvider");
 
@@ -119,6 +122,8 @@ public final class SearchResultFilter {
             return toolPackages != null ? Set.copyOf(toolPackages) : Set.of();
         } catch (RuntimeException e) {
             // Without the list, tool packages are only kept out of the local index results.
+            LOGGER.log(Level.WARNING, "Failed to load " + TOOL_PACKAGES_JSON + "; tool packages are not filtered "
+                    + "from Ballerina Central results", e);
             return Set.of();
         }
     }

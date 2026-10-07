@@ -70,6 +70,8 @@ public class SearchIndexGenerator {
             new TypeToken<Map<String, List<SearchListGenerator.PackageMetadataInfo>>>() { }.getType();
     private static final Logger LOGGER = Logger.getLogger(SearchIndexGenerator.class.getName());
     private static final String CONNECTOR_EXCLUDE_JSON = "connector_exclude.json";
+    // Relative to the language server root, which the Gradle task sets as the working directory, like the other
+    // generators' output paths. Running the generator from another directory writes elsewhere or fails.
     private static final Path TOOL_PACKAGES_PATH =
             Path.of("flow-model-generator/modules/flow-model-generator-ls-extension/src/main/resources")
                     .resolve(SearchResultFilter.TOOL_PACKAGES_JSON);
@@ -134,6 +136,8 @@ public class SearchIndexGenerator {
     /**
      * Writes the tool packages skipped by this run to the language server's resources, merged with the ones already
      * recorded there. The merge keeps a package whose resolution failed in this run from silently leaving the list.
+     * As a result, regenerating the index only ever adds entries: a package that stops being a tool, or an entry
+     * recorded by mistake, has to be removed from the file by hand.
      */
     private static void writeToolPackages() {
         Gson gson = new GsonBuilder().setPrettyPrinting().create();

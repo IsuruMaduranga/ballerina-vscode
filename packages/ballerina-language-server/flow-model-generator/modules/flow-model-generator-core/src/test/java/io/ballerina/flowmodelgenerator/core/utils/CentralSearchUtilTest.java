@@ -88,6 +88,39 @@ public class CentralSearchUtilTest {
         Assert.assertEquals(results.getFirst().packageInfo().packageName(), "edi");
     }
 
+    @Test(description = "A single-org page that loses rows to tool packages is topped up, so it stays full.")
+    public void testSearchFunctionsByOrgTopsUpToolPackageRows() {
+        RecordingCentralApi central = new RecordingCentralApi(null);
+        central.pagedSymbols = List.of(
+                function("ballerina", "edi", "1.4.0", "fromEdiString", "Library"),
+                function("ballerina", "editoolspackage", "2.3.0", "fromEdiString", "Tool"),
+                function("ballerina", "edi", "1.4.0", "toEdiString", "Library"),
+                function("ballerina", "toml", "0.8.0", "readString", "Parses TOML"));
+
+        List<SearchResult> results = new CentralSearchUtil(central, EDI_TOOL)
+                .searchFunctionsByOrg("", 2, 0, "ballerina");
+
+        Assert.assertEquals(results.stream().map(SearchResult::name).toList(), List.of("fromEdiString", "toEdiString"));
+        Assert.assertEquals(central.callCount, 2);
+        Assert.assertEquals(central.lastQueryMap.get("offset"), "2");
+        Assert.assertEquals(central.lastQueryMap.get("limit"), "1");
+    }
+
+    @Test(description = "A single-org page without tool packages takes a single request.")
+    public void testSearchFunctionsByOrgWithoutToolPackagesMakesOneRequest() {
+        RecordingCentralApi central = new RecordingCentralApi(null);
+        central.pagedSymbols = List.of(
+                function("ballerina", "edi", "1.4.0", "fromEdiString", "Library"),
+                function("ballerina", "edi", "1.4.0", "toEdiString", "Library"),
+                function("ballerina", "toml", "0.8.0", "readString", "Parses TOML"));
+
+        List<SearchResult> results = new CentralSearchUtil(central, EDI_TOOL)
+                .searchFunctionsByOrg("", 2, 0, "ballerina");
+
+        Assert.assertEquals(results.size(), 2);
+        Assert.assertEquals(central.callCount, 1);
+    }
+
     @Test(description = "A connector search drops tool packages before paging.")
     public void testSearchConnectorsDropsToolPackages() {
         RecordingCentralApi central = new RecordingCentralApi(null);
@@ -532,6 +565,8 @@ public class CentralSearchUtilTest {
     private static final class RecordingCentralApi implements CentralAPI {
 
         private final SymbolResponse response;
+        // When set, symbol searches page through these rows by the request's offset and limit, as Central does.
+        private List<SymbolResponse.Symbol> pagedSymbols;
         private ConnectorsResponse connectorsResponse;
         private Map<String, String> lastQueryMap;
         private int callCount;
@@ -547,6 +582,11 @@ public class CentralSearchUtilTest {
             this.callCount++;
             if (failOnSearch) {
                 throw new RuntimeException("Central is unavailable");
+            }
+            if (pagedSymbols != null) {
+                int offset = Math.min(Integer.parseInt(queryMap.get("offset")), pagedSymbols.size());
+                int end = Math.min(offset + Integer.parseInt(queryMap.get("limit")), pagedSymbols.size());
+                return new SymbolResponse(pagedSymbols.subList(offset, end), pagedSymbols.size(), offset, end - offset);
             }
             return response;
         }

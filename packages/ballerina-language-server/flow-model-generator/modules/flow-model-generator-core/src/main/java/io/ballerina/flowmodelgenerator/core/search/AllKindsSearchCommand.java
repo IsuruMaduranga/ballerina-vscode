@@ -34,6 +34,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Search command behind the node panel's master search. It runs the function search and the connector search side by
@@ -53,6 +55,7 @@ import java.util.function.Supplier;
  */
 public class AllKindsSearchCommand extends SearchCommand {
 
+    private static final Logger LOGGER = Logger.getLogger(AllKindsSearchCommand.class.getName());
     private static final String CONNECTORS_CATEGORY = "Connectors";
     private static final int MIN_KIND_LIMIT = 10;
     // Shared by every master search, which runs on each debounced keystroke. Idle threads are reused, and a search is
@@ -119,21 +122,20 @@ public class AllKindsSearchCommand extends SearchCommand {
             return items != null ? items : List.of();
         } catch (CompletionException e) {
             // One kind failing must not hide the results of the other.
+            LOGGER.log(Level.WARNING, "Master search failed for one kind of result", e.getCause());
             return List.of();
         }
     }
 
     /**
      * The query map for a delegated command. Each kind gets half of the page, and at least {@value #MIN_KIND_LIMIT}
-     * items. The offset is scaled the same way, so the n-th master search page asks each kind for its n-th page.
+     * items. The master search has no paging, so the offset is passed through unchanged.
      */
     private Map<String, String> kindQueryMap() {
-        int kindLimit = Math.max(MIN_KIND_LIMIT, limit / 2);
-        int kindOffset = limit > 0 ? offset / limit * kindLimit : 0;
         Map<String, String> kindQueryMap = new HashMap<>();
         kindQueryMap.put("q", query);
-        kindQueryMap.put("limit", String.valueOf(kindLimit));
-        kindQueryMap.put("offset", String.valueOf(kindOffset));
+        kindQueryMap.put("limit", String.valueOf(Math.max(MIN_KIND_LIMIT, limit / 2)));
+        kindQueryMap.put("offset", String.valueOf(offset));
         return kindQueryMap;
     }
 }

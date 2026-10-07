@@ -297,8 +297,12 @@ public class CentralSearchUtil {
     /**
      * Searches functions from Ballerina Central scoped to a single organization. The organization and symbol type
      * filters are applied by Central, so {@code limit} and {@code offset} map directly to stable pages (no
-     * over-fetching or post-filtering). This suits paginated listing of an organization's functions. Returns null if
-     * the request fails or times out, allowing the caller to fall back to the local database.
+     * over-fetching). This suits paginated listing of an organization's functions. Returns null if the request fails
+     * or times out, allowing the caller to fall back to the local database.
+     *
+     * <p>Tool packages are dropped after Central has paged, so a page that loses rows to them is topped up from the
+     * rows after it. A short page would otherwise hide "Show more", which the panel only offers after a full page.
+     * The top-up rows come back again with the next page, and the panel drops them as duplicates.</p>
      *
      * @param query  the search query string (empty to list all functions of the organization)
      * @param limit  the desired number of results
@@ -313,32 +317,44 @@ public class CentralSearchUtil {
             return new ArrayList<>();
         }
         try {
-            Map<String, String> queryMap = new HashMap<>();
-            if (!query.isEmpty()) {
-                queryMap.put("q", query);
-            }
-            queryMap.put("org", org);
-            queryMap.put("symbolType", FUNCTION_SYMBOL_TYPE);
-            queryMap.put("limit", String.valueOf(limit));
-            queryMap.put("offset", String.valueOf(offset));
-            SymbolResponse symbolResponse = centralClient.searchSymbols(queryMap);
-
-            if (symbolResponse == null || symbolResponse.symbols() == null) {
-                return new ArrayList<>();
-            }
-
             List<SearchResult> results = new ArrayList<>();
-            for (SymbolResponse.Symbol symbol : symbolResponse.symbols()) {
-                if (symbol == null || symbol.symbolType() == null) {
-                    continue;
+            int fetchOffset = offset;
+            int fetchLimit = limit;
+            for (int iteration = 0; iteration < MAX_FETCH_ITERATIONS && fetchLimit > 0; iteration++) {
+                Map<String, String> queryMap = new HashMap<>();
+                if (!query.isEmpty()) {
+                    queryMap.put("q", query);
                 }
-                if (!FUNCTION_SYMBOL_TYPE.equals(symbol.symbolType())) {
-                    continue;
+                queryMap.put("org", org);
+                queryMap.put("symbolType", FUNCTION_SYMBOL_TYPE);
+                queryMap.put("limit", String.valueOf(fetchLimit));
+                queryMap.put("offset", String.valueOf(fetchOffset));
+                SymbolResponse symbolResponse = centralClient.searchSymbols(queryMap);
+
+                if (symbolResponse == null || symbolResponse.symbols() == null) {
+                    break;
                 }
-                if (isToolPackage(symbol)) {
-                    continue;
+
+                boolean droppedToolPackage = false;
+                for (SymbolResponse.Symbol symbol : symbolResponse.symbols()) {
+                    if (symbol == null || symbol.symbolType() == null) {
+                        continue;
+                    }
+                    if (!FUNCTION_SYMBOL_TYPE.equals(symbol.symbolType())) {
+                        continue;
+                    }
+                    if (isToolPackage(symbol)) {
+                        droppedToolPackage = true;
+                        continue;
+                    }
+                    results.add(toSearchResult(symbol, false));
                 }
-                results.add(toSearchResult(symbol, false));
+
+                if (!droppedToolPackage || symbolResponse.count() <= fetchOffset + fetchLimit) {
+                    break;
+                }
+                fetchOffset += fetchLimit;
+                fetchLimit = limit - results.size();
             }
             return results;
         } catch (RuntimeException e) {
