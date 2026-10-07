@@ -30,6 +30,7 @@ import { isWebSearchEnabled } from './tools/web-search-setting';
 import { shouldFailForMissingCompaction } from './compaction-gate';
 import {
     buildCompactionContinuation,
+    dropBeforeLatestCompaction,
     findCompactionSummary,
     isCompactionPause,
     MAX_COMPACTION_RESTARTS,
@@ -68,7 +69,6 @@ import {
     detectAppliedCompaction,
     estimateFloorTokens,
     COMPACTION_BLOCK_PREFIX,
-    SUMMARIZATION_PROMPT,
 } from '@wso2/copilot-utilities/context-management';
 import { sanitizeMessages } from './resilience';
 import { getLoginMethod } from '../../../utils/ai/auth';
@@ -123,15 +123,6 @@ function supportsCompaction(loginMethod: LoginMethod): boolean {
 }
 
 /**
- * Whether compaction pauses after its block so the turn restarts from its own summary
- * (see compaction-restart.ts). Verified live on the Anthropic API and through the WSO2 proxy;
- * Vertex AI and Claude Platform on AWS keep the block in history verbatim until verified.
- */
-function supportsCompactionPause(loginMethod: LoginMethod): boolean {
-    return loginMethod === LoginMethod.ANTHROPIC_KEY || loginMethod === LoginMethod.BI_INTEL;
-}
-
-/**
  * Server-side compaction trigger, in input tokens. Higher than MI's 200K because BI re-sends
  * the whole project source each turn; 500K sits well within Claude Sonnet's 1M window.
  */
@@ -146,9 +137,8 @@ function buildCompactionProviderOptions(loginMethod: LoginMethod, floorTokens: n
     // Disable when the fixed per-turn floor (system prompt + whole-codebase dump) already
     // exceeds the trigger — compaction would otherwise fire every turn against empty history.
     if (floorTokens >= COMPACT_TRIGGER_TOKENS) { return undefined; }
-    // Only a pausing provider restarts the turn with its context rebuilt, so only there may the
-    // summary leave that context out. The field is omitted elsewhere rather than sent as false.
-    const pause = supportsCompactionPause(loginMethod);
+    // Compaction pauses after its block so the turn restarts from its own summary with the turn's
+    // context rebuilt (see compaction-restart.ts); that is why the summary may leave the context out.
     return {
         anthropic: {
             contextManagement: {
@@ -156,8 +146,8 @@ function buildCompactionProviderOptions(loginMethod: LoginMethod, floorTokens: n
                     {
                         type: 'compact_20260112' as const,
                         trigger: { type: 'input_tokens' as const, value: COMPACT_TRIGGER_TOKENS },
-                        ...(pause ? { pauseAfterCompaction: true } : {}),
-                        instructions: pause ? COMPACT_SYSTEM_REMINDER_AUTO_TRIGGERED : SUMMARIZATION_PROMPT,
+                        pauseAfterCompaction: true,
+                        instructions: COMPACT_SYSTEM_REMINDER_AUTO_TRIGGERED,
                     },
                 ],
             },
@@ -613,10 +603,13 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         // Applies incremental cache control to the last message so Anthropic caches the
                         // growing conversation history on each step.
                         prepareStep: async ({ messages: stepMessages }) => {
+                            // A chat saved before compaction paused can hold a compaction block; what comes
+                            // before it is ignored by the API, so it is not sent.
+                            const sentMessages = dropBeforeLatestCompaction(stepMessages);
                             // Anthropic requires tool_use.input to be an object; an unparseable or schema-invalid
                             // streamed input is left as a non-object on the tool-call part and 400s every later request.
-                            sanitizeMessages(stepMessages);
-                            return { messages: addCacheControlToMessages({ messages: stepMessages, model, providerOptions: historyCacheOptions as any }) };
+                            sanitizeMessages(sentMessages);
+                            return { messages: addCacheControlToMessages({ messages: sentMessages, model, providerOptions: historyCacheOptions as any }) };
                         },
 
                         // Emit per-step token usage for context usage widget + observability
@@ -681,7 +674,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                                         cacheReadInputTokens: cacheReadTokens,
                                         outputTokens,
                                     },
-                                    breakdown: computeTokenBreakdown([systemMessage, ...allMessages], tools, accToolCallChars, accToolResultChars, inputTokens, (streamContext.userMessageContent[0] as any)?.text?.length ?? 0),
+                                    breakdown: computeTokenBreakdown([systemMessage, ...dropBeforeLatestCompaction(allMessages)], tools, accToolCallChars, accToolResultChars, inputTokens, (streamContext.userMessageContent[0] as any)?.text?.length ?? 0),
                                 });
                             }
                         },
