@@ -359,6 +359,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     // list) is up: once the toolkit variable is created, it is registered on this agent.
     const pendingDurableMcpAgentRef = useRef<{ agentVar: string | null; insertBefore: any } | null>(null);
     const initialCategoriesRef = useRef<any[]>([]);
+    // Bumped by every master search request and whenever the search is cleared. Master search waits on Ballerina
+    // Central, so responses can arrive out of order; only the response for the latest request is rendered.
+    const masterSearchSeqRef = useRef<number>(0);
     const instanceListCategoriesRef = useRef<Partial<Record<SearchKind, PanelCategory[]>>>({});
     const showEditForm = useRef<boolean>(false);
     // True while the call form open is step 3 of the create-activity-from-connection wizard.
@@ -1501,6 +1504,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
 
     const handleSearch = useCallback(async (searchText: string, functionType: FUNCTION_TYPE, searchKind: SearchKind) => {
         const searchEpoch = panelNavEpochRef.current;
+        const masterSearchSeq = searchKind === "ALL" ? ++masterSearchSeqRef.current : undefined;
+        const isStaleMasterSearch = () =>
+            masterSearchSeq !== undefined && masterSearchSeq !== masterSearchSeqRef.current;
         // An unfiltered activity list is owned by the post-creation refresh while it runs.
         const yieldsToActivityRefresh = searchKind === "ACTIVITY_CALL" && !searchText.trim();
         if (yieldsToActivityRefresh && activityRefreshOwnsPanelRef.current) {
@@ -1543,23 +1549,37 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
 
             if (response.categories) {
 
-                if (searchKind === "ALL") {                // Convert search API results
+                if (searchKind === "ALL") {
+                    if (isStaleMasterSearch() || panelNavEpochRef.current !== searchEpoch) {
+                        // A newer search was started or cleared, or the user has left the panel.
+                        return;
+                    }
                     const searchCategories = convertFunctionCategoriesToSidePanelCategories(
                         response.categories as Category[],
                         functionType
-                    );
+                    ).filter((category) => category.items?.length > 0);
 
-                    // Combine initial getAvailableNodes results with search API results
-                    const allCategories = [...initialCategoriesRef.current, ...searchCategories];
+                    // Only the static panel nodes are filtered by label here. The language server has already
+                    // matched the search results on name, description and package, the same way the function and
+                    // connection searches do, so filtering them again by label would drop valid results.
+                    const filteredCategories = [
+                        ...filterCategoriesLocally(initialCategoriesRef.current, searchText),
+                        ...searchCategories,
+                    ];
 
-                    // Filter both initial and search results with the same query
-                    const filteredCategories = filterCategoriesLocally(allCategories, searchText);
-
-                    // Start fresh with filtered combined results
                     const currentCategories: PanelCategory[] = [];
 
-                    const getItemKey = (item: any) =>
-                        "id" in item ? `node:${item.id}` : `category:${item.title}`;
+                    // A node's id is its node kind, which every function or connector shares, so nodes are told
+                    // apart by their codedata.
+                    const getItemKey = (item: any) => {
+                        if (!("id" in item)) {
+                            return `category:${item.title}`;
+                        }
+                        const codedata = item.metadata?.codedata;
+                        return codedata
+                            ? `node:${item.id}:${codedata.org}:${codedata.module}:${codedata.object}:${codedata.symbol}`
+                            : `node:${item.id}:${item.label}`;
+                    };
 
                     filteredCategories.forEach(category => {
                         const existingCategoryIndex = currentCategories.findIndex(
@@ -1656,11 +1676,16 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             }
         } catch (error) {
             console.error(">>> Error in search request", error);
+            if (isStaleMasterSearch()) {
+                return;
+            }
             // Fallback to cached categories on error
             setShowProgressIndicator(false);
             setCategories(initialCategoriesRef.current);
         } finally {
-            setShowProgressIndicator(false);
+            if (!isStaleMasterSearch()) {
+                setShowProgressIndicator(false);
+            }
         }
     }, [rpcClient, model?.fileName]);
 
@@ -1820,6 +1845,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         } else {
             // Reset immediately when search is cleared
             debouncedSearch.cancel(); // Cancel any pending search
+            masterSearchSeqRef.current++; // Drop any in-flight master search response
             setCategories(initialCategoriesRef.current);
             setSidePanelView(SidePanelView.NODE_LIST);
             setShowProgressIndicator(false);

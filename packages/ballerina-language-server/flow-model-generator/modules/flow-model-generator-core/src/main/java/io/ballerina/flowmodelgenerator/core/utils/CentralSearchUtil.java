@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -48,9 +49,22 @@ public class CentralSearchUtil {
     private static final String FUNCTION_SYMBOL_TYPE = "function";
 
     private final CentralAPI centralClient;
+    private final BiPredicate<String, String> toolPackageCheck;
 
     public CentralSearchUtil(CentralAPI centralClient) {
+        this(centralClient, SearchResultFilter::isToolPackage);
+    }
+
+    /**
+     * Creates a Central search with the given tool package check. Every search drops the packages it accepts, since
+     * Central does not mark a bal tool package in its search responses.
+     *
+     * @param centralClient the Central client to query with
+     * @param toolPackageCheck checks whether an organization and package name identify a bal tool package
+     */
+    public CentralSearchUtil(CentralAPI centralClient, BiPredicate<String, String> toolPackageCheck) {
         this.centralClient = centralClient;
+        this.toolPackageCheck = toolPackageCheck;
     }
 
     /**
@@ -96,6 +110,9 @@ public class CentralSearchUtil {
                         continue;
                     }
                     if (!allowedOrgs.contains(connector.packageInfo.getOrganization())) {
+                        continue;
+                    }
+                    if (isToolPackage(connector)) {
                         continue;
                     }
                     if (isBlacklisted(connector.name, blacklistedNamePatterns)) {
@@ -178,6 +195,9 @@ public class CentralSearchUtil {
                 if (connector == null || connector.packageInfo == null || connector.name == null) {
                     continue;
                 }
+                if (isToolPackage(connector)) {
+                    continue;
+                }
                 if (isBlacklisted(connector.name, blacklistedNamePatterns)) {
                     continue;
                 }
@@ -248,6 +268,9 @@ public class CentralSearchUtil {
                     if (!allowedOrgs.contains(symbol.organization())) {
                         continue;
                     }
+                    if (isToolPackage(symbol)) {
+                        continue;
+                    }
                     if (skipped < offset) {
                         skipped++;
                         continue;
@@ -310,6 +333,9 @@ public class CentralSearchUtil {
                     continue;
                 }
                 if (!FUNCTION_SYMBOL_TYPE.equals(symbol.symbolType())) {
+                    continue;
+                }
+                if (isToolPackage(symbol)) {
                     continue;
                 }
                 results.add(toSearchResult(symbol, false));
@@ -401,7 +427,7 @@ public class CentralSearchUtil {
                     if (symbol == null || symbol.symbolType() == null) {
                         continue;
                     }
-                    if (symbolTypeFilter.test(symbol.symbolType())) {
+                    if (symbolTypeFilter.test(symbol.symbolType()) && !isToolPackage(symbol)) {
                         if (skipped < offset) {
                             skipped++;
                             continue;
@@ -463,6 +489,14 @@ public class CentralSearchUtil {
     private static String moduleNameOf(SymbolResponse.Symbol symbol) {
         String moduleName = symbol.moduleName();
         return moduleName == null || moduleName.isEmpty() ? symbol.name() : moduleName;
+    }
+
+    private boolean isToolPackage(Connector connector) {
+        return toolPackageCheck.test(connector.packageInfo.getOrganization(), connector.packageInfo.getName());
+    }
+
+    private boolean isToolPackage(SymbolResponse.Symbol symbol) {
+        return toolPackageCheck.test(symbol.organization(), symbol.name());
     }
 
     private static boolean isBlacklisted(String connectorName, Set<String> patterns) {

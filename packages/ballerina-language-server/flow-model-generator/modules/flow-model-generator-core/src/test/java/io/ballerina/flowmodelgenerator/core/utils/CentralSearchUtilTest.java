@@ -32,6 +32,7 @@ import io.ballerina.modelgenerator.commons.ModuleCoordinate;
 import io.ballerina.modelgenerator.commons.SearchResult;
 import io.ballerina.projects.ModuleName;
 import io.ballerina.projects.PackageName;
+import org.ballerinalang.diagramutil.connector.models.connector.Connector;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -44,15 +45,65 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiPredicate;
 
 /**
- * Tests for {@link CentralSearchUtil#searchFunctions(String, int, int, Set)}.
+ * Tests for {@link CentralSearchUtil}.
  *
  * @since 1.7.0
  */
 public class CentralSearchUtilTest {
 
     private static final Set<String> ALLOWED_ORGS = Set.of("ballerina", "ballerinax", "wso2");
+    private static final BiPredicate<String, String> EDI_TOOL =
+            (org, pkg) -> "ballerina".equals(org) && "editoolspackage".equals(pkg);
+
+    @Test(description = "A function search drops tool packages before paging, so offsets stay stable.")
+    public void testSearchFunctionsDropsToolPackages() {
+        RecordingCentralApi central = new RecordingCentralApi(symbolResponse(
+                function("ballerina", "editoolspackage", "2.3.0", "fromEdiString", "Tool"),
+                function("ballerina", "edi", "1.4.0", "fromEdiString", "first"),
+                function("ballerinax", "edifact.d03a.finance", "0.9.0", "fromEdiString", "second")));
+        CentralSearchUtil centralSearch = new CentralSearchUtil(central, EDI_TOOL);
+
+        List<SearchResult> firstPage = centralSearch.searchFunctions("fromEdiString", 1, 0, ALLOWED_ORGS);
+        List<SearchResult> secondPage = centralSearch.searchFunctions("fromEdiString", 1, 1, ALLOWED_ORGS);
+
+        Assert.assertEquals(firstPage.size(), 1);
+        Assert.assertEquals(firstPage.getFirst().packageInfo().packageName(), "edi");
+        Assert.assertEquals(secondPage.size(), 1);
+        Assert.assertEquals(secondPage.getFirst().packageInfo().packageName(), "edifact.d03a.finance");
+    }
+
+    @Test(description = "A single-org function listing drops tool packages.")
+    public void testSearchFunctionsByOrgDropsToolPackages() {
+        RecordingCentralApi central = new RecordingCentralApi(symbolResponse(
+                function("ballerina", "editoolspackage", "2.3.0", "fromEdiString", "Tool"),
+                function("ballerina", "edi", "1.4.0", "fromEdiString", "Library")));
+
+        List<SearchResult> results = new CentralSearchUtil(central, EDI_TOOL)
+                .searchFunctionsByOrg("edi", 10, 0, "ballerina");
+
+        Assert.assertEquals(results.size(), 1);
+        Assert.assertEquals(results.getFirst().packageInfo().packageName(), "edi");
+    }
+
+    @Test(description = "A connector search drops tool packages before paging.")
+    public void testSearchConnectorsDropsToolPackages() {
+        RecordingCentralApi central = new RecordingCentralApi(null);
+        central.connectorsResponse = connectorsResponse(
+                connector("ballerina", "editoolspackage", "Client"),
+                connector("ballerinax", "azure_storage_service", "FileClient"),
+                connector("ballerinax", "azure.storage.files", "Client"));
+        CentralSearchUtil centralSearch = new CentralSearchUtil(central, EDI_TOOL);
+
+        List<SearchResult> results = centralSearch.searchConnectors("azure", 10, 0, ALLOWED_ORGS, Set.of());
+        List<SearchResult> secondPage = centralSearch.searchConnectors("azure", 1, 1, ALLOWED_ORGS, Set.of());
+
+        Assert.assertEquals(results.stream().map(result -> result.packageInfo().packageName()).toList(),
+                List.of("azure_storage_service", "azure.storage.files"));
+        Assert.assertEquals(secondPage.getFirst().packageInfo().packageName(), "azure.storage.files");
+    }
 
     @Test(description = "Functions from allowed organizations are surfaced with their package coordinates.")
     public void testAllowedFunctionsSurfaced() {
@@ -461,6 +512,15 @@ public class CentralSearchUtilTest {
                 symbolName, description, "signature", false, false, false, false, false, false);
     }
 
+    private static Connector connector(String org, String pkg, String name) {
+        return new Connector(org, pkg, pkg, "1.0.0", name, "", Map.of());
+    }
+
+    private static ConnectorsResponse connectorsResponse(Connector... connectors) {
+        List<Connector> list = List.of(connectors);
+        return new ConnectorsResponse(list, list.size(), 0, list.size());
+    }
+
     private static SymbolResponse symbolResponse(SymbolResponse.Symbol... symbols) {
         List<SymbolResponse.Symbol> list = List.of(symbols);
         return new SymbolResponse(list, list.size(), 0, list.size());
@@ -472,6 +532,7 @@ public class CentralSearchUtilTest {
     private static final class RecordingCentralApi implements CentralAPI {
 
         private final SymbolResponse response;
+        private ConnectorsResponse connectorsResponse;
         private Map<String, String> lastQueryMap;
         private int callCount;
         private boolean failOnSearch;
@@ -512,7 +573,12 @@ public class CentralSearchUtilTest {
 
         @Override
         public ConnectorsResponse connectors(Map<String, String> queryMap) {
-            throw new UnsupportedOperationException();
+            if (connectorsResponse == null) {
+                throw new UnsupportedOperationException();
+            }
+            this.lastQueryMap = queryMap;
+            this.callCount++;
+            return connectorsResponse;
         }
 
         @Override
