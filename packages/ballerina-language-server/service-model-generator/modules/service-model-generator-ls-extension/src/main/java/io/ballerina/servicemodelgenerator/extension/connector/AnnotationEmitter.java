@@ -20,12 +20,14 @@ package io.ballerina.servicemodelgenerator.extension.connector;
 
 import io.ballerina.modelgenerator.commons.ModuleAliasResolver;
 import io.ballerina.modelgenerator.commons.trigger.models.TriggerUISchemaModel;
+import io.ballerina.servicemodelgenerator.extension.model.Value;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static io.ballerina.modelgenerator.commons.CommonUtils.STRING_TEMPLATE_PATTERN;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ANNOTATION_ATTACHMENT;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_COMPLEX_FUNCTION_ANNOTATION;
 import static io.ballerina.servicemodelgenerator.extension.util.Constants.CD_TYPE_ENUM_LITERAL;
@@ -201,27 +203,38 @@ public final class AnnotationEmitter {
     }
 
     /**
-     * Renders a leaf value by its declared type: a {@code string}-typed leaf emits a quoted literal
-     * (idempotently — a value normalized upstream, e.g. a {@code string `x`} template collapsed to
-     * {@code "x"} by the wire model, must not be double-quoted); everything else renders raw.
+     * Renders a leaf value. A string-typed leaf is quoted unless it is already quoted or is an expression
+     * (a {@code string `...`} template or a selected {@code EXPRESSION} value); other leaves render raw.
      */
     private static String renderLeaf(TriggerUISchemaModel.Property node) {
         String raw = node.value() == null ? "" : String.valueOf(node.value());
-        if (!isStringTyped(node)) {
+        if (!isStringTyped(node) || isExpressionForm(node, raw)) {
             return raw;
         }
         return raw.length() >= 2 && raw.startsWith("\"") && raw.endsWith("\"") ? raw : "\"" + raw + "\"";
     }
 
+    private static boolean isExpressionForm(TriggerUISchemaModel.Property node, String raw) {
+        TriggerUISchemaModel.PropertyType selected = selectedType(node);
+        if (selected != null && Value.FieldType.EXPRESSION.name().equals(selected.fieldType())) {
+            return true;
+        }
+        return STRING_TEMPLATE_PATTERN.matcher(raw.trim()).matches();
+    }
+
     /** Whether the node's selected (or sole) declared type is a plain {@code string}. */
     private static boolean isStringTyped(TriggerUISchemaModel.Property node) {
+        TriggerUISchemaModel.PropertyType selected = selectedType(node);
+        return selected != null && STRING_TYPE.equals(selected.ballerinaType());
+    }
+
+    private static TriggerUISchemaModel.PropertyType selectedType(TriggerUISchemaModel.Property node) {
         if (node.types() == null || node.types().isEmpty()) {
-            return false;
+            return null;
         }
-        TriggerUISchemaModel.PropertyType selected = node.types().stream()
+        return node.types().stream()
                 .filter(type -> Boolean.TRUE.equals(type.selected()))
                 .findFirst()
                 .orElse(node.types().getFirst());
-        return STRING_TYPE.equals(selected.ballerinaType());
     }
 }
