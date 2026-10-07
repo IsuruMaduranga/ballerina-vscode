@@ -30,7 +30,7 @@ jest.mock("../stateMachine", () => ({
     openView: jest.fn(),
 }));
 
-import { isWorkflowFunction } from "../utils/state-machine-utils";
+import { isWorkflowFunction, workflowModulePrefixes } from "../utils/state-machine-utils";
 
 // A function's syntax tree carries its annotations under metadata, each with an annotReference
 // whose identifier is the annotation name and whose modulePrefix is the import alias, if any.
@@ -45,28 +45,68 @@ const annotated = (...annotations: Array<{ prefix?: string; name: string }>) => 
     },
 });
 
+// The prefixes ballerina/workflow is imported under, as workflowModulePrefixes reads them from the file.
+const WORKFLOW = new Set(["workflow"]);
+
 describe("isWorkflowFunction", () => {
-    it("recognises a module-qualified Workflow annotation", () => {
-        expect(isWorkflowFunction(annotated({ prefix: "workflow", name: "Workflow" }))).toBe(true);
-        expect(isWorkflowFunction(annotated({ prefix: "wf", name: "Workflow" }))).toBe(true);
+    it("recognises a Workflow annotation under the workflow module's prefix", () => {
+        expect(isWorkflowFunction(annotated({ prefix: "workflow", name: "Workflow" }), WORKFLOW)).toBe(true);
+        expect(isWorkflowFunction(annotated({ prefix: "wf", name: "Workflow" }), new Set(["wf"]))).toBe(true);
     });
 
     it("finds it among other annotations", () => {
-        expect(isWorkflowFunction(annotated({ name: "display" }, { prefix: "workflow", name: "Workflow" }))).toBe(true);
+        expect(isWorkflowFunction(annotated({ name: "display" }, { prefix: "workflow", name: "Workflow" }), WORKFLOW))
+            .toBe(true);
+    });
+
+    it("does not count a Workflow annotation from another module", () => {
+        expect(isWorkflowFunction(annotated({ prefix: "acme", name: "Workflow" }), WORKFLOW)).toBe(false);
+        expect(isWorkflowFunction(annotated({ prefix: "workflow", name: "Workflow" }), new Set())).toBe(false);
     });
 
     it("does not count a bare Workflow annotation from the current module", () => {
-        expect(isWorkflowFunction(annotated({ name: "Workflow" }))).toBe(false);
+        expect(isWorkflowFunction(annotated({ name: "Workflow" }), WORKFLOW)).toBe(false);
     });
 
     it("does not count other annotations from the workflow module", () => {
-        expect(isWorkflowFunction(annotated({ prefix: "workflow", name: "Activity" }))).toBe(false);
+        expect(isWorkflowFunction(annotated({ prefix: "workflow", name: "Activity" }), WORKFLOW)).toBe(false);
     });
 
     it("is false without annotations or metadata", () => {
-        expect(isWorkflowFunction(annotated())).toBe(false);
-        expect(isWorkflowFunction({ metadata: {} })).toBe(false);
-        expect(isWorkflowFunction({})).toBe(false);
-        expect(isWorkflowFunction(undefined)).toBe(false);
+        expect(isWorkflowFunction(annotated(), WORKFLOW)).toBe(false);
+        expect(isWorkflowFunction({ metadata: {} }, WORKFLOW)).toBe(false);
+        expect(isWorkflowFunction({}, WORKFLOW)).toBe(false);
+        expect(isWorkflowFunction(undefined, WORKFLOW)).toBe(false);
+    });
+});
+
+// An import declaration as the syntax tree has it: org, module name parts (dots included) and an optional alias.
+const importOf = (org: string, module: string[], alias?: string) => ({
+    orgName: { orgName: { value: org } },
+    moduleName: module.flatMap((part, i) => (i === 0 ? [{ value: part }] : [{ value: "." }, { value: part }])),
+    ...(alias !== undefined ? { prefix: { prefix: { value: alias } } } : {}),
+});
+
+describe("workflowModulePrefixes", () => {
+    it("reads the workflow module's alias, or its own name without one", () => {
+        expect(workflowModulePrefixes({ imports: [importOf("ballerina", ["workflow"])] }))
+            .toEqual(new Set(["workflow"]));
+        expect(workflowModulePrefixes({ imports: [importOf("ballerina", ["workflow"], "wf")] }))
+            .toEqual(new Set(["wf"]));
+    });
+
+    it("ignores other modules, including ones named workflow elsewhere", () => {
+        expect(workflowModulePrefixes({
+            imports: [
+                importOf("acme", ["workflow"]),
+                importOf("ballerina", ["workflow", "internal"]),
+                importOf("ballerina", ["http"]),
+            ],
+        })).toEqual(new Set());
+    });
+
+    it("is empty without imports", () => {
+        expect(workflowModulePrefixes({})).toEqual(new Set());
+        expect(workflowModulePrefixes(undefined)).toEqual(new Set());
     });
 });

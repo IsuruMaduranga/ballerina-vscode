@@ -386,7 +386,7 @@ async function getViewBySTRange(documentUri: string, position: NodePosition, pro
                         // Opened from a position rather than an artifact: a workflow function is
                         // told apart by its annotation.
                         enableSequenceDiagram: extension.ballerinaExtInstance.enableSequenceDiagramView()
-                            && !isWorkflowFunction(node.syntaxTree),
+                            && !await isWorkflowFunctionIn(documentUri, node.syntaxTree),
                     }
                 },
                 dataMapperDepth: 0
@@ -759,10 +759,36 @@ function getSTByRangeReq(documentUri: string, position: NodePosition) {
  * Whether a function definition carries `@workflow:Workflow`. The sequence diagram generator
  * knows nothing of the workflow model, so such a function must not offer the toggle.
  */
-export function isWorkflowFunction(syntaxTree: any): boolean {
+export function isWorkflowFunction(syntaxTree: any, workflowPrefixes: ReadonlySet<string>): boolean {
     const annotations: any[] = syntaxTree?.metadata?.annotations ?? [];
     return annotations.some((annotation) => {
         const reference = annotation?.annotReference;
-        return reference?.identifier?.value === "Workflow" && reference?.modulePrefix?.value !== undefined;
+        return reference?.identifier?.value === "Workflow" && workflowPrefixes.has(reference?.modulePrefix?.value);
     });
+}
+
+// The prefixes ballerina/workflow is imported under in a module part: its alias, else `workflow`.
+export function workflowModulePrefixes(modulePart: any): Set<string> {
+    const prefixes = new Set<string>();
+    for (const declaration of modulePart?.imports ?? []) {
+        const moduleName = (declaration?.moduleName ?? []).map((part: any) => part?.value ?? "").join("");
+        if (declaration?.orgName?.orgName?.value === "ballerina" && moduleName === "workflow") {
+            prefixes.add(declaration?.prefix?.prefix?.value ?? "workflow");
+        }
+    }
+    return prefixes;
+}
+
+// Reads the file's imports only when the function carries a qualified Workflow annotation at all.
+async function isWorkflowFunctionIn(documentUri: string, syntaxTree: any): Promise<boolean> {
+    const annotations: any[] = syntaxTree?.metadata?.annotations ?? [];
+    const qualified = annotations.some((annotation) => annotation?.annotReference?.identifier?.value === "Workflow"
+        && annotation?.annotReference?.modulePrefix);
+    if (!qualified) {
+        return false;
+    }
+    const file = await StateMachine.langClient()
+        .getSyntaxTree({ documentIdentifier: { uri: Uri.file(documentUri).toString() } })
+        .catch(() => undefined) as any;
+    return isWorkflowFunction(syntaxTree, workflowModulePrefixes(file?.syntaxTree));
 }
