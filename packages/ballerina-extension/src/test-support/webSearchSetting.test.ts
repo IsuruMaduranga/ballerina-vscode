@@ -20,20 +20,19 @@ import * as vscode from "vscode";
 
 import { isWebSearchEnabled } from "../features/ai/agent/tools/web-search-setting";
 
-const ws = vscode.workspace as any;
-const originalGetConfiguration = ws.getConfiguration;
-
 /** Stubs the `ballerina` section so `get` returns the given effective value, or the caller's default. */
 function stubSetting(effective: boolean | undefined) {
-    ws.getConfiguration = () => ({
+    const config = {
         get: (_key: string, defaultValue?: boolean) => effective ?? defaultValue,
+        has: () => effective !== undefined,
         inspect: () => undefined,
         update: () => Promise.resolve(),
-    });
+    } as vscode.WorkspaceConfiguration;
+    jest.spyOn(vscode.workspace, "getConfiguration").mockReturnValue(config);
 }
 
 afterEach(() => {
-    ws.getConfiguration = originalGetConfiguration;
+    jest.restoreAllMocks();
 });
 
 // Writes go through the settings panel's generic Copilot toggle (setCopilotToggleSetting), which
