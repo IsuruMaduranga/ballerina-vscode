@@ -39,7 +39,7 @@ public final class SearchResultFilter {
 
     // A bal tool package carries a CLI command rather than an importable API. The index generators skip them, but
     // Central does not mark them in its search responses, so the generator also records them in this resource.
-    private static final String TOOL_PACKAGES_JSON = "tool_packages.json";
+    public static final String TOOL_PACKAGES_JSON = "tool_packages.json";
     private static final Type TOOL_PACKAGES_TYPE = new TypeToken<Set<String>>() { }.getType();
     private static final Set<String> TOOL_PACKAGES = loadToolPackages();
 
@@ -87,7 +87,18 @@ public final class SearchResultFilter {
      * @return true if the connector is not to be surfaced
      */
     public static boolean isBlacklistedConnector(String connectorName) {
-        return connectorName != null && BLACKLISTED_CONNECTOR_NAME_PATTERNS.stream().anyMatch(connectorName::contains);
+        return isBlacklistedConnector(connectorName, BLACKLISTED_CONNECTOR_NAME_PATTERNS);
+    }
+
+    /**
+     * Checks whether a connector name matches any of the given name patterns.
+     *
+     * @param connectorName the connector name
+     * @param patterns      the name patterns to match against
+     * @return true if the connector is not to be surfaced
+     */
+    public static boolean isBlacklistedConnector(String connectorName, Set<String> patterns) {
+        return connectorName != null && patterns.stream().anyMatch(connectorName::contains);
     }
 
     /**

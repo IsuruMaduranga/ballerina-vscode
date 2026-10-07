@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { filterCategoriesLocally } from "./utils";
+import { filterCategoriesLocally, getPanelItemKey, mergeCategoriesByTitle } from "./utils";
 
 describe("filterCategoriesLocally", () => {
     const categories: any[] = [
@@ -81,5 +81,59 @@ describe("filterCategoriesLocally", () => {
         const before = JSON.parse(JSON.stringify(categories));
         filterCategoriesLocally(categories, "gpt-35-instance-1");
         expect(categories).toEqual(before);
+    });
+});
+
+describe("mergeCategoriesByTitle", () => {
+    const functionNode = (symbol: string, module = "lang.array"): any => ({
+        id: "FUNCTION_CALL",
+        label: symbol,
+        description: "",
+        metadata: { codedata: { org: "ballerina", module, symbol } },
+    });
+    const category = (title: string, items: any[]): any => ({ title, description: "", items });
+
+    it("keeps distinct functions that share a node kind", () => {
+        const result = mergeCategoriesByTitle([
+            category("Standard Library", [functionNode("push")]),
+            category("Standard Library", [functionNode("pop")]),
+        ]);
+        expect(result).toHaveLength(1);
+        expect(result[0].items.map((item: any) => item.label)).toEqual(["push", "pop"]);
+    });
+
+    it("drops an item already present under the same title", () => {
+        const result = mergeCategoriesByTitle([
+            category("Standard Library", [functionNode("push")]),
+            category("Standard Library", [functionNode("push"), functionNode("pop")]),
+        ]);
+        expect(result[0].items.map((item: any) => item.label)).toEqual(["push", "pop"]);
+    });
+
+    it("keeps same-named functions from different modules", () => {
+        const result = mergeCategoriesByTitle([
+            category("Extended Library", [functionNode("parse", "edifact.d03a.finance")]),
+            category("Extended Library", [functionNode("parse", "edifact.d03a.supplychain")]),
+        ]);
+        expect(result[0].items).toHaveLength(2);
+    });
+
+    it("keeps categories in first-seen order", () => {
+        const result = mergeCategoriesByTitle([
+            category("Control", []),
+            category("Connectors", []),
+            category("Control", []),
+        ]);
+        expect(result.map((c) => c.title)).toEqual(["Control", "Connectors"]);
+    });
+});
+
+describe("getPanelItemKey", () => {
+    it("keys a subcategory by its title", () => {
+        expect(getPanelItemKey({ title: "Azure", description: "", items: [] } as any)).toBe("category:Azure");
+    });
+
+    it("keys a node without codedata by its kind and label", () => {
+        expect(getPanelItemKey({ id: "IF", label: "If", description: "" } as any)).toBe("node:IF:If");
     });
 });

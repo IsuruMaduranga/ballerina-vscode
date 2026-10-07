@@ -75,7 +75,13 @@ import { NodePosition, STNode } from "@wso2/syntax-tree";
 import { View, ProgressIndicator, ThemeColors } from "@wso2/ui-toolkit";
 import { applyModifications, textToModifications } from "../../../utils/utils";
 import { PanelManager, SidePanelView } from "./PanelManager";
-import { transformCategories, getNodeTemplateForConnection, findFunctionByName, filterCategoriesLocally } from "./utils";
+import {
+    transformCategories,
+    getNodeTemplateForConnection,
+    findFunctionByName,
+    filterCategoriesLocally,
+    mergeCategoriesByTitle,
+} from "./utils";
 import { PanelOverlayProvider } from "./context/PanelOverlayContext";
 import { PanelOverlayRenderer } from "./PanelOverlayRenderer";
 import { ExpressionFormField, Category as PanelCategory, S } from "@wso2/ballerina-side-panel";
@@ -1567,40 +1573,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                         ...searchCategories,
                     ];
 
-                    const currentCategories: PanelCategory[] = [];
-
-                    // A node's id is its node kind, which every function or connector shares, so nodes are told
-                    // apart by their codedata.
-                    const getItemKey = (item: any) => {
-                        if (!("id" in item)) {
-                            return `category:${item.title}`;
-                        }
-                        const codedata = item.metadata?.codedata;
-                        return codedata
-                            ? `node:${item.id}:${codedata.org}:${codedata.module}:${codedata.object}:${codedata.symbol}`
-                            : `node:${item.id}:${item.label}`;
-                    };
-
-                    filteredCategories.forEach(category => {
-                        const existingCategoryIndex = currentCategories.findIndex(
-                            existingCategory => existingCategory.title === category.title
-                        );
-
-                        if (existingCategoryIndex >= 0) {
-                            // Merge items if category exists, avoiding duplicate items
-                            const existingCategory = currentCategories[existingCategoryIndex];
-                            const existingItemKeys = new Set(existingCategory.items.map(getItemKey));
-                            const newItems = category.items.filter((item: any) => !existingItemKeys.has(getItemKey(item)));
-                            currentCategories[existingCategoryIndex] = {
-                                ...existingCategory,
-                                items: [...existingCategory.items, ...newItems]
-                            };
-                        } else {
-                            // Add new category
-                            currentCategories.push(category);
-                        }
-                    });
-                    setCategories(currentCategories);
+                    setCategories(mergeCategoriesByTitle(filteredCategories));
                 } else {
                     const currentCategories = convertFunctionCategoriesToSidePanelCategories(
                         [...response.categories] as Category[],

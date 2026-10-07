@@ -29,6 +29,7 @@ import io.ballerina.compiler.api.symbols.Qualifiable;
 import io.ballerina.compiler.api.symbols.Qualifier;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.TypeDefinitionSymbol;
+import io.ballerina.flowmodelgenerator.core.utils.SearchResultFilter;
 import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.projects.Module;
@@ -71,7 +72,7 @@ public class SearchIndexGenerator {
     private static final String CONNECTOR_EXCLUDE_JSON = "connector_exclude.json";
     private static final Path TOOL_PACKAGES_PATH =
             Path.of("flow-model-generator/modules/flow-model-generator-ls-extension/src/main/resources")
-                    .resolve("tool_packages.json");
+                    .resolve(SearchResultFilter.TOOL_PACKAGES_JSON);
     private static final java.lang.reflect.Type TOOL_PACKAGES_TYPE = new TypeToken<Set<String>>() { }.getType();
     // The tool packages skipped by this run, as "org/name". Ballerina Central does not mark a tool package in its
     // search responses, so the language server filters its Central results against this list.

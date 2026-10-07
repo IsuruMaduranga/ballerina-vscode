@@ -49,6 +49,13 @@ public class AllKindsSearchCommand extends SearchCommand {
 
     private static final String CONNECTORS_CATEGORY = "Connectors";
     private static final int MIN_KIND_LIMIT = 10;
+    // Shared by every master search, which runs on each debounced keystroke. Idle threads are reused, and a search is
+    // never queued behind a slower earlier one still waiting on Central.
+    private static final ExecutorService SEARCH_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "master-search");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private final Document functionsDoc;
 
@@ -82,31 +89,17 @@ public class AllKindsSearchCommand extends SearchCommand {
         SearchCommand functionSearch = new FunctionSearchCommand(project, position, kindQueryMap(), functionsDoc);
         SearchCommand connectorSearch = new ConnectorSearchCommand(project, position, kindQueryMap());
 
-        ExecutorService executorService = Executors.newFixedThreadPool(2);
-        try {
-            CompletableFuture<List<Item>> functionItems =
-                    CompletableFuture.supplyAsync(() -> run(functionSearch), executorService);
-            CompletableFuture<List<Item>> connectorItems =
-                    CompletableFuture.supplyAsync(() -> run(connectorSearch), executorService);
+        CompletableFuture<List<Item>> functionItems =
+                CompletableFuture.supplyAsync(functionSearch::items, SEARCH_EXECUTOR);
+        CompletableFuture<List<Item>> connectorItems =
+                CompletableFuture.supplyAsync(connectorSearch::items, SEARCH_EXECUTOR);
 
-            List<Item> functions = join(functionItems);
-            List<Item> connectors = join(connectorItems);
-
-            List<Item> allItems = new ArrayList<>(functions);
-            if (!connectors.isEmpty()) {
-                allItems.add(rootBuilder.stepIn(CONNECTORS_CATEGORY, null, null).items(connectors).build());
-            }
-            return allItems;
-        } finally {
-            executorService.shutdown();
+        List<Item> allItems = new ArrayList<>(join(functionItems));
+        List<Item> connectors = join(connectorItems);
+        if (!connectors.isEmpty()) {
+            allItems.add(rootBuilder.stepIn(CONNECTORS_CATEGORY, null, null).items(connectors).build());
         }
-    }
-
-    /**
-     * Runs a delegated command the same way {@link SearchCommand#execute()} would for this request.
-     */
-    private List<Item> run(SearchCommand command) {
-        return query.isEmpty() ? command.defaultView() : command.search();
+        return allItems;
     }
 
     private static List<Item> join(CompletableFuture<List<Item>> future) {

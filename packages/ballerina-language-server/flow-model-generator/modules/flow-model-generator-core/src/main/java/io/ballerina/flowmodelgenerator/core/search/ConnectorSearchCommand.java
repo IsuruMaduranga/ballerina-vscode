@@ -75,8 +75,6 @@ public class ConnectorSearchCommand extends SearchCommand {
     private static final Set<String> AGENT_SUPPORT_CONNECTORS = LocalIndexCentral.getInstance()
             .readJsonResource(AGENT_SUPPORT_CONNECTORS_JSON, AGENT_SUPPORT_CONNECTORS_LIST_TYPE);
     public static final String IS_AGENT_SUPPORT = "isAgentSupport";
-    private static final Set<String> BLACKLISTED_CONNECTOR_NAME_PATTERNS =
-            SearchResultFilter.blacklistedConnectorNamePatterns();
 
     private final boolean groupedConnectorSet;
 
@@ -127,12 +125,12 @@ public class ConnectorSearchCommand extends SearchCommand {
         Set<String> allowedOrgs = SearchResultFilter.allowedOrganizations(project);
         CentralSearchUtil centralSearch = new CentralSearchUtil(RemoteCentral.getInstance());
         List<SearchResult> centralConnectors = centralSearch.searchConnectors(query, limit, offset,
-                allowedOrgs, BLACKLISTED_CONNECTOR_NAME_PATTERNS);
+                allowedOrgs, SearchResultFilter.blacklistedConnectorNamePatterns());
         if (centralConnectors != null) {
             centralConnectors.forEach(searchResult -> rootBuilder.node(generateAvailableNode(searchResult)));
         } else {
             List<SearchResult> indexSearchResults = dbManager.searchConnectors(query, limit, offset,
-                    allowedOrgs, BLACKLISTED_CONNECTOR_NAME_PATTERNS);
+                    allowedOrgs, SearchResultFilter.blacklistedConnectorNamePatterns());
             indexSearchResults.forEach(searchResult -> rootBuilder.node(generateAvailableNode(searchResult)));
         }
 
@@ -143,7 +141,7 @@ public class ConnectorSearchCommand extends SearchCommand {
     protected List<Item> searchCurrentOrganization(String currentOrg) {
         CentralSearchUtil centralSearch = new CentralSearchUtil(RemoteCentral.getInstance());
         List<SearchResult> organizationConnectors = centralSearch.searchConnectorsByOrganization(
-                currentOrg, query, limit, offset, BLACKLISTED_CONNECTOR_NAME_PATTERNS);
+                currentOrg, query, limit, offset, SearchResultFilter.blacklistedConnectorNamePatterns());
         organizationConnectors.forEach(searchResult -> rootBuilder.node(generateAvailableNode(searchResult)));
         return rootBuilder.build().items();
     }

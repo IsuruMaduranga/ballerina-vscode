@@ -17,6 +17,7 @@
  */
 
 import { Category, AvailableNode, BallerinaProjectComponents } from "@wso2/ballerina-core";
+import type { Category as PanelCategory, Item as PanelItem } from "@wso2/ballerina-side-panel";
 import { URI, Utils } from "vscode-uri";
 
 // Filter out connections where name starts with _ and module is "ai" or "ai.agent"
@@ -108,6 +109,35 @@ export const filterCategoriesLocally = (categories: any[], searchText: string): 
         ...category,
         items: filterItemsRecursively(category.items || [])
     })).filter(category => category.items && category.items.length > 0);
+};
+
+// Identifies a panel item when merging categories. A node's id is its node kind, which every function or connector
+// shares, so nodes are told apart by their codedata.
+export const getPanelItemKey = (item: PanelItem): string => {
+    if (!("id" in item)) {
+        return `category:${item.title}`;
+    }
+    const codedata = item.metadata?.codedata;
+    return codedata
+        ? `node:${item.id}:${codedata.org}:${codedata.module}:${codedata.object}:${codedata.symbol}`
+        : `node:${item.id}:${item.label}`;
+};
+
+// Merges categories that share a title, keeping the first occurrence's position and dropping duplicate items.
+export const mergeCategoriesByTitle = (categories: PanelCategory[]): PanelCategory[] => {
+    const merged: PanelCategory[] = [];
+    categories.forEach((category) => {
+        const existingIndex = merged.findIndex((existing) => existing.title === category.title);
+        if (existingIndex < 0) {
+            merged.push(category);
+            return;
+        }
+        const existing = merged[existingIndex];
+        const existingKeys = new Set(existing.items.map(getPanelItemKey));
+        const newItems = category.items.filter((item) => !existingKeys.has(getPanelItemKey(item)));
+        merged[existingIndex] = { ...existing, items: [...existing.items, ...newItems] };
+    });
+    return merged;
 };
 
 export const findFunctionByName = (components: BallerinaProjectComponents, functionName: string) => {

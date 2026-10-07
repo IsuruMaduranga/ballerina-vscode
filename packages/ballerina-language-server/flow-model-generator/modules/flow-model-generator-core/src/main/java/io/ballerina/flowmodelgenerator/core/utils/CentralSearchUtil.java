@@ -115,7 +115,7 @@ public class CentralSearchUtil {
                     if (isToolPackage(connector)) {
                         continue;
                     }
-                    if (isBlacklisted(connector.name, blacklistedNamePatterns)) {
+                    if (SearchResultFilter.isBlacklistedConnector(connector.name, blacklistedNamePatterns)) {
                         continue;
                     }
                     if (skipped < offset) {
@@ -198,7 +198,7 @@ public class CentralSearchUtil {
                 if (isToolPackage(connector)) {
                     continue;
                 }
-                if (isBlacklisted(connector.name, blacklistedNamePatterns)) {
+                if (SearchResultFilter.isBlacklistedConnector(connector.name, blacklistedNamePatterns)) {
                     continue;
                 }
                 if (skipped < offset) {
@@ -497,10 +497,6 @@ public class CentralSearchUtil {
 
     private boolean isToolPackage(SymbolResponse.Symbol symbol) {
         return toolPackageCheck.test(symbol.organization(), symbol.name());
-    }
-
-    private static boolean isBlacklisted(String connectorName, Set<String> patterns) {
-        return connectorName != null && patterns.stream().anyMatch(connectorName::contains);
     }
 
     private static int safeFetchLimit(int limit, int offset) {
