@@ -60,6 +60,7 @@ jest.mock('../features/ai/utils/project/temp-project', () => ({
 
 import {
     buildCompactionContinuation,
+    dropBeforeLatestCompaction,
     findCompactionSummary,
     generationsSinceLastRestart,
     isCompactionPause,
@@ -101,6 +102,39 @@ describe('reading the compaction pause', () => {
         const parts = continuation.content as { type: string; text: string }[];
         expect(parts[0]).toEqual(context[0]);
         expect(parts[1].text).toContain('<summary>\nBuilt half.\n</summary>');
+    });
+});
+
+describe('trimming history before a kept compaction block', () => {
+    const user = (text: string): any => ({ role: 'user', content: [{ type: 'text', text }] });
+    const toolCall = { type: 'tool-call', toolCallId: 't1', toolName: 'file_read', input: {} };
+
+    it('leaves a history without a block as it is', () => {
+        const messages = [user('one'), { role: 'assistant', content: [{ type: 'text', text: 'two' }] } as any];
+        expect(dropBeforeLatestCompaction(messages)).toBe(messages);
+    });
+
+    it('starts at the block, dropping earlier messages and the parts before it', () => {
+        const block = compactionPart('Summary.');
+        const after = { role: 'tool', content: [{ type: 'tool-result', toolCallId: 't1', toolName: 'file_read', output: { type: 'text', value: 'ok' } }] } as any;
+        const messages = [user('a long request'), { role: 'assistant', content: [{ type: 'text', text: 'notes' }, block, toolCall] } as any, after];
+        expect(dropBeforeLatestCompaction(messages)).toEqual([{ role: 'assistant', content: [block, toolCall] }, after]);
+        expect(messages[1].content).toHaveLength(3);
+    });
+
+    it('keeps only what follows the latest of two blocks', () => {
+        const messages = [
+            { role: 'assistant', content: [compactionPart('First.')] } as any,
+            user('more work'),
+            { role: 'assistant', content: [compactionPart('Second.')] } as any,
+            user('next'),
+        ];
+        expect(dropBeforeLatestCompaction(messages)).toEqual(messages.slice(2));
+    });
+
+    it('finds a block in history read back from disk', () => {
+        const messages = JSON.parse(JSON.stringify([user('old'), { role: 'assistant', content: [compactionPart('Summary.')] }, user('new')]));
+        expect(dropBeforeLatestCompaction(messages)).toEqual(messages.slice(1));
     });
 });
 

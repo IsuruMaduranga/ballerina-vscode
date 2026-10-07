@@ -35,6 +35,14 @@ export function isCompactionPause(rawFinishReason: string | undefined): boolean 
     return rawFinishReason === 'compaction';
 }
 
+type MessagePart = { type: string; text?: string; providerOptions?: { anthropic?: { type?: unknown } } };
+
+/** Whether a message part is a compaction block, as the provider returns and replays it. */
+function isCompactionPart(part: unknown): boolean {
+    const p = part as MessagePart;
+    return p.type === 'text' && p.providerOptions?.anthropic?.type === 'compaction';
+}
+
 /**
  * The summary text of the latest compaction block in `messages`, without any `<analysis>`
  * section or `<summary>` wrapper. Undefined when there is no block or it is empty (the API sends
@@ -45,13 +53,32 @@ export function findCompactionSummary(messages: readonly ModelMessage[]): string
         const content = messages[i].content;
         if (!Array.isArray(content)) { continue; }
         for (let j = content.length - 1; j >= 0; j--) {
-            const part = content[j] as { type: string; text?: string; providerOptions?: { anthropic?: { type?: unknown } } };
-            if (part.type === 'text' && part.providerOptions?.anthropic?.type === 'compaction') {
-                return cleanCompactionSummary(part.text ?? '') || undefined;
+            if (isCompactionPart(content[j])) {
+                return cleanCompactionSummary((content[j] as MessagePart).text ?? '') || undefined;
             }
         }
     }
     return undefined;
+}
+
+/**
+ * `messages` from the latest compaction block on. The API ignores everything before that block,
+ * so the rest is sent for nothing, and the docs allow leaving it out. Compaction now pauses and the
+ * turn restarts without the block, so only a chat saved before that has one. Thinking is bound from the latest block
+ * on, so the part the model sees is unchanged. Returns `messages` itself when there is no block.
+ */
+export function dropBeforeLatestCompaction<T extends ModelMessage>(messages: T[]): T[] {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const content = messages[i].content;
+        if (!Array.isArray(content)) { continue; }
+        for (let j = content.length - 1; j >= 0; j--) {
+            if (isCompactionPart(content[j])) {
+                if (i === 0 && j === 0) { return messages; }
+                return [{ ...messages[i], content: content.slice(j) } as T, ...messages.slice(i + 1)];
+            }
+        }
+    }
+    return messages;
 }
 
 function cleanCompactionSummary(text: string): string {
