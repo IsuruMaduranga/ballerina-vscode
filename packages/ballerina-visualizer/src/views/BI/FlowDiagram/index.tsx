@@ -1511,8 +1511,11 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const handleSearch = useCallback(async (searchText: string, functionType: FUNCTION_TYPE, searchKind: SearchKind) => {
         const searchEpoch = panelNavEpochRef.current;
         const masterSearchSeq = searchKind === "ALL" ? ++masterSearchSeqRef.current : undefined;
+        // A master search response is stale once a newer search starts or is cleared, or once the user leaves the
+        // panel; the panel's new owner then manages the categories and the progress indicator.
         const isStaleMasterSearch = () =>
-            masterSearchSeq !== undefined && masterSearchSeq !== masterSearchSeqRef.current;
+            masterSearchSeq !== undefined
+            && (masterSearchSeq !== masterSearchSeqRef.current || panelNavEpochRef.current !== searchEpoch);
         // An unfiltered activity list is owned by the post-creation refresh while it runs.
         const yieldsToActivityRefresh = searchKind === "ACTIVITY_CALL" && !searchText.trim();
         if (yieldsToActivityRefresh && activityRefreshOwnsPanelRef.current) {
@@ -1556,8 +1559,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             if (response.categories) {
 
                 if (searchKind === "ALL") {
-                    if (isStaleMasterSearch() || panelNavEpochRef.current !== searchEpoch) {
-                        // A newer search was started or cleared, or the user has left the panel.
+                    if (isStaleMasterSearch()) {
                         return;
                     }
                     const searchCategories = convertFunctionCategoriesToSidePanelCategories(

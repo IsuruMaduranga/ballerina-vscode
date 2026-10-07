@@ -18,6 +18,7 @@
 
 package io.ballerina.flowmodelgenerator.core.search;
 
+import io.ballerina.flowmodelgenerator.core.model.Category;
 import io.ballerina.flowmodelgenerator.core.model.Item;
 import io.ballerina.modelgenerator.commons.SearchResult;
 import io.ballerina.projects.Document;
@@ -32,6 +33,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 
 /**
  * Search command behind the node panel's master search. It runs the function search and the connector search side by
@@ -81,18 +83,25 @@ public class AllKindsSearchCommand extends SearchCommand {
         return Map.of();
     }
 
-    /**
-     * Runs the function and connector searches in parallel and merges their results. Both searches wait on Ballerina
-     * Central, so running them side by side bounds the latency to the slower of the two rather than their sum.
-     */
     private List<Item> searchAllKinds() {
         SearchCommand functionSearch = new FunctionSearchCommand(project, position, kindQueryMap(), functionsDoc);
         SearchCommand connectorSearch = new ConnectorSearchCommand(project, position, kindQueryMap());
+        return searchInParallel(functionSearch::items, connectorSearch::items, rootBuilder);
+    }
 
-        CompletableFuture<List<Item>> functionItems =
-                CompletableFuture.supplyAsync(functionSearch::items, SEARCH_EXECUTOR);
-        CompletableFuture<List<Item>> connectorItems =
-                CompletableFuture.supplyAsync(connectorSearch::items, SEARCH_EXECUTOR);
+    /**
+     * Runs the function and connector searches in parallel and merges their results. Both searches wait on Ballerina
+     * Central, so running them side by side bounds the latency to the slower of the two rather than their sum.
+     *
+     * @param functionSearch  the function search
+     * @param connectorSearch the connector search
+     * @param rootBuilder     the builder the connectors category is added under
+     * @return the function results, followed by the connector results under a single category
+     */
+    static List<Item> searchInParallel(Supplier<List<Item>> functionSearch, Supplier<List<Item>> connectorSearch,
+                                       Category.Builder rootBuilder) {
+        CompletableFuture<List<Item>> functionItems = CompletableFuture.supplyAsync(functionSearch, SEARCH_EXECUTOR);
+        CompletableFuture<List<Item>> connectorItems = CompletableFuture.supplyAsync(connectorSearch, SEARCH_EXECUTOR);
 
         List<Item> allItems = new ArrayList<>(join(functionItems));
         List<Item> connectors = join(connectorItems);
