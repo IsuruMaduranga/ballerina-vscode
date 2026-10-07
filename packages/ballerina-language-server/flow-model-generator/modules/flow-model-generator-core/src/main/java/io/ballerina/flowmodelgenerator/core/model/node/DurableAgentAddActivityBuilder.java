@@ -139,56 +139,25 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 .stepOut()
                 .addProperty(ACTIVITY_KEY);
         // The fields follow the ActivityDecl record: activity, name, description, bindings, then the policies.
-        Optional<FunctionSymbol> activity = preSelected.isEmpty()
+        Optional<ActivityLookup> activity = preSelected.isEmpty()
                 ? Optional.empty() : findActivity(context, preSelected);
-        String descriptionPlaceholder = activity.flatMap(FunctionSymbol::documentation)
+        String descriptionPlaceholder = activity.flatMap(found -> found.function().documentation())
                 .flatMap(Documentation::description).orElse("");
         addActivityIdentityProperties(WorkflowUtil.stripModulePrefix(preSelected), descriptionPlaceholder.strip());
-        addBindingProperties(context, preSelected);
+        activity.ifPresent(this::addBindingProperties);
         addPolicyProperties();
         properties().checkError(true);
     }
 
-    // The activity function an entry names, looked up as addBindingProperties does.
-    private static Optional<FunctionSymbol> findActivity(TemplateContext context, String activityName) {
-        String unqualifiedName = WorkflowUtil.stripModulePrefix(activityName);
-        Package currentPackage = PackageUtil.loadProject(context.workspaceManager(), context.filePath())
-                .currentPackage();
-        PackageUtil.getCompilation(currentPackage);
-        for (Module module : currentPackage.modules()) {
-            try {
-                Optional<FunctionSymbol> activity = module.getCompilation().getSemanticModel().moduleSymbols()
-                        .stream()
-                        .filter(symbol -> symbol.kind() == SymbolKind.FUNCTION)
-                        .map(symbol -> (FunctionSymbol) symbol)
-                        .filter(WorkflowUtil::isActivityFunction)
-                        .filter(symbol -> unqualifiedName.equals(symbol.getName().orElse("")))
-                        .findFirst();
-                if (activity.isPresent()) {
-                    return activity;
-                }
-            } catch (RuntimeException e) {
-                // A module that does not compile has no symbols to offer.
-            }
-        }
-        return Optional.empty();
+    // An activity function and the semantic model of the module that declares it.
+    private record ActivityLookup(FunctionSymbol function, SemanticModel semanticModel) {
     }
 
     /**
-     * Adds a selector for every parameter of the chosen activity the model cannot supply — a
-     * client, typically. Their values are fixed at registration through {@code bindings}, and the
-     * remaining data parameters stay model-controlled. Options are the module-level variables
-     * assignable to the parameter, so a connection is picked rather than typed.
-     *
-     * <p>An entry declared with a module-qualified reference ({@code mod:validate}) arrives here as
-     * written, while symbols carry the bare name — so the qualifier is stripped before the lookup.
-     * Without that, no binding selector is built, the values the analysis hydrated for them have
-     * nowhere to land, and saving the edit drops the entry's {@code bindings} field.
+     * Finds the activity function an entry names. An entry declared with a module-qualified reference
+     * ({@code mod:validate}) arrives as written while symbols carry the bare name, so the qualifier is stripped.
      */
-    private void addBindingProperties(TemplateContext context, String activityName) {
-        if (activityName == null || activityName.isEmpty()) {
-            return;
-        }
+    private static Optional<ActivityLookup> findActivity(TemplateContext context, String activityName) {
         String unqualifiedName = WorkflowUtil.stripModulePrefix(activityName);
         Package currentPackage = PackageUtil.loadProject(context.workspaceManager(), context.filePath())
                 .currentPackage();
@@ -198,6 +167,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
             try {
                 semanticModel = module.getCompilation().getSemanticModel();
             } catch (RuntimeException e) {
+                // A module that does not compile has no symbols to offer.
                 continue;
             }
             Optional<FunctionSymbol> activity = semanticModel.moduleSymbols().stream()
@@ -206,41 +176,52 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                     .filter(WorkflowUtil::isActivityFunction)
                     .filter(symbol -> unqualifiedName.equals(symbol.getName().orElse("")))
                     .findFirst();
-            if (activity.isEmpty()) {
+            if (activity.isPresent()) {
+                return Optional.of(new ActivityLookup(activity.get(), semanticModel));
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Adds a selector for every parameter of the chosen activity the model cannot supply — a
+     * client, typically. Their values are fixed at registration through {@code bindings}, and the
+     * remaining data parameters stay model-controlled. Options are the module-level variables
+     * assignable to the parameter, so a connection is picked rather than typed. Without them, the values the
+     * analysis hydrated for the bindings have nowhere to land, and saving an edit drops the entry's {@code bindings}.
+     */
+    private void addBindingProperties(ActivityLookup activity) {
+        SemanticModel semanticModel = activity.semanticModel();
+        List<ParameterSymbol> params = activity.function().typeDescriptor().params().orElse(List.of());
+        for (ParameterSymbol parameter : params) {
+            TypeSymbol type = parameter.typeDescriptor();
+            if (type.subtypeOf(semanticModel.types().ANYDATA)) {
                 continue;
             }
-            List<ParameterSymbol> params = activity.get().typeDescriptor().params().orElse(List.of());
-            for (ParameterSymbol parameter : params) {
-                TypeSymbol type = parameter.typeDescriptor();
-                if (type.subtypeOf(semanticModel.types().ANYDATA)) {
-                    continue;
-                }
-                String paramName = parameter.getName().orElse("");
-                if (paramName.isEmpty()) {
-                    continue;
-                }
-                properties().custom()
-                        .metadata()
-                            .label(paramName.substring(0, 1).toUpperCase(java.util.Locale.ROOT)
-                                    + paramName.substring(1))
-                            .description("Fixed at registration and hidden from the model: "
-                                    + "the agent cannot supply a '" + type.signature() + "'")
-                            .stepOut()
-                        .type()
-                            .fieldType(Property.ValueType.SINGLE_SELECT)
-                            .ballerinaType(type.signature())
-                            .options(moduleVariablesOfType(semanticModel, type))
-                            .selected(true)
-                            .stepOut()
-                        .codedata()
-                            .kind(ParameterData.Kind.REQUIRED.name())
-                            .stepOut()
-                        .value("")
-                        .editable(true)
-                        .stepOut()
-                        .addProperty(BINDING_KEY_PREFIX + paramName);
+            String paramName = parameter.getName().orElse("");
+            if (paramName.isEmpty()) {
+                continue;
             }
-            return;
+            properties().custom()
+                    .metadata()
+                        .label(paramName.substring(0, 1).toUpperCase(java.util.Locale.ROOT)
+                                + paramName.substring(1))
+                        .description("Fixed at registration and hidden from the model: "
+                                + "the agent cannot supply a '" + type.signature() + "'")
+                        .stepOut()
+                    .type()
+                        .fieldType(Property.ValueType.SINGLE_SELECT)
+                        .ballerinaType(type.signature())
+                        .options(moduleVariablesOfType(semanticModel, type))
+                        .selected(true)
+                        .stepOut()
+                    .codedata()
+                        .kind(ParameterData.Kind.REQUIRED.name())
+                        .stepOut()
+                    .value("")
+                    .editable(true)
+                    .stepOut()
+                    .addProperty(BINDING_KEY_PREFIX + paramName);
         }
     }
 
