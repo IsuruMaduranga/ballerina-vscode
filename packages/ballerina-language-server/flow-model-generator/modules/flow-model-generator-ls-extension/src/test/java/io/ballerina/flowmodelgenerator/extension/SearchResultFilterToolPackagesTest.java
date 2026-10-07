@@ -40,6 +40,8 @@ public class SearchResultFilterToolPackagesTest {
     @Test
     public void testLibraryPackagesAreNotFiltered() {
         Assert.assertFalse(SearchResultFilter.isToolPackage("ballerina", "http"));
+        // The EDI library stays searchable; only its CLI tool package is filtered.
+        Assert.assertFalse(SearchResultFilter.isToolPackage("ballerina", "edi"));
         Assert.assertFalse(SearchResultFilter.isToolPackage("ballerinax", "edifact.d03a.finance"));
         // A tool package is identified by its organization as well as its name.
         Assert.assertFalse(SearchResultFilter.isToolPackage("ballerinax", "editoolspackage"));

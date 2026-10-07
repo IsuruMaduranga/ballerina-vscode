@@ -42,7 +42,7 @@ public class AllKindsSearchFallbackTest {
     public void testFunctionsSurviveConnectorFailure() {
         List<Item> functions = List.of(category("Standard Library"));
 
-        List<Item> items = AllKindsSearchCommand.searchInParallel(() -> functions, FAILING, new Category.Builder(null));
+        List<Item> items = AllKindsSearchCommand.searchInParallel(() -> functions, FAILING);
 
         Assert.assertEquals(items, functions);
     }
@@ -51,8 +51,7 @@ public class AllKindsSearchFallbackTest {
     public void testConnectorsSurviveFunctionFailure() {
         List<Item> connectors = List.of(category("Azure Files"));
 
-        List<Item> items =
-                AllKindsSearchCommand.searchInParallel(FAILING, () -> connectors, new Category.Builder(null));
+        List<Item> items = AllKindsSearchCommand.searchInParallel(FAILING, () -> connectors);
 
         Assert.assertEquals(items.size(), 1);
         Category connectorsCategory = (Category) items.get(0);
@@ -62,7 +61,7 @@ public class AllKindsSearchFallbackTest {
 
     @Test(description = "Both searches failing returns no results rather than an error.")
     public void testBothFailuresReturnNoResults() {
-        List<Item> items = AllKindsSearchCommand.searchInParallel(FAILING, FAILING, new Category.Builder(null));
+        List<Item> items = AllKindsSearchCommand.searchInParallel(FAILING, FAILING);
 
         Assert.assertTrue(items.isEmpty());
     }

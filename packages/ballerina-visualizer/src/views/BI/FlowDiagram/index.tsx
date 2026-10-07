@@ -80,7 +80,8 @@ import {
     getNodeTemplateForConnection,
     findFunctionByName,
     filterCategoriesLocally,
-    mergeCategoriesByTitle,
+    buildMasterSearchCategories,
+    mergePanelCategories,
 } from "./utils";
 import { PanelOverlayProvider } from "./context/PanelOverlayContext";
 import { PanelOverlayRenderer } from "./PanelOverlayRenderer";
@@ -175,42 +176,6 @@ const countFunctionLeafNodes = (categories: PanelCategory[] = []): number =>
 // Counts the leaf nodes within a single section (top-level category matched by title).
 const countSectionLeafNodes = (categories: PanelCategory[], sectionTitle: string): number =>
     countFunctionLeafNodes(categories.filter((category) => category.title === sectionTitle));
-
-// Merges panel items, matching nested subcategories by title and de-duplicating leaf nodes by id.
-const mergePanelItems = (prev: any[] = [], next: any[] = []): any[] => {
-    const result = [...prev];
-    for (const item of next) {
-        if ("id" in item) {
-            if (!result.some((existing) => "id" in existing && existing.id === item.id)) {
-                result.push(item);
-            }
-        } else {
-            const index = result.findIndex((r) => !("id" in r) && r.title === item.title);
-            if (index >= 0) {
-                const existing = result[index];
-                result[index] = { ...existing, items: mergePanelItems(existing.items ?? [], item.items ?? []) };
-            } else {
-                result.push(item);
-            }
-        }
-    }
-    return result;
-};
-
-// Merges a newly fetched page of panel categories into the accumulated categories, matching categories and
-// nested subcategories by title and de-duplicating leaf nodes by id.
-const mergePanelCategories = (prev: PanelCategory[] = [], next: PanelCategory[] = []): PanelCategory[] => {
-    const merged: PanelCategory[] = prev.map((category) => ({ ...category, items: [...(category.items ?? [])] }));
-    for (const incoming of next) {
-        const existing = merged.find((category) => category.title === incoming.title);
-        if (existing) {
-            existing.items = mergePanelItems(existing.items ?? [], incoming.items ?? []);
-        } else {
-            merged.push({ ...incoming, items: [...(incoming.items ?? [])] });
-        }
-    }
-    return merged;
-};
 
 export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const { projectPath, breakpointState, syntaxTree, onUpdate, onReady, onSave, hideAgentConfiguration } = props;
@@ -1565,17 +1530,10 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     const searchCategories = convertFunctionCategoriesToSidePanelCategories(
                         response.categories as Category[],
                         functionType
-                    ).filter((category) => category.items?.length > 0);
-
-                    // Only the static panel nodes are filtered by label here. The language server has already
-                    // matched the search results on name, description and package, the same way the function and
-                    // connection searches do, so filtering them again by label would drop valid results.
-                    const filteredCategories = [
-                        ...filterCategoriesLocally(initialCategoriesRef.current, searchText),
-                        ...searchCategories,
-                    ];
-
-                    setCategories(mergeCategoriesByTitle(filteredCategories));
+                    );
+                    setCategories(
+                        buildMasterSearchCategories(initialCategoriesRef.current, searchCategories, searchText)
+                    );
                 } else {
                     const currentCategories = convertFunctionCategoriesToSidePanelCategories(
                         [...response.categories] as Category[],

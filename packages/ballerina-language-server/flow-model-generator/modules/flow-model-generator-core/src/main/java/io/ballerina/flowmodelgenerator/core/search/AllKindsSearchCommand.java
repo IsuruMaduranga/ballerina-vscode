@@ -37,13 +37,17 @@ import java.util.function.Supplier;
 
 /**
  * Search command behind the node panel's master search. It runs the function search and the connector search side by
- * side and merges their results, so the master search returns exactly what "Call a Function" and "Add Connection"
- * return for the same query: the same data source (Ballerina Central, falling back to the local index), the same
- * organization and package filters, and the same categories.
+ * side and merges their results, so the master search uses the same data source as "Call a Function" and "Add
+ * Connection" (Ballerina Central, falling back to the local index), the same organization and package filters, and
+ * the same categories.
+ *
+ * <p>The master search is a preview of both kinds: each kind gets half of the requested page, and at least
+ * {@value #MIN_KIND_LIMIT} items, so a kind can return fewer results here than its own search does.</p>
  *
  * <p>The function results keep their own categories (current integration or workspace, agent tools, imported
- * functions, standard library and extended library). The connector search returns its nodes ungrouped, so they are
- * placed under a single {@value #CONNECTORS_CATEGORY} category.</p>
+ * functions, standard library and extended library). The connector results are placed under a single
+ * {@value #CONNECTORS_CATEGORY} category: a query returns them ungrouped, and the default view keeps their groups
+ * inside that category.</p>
  *
  * @since 1.7.0
  */
@@ -79,14 +83,14 @@ public class AllKindsSearchCommand extends SearchCommand {
 
     @Override
     protected Map<String, List<SearchResult>> fetchPopularItems() {
-        // The delegated commands fetch and cache their own popular items.
+        // The delegated commands fetch their own popular items.
         return Map.of();
     }
 
     private List<Item> searchAllKinds() {
         SearchCommand functionSearch = new FunctionSearchCommand(project, position, kindQueryMap(), functionsDoc);
         SearchCommand connectorSearch = new ConnectorSearchCommand(project, position, kindQueryMap());
-        return searchInParallel(functionSearch::items, connectorSearch::items, rootBuilder);
+        return searchInParallel(functionSearch::items, connectorSearch::items);
     }
 
     /**
@@ -95,18 +99,16 @@ public class AllKindsSearchCommand extends SearchCommand {
      *
      * @param functionSearch  the function search
      * @param connectorSearch the connector search
-     * @param rootBuilder     the builder the connectors category is added under
      * @return the function results, followed by the connector results under a single category
      */
-    static List<Item> searchInParallel(Supplier<List<Item>> functionSearch, Supplier<List<Item>> connectorSearch,
-                                       Category.Builder rootBuilder) {
+    static List<Item> searchInParallel(Supplier<List<Item>> functionSearch, Supplier<List<Item>> connectorSearch) {
         CompletableFuture<List<Item>> functionItems = CompletableFuture.supplyAsync(functionSearch, SEARCH_EXECUTOR);
         CompletableFuture<List<Item>> connectorItems = CompletableFuture.supplyAsync(connectorSearch, SEARCH_EXECUTOR);
 
         List<Item> allItems = new ArrayList<>(join(functionItems));
         List<Item> connectors = join(connectorItems);
         if (!connectors.isEmpty()) {
-            allItems.add(rootBuilder.stepIn(CONNECTORS_CATEGORY, null, null).items(connectors).build());
+            allItems.add(new Category.Builder(null).stepIn(CONNECTORS_CATEGORY, null, null).items(connectors).build());
         }
         return allItems;
     }
@@ -122,13 +124,16 @@ public class AllKindsSearchCommand extends SearchCommand {
     }
 
     /**
-     * The query map for a delegated command. The page is split evenly between functions and connectors.
+     * The query map for a delegated command. Each kind gets half of the page, and at least {@value #MIN_KIND_LIMIT}
+     * items. The offset is scaled the same way, so the n-th master search page asks each kind for its n-th page.
      */
     private Map<String, String> kindQueryMap() {
+        int kindLimit = Math.max(MIN_KIND_LIMIT, limit / 2);
+        int kindOffset = limit > 0 ? offset / limit * kindLimit : 0;
         Map<String, String> kindQueryMap = new HashMap<>();
         kindQueryMap.put("q", query);
-        kindQueryMap.put("limit", String.valueOf(Math.max(MIN_KIND_LIMIT, limit / 2)));
-        kindQueryMap.put("offset", String.valueOf(offset));
+        kindQueryMap.put("limit", String.valueOf(kindLimit));
+        kindQueryMap.put("offset", String.valueOf(kindOffset));
         return kindQueryMap;
     }
 }

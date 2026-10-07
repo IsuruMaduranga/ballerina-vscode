@@ -123,22 +123,47 @@ export const getPanelItemKey = (item: PanelItem): string => {
         : `node:${item.id}:${item.label}`;
 };
 
-// Merges categories that share a title, keeping the first occurrence's position and dropping duplicate items.
-export const mergeCategoriesByTitle = (categories: PanelCategory[]): PanelCategory[] => {
-    const merged: PanelCategory[] = [];
-    categories.forEach((category) => {
-        const existingIndex = merged.findIndex((existing) => existing.title === category.title);
-        if (existingIndex < 0) {
-            merged.push(category);
-            return;
+// Merges panel items: subcategories that share a title are merged recursively, and nodes already present are dropped.
+const mergePanelItems = (prev: PanelItem[], next: PanelItem[]): PanelItem[] => {
+    const merged = [...prev];
+    const nodeKeys = new Set(prev.filter((item) => "id" in item).map(getPanelItemKey));
+    for (const item of next) {
+        if ("id" in item) {
+            const key = getPanelItemKey(item);
+            if (!nodeKeys.has(key)) {
+                nodeKeys.add(key);
+                merged.push(item);
+            }
+            continue;
         }
-        const existing = merged[existingIndex];
-        const existingKeys = new Set(existing.items.map(getPanelItemKey));
-        const newItems = category.items.filter((item) => !existingKeys.has(getPanelItemKey(item)));
-        merged[existingIndex] = { ...existing, items: [...existing.items, ...newItems] };
-    });
+        const index = merged.findIndex((existing) => !("id" in existing) && existing.title === item.title);
+        if (index < 0) {
+            merged.push(item);
+            continue;
+        }
+        const existing = merged[index] as PanelCategory;
+        merged[index] = { ...existing, items: mergePanelItems(existing.items ?? [], item.items ?? []) };
+    }
     return merged;
 };
+
+// Merges categories into the given ones, keeping each category at its first position. Used both to combine the
+// master search results and to add a "Show more" page to the categories already shown.
+export const mergePanelCategories = (prev: PanelCategory[], next: PanelCategory[]): PanelCategory[] =>
+    mergePanelItems(prev, next) as PanelCategory[];
+
+// Builds the master search panel. Only the static panel nodes are filtered by label: the language server has already
+// matched its results on name, description and package, the same way the function and connection searches do, so
+// filtering them again by label would drop valid results.
+export const buildMasterSearchCategories = (
+    staticCategories: PanelCategory[],
+    searchCategories: PanelCategory[],
+    searchText: string
+): PanelCategory[] =>
+    mergePanelCategories([], [
+        ...filterCategoriesLocally(staticCategories, searchText),
+        ...searchCategories.filter((category) => category.items?.length > 0),
+    ]);
 
 export const findFunctionByName = (components: BallerinaProjectComponents, functionName: string) => {
     for (const pkg of components.packages) {

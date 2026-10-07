@@ -18,9 +18,13 @@
 
 package io.ballerina.flowmodelgenerator.core.utils;
 
+import io.ballerina.projects.BuildOptions;
+import io.ballerina.projects.Project;
+import io.ballerina.projects.directory.BuildProject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import java.nio.file.Paths;
 import java.util.Set;
 
 /**
@@ -37,6 +41,15 @@ public class SearchResultFilterTest {
     }
 
     @Test
+    public void testAllowedOrganizationsIncludeCurrentPackageOrg() {
+        Project project = BuildProject.load(
+                Paths.get("src", "test", "resources", "ballerina", "search_filter").toAbsolutePath(),
+                BuildOptions.builder().setOffline(true).build());
+        Assert.assertEquals(SearchResultFilter.allowedOrganizations(project),
+                Set.of("ballerina", "ballerinax", "wso2", "acme"));
+    }
+
+    @Test
     public void testBlacklistedConnector() {
         Assert.assertTrue(SearchResultFilter.isBlacklistedConnector("OpenAiModelProvider"));
         Assert.assertFalse(SearchResultFilter.isBlacklistedConnector("Client"));
@@ -50,11 +63,5 @@ public class SearchResultFilterTest {
         Assert.assertFalse(SearchResultFilter.isBlacklistedConnector("Client", patterns));
         Assert.assertFalse(SearchResultFilter.isBlacklistedConnector("Client", Set.of()));
         Assert.assertFalse(SearchResultFilter.isBlacklistedConnector(null, patterns));
-    }
-
-    @Test
-    public void testToolPackageCheckIgnoresMissingCoordinates() {
-        Assert.assertFalse(SearchResultFilter.isToolPackage(null, "editoolspackage"));
-        Assert.assertFalse(SearchResultFilter.isToolPackage("ballerina", null));
     }
 }
