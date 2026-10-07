@@ -1773,12 +1773,13 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
 
     // Effect to handle search text changes
     useEffect(() => {
+        // Drop any in-flight master search response, which is for an earlier query
+        masterSearchSeqRef.current++;
         if (searchText.trim()) {
             debouncedSearch(searchText);
         } else {
             // Reset immediately when search is cleared
             debouncedSearch.cancel(); // Cancel any pending search
-            masterSearchSeqRef.current++; // Drop any in-flight master search response
             setCategories(initialCategoriesRef.current);
             setSidePanelView(SidePanelView.NODE_LIST);
             setShowProgressIndicator(false);

@@ -149,14 +149,53 @@ describe("mergePanelCategories", () => {
 
 describe("buildMasterSearchCategories", () => {
     const staticCategories = [category("Flow", [staticNode("IF", "If"), staticNode("MATCH", "Match")])];
-    const azureFiles = category("Connectors", [
-        { ...functionNode("FileClient", "storage.files"), id: "NEW_CONNECTION", label: "Azure Files" },
-    ]);
+    const leafKeys = (items: PanelItem[]): string[] =>
+        items.flatMap((item) => ("id" in item ? [getPanelItemKey(item)] : leafKeys(item.items)));
 
-    it("keeps a search result whose label does not contain the query", () => {
-        const result = buildMasterSearchCategories(staticCategories, [azureFiles], "azure.storage");
-        expect(result.map((c) => c.title)).toEqual(["Connectors"]);
-        expect(labels(result[0].items)).toEqual(["Azure Files"]);
+    // The LS matches on name, description and package, so none of these labels contains its query.
+    // The queries follow the master search fixtures in the LS tests (search/config/all).
+    it.each([
+        {
+            name: "a connector matched on its package",
+            query: "azure.storage",
+            search: [category("Connectors", [
+                { ...functionNode("FileClient", "storage.files"), id: "NEW_CONNECTION", label: "Files File" },
+            ])],
+        },
+        {
+            name: "extended library functions grouped by module",
+            query: "parse",
+            search: [category("Extended Library", [
+                category("edifact.d03a.finance", [functionNode("fromEdiString", "edifact.d03a.finance")]),
+                category("edifact.d03a.supplychain", [functionNode("fromEdiString", "edifact.d03a.supplychain")]),
+            ])],
+        },
+        {
+            name: "imported functions matched on their description",
+            query: "utc",
+            search: [category("Imported Functions", [
+                functionNode("now", "time"),
+                functionNode("civilFromString", "time"),
+            ])],
+        },
+        {
+            name: "results in several categories",
+            query: "log",
+            search: [
+                category("Standard Library", [functionNode("printInfo", "log")]),
+                category("Connectors", [
+                    { ...functionNode("Client", "elastic.elasticcloud"), id: "NEW_CONNECTION", label: "Elastic Cloud" },
+                ]),
+            ],
+        },
+        {
+            name: "a query of special characters",
+            query: "@#$%",
+            search: [category("Standard Library", [functionNode("encode", "url")])],
+        },
+    ])("keeps every search result for $name", ({ query, search }) => {
+        const result = buildMasterSearchCategories(staticCategories, search, query);
+        expect(leafKeys(result)).toEqual(leafKeys(search));
     });
 
     it("filters the static panel nodes by label", () => {
