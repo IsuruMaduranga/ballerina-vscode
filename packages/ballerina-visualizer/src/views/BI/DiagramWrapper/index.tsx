@@ -459,6 +459,9 @@ export function DiagramWrapper(param: DiagramWrapperProps) {
     let isActivity = parentMetadata?.kind === "Activity";
     let isNPFunction = view === FOCUS_FLOW_DIAGRAM_VIEW.NP_FUNCTION;
     let isAgentFocus = view === FOCUS_FLOW_DIAGRAM_VIEW.AGENT || view === FOCUS_FLOW_DIAGRAM_VIEW.TYPED_AGENT;
+    // The sequence diagram knows nothing of the workflow model; artifactType covers the time before the model loads.
+    const hasNoSequenceDiagram = isWorkflow || isDurableAgent
+        || artifactType === DIRECTORY_MAP.WORKFLOW || artifactType === DIRECTORY_MAP.DURABLE_AGENT;
 
     const handleResourceTryIt = async (methodValue: string, pathValue: string) => {
         if (serviceType !== "http") { return; }
@@ -717,7 +720,7 @@ export function DiagramWrapper(param: DiagramWrapperProps) {
                     actions={loadingDiagram ? null : getActions()}
                 />
             )}
-            {enableSequenceDiagram && !isAgent && !isAgentFocus &&
+            {enableSequenceDiagram && !isAgent && !isAgentFocus && !hasNoSequenceDiagram &&
                 (
                     !loadingDiagram ? (
                         <Switch
