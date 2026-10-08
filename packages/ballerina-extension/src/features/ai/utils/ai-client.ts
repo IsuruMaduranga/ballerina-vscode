@@ -15,7 +15,7 @@
 // under the License.
 
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { LanguageModel, ModelMessage, JSONValue } from "ai";
+import { LanguageModel, ModelMessage } from "ai";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createAnthropicAws } from "@ai-sdk/anthropic-aws";
 import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic";
@@ -274,26 +274,27 @@ export const getAnthropicClient = async (model: AnthropicModel): Promise<any> =>
 export type CacheTtl = '5m' | '1h';
 
 export type ProviderCacheOptions =
-    | { anthropic: { cacheControl: { type: string; ttl?: CacheTtl } } }
-    | { bedrock: { cachePoint: { type: string; ttl?: CacheTtl } } };
+    | { anthropic: { cacheControl: { type: string; ttl: CacheTtl } } }
+    | { bedrock: { cachePoint: { type: string; ttl: CacheTtl } } };
 
 /**
- * Returns provider-aware cache control options for prompt caching
+ * Returns provider-aware cache control options for prompt caching.
+ * Defaults to the 1-hour TTL: users often pause longer than five minutes between turns (reading,
+ * reviewing a diff), and a 5-minute entry then expires and the whole history is written again.
  * @returns Cache control options based on the current login method
  */
-export const getProviderCacheControl = async (ttl?: CacheTtl): Promise<ProviderCacheOptions> => {
+export const getProviderCacheControl = async (ttl: CacheTtl = '1h'): Promise<ProviderCacheOptions> => {
     const loginMethod = await getLoginMethod();
-    const ttlOption = ttl ? { ttl } : {};
 
     switch (loginMethod) {
         case LoginMethod.AWS_BEDROCK:
-            return { bedrock: { cachePoint: { type: 'default', ...ttlOption } } };
+            return { bedrock: { cachePoint: { type: 'default', ttl } } };
         case LoginMethod.ANTHROPIC_AWS:
         case LoginMethod.VERTEX_AI:
         case LoginMethod.ANTHROPIC_KEY:
         case LoginMethod.BI_INTEL:
         default:
-            return { anthropic: { cacheControl: { type: "ephemeral", ...ttlOption } } };
+            return { anthropic: { cacheControl: { type: "ephemeral", ttl } } };
     }
 };
 
@@ -323,13 +324,11 @@ function isAnthropicModel(model: LanguageModel): boolean {
 export function addCacheControlToMessages({
     messages,
     model,
-    providerOptions = {
-        anthropic: { cacheControl: { type: 'ephemeral' } },
-    },
+    providerOptions,
 }: {
     messages: ModelMessage[];
     model: LanguageModel;
-    providerOptions?: Record<string, Record<string, JSONValue>>;
+    providerOptions: ProviderCacheOptions;
 }): ModelMessage[] {
     if (messages.length === 0) { return messages; }
     if (!isAnthropicModel(model)) { return messages; }
