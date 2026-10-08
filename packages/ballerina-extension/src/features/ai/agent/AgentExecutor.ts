@@ -467,7 +467,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
 
             // 5. Build LLM messages with history
             const historyMessages = populateHistoryForAgent(chatHistory);
-            const [cacheOptions, historyCacheOptions] = await Promise.all([getProviderCacheControl('1h'), getProviderCacheControl()]);
+            const cacheOptions = await getProviderCacheControl();
             
             const systemMessage: SystemModelMessage = {
                 role: "system",
@@ -609,7 +609,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                             // Anthropic requires tool_use.input to be an object; an unparseable or schema-invalid
                             // streamed input is left as a non-object on the tool-call part and 400s every later request.
                             sanitizeMessages(sentMessages);
-                            return { messages: addCacheControlToMessages({ messages: sentMessages, model, providerOptions: historyCacheOptions as any }) };
+                            return { messages: addCacheControlToMessages({ messages: sentMessages, model, providerOptions: cacheOptions }) };
                         },
 
                         // Emit per-step token usage for context usage widget + observability

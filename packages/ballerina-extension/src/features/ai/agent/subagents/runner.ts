@@ -63,7 +63,11 @@ export interface RunSubagentParams {
 export async function runSubagent(params: RunSubagentParams): Promise<SubagentResult> {
     const definition = getSubagentDefinition(params.type);
     const modelId = params.model === "haiku" ? ANTHROPIC_HAIKU : ANTHROPIC_SONNET;
-    const [model, cacheControl] = await Promise.all([getAnthropicClient(modelId), getProviderCacheControl()]);
+    // The system prompt is shared by every run of this subagent type, so it takes the 1h TTL. A run's own
+    // history is re-read only within the run (seconds apart) and by a rare resume, so it stays on 5m.
+    const [model, systemCacheControl, historyCacheControl] = await Promise.all([
+        getAnthropicClient(modelId), getProviderCacheControl(), getProviderCacheControl('5m'),
+    ]);
     const reasoningOptions = await getProviderModelOptions(params.reasoning?.effort ?? SUBAGENT_EFFORT, params.reasoning?.display);
 
     const conversation = buildSubagentMessages(params.prompt, params.previousMessages, definition.followUpHint);
@@ -73,7 +77,7 @@ export async function runSubagent(params: RunSubagentParams): Promise<SubagentRe
     const onProgress = params.onProgress;
     const result = await generateText({
         model,
-        system: { role: "system", content: definition.system(params.ctx), providerOptions: cacheControl },
+        system: { role: "system", content: definition.system(params.ctx), providerOptions: systemCacheControl },
         messages: conversation,
         tools: definition.buildTools(params.ctx),
         stopWhen: stepCountIs(SUBAGENT_MAX_STEPS),
@@ -94,7 +98,7 @@ export async function runSubagent(params: RunSubagentParams): Promise<SubagentRe
         // Same incremental caching as the main loop: mark the last message each step so the growing
         // prefix (system + earlier doc reads) is served from cache instead of re-billed every step.
         prepareStep: async ({ messages: stepMessages }) => ({
-            messages: addCacheControlToMessages({ messages: stepMessages, model, providerOptions: cacheControl as any }),
+            messages: addCacheControlToMessages({ messages: stepMessages, model, providerOptions: historyCacheControl }),
         }),
     });
 
