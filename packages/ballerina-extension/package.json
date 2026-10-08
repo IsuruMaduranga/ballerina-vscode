@@ -1570,10 +1570,10 @@
         "test:typecheck": "tsc --noEmit -p tsconfig.spec.json"
     },
     "dependencies": {
-        "@ai-sdk/amazon-bedrock": "4.0.186",
-        "@ai-sdk/anthropic-aws": "1.0.47",
-        "@ai-sdk/anthropic": "3.0.125",
-        "@ai-sdk/google-vertex": "4.0.208",
+        "@ai-sdk/amazon-bedrock": "4.0.193",
+        "@ai-sdk/anthropic-aws": "1.0.51",
+        "@ai-sdk/anthropic": "3.0.128",
+        "@ai-sdk/google-vertex": "4.0.211",
         "@iarna/toml": "2.2.5",
         "@modelcontextprotocol/sdk": "1.31.0",
         "ballerina-grammar": "workspace:*",

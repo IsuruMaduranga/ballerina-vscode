@@ -33,8 +33,8 @@ export const SUBAGENT_MAX_STEPS = 50;
 export const SUBAGENT_MAX_OUTPUT_TOKENS = 16_000;
 
 /**
- * Sonnet subagents search and extract library facts, which the Sonnet 5.5 guidance runs at `low`
- * (owner, 2026-09-29). Haiku 4.5 takes neither adaptive thinking nor `effort`, so it gets no options.
+ * Subagents search and extract library facts, which the Sonnet 5.5 guidance runs at `low`
+ * (owner, 2026-09-29). Haiku 5.5 takes the same options; its own default effort is `medium`.
  */
 const SUBAGENT_EFFORT: AnthropicEffort = "low";
 
@@ -64,9 +64,7 @@ export async function runSubagent(params: RunSubagentParams): Promise<SubagentRe
     const definition = getSubagentDefinition(params.type);
     const modelId = params.model === "haiku" ? ANTHROPIC_HAIKU : ANTHROPIC_SONNET;
     const [model, cacheControl] = await Promise.all([getAnthropicClient(modelId), getProviderCacheControl()]);
-    const reasoningOptions = params.model === "haiku"
-        ? undefined
-        : await getProviderModelOptions(params.reasoning?.effort ?? SUBAGENT_EFFORT, params.reasoning?.display);
+    const reasoningOptions = await getProviderModelOptions(params.reasoning?.effort ?? SUBAGENT_EFFORT, params.reasoning?.display);
 
     const conversation = buildSubagentMessages(params.prompt, params.previousMessages, definition.followUpHint);
 
