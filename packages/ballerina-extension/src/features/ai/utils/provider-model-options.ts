@@ -17,9 +17,9 @@
  */
 
 /**
- * Thinking and effort options for Claude Sonnet calls, kept apart from ai-client.ts so Jest can load
- * them: ai-client pulls in vscode and auth, and the `@wso2/ballerina-core` barrel drags in the ESM-only
- * `vscode-ws-jsonrpc`, so callers pass whether the login method is Bedrock rather than the enum.
+ * Thinking and effort options for Claude Sonnet and Claude Haiku calls, kept apart from ai-client.ts so
+ * Jest can load them: ai-client pulls in vscode and auth, and the `@wso2/ballerina-core` barrel drags in
+ * the ESM-only `vscode-ws-jsonrpc`, so callers pass whether the login method is Bedrock rather than the enum.
  */
 
 export type AnthropicEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';

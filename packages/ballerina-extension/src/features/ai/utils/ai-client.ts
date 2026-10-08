@@ -26,7 +26,7 @@ import { LLM_API_BASE_PATH } from "../constants";
 import { AIMachineEventType, AnthropicKeySecrets, AnthropicAwsSecrets, LoginMethod, BIIntelSecrets } from "@wso2/ballerina-core";
 import { AnthropicEffort, resolveProviderModelOptions, ThinkingDisplay } from "./provider-model-options";
 
-export const ANTHROPIC_HAIKU = "claude-haiku-4-5-20251001";
+export const ANTHROPIC_HAIKU = "claude-haiku-5-5";
 export const ANTHROPIC_SONNET = "claude-sonnet-5-5";
 
 export const USAGE_LIMIT_EXCEEDED_MESSAGE = "Usage limit exceeded.";
@@ -204,7 +204,7 @@ export const getAnthropicClient = async (model: AnthropicModel): Promise<any> =>
             
             // Map Anthropic model names to AWS Bedrock model IDs (base models without region prefix)
             const baseModelMap: Record<AnthropicModel, string> = {
-                [ANTHROPIC_HAIKU]: "anthropic.claude-haiku-4-5-20251001-v1:0",
+                [ANTHROPIC_HAIKU]: "anthropic.claude-haiku-5-5",
                 [ANTHROPIC_SONNET]: "anthropic.claude-sonnet-5-5",
             };
             
@@ -233,7 +233,7 @@ export const getAnthropicClient = async (model: AnthropicModel): Promise<any> =>
             });
 
             const vertexModelMap: Record<AnthropicModel, string> = {
-                [ANTHROPIC_HAIKU]: "claude-haiku-4-5@20251001",
+                [ANTHROPIC_HAIKU]: "claude-haiku-5-5",
                 [ANTHROPIC_SONNET]: "claude-sonnet-5-5",
             };
 

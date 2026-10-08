@@ -99,15 +99,16 @@
       "brace-expansion@>=5.0.0 <6": "5.0.12",
       // Claude Sonnet 5.5 needs @ai-sdk/anthropic >= 3.0.125: earlier 3.x releases
       // treat `claude-sonnet-5-5` as Claude Sonnet 5 and forward the `disabled`
-      // thinking and forced tool choice it rejects. Forcing keeps google-vertex,
+      // thinking and forced tool choice it rejects. Claude Haiku 5.5 needs >= 3.0.128,
+      // the first release that knows it rejects sampling parameters. Forcing keeps google-vertex,
       // amazon-bedrock and anthropic-aws on the same copy. The selector stays inside 3.x: the 4.x line implements the v4 model spec,
       // which the pinned ai@6 core cannot consume.
-      "@ai-sdk/anthropic@>=3 <4": "3.0.125",
+      "@ai-sdk/anthropic@>=3 <4": "3.0.128",
       // Security fix: uncontrolled resource consumption, fixed at 4.0.33,
-      // but @ai-sdk/anthropic@3.0.125 and ai@6.0.296 pin 4.0.56 exactly and
-      // import its (unexported-until-4.0.41) `secureJsonParse` helper, so force
-      // 4.0.56 rather than the bare fix version.
-      "@ai-sdk/provider-utils@>=4 <5": "4.0.56",
+      // but @ai-sdk/anthropic@3.0.128 pins 4.0.57 exactly (ai@6.0.296 pins 4.0.56)
+      // and both import its (unexported-until-4.0.41) `secureJsonParse` helper, so
+      // force 4.0.57 rather than the bare fix version.
+      "@ai-sdk/provider-utils@>=4 <5": "4.0.57",
       // Security overrides — keep in sync with trivy findings. Bump to the
       // first fix version listed for each CVE. If a bump breaks workspace
       // consumers, narrow the selector (e.g. "pkg@<x.y.z": "x.y.z").
