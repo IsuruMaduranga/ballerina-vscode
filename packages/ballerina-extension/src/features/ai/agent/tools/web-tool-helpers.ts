@@ -23,6 +23,15 @@
 
 export const READER_FETCH_FAILED_PREFIX = 'Fetch failed:';
 
+/**
+ * The web search factories to try, newest first. The `_20260209` version filters results with code
+ * execution before the model reads them; `@ai-sdk/google-vertex` lists only `_20250305` for Vertex AI,
+ * so Vertex gets that one.
+ */
+export function webSearchToolVersions(isVertex: boolean): string[] {
+    return isVertex ? ['webSearch_20250305'] : ['webSearch_20260209', 'webSearch_20250305'];
+}
+
 export const WEB_FETCH_READER_SYSTEM_PROMPT = `You read one web page for another agent. Call web_fetch on the URL, then answer the question using only the fetched content.
 Rules:
 - Always fetch the URL first. Never answer from memory or prior knowledge.
