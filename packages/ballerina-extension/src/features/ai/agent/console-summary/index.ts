@@ -19,7 +19,7 @@
 import { generateObject } from "ai";
 import { commands } from "vscode";
 import { chatStateStorage } from "../../../../views/ai-panel/chatStateStorage";
-import { ANTHROPIC_HAIKU, getAnthropicClient, getProviderModelOptions } from "../../utils/ai-client";
+import { ANTHROPIC_HAIKU, getAnthropicClient, getHaikuObjectModelOptions } from "../../utils/ai-client";
 import { extractAssistantText } from "../message-text";
 import { TASK_WRITE_TOOL_NAME } from "../tools/task-writer";
 import {
@@ -181,7 +181,7 @@ async function generateSummary(
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
         const [model, providerOptions] = await untilAborted(
-            Promise.all([getAnthropicClient(ANTHROPIC_HAIKU), getProviderModelOptions('low')]),
+            Promise.all([getAnthropicClient(ANTHROPIC_HAIKU), getHaikuObjectModelOptions('low')]),
             controller.signal,
         );
         const { object } = await generateObject({

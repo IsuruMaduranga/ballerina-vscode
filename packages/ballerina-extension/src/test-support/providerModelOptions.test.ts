@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { resolveProviderModelOptions } from '../features/ai/utils/provider-model-options';
+import { resolveHaikuObjectModelOptions, resolveProviderModelOptions } from '../features/ai/utils/provider-model-options';
 
 describe('resolveProviderModelOptions', () => {
     it('puts adaptive thinking and the effort in the anthropic namespace outside Bedrock', () => {
@@ -42,5 +42,23 @@ describe('resolveProviderModelOptions', () => {
 
     it.each([false, true])('never sends disabled thinking, which Sonnet 5.5 rejects (Bedrock: %s)', (isBedrock) => {
         expect(JSON.stringify(resolveProviderModelOptions(isBedrock, 'low'))).not.toContain('disabled');
+    });
+});
+
+describe('resolveHaikuObjectModelOptions', () => {
+    it('disables thinking on Vertex AI, where the json tool goes out with forced tool choice', () => {
+        expect(resolveHaikuObjectModelOptions('vertex', 'low')).toEqual({
+            anthropic: { thinking: { type: 'disabled' }, effort: 'low' },
+        });
+    });
+
+    it('disables thinking on Bedrock through the raw request fields, keeping the effort', () => {
+        expect(resolveHaikuObjectModelOptions('bedrock', 'low')).toEqual({
+            bedrock: { reasoningConfig: { maxReasoningEffort: 'low' }, additionalModelRequestFields: { thinking: { type: 'disabled' } } },
+        });
+    });
+
+    it('keeps adaptive thinking where the SDK uses native structured output', () => {
+        expect(resolveHaikuObjectModelOptions('other', 'low')).toEqual(resolveProviderModelOptions(false, 'low'));
     });
 });

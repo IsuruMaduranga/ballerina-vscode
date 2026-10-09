@@ -20,8 +20,10 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { v4 as uuidv4 } from 'uuid';
 import { CopilotEventHandler } from '../../utils/events';
 import { approvalManager } from '../../state/ApprovalManager';
+import { LoginMethod } from '@wso2/ballerina-core';
 import { getAnthropicClient, getProviderModelOptions, ANTHROPIC_SONNET } from '../../utils/ai-client';
-import { answerText, formatReaderAnswer, readerCalledATool, retryOnce, webFetchFailure, WEB_FETCH_READER_SYSTEM_PROMPT } from './web-tool-helpers';
+import { getLoginMethod } from '../../../../utils/ai/auth';
+import { answerText, formatReaderAnswer, readerCalledATool, retryOnce, webFetchFailure, webSearchToolVersions, WEB_FETCH_READER_SYSTEM_PROMPT } from './web-tool-helpers';
 
 export const WEB_SEARCH_TOOL_NAME = "web_search";
 export const WEB_FETCH_TOOL_NAME = "web_fetch";
@@ -104,8 +106,10 @@ async function executeWebSearch(
     eventHandler({ type: "tool_call", toolName: WEB_SEARCH_TOOL_NAME, toolInput: { query: input.query }, toolCallId });
 
     try {
-        // The _20260209 version filters results with code execution before the model reads them.
-        const searchFactory = getProviderToolFactory(['webSearch_20260209', 'webSearch_20250305']);
+        const [loginMethod, model, providerOptions] = await Promise.all([
+            getLoginMethod(), getAnthropicClient(ANTHROPIC_SONNET), getProviderModelOptions('low'),
+        ]);
+        const searchFactory = getProviderToolFactory(webSearchToolVersions(loginMethod === LoginMethod.VERTEX_AI));
         if (!searchFactory) {
             eventHandler({ type: "tool_result", toolName: WEB_SEARCH_TOOL_NAME, toolOutput: { query: input.query }, toolCallId, failed: true });
             return 'Web search tool is unavailable in this environment.';
@@ -113,8 +117,8 @@ async function executeWebSearch(
 
         console.log(`[WebTools] search | query: ${input.query} | context: ${input.context}`);
         const result = await generateText({
-            model: await getAnthropicClient(ANTHROPIC_SONNET),
-            providerOptions: await getProviderModelOptions('low'),
+            model,
+            providerOptions,
             system: WEB_SEARCH_SYSTEM_PROMPT,
             prompt: `Context: ${input.context}\n\nSearch query: ${input.query}\n\nSearch the web and provide a detailed, accurate answer based on the results.`,
             tools: {

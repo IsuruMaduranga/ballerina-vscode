@@ -21,7 +21,7 @@ import { FollowupSuggestion } from "@wso2/ballerina-core";
 import { workspace } from "vscode";
 import { chatStateStorage } from "../../../../views/ai-panel/chatStateStorage";
 import { CopilotEventHandler } from "../../utils/events";
-import { ANTHROPIC_HAIKU, getAnthropicClient, getProviderModelOptions } from "../../utils/ai-client";
+import { ANTHROPIC_HAIKU, getAnthropicClient, getHaikuObjectModelOptions } from "../../utils/ai-client";
 import { buildFollowupPrompt, FollowupPromptInput, FollowupSituation, RecentExchange } from "./prompt";
 import { followupSuggestionsSchema, GeneratedFollowupSuggestion } from "./schema";
 import { extractAssistantText } from "../message-text";
@@ -160,7 +160,7 @@ async function generateSuggestions(
     }
     const interrupted = input.situation !== "completed";
     try {
-        const [model, providerOptions] = await Promise.all([getAnthropicClient(ANTHROPIC_HAIKU), getProviderModelOptions('low')]);
+        const [model, providerOptions] = await Promise.all([getAnthropicClient(ANTHROPIC_HAIKU), getHaikuObjectModelOptions('low')]);
         const { object } = await generateObject({
             model,
             maxOutputTokens: 2048, // Thinking shares this cap with the reply.

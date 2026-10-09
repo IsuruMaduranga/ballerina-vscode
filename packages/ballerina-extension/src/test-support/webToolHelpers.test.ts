@@ -16,9 +16,17 @@
  * under the License.
  */
 
-import { answerText, formatReaderAnswer, readerCalledATool, retryOnce, webFetchFailure } from "../features/ai/agent/tools/web-tool-helpers";
+import { answerText, formatReaderAnswer, readerCalledATool, retryOnce, webFetchFailure, webSearchToolVersions } from "../features/ai/agent/tools/web-tool-helpers";
 
 describe("web tool helpers", () => {
+    it("gives Vertex AI only the 2025-03-05 web search, which its provider lists", () => {
+        expect(webSearchToolVersions(true)).toEqual(["webSearch_20250305"]);
+    });
+
+    it("prefers the dynamic-filtering web search everywhere else", () => {
+        expect(webSearchToolVersions(false)).toEqual(["webSearch_20260209", "webSearch_20250305"]);
+    });
+
     it("counts a direct web_fetch call as a fetch", () => {
         expect(readerCalledATool([{ toolCalls: [{ toolName: "web_fetch" }], content: [{ type: "text" }] }])).toBe(true);
     });

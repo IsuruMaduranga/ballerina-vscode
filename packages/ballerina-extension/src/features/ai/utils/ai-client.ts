@@ -24,7 +24,7 @@ import { AIStateMachine } from "../../../views/ai-panel/aiMachine";
 import { BACKEND_URL } from "../utils";
 import { LLM_API_BASE_PATH } from "../constants";
 import { AIMachineEventType, AnthropicKeySecrets, AnthropicAwsSecrets, LoginMethod, BIIntelSecrets } from "@wso2/ballerina-core";
-import { AnthropicEffort, resolveProviderModelOptions, ThinkingDisplay } from "./provider-model-options";
+import { AnthropicEffort, resolveHaikuObjectModelOptions, resolveProviderModelOptions, ThinkingDisplay } from "./provider-model-options";
 
 export const ANTHROPIC_HAIKU = "claude-haiku-5-5";
 export const ANTHROPIC_SONNET = "claude-sonnet-5-5";
@@ -303,6 +303,18 @@ export type { AnthropicEffort } from "./provider-model-options";
 /** Adaptive thinking at `effort` for the current login method; see `resolveProviderModelOptions`. */
 export const getProviderModelOptions = async (effort: AnthropicEffort, display?: ThinkingDisplay) =>
     resolveProviderModelOptions(await getLoginMethod() === LoginMethod.AWS_BEDROCK, effort, display);
+
+/** Options for a Claude Haiku `generateObject` call on the current login method; see `resolveHaikuObjectModelOptions`. */
+export const getHaikuObjectModelOptions = async (effort: AnthropicEffort) => {
+    switch (await getLoginMethod()) {
+        case LoginMethod.AWS_BEDROCK:
+            return resolveHaikuObjectModelOptions('bedrock', effort);
+        case LoginMethod.VERTEX_AI:
+            return resolveHaikuObjectModelOptions('vertex', effort);
+        default:
+            return resolveHaikuObjectModelOptions('other', effort);
+    }
+};
 
 function isAnthropicModel(model: LanguageModel): boolean {
     if (typeof model === 'string') {

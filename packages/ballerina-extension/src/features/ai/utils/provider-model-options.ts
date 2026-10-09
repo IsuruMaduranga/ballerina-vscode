@@ -35,6 +35,14 @@ export type ProviderModelOptions =
     | { anthropic: { thinking: { type: 'adaptive'; display?: ThinkingDisplay }; effort: AnthropicEffort } }
     | { bedrock: { reasoningConfig: { type: 'adaptive'; display?: ThinkingDisplay; maxReasoningEffort: AnthropicEffort } } };
 
+export type HaikuObjectModelOptions =
+    | ProviderModelOptions
+    | { anthropic: { thinking: { type: 'disabled' }; effort: AnthropicEffort } }
+    | { bedrock: { reasoningConfig: { maxReasoningEffort: AnthropicEffort }; additionalModelRequestFields: { thinking: { type: 'disabled' } } } };
+
+/** Which provider shape a login method's structured output takes; see `resolveHaikuObjectModelOptions`. */
+export type StructuredOutputProvider = 'bedrock' | 'vertex' | 'other';
+
 /**
  * Claude Sonnet 5.5 rejects `thinking: {type: "disabled"}`, so every Sonnet call runs adaptive
  * thinking and `effort` is the one lever on how much it thinks; its levels differ from Sonnet 5's.
@@ -53,4 +61,23 @@ export function resolveProviderModelOptions(
         return { bedrock: { reasoningConfig: { type: 'adaptive', ...displayOption, maxReasoningEffort: effort } } };
     }
     return { anthropic: { thinking: { type: 'adaptive', ...displayOption }, effort } };
+}
+
+/**
+ * Options for a Claude Haiku `generateObject` call. Vertex AI and Bedrock have no native structured output
+ * for Haiku 5.5, so the SDK falls back to a `json` tool with forced tool choice (`any`), which the API
+ * rejects while thinking is on. Haiku 5.5 thinks by default, so those two get thinking disabled
+ * explicitly; elsewhere the SDK uses `output_config.format` and the call keeps adaptive thinking.
+ *
+ * Bedrock's `reasoningConfig` writes no `thinking` field for a disabled type, so the disabled block goes
+ * through `additionalModelRequestFields`, which the Converse provider passes on unchanged.
+ */
+export function resolveHaikuObjectModelOptions(provider: StructuredOutputProvider, effort: AnthropicEffort): HaikuObjectModelOptions {
+    if (provider === 'bedrock') {
+        return { bedrock: { reasoningConfig: { maxReasoningEffort: effort }, additionalModelRequestFields: { thinking: { type: 'disabled' } } } };
+    }
+    if (provider === 'vertex') {
+        return { anthropic: { thinking: { type: 'disabled' }, effort } };
+    }
+    return resolveProviderModelOptions(false, effort);
 }
