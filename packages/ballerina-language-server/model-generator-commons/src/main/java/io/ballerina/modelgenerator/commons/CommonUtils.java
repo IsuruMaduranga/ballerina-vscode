@@ -1851,7 +1851,7 @@ public class CommonUtils {
      */
     public static String resolveDefaultValue(Symbol paramSymbol, TypeSymbol typeSymbol,
                                              SemanticModel semanticModel, Package resolvedPackage) {
-        return resolveDefaultValue(paramSymbol, typeSymbol, () -> semanticModel, resolvedPackage, null);
+        return resolveDefaultValue(paramSymbol, typeSymbol, () -> semanticModel, resolvedPackage);
     }
 
     /**
@@ -1865,12 +1865,10 @@ public class CommonUtils {
      *                        enum member the default names is resolved by its node, which no other model knows. Asked
      *                        only for such a default (may supply null)
      * @param resolvedPackage the resolved package containing the symbol (can be null)
-     * @param document        the document containing the symbol (can be null for optimization)
      * @return the extracted default value as a string
      */
     public static String resolveDefaultValue(Symbol paramSymbol, TypeSymbol typeSymbol,
-                                             Supplier<SemanticModel> semanticModel, Package resolvedPackage,
-                                             Document document) {
+                                             Supplier<SemanticModel> semanticModel, Package resolvedPackage) {
         if (!declaresDefaultValue(paramSymbol)) {
             return "";
         }
@@ -1880,13 +1878,15 @@ public class CommonUtils {
         if (resolvedPackage == null || symbolLocation.isEmpty()) {
             return unknownDefault;
         }
-        if (document == null) {
-            // TODO: Remove the document passing logic to separate imported and local packages
-            document = findDocument(resolvedPackage, symbolLocation.get().lineRange().fileName());
-            if (document == null) {
-                return unknownDefault;
-            }
+        // The declaration is read from the file the symbol's location names, in the module the symbol belongs to,
+        // which need not be the file being edited.
+        String moduleName = paramSymbol.getModule().map(module -> module.id().moduleName()).orElse(null);
+        Optional<Document> declaringDocument = findDocument(resolvedPackage.project(), symbolLocation.get(),
+                moduleName);
+        if (declaringDocument.isEmpty()) {
+            return unknownDefault;
         }
+        Document document = declaringDocument.get();
 
         ModulePartNode rootNode = document.syntaxTree().rootNode();
         TextRange textRange = symbolLocation.get().textRange();
