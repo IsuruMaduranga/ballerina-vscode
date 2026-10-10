@@ -220,7 +220,7 @@
             "kind": "DEFAULTABLE",
             "originalName": "serviceUrl"
           },
-          "defaultValue": "https://api.anthropic.com/v1"
+          "defaultValue": "\"https://api.anthropic.com/v1\""
         },
         "maxTokens": {
           "metadata": {
@@ -562,7 +562,7 @@
             "kind": "INCLUDED_FIELD",
             "originalName": "compression"
           },
-          "defaultValue": "AUTO"
+          "defaultValue": "\"AUTO\""
         },
         "circuitBreaker": {
           "metadata": {

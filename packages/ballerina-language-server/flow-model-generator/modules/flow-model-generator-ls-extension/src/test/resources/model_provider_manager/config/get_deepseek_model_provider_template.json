@@ -156,7 +156,7 @@
             "kind": "DEFAULTABLE",
             "originalName": "serviceUrl"
           },
-          "defaultValue": "https://api.deepseek.com"
+          "defaultValue": "\"https://api.deepseek.com\""
         },
         "maxTokens": {
           "metadata": {
@@ -497,7 +497,7 @@
             "kind": "INCLUDED_FIELD",
             "originalName": "compression"
           },
-          "defaultValue": "AUTO"
+          "defaultValue": "\"AUTO\""
         },
         "circuitBreaker": {
           "metadata": {

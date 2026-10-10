@@ -6,10 +6,11 @@ enum Region {
 
 const HIGH = "high";
 const LOW = "low";
+const MAX_RETRIES = 3;
 
 type Priority HIGH|LOW;
 
 type DeployOptions record {|
     Region fallbackRegion = US_EAST;
-    int retries = 3;
+    int retries = MAX_RETRIES;
 |};

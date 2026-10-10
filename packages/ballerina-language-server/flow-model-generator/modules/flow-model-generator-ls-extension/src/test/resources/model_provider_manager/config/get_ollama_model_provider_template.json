@@ -120,7 +120,7 @@
             "kind": "DEFAULTABLE",
             "originalName": "serviceUrl"
           },
-          "defaultValue": "http://localhost:11434"
+          "defaultValue": "\"http://localhost:11434\""
         },
         "mirostat": {
           "metadata": {
@@ -755,7 +755,7 @@
             "kind": "INCLUDED_FIELD",
             "originalName": "compression"
           },
-          "defaultValue": "AUTO"
+          "defaultValue": "\"AUTO\""
         },
         "circuitBreaker": {
           "metadata": {

@@ -2044,7 +2044,7 @@
             "imports": {
               "http": "ballerina/http"
             },
-            "defaultValue": "AUTO"
+            "defaultValue": "\"AUTO\""
           },
           "circuitBreaker": {
             "metadata": {

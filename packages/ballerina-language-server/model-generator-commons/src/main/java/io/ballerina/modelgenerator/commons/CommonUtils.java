@@ -1968,17 +1968,19 @@ public class CommonUtils {
         if (!(symbolOpt.get() instanceof ConstantSymbol constantSymbol)) {
             return null;
         }
-        if (constantSymbol.kind() == SymbolKind.CONSTANT) {
-            return String.valueOf(constantSymbol.constValue());
+        if (constantSymbol.kind() != SymbolKind.CONSTANT && constantSymbol.kind() != SymbolKind.ENUM_MEMBER) {
+            return null;
         }
-        if (constantSymbol.kind() != SymbolKind.ENUM_MEMBER) {
+        Object value = constantSymbol.constValue() instanceof ConstantValue constantValue
+                ? constantValue.value() : constantSymbol.constValue();
+        if (value == null) {
             return null;
         }
 
-        // The value of an enum member is always a string, presented as the literal it is written with
-        Object value = constantSymbol.constValue() instanceof ConstantValue constantValue
-                ? constantValue.value() : constantSymbol.constValue();
-        return value == null ? null : "\"" + escapeContent(String.valueOf(value)) + "\"";
+        // A string, which the value of an enum member always is, is presented as the literal it is written with
+        boolean isString = constantSymbol.kind() == SymbolKind.ENUM_MEMBER
+                || getRawType(constantSymbol.broaderTypeDescriptor()).typeKind() == TypeDescKind.STRING;
+        return isString ? "\"" + escapeContent(String.valueOf(value)) + "\"" : String.valueOf(value);
     }
 
     /**

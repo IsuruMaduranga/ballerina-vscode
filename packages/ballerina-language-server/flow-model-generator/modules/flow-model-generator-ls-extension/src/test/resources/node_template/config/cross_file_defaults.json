@@ -145,7 +145,7 @@
           "kind": "DEFAULTABLE",
           "originalName": "priority"
         },
-        "defaultValue": "high"
+        "defaultValue": "\"high\""
       },
       "fallbackRegion": {
         "metadata": {

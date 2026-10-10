@@ -415,7 +415,7 @@
               "kind": "INCLUDED_FIELD",
               "originalName": "maxIter"
             },
-            "defaultValue": "INFER_TOOL_COUNT"
+            "defaultValue": "\"INFER_TOOL_COUNT\""
           },
           "verbose": {
             "metadata": {
@@ -771,7 +771,7 @@
               "kind": "DEFAULTABLE",
               "originalName": "sessionId"
             },
-            "defaultValue": "sessionId"
+            "defaultValue": "\"sessionId\""
           },
           "context": {
             "metadata": {
@@ -1168,7 +1168,7 @@
               "kind": "INCLUDED_FIELD",
               "originalName": "maxIter"
             },
-            "defaultValue": "INFER_TOOL_COUNT"
+            "defaultValue": "\"INFER_TOOL_COUNT\""
           },
           "verbose": {
             "metadata": {
