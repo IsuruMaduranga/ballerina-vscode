@@ -55,6 +55,7 @@ import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.compiler.syntax.tree.SyntaxTree;
 import io.ballerina.flowmodelgenerator.core.Constants;
 import io.ballerina.flowmodelgenerator.core.UserFacingException;
+import io.ballerina.flowmodelgenerator.core.model.FormBuilder;
 import io.ballerina.flowmodelgenerator.core.model.NodeBuilder;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
@@ -64,6 +65,7 @@ import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
 import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.FileSystemUtils;
 import io.ballerina.modelgenerator.commons.PackageUtil;
+import io.ballerina.modelgenerator.commons.ParameterData;
 import io.ballerina.projects.DependencyManifest;
 import io.ballerina.projects.Document;
 import io.ballerina.projects.DocumentId;
@@ -129,6 +131,40 @@ public class WorkflowUtil {
                 .filter(name -> !name.isEmpty())
                 .forEach(name -> options.add(new Option(name, name))));
         return options;
+    }
+
+    /**
+     * Adds the workflow dropdown that every form picking a workflow carries. Adding at an existing
+     * key keeps that key's position.
+     *
+     * @param form         the form to add the property to
+     * @param key          the property key
+     * @param label        the field label
+     * @param doc          the field description
+     * @param options      the workflows to offer, see {@link #workflowFunctionOptions(Package)}
+     * @param value        the selected workflow, or empty for none
+     * @param originalName the signature parameter the dropdown stands in for, or null when it stands in for none
+     */
+    public static <T> void addWorkflowSelectProperty(FormBuilder<T> form, String key, String label, String doc,
+                                                     List<Option> options, String value, String originalName) {
+        form.custom()
+                .metadata()
+                    .label(label)
+                    .description(doc)
+                    .stepOut()
+                .type()
+                    .fieldType(Property.ValueType.SINGLE_SELECT)
+                    .options(options)
+                    .selected(true)
+                    .stepOut()
+                .codedata()
+                    .kind(ParameterData.Kind.REQUIRED.name())
+                    .originalName(originalName)
+                    .stepOut()
+                .value(value)
+                .editable(true)
+                .stepOut()
+                .addProperty(key);
     }
 
     /**

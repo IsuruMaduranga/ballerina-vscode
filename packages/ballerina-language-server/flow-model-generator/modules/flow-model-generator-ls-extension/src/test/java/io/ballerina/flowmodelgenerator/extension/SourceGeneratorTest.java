@@ -96,12 +96,32 @@ public class SourceGeneratorTest extends AbstractLSTest {
     }
 
     @Test(dataProvider = "blank-workflow")
-    public void testBlankWorkflowIsReported(String config, String expectedMessage) throws IOException {
+    public void testBlankWorkflowIsReported(String config, String workflowKey, String expectedMessage)
+            throws IOException {
+        JsonObject response = requestWithBlankWorkflow(config, workflowKey, getApiName());
+        Assert.assertEquals(response.get("errorMsg").getAsString(), expectedMessage);
+    }
+
+    @Test(dataProvider = "blank-workflow")
+    public void testBlankWorkflowStillGetsDiagnostics(String config, String workflowKey, String expectedMessage)
+            throws IOException {
+        // The form asks for diagnostics on every edit, before a workflow is picked too.
+        JsonObject response = requestWithBlankWorkflow(config, workflowKey, "diagnostics");
+        Assert.assertFalse(response.has("errorMsg"), "Diagnostics failed: " + response);
+        Assert.assertTrue(response.has("flowNode") && response.get("flowNode").isJsonObject(),
+                "Diagnostics returned no flow node: " + response);
+    }
+
+    private JsonObject requestWithBlankWorkflow(String config, String workflowKey, String api) throws IOException {
         TestConfig testConfig = gson.fromJson(Files.newBufferedReader(configDir.resolve(config)), TestConfig.class);
         // The form opened from the function search has no workflow until one is picked from the dropdown.
         JsonObject diagram = testConfig.diagram().getAsJsonObject().deepCopy();
-        diagram.getAsJsonObject("codedata").remove("symbol");
-        JsonObject workflow = diagram.getAsJsonObject("properties").getAsJsonObject("workflow");
+        JsonObject codedata = diagram.getAsJsonObject("codedata");
+        // The workflow nodes fall back to the codedata symbol; for runWithId the symbol names the function called.
+        if (!"FUNCTION_CALL".equals(codedata.get("node").getAsString())) {
+            codedata.remove("symbol");
+        }
+        JsonObject workflow = diagram.getAsJsonObject("properties").getAsJsonObject(workflowKey);
         if (workflow != null) {
             workflow.addProperty("value", "");
         }
@@ -109,18 +129,16 @@ public class SourceGeneratorTest extends AbstractLSTest {
         FlowModelSourceGeneratorRequest request = new FlowModelSourceGeneratorRequest(
                 sourceDir.resolve(testConfig.source()).toAbsolutePath().toString(), diagram);
         // getResponse fails the test on any error, so the error response is read directly.
-        CompletableFuture<?> result = serviceEndpoint.request(getServiceName() + "/" + getApiName(), request);
-        JsonObject response = JsonParser.parseString(TestUtil.getResponseString(result))
-                .getAsJsonObject().getAsJsonObject("result");
-
-        Assert.assertEquals(response.get("errorMsg").getAsString(), expectedMessage);
+        CompletableFuture<?> result = serviceEndpoint.request(getServiceName() + "/" + api, request);
+        return JsonParser.parseString(TestUtil.getResponseString(result)).getAsJsonObject().getAsJsonObject("result");
     }
 
     @DataProvider(name = "blank-workflow")
     private Object[][] blankWorkflowConfigs() {
         return new Object[][]{
-                {"workflow_run_to_source.json", "Select a workflow in the Workflow field"},
-                {"send_data_to_source.json", "Select a workflow in the Workflow Name field"}
+                {"workflow_run_to_source.json", "workflow", "Select a workflow in the Workflow field"},
+                {"send_data_to_source.json", "workflow", "Select a workflow in the Workflow Name field"},
+                {"workflow_run_with_id_to_source.json", "processFunction", "Select a workflow in the Workflow field"}
         };
     }
 

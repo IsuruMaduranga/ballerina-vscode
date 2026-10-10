@@ -682,15 +682,8 @@ public class CodeAnalyzer extends NodeVisitor {
 
     // As above, for a dropdown that stands in for a signature parameter: originalName keeps that parameter's name.
     private void addWorkflowSelectProperty(String key, String label, String doc, String value, String originalName) {
-        nodeBuilder.properties().custom()
-                .metadata().label(label).description(doc).stepOut()
-                .type().fieldType(Property.ValueType.SINGLE_SELECT)
-                    .options(workflowOptions()).selected(true).stepOut()
-                .codedata().kind(ParameterData.Kind.REQUIRED.name()).originalName(originalName).stepOut()
-                .value(value)
-                .editable(true)
-                .stepOut()
-                .addProperty(key);
+        WorkflowUtil.addWorkflowSelectProperty(nodeBuilder.properties(), key, label, doc, workflowOptions(), value,
+                originalName);
     }
 
     // Walking every module's symbols is not free and a diagram holds many of these nodes, so the
@@ -4921,11 +4914,21 @@ public class CodeAnalyzer extends NodeVisitor {
             addWorkflowSelectProperty(SendDataBuilder.WORKFLOW_NAME_KEY, SendDataBuilder.WORKFLOW_NAME_LABEL,
                     SendDataBuilder.WORKFLOW_NAME_DOC, workflow);
         } else if (isWorkflowOperation(functionSymbol, RUN_WITH_ID_METHOD_NAME)) {
-            // Stays a generic function call (no dedicated node); only its workflow argument becomes the dropdown.
-            String workflow = argumentExpression(functionCallExpressionNode.arguments(), 0,
-                    RUN_PROCESS_FUNCTION_PARAM).map(expression -> expression.toSourceCode().trim()).orElse("");
-            addWorkflowSelectProperty(RUN_PROCESS_FUNCTION_PARAM, WorkflowRunBuilder.WORKFLOW_NAME_LABEL,
-                    WorkflowRunBuilder.WORKFLOW_NAME_DOC, workflow, RUN_PROCESS_FUNCTION_PARAM);
+            // Stays a generic function call (no dedicated node); only its workflow argument, the first parameter,
+            // becomes the dropdown. Keyed by the parameter's own name, as the generic path keyed it.
+            // TODO: Drop this special case once function-typed parameters offer the project's matching
+            //  functions in general (wso2/product-integrator#2717).
+            Optional<String> paramName = functionSymbol.typeDescriptor().params()
+                    .filter(params -> !params.isEmpty())
+                    .flatMap(params -> params.getFirst().getName());
+            if (paramName.isEmpty()) {
+                return;
+            }
+            String workflow = argumentExpression(functionCallExpressionNode.arguments(), 0, paramName.get())
+                    .map(expression -> expression.toSourceCode().trim()).orElse("");
+            addWorkflowSelectProperty(ParamUtils.removeLeadingSingleQuote(paramName.get()),
+                    WorkflowRunBuilder.WORKFLOW_NAME_LABEL, WorkflowRunBuilder.WORKFLOW_NAME_DOC, workflow,
+                    paramName.get());
         }
     }
 

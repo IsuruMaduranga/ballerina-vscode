@@ -34,7 +34,6 @@ import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
 import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
 import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.FileSystemUtils;
-import io.ballerina.modelgenerator.commons.ParameterData;
 import org.ballerinalang.langserver.common.utils.NameUtil;
 import org.eclipse.lsp4j.TextEdit;
 
@@ -105,23 +104,9 @@ public class ChildWorkflowCallBuilder extends NodeBuilder {
         // Pre-selected to whatever the list was clicked on, and editable so the choice can be
         // changed — and read — from the form itself, as the run form does.
         String selectedWorkflow = codedata != null && codedata.symbol() != null ? codedata.symbol() : "";
-        properties().custom()
-                .metadata()
-                    .label(ChildWorkflowRunBuilder.WORKFLOW_NAME_LABEL)
-                    .description(ChildWorkflowRunBuilder.WORKFLOW_NAME_DOC)
-                    .stepOut()
-                .type()
-                    .fieldType(Property.ValueType.SINGLE_SELECT)
-                    .options(SendDataBuilder.getAvailableWorkflowFunctions(context))
-                    .selected(true)
-                    .stepOut()
-                .codedata()
-                    .kind(ParameterData.Kind.REQUIRED.name())
-                    .stepOut()
-                .value(selectedWorkflow)
-                .editable(true)
-                .stepOut()
-                .addProperty(WORKFLOW_NAME_KEY);
+        WorkflowUtil.addWorkflowSelectProperty(properties(), WORKFLOW_NAME_KEY,
+                ChildWorkflowRunBuilder.WORKFLOW_NAME_LABEL, ChildWorkflowRunBuilder.WORKFLOW_NAME_DOC,
+                SendDataBuilder.getAvailableWorkflowFunctions(context), selectedWorkflow, null);
 
         TypeSymbol inputType = ChildWorkflowRunBuilder.findSelectedWorkflowInputType(context, codedata);
         if (inputType != null) {

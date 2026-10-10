@@ -20,6 +20,7 @@ package io.ballerina.flowmodelgenerator.core.model.node;
 
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.flowmodelgenerator.core.Constants;
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
 import io.ballerina.flowmodelgenerator.core.model.FlowNode;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
@@ -28,6 +29,7 @@ import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
 import io.ballerina.flowmodelgenerator.core.utils.FlowNodeUtil;
 import io.ballerina.modelgenerator.commons.FunctionData;
 import io.ballerina.modelgenerator.commons.PackageUtil;
+import io.ballerina.modelgenerator.commons.ParameterData;
 import org.eclipse.lsp4j.TextEdit;
 
 import java.nio.file.Path;
@@ -46,6 +48,10 @@ public class FunctionCall extends CallBuilder {
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         FlowNode flowNode = sourceBuilder.flowNode;
         Codedata codedata = flowNode.codedata();
+        if (isRunWithId(codedata) && !sourceBuilder.isForDiagnostics() && isWorkflowArgumentBlank(flowNode)) {
+            throw new UserFacingException("Select a workflow in the " + WorkflowRunBuilder.WORKFLOW_NAME_LABEL
+                    + " field");
+        }
         if (isGetDefaultModelCall(codedata)) {
             sourceBuilder.token().keyword(SyntaxKind.FINAL_KEYWORD);
         }
@@ -82,6 +88,20 @@ public class FunctionCall extends CallBuilder {
                 .textEdit()
                 .acceptImportWithVariableType()
                 .build();
+    }
+
+    // runWithId's workflow argument is its first required parameter, which the template and the re-read node
+    // both place first.
+    private static boolean isWorkflowArgumentBlank(FlowNode flowNode) {
+        if (flowNode.properties() == null) {
+            return false;
+        }
+        return flowNode.properties().values().stream()
+                .filter(property -> property.codedata() != null
+                        && ParameterData.Kind.REQUIRED.name().equals(property.codedata().kind()))
+                .findFirst()
+                .map(property -> property.value() == null || property.value().toString().isBlank())
+                .orElse(false);
     }
 
     private boolean isGetDefaultModelCall(Codedata codedata) {
