@@ -1,0 +1,15 @@
+enum Region {
+    US_EAST = "us-east-1",
+    EU_WEST = "eu-west-1",
+    AP_SOUTH = "ap-south-1"
+}
+
+const HIGH = "high";
+const LOW = "low";
+
+type Priority HIGH|LOW;
+
+type DeployOptions record {|
+    Region fallbackRegion = US_EAST;
+    int retries = 3;
+|};
