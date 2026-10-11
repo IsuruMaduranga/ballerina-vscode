@@ -143,7 +143,7 @@
           "kind": "DEFAULTABLE",
           "originalName": "ifRunning"
         },
-        "defaultValue": "FAIL"
+        "defaultValue": "\"FAIL\""
       },
       "ifClosed": {
         "metadata": {
@@ -184,7 +184,7 @@
           "kind": "DEFAULTABLE",
           "originalName": "ifClosed"
         },
-        "defaultValue": "ALLOW_DUPLICATE"
+        "defaultValue": "\"ALLOW_DUPLICATE\""
       },
       "type": {
         "metadata": {

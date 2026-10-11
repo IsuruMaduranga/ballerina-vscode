@@ -145,7 +145,7 @@
             "kind": "DEFAULTABLE",
             "originalName": "chunker"
           },
-          "defaultValue": "AUTO"
+          "defaultValue": "\"AUTO\""
         },
         "scope": {
           "metadata": {
