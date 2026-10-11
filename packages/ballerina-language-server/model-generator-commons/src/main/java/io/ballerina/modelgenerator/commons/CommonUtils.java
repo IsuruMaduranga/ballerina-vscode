@@ -1978,7 +1978,7 @@ public class CommonUtils {
         // A string, which the value of an enum member always is, is presented as the literal it is written with
         boolean isString = constantSymbol.kind() == SymbolKind.ENUM_MEMBER
                 || getRawType(constantSymbol.broaderTypeDescriptor()).typeKind() == TypeDescKind.STRING;
-        return isString ? "\"" + escapeContent(String.valueOf(value)) + "\"" : String.valueOf(value);
+        return isString ? DOUBLE_QUOTE + escapeContent(String.valueOf(value)) + DOUBLE_QUOTE : String.valueOf(value);
     }
 
     /**

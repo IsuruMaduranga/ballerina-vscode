@@ -118,7 +118,7 @@ public class FunctionDataBuilder {
     private TypeSymbol errorTypeSymbol;
     private Package resolvedPackage;
     private final Map<ModuleId, SemanticModel> declaringModuleSemanticModels = new HashMap<>();
-    private boolean declaringModuleCompilationFailed;
+    private final Set<ModuleId> failedDeclaringModules = new HashSet<>();
     private Document document;
     private FunctionSymbol functionSymbol;
     private FunctionData.Kind functionKind;
@@ -214,12 +214,12 @@ public class FunctionDataBuilder {
      * {@code semanticModel} when the module is that of the document. Any other package, such as a dependency loaded
      * from its bala, has an environment of its own and is compiled.
      * <p>
-     * Resolved only once a default names a constant or an enum member, and kept for each module. When compiling
-     * fails, such a default is presented as the name it is written with, and nothing is compiled again for the
-     * defaults that follow.
+     * Resolved only once a default names a constant or an enum member, and kept for each module. When compiling a
+     * module fails, such a default it declares is presented as the name it is written with, and the module is not
+     * compiled again for the defaults that follow. Defaults declared by other modules are still resolved.
      */
     private SemanticModel declaringModuleSemanticModel(Module module) {
-        if (declaringModuleCompilationFailed) {
+        if (failedDeclaringModules.contains(module.moduleId())) {
             return null;
         }
         SemanticModel heldModel = declaringModuleSemanticModels.get(module.moduleId());
@@ -243,7 +243,7 @@ public class FunctionDataBuilder {
             return declaringModuleSemanticModels.computeIfAbsent(module.moduleId(),
                     moduleId -> PackageUtil.getCompilation(module.packageInstance()).getSemanticModel(moduleId));
         } catch (RuntimeException e) {
-            declaringModuleCompilationFailed = true;
+            failedDeclaringModules.add(module.moduleId());
             LOGGER.log(Level.WARNING, "Failed to compile module '" + module.descriptor().name()
                     + "' to resolve the constant defaults it declares", e);
             return null;
