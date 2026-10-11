@@ -969,7 +969,7 @@ public class FunctionDataBuilder {
                 }
             }
             placeholder = DefaultValueGeneratorUtil.getDefaultValueForType(typeSymbol);
-            defaultValue = CommonUtils.resolveDefaultValue(paramSymbol, typeSymbol, this::declaringModuleSemanticModel,
+            defaultValue = CommonUtils.resolveDefaultValue(paramSymbol, this::declaringModuleSemanticModel,
                     resolvedPackage);
             paramType = getTypeSignature(typeSymbol, false, paramAllocator);
         }
@@ -1105,7 +1105,7 @@ public class FunctionDataBuilder {
             }
 
             String placeholder = DefaultValueGeneratorUtil.getDefaultValueForType(fieldType);
-            String defaultValue = CommonUtils.resolveDefaultValue(recordFieldSymbol, fieldType,
+            String defaultValue = CommonUtils.resolveDefaultValue(recordFieldSymbol,
                     this::declaringModuleSemanticModel, resolvedPackage);
             String paramType = getTypeSignature(typeSymbol);
             boolean optional = recordFieldSymbol.isOptional() || recordFieldSymbol.hasDefaultValue();

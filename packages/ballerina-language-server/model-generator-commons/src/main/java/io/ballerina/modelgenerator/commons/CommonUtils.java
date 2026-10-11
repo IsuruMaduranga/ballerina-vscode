@@ -1844,14 +1844,13 @@ public class CommonUtils {
      * This method contains the core default value extraction logic decoupled from function building.
      *
      * @param paramSymbol     the parameter or record field symbol
-     * @param typeSymbol      the type descriptor of the parameter
      * @param semanticModel   the semantic model of the default module of {@code resolvedPackage} (can be null)
      * @param resolvedPackage the resolved package containing the symbol (can be null)
      * @return the extracted default value as a string
      */
-    public static String resolveDefaultValue(Symbol paramSymbol, TypeSymbol typeSymbol,
-                                             SemanticModel semanticModel, Package resolvedPackage) {
-        return resolveDefaultValue(paramSymbol, typeSymbol, () -> semanticModel, resolvedPackage);
+    public static String resolveDefaultValue(Symbol paramSymbol, SemanticModel semanticModel,
+                                             Package resolvedPackage) {
+        return resolveDefaultValue(paramSymbol, () -> semanticModel, resolvedPackage);
     }
 
     /**
@@ -1859,7 +1858,6 @@ public class CommonUtils {
      * This method contains the core default value extraction logic decoupled from function building.
      *
      * @param paramSymbol     the parameter or record field symbol
-     * @param typeSymbol      the type descriptor of the parameter
      * @param semanticModel   supplies the semantic model of the module the default is read from: that of
      *                        {@code document}, or else the default module of {@code resolvedPackage}. A constant or
      *                        enum member the default names is resolved by its node, which no other model knows. Asked
@@ -1867,8 +1865,8 @@ public class CommonUtils {
      * @param resolvedPackage the resolved package containing the symbol (can be null)
      * @return the extracted default value as a string
      */
-    public static String resolveDefaultValue(Symbol paramSymbol, TypeSymbol typeSymbol,
-                                             Supplier<SemanticModel> semanticModel, Package resolvedPackage) {
+    public static String resolveDefaultValue(Symbol paramSymbol, Supplier<SemanticModel> semanticModel,
+                                             Package resolvedPackage) {
         if (!declaresDefaultValue(paramSymbol)) {
             return "";
         }
