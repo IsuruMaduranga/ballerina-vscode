@@ -31,6 +31,11 @@ const UNSTATED_DEFAULTS = ["()", "object {}"];
  * resolved: `http:HTTP_2_0` or `"2.0"` for the same member. Any other field states the declared default as it is.
  */
 export function getDefaultHint(field: FormField): string | undefined {
+    // A placeholder alone states no default: many fields hold one without declaring a default.
+    const defaultValue = field.defaultValue?.trim();
+    if (!defaultValue || UNSTATED_DEFAULTS.includes(defaultValue)) {
+        return undefined;
+    }
     // Every dropdown of the field is looked through, not just the first, as the one presenting the default may be
     // any of them.
     const option = field.placeholder
@@ -38,12 +43,5 @@ export function getDefaultHint(field: FormField): string | undefined {
             .flatMap(type => type.options ?? [])
             .find(item => item.value === field.placeholder)
         : undefined;
-    if (option) {
-        return option.label;
-    }
-    const defaultValue = field.defaultValue?.trim();
-    if (!defaultValue || UNSTATED_DEFAULTS.includes(defaultValue)) {
-        return undefined;
-    }
-    return defaultValue;
+    return option ? option.label : defaultValue;
 }

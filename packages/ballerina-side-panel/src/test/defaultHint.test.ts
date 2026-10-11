@@ -50,11 +50,11 @@ const DROPDOWN_FIELDS: Record<string, FormField> = {
         types: [httpVersion, expression], placeholder: "\"2.0\"", defaultValue: "http:HTTP_2_0",
     }),
     "constant union default": field({
-        types: [securityProtocol, expression], placeholder: "\"PLAINTEXT\"", defaultValue: "PLAINTEXT",
+        types: [securityProtocol, expression], placeholder: "\"PLAINTEXT\"", defaultValue: "\"PLAINTEXT\"",
     }),
     "select that is not the first input type": field({
         types: [number, select([{ label: "INFER_TOOL_COUNT", value: "\"INFER_TOOL_COUNT\"" }]), expression],
-        placeholder: "\"INFER_TOOL_COUNT\"", defaultValue: "INFER_TOOL_COUNT",
+        placeholder: "\"INFER_TOOL_COUNT\"", defaultValue: "\"INFER_TOOL_COUNT\"",
     }),
     "default offered by the second of two selects": field({
         types: [httpVersion, securityProtocol, expression], placeholder: "\"SSL\"", defaultValue: "\"SSL\"",
@@ -73,6 +73,16 @@ describe("getDefaultHint", () => {
     it("states no default for a field that declares none", () => {
         expect(getDefaultHint(field({ types: [httpVersion, expression], placeholder: "", defaultValue: "" })))
             .toBeUndefined();
+    });
+
+    // Many fields hold a placeholder, one naming an option or not, without declaring a default.
+    const PLACEHOLDER_ONLY: [string, InputType[], string][] = [
+        ["a dropdown", [httpVersion, expression], "\"1.1\""],
+        ["no dropdown", [number, expression], "0"],
+    ];
+    it.each(PLACEHOLDER_ONLY)("states no default from a placeholder alone, with %s", (_, types, placeholder) => {
+        expect(getDefaultHint(field({ types, placeholder, defaultValue: "" }))).toBeUndefined();
+        expect(getDefaultHint(field({ types, placeholder }))).toBeUndefined();
     });
 
     it("falls back to the declared default when it names no option", () => {
