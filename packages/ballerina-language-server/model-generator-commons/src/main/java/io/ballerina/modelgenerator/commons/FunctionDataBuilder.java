@@ -202,9 +202,8 @@ public class FunctionDataBuilder {
     }
 
     /**
-     * The semantic model of the module that declares a parameter or record field, whose source its default is read
-     * from: the module of the resolved package the symbol belongs to, found by name as its source is. When there is
-     * none, the module of the document when one is known, and otherwise the default module of the resolved package.
+     * The semantic model of the module that declares a parameter or record field, which is the module of the
+     * document its default is read from.
      * <p>
      * This is not necessarily {@code semanticModel}, which a caller may supply from the user's project: there the
      * connector is a dependency loaded from its compiled form, so a node of its source resolves to nothing.
@@ -219,13 +218,10 @@ public class FunctionDataBuilder {
      * fails, such a default is presented as the name it is written with, and nothing is compiled again for the
      * defaults that follow.
      */
-    private SemanticModel declaringModuleSemanticModel(Symbol symbol) {
-        if (declaringModuleCompilationFailed || resolvedPackage == null) {
+    private SemanticModel declaringModuleSemanticModel(Module module) {
+        if (declaringModuleCompilationFailed) {
             return null;
         }
-        String moduleName = symbol.getModule().map(module -> module.id().moduleName()).orElse(null);
-        Module module = PackageUtil.findModule(resolvedPackage, moduleName)
-                .orElseGet(() -> document != null ? document.module() : resolvedPackage.getDefaultModule());
         SemanticModel heldModel = declaringModuleSemanticModels.get(module.moduleId());
         if (heldModel != null) {
             return heldModel;
@@ -1019,7 +1015,7 @@ public class FunctionDataBuilder {
                 }
             }
             placeholder = DefaultValueGeneratorUtil.getDefaultValueForType(typeSymbol);
-            defaultValue = CommonUtils.resolveDefaultValue(paramSymbol, () -> declaringModuleSemanticModel(paramSymbol),
+            defaultValue = CommonUtils.resolveDefaultValue(paramSymbol, this::declaringModuleSemanticModel,
                     resolvedPackage);
             paramType = getTypeSignature(typeSymbol, false, paramAllocator);
         }
@@ -1156,7 +1152,7 @@ public class FunctionDataBuilder {
 
             String placeholder = DefaultValueGeneratorUtil.getDefaultValueForType(fieldType);
             String defaultValue = CommonUtils.resolveDefaultValue(recordFieldSymbol,
-                    () -> declaringModuleSemanticModel(recordFieldSymbol), resolvedPackage);
+                    this::declaringModuleSemanticModel, resolvedPackage);
             String paramType = getTypeSignature(typeSymbol);
             boolean optional = recordFieldSymbol.isOptional() || recordFieldSymbol.hasDefaultValue();
             boolean advanced = recordFieldSymbol.isOptional();

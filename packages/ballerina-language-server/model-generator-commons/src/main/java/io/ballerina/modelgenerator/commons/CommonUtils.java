@@ -105,7 +105,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Supplier;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -1850,7 +1850,7 @@ public class CommonUtils {
      */
     public static String resolveDefaultValue(Symbol paramSymbol, SemanticModel semanticModel,
                                              Package resolvedPackage) {
-        return resolveDefaultValue(paramSymbol, () -> semanticModel, resolvedPackage);
+        return resolveDefaultValue(paramSymbol, module -> semanticModel, resolvedPackage);
     }
 
     /**
@@ -1858,13 +1858,13 @@ public class CommonUtils {
      * This method contains the core default value extraction logic decoupled from function building.
      *
      * @param paramSymbol     the parameter or record field symbol
-     * @param semanticModel   supplies the semantic model of the module that declares the symbol, whose source the
-     *                        default is read from. A constant or enum member the default names is resolved by its
-     *                        node, which no other model knows. Asked only for such a default (may supply null)
+     * @param semanticModel   supplies the semantic model of the given module, which is the module of the document
+     *                        the default is read from. A constant or enum member the default names is resolved by
+     *                        its node, which no other model knows. Asked only for such a default (may supply null)
      * @param resolvedPackage the resolved package containing the symbol (can be null)
      * @return the extracted default value as a string
      */
-    public static String resolveDefaultValue(Symbol paramSymbol, Supplier<SemanticModel> semanticModel,
+    public static String resolveDefaultValue(Symbol paramSymbol, Function<Module, SemanticModel> semanticModel,
                                              Package resolvedPackage) {
         if (!declaresDefaultValue(paramSymbol)) {
             return "";
@@ -1899,10 +1899,11 @@ public class CommonUtils {
         }
 
         if (expression instanceof SimpleNameReferenceNode simpleNameReferenceNode) {
-            String enumValue = resolveEnumMemberValue(simpleNameReferenceNode, semanticModel.get());
+            String enumValue = resolveEnumMemberValue(simpleNameReferenceNode, semanticModel.apply(document.module()));
             return enumValue != null ? enumValue : simpleNameReferenceNode.name().text();
         } else if (expression instanceof QualifiedNameReferenceNode qualifiedNameReferenceNode) {
-            String enumValue = resolveEnumMemberValue(qualifiedNameReferenceNode, semanticModel.get());
+            String enumValue = resolveEnumMemberValue(qualifiedNameReferenceNode,
+                    semanticModel.apply(document.module()));
             return enumValue != null ? enumValue :
                     qualifiedNameReferenceNode.modulePrefix().text() + ":" + qualifiedNameReferenceNode.identifier()
                             .text();
