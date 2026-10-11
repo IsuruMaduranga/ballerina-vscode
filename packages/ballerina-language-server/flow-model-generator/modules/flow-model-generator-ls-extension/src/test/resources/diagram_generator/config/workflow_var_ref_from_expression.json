@@ -5340,7 +5340,7 @@
               }
             ],
             "value": "APPROVERS",
-            "placeholder": "()",
+            "placeholder": "",
             "optional": false,
             "editable": true,
             "advanced": false,
@@ -5600,7 +5600,7 @@
               }
             ],
             "value": [],
-            "placeholder": "\"\"",
+            "placeholder": "",
             "optional": true,
             "editable": true,
             "advanced": true,
@@ -5629,7 +5629,7 @@
               }
             ],
             "value": [],
-            "placeholder": "\"\"",
+            "placeholder": "",
             "optional": true,
             "editable": true,
             "advanced": true,
@@ -5658,7 +5658,7 @@
               }
             ],
             "value": [],
-            "placeholder": "\"\"",
+            "placeholder": "",
             "optional": true,
             "editable": true,
             "advanced": true,
@@ -5687,7 +5687,7 @@
               }
             ],
             "value": [],
-            "placeholder": "\"\"",
+            "placeholder": "",
             "optional": true,
             "editable": true,
             "advanced": true,
@@ -5716,7 +5716,7 @@
               }
             ],
             "value": [],
-            "placeholder": "\"\"",
+            "placeholder": "",
             "optional": true,
             "editable": true,
             "advanced": true,
