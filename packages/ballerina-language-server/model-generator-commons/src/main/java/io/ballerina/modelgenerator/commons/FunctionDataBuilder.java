@@ -66,6 +66,7 @@ import io.ballerina.projects.Package;
 import io.ballerina.projects.PackageDescriptor;
 import io.ballerina.projects.Project;
 import io.ballerina.projects.ProjectException;
+import io.ballerina.projects.ProjectKind;
 import io.ballerina.runtime.api.utils.IdentifierUtils;
 import io.ballerina.tools.text.LinePosition;
 import org.ballerinalang.langserver.LSClientLogger;
@@ -206,12 +207,17 @@ public class FunctionDataBuilder {
      * none, the module of the document when one is known, and otherwise the default module of the resolved package.
      * <p>
      * This is not necessarily {@code semanticModel}, which a caller may supply from the user's project: there the
-     * connector is a dependency loaded from its compiled form, so a node of its source resolves to nothing. For a
-     * function of the user's own project both are the same compilation, which is not compiled again.
+     * connector is a dependency loaded from its compiled form, so a node of its source resolves to nothing.
      * <p>
-     * Compiled only once a default names a constant or an enum member, and kept for each module. When that fails,
-     * such a default is presented as the name it is written with, and nothing is compiled again for the defaults that
-     * follow.
+     * A project the workspace manager holds is not compiled here: the workspace manager compiles it under its own
+     * lock, and a second compilation running beside it can fail, as the compiler's plugin cache is shared by the
+     * project and not safe for concurrent use. Its model is taken from the workspace manager, or, without one, is
+     * {@code semanticModel} when the module is that of the document. Any other package, such as a dependency loaded
+     * from its bala, has an environment of its own and is compiled.
+     * <p>
+     * Resolved only once a default names a constant or an enum member, and kept for each module. When compiling
+     * fails, such a default is presented as the name it is written with, and nothing is compiled again for the
+     * defaults that follow.
      */
     private SemanticModel declaringModuleSemanticModel(Symbol symbol) {
         if (declaringModuleCompilationFailed || resolvedPackage == null) {
@@ -220,6 +226,21 @@ public class FunctionDataBuilder {
         String moduleName = symbol.getModule().map(module -> module.id().moduleName()).orElse(null);
         Module module = PackageUtil.findModule(resolvedPackage, moduleName)
                 .orElseGet(() -> document != null ? document.module() : resolvedPackage.getDefaultModule());
+        SemanticModel heldModel = declaringModuleSemanticModels.get(module.moduleId());
+        if (heldModel != null) {
+            return heldModel;
+        }
+        if (module.project().kind() != ProjectKind.BALA_PROJECT) {
+            Optional<SemanticModel> workspaceModel = workspaceSemanticModel(module);
+            if (workspaceModel.isPresent()) {
+                declaringModuleSemanticModels.put(module.moduleId(), workspaceModel.get());
+                return workspaceModel.get();
+            }
+            if (workspaceManager == null && semanticModel != null && document != null
+                    && document.module().moduleId().equals(module.moduleId())) {
+                return semanticModel;
+            }
+        }
         try {
             return declaringModuleSemanticModels.computeIfAbsent(module.moduleId(),
                     moduleId -> PackageUtil.getCompilation(module.packageInstance()).getSemanticModel(moduleId));
@@ -229,6 +250,22 @@ public class FunctionDataBuilder {
                     + "' to resolve the constant defaults it declares", e);
             return null;
         }
+    }
+
+    /**
+     * The semantic model of a module from the workspace manager, read through a file of the module, when the
+     * workspace manager holds its project.
+     */
+    private Optional<SemanticModel> workspaceSemanticModel(Module module) {
+        if (workspaceManager == null) {
+            return Optional.empty();
+        }
+        Optional<Path> modulePath = module.documentIds().stream().findFirst()
+                .flatMap(documentId -> module.project().documentPath(documentId));
+        if (modulePath.isEmpty() || workspaceManager.project(modulePath.get()).isEmpty()) {
+            return Optional.empty();
+        }
+        return workspaceManager.semanticModel(modulePath.get());
     }
 
     public FunctionDataBuilder name(String name) {
