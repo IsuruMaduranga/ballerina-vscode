@@ -284,6 +284,7 @@ public class HumanTaskBuilder extends CallBuilder {
                 .codedata().kind(ParameterData.Kind.INCLUDED_FIELD.name()).originalName(USER_ROLES_KEY).stepOut(),
                 WorkflowUtil.roleFieldValue(values.get(USER_ROLES_KEY)))
                 .editable(true)
+                .optional(true)
                 .stepOut()
                 .addProperty(USER_ROLES_KEY);
 

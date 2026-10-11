@@ -1355,7 +1355,10 @@ public class WorkflowUtil {
             PropertyType declared = existing.types() == null ? null : existing.types().stream()
                     .filter(type -> type.fieldType() == Property.ValueType.EXPRESSION)
                     .findFirst().orElse(null);
-            Property.Builder<Object> builder = Property.Builder.copyFrom(existing).clearTypes();
+            // The signature's placeholder is the default's source (`()`, `""`), which a list item shows as a role.
+            // Optional even when the module requires it: empty emits `()`; the audience rule demands a role or user.
+            Property.Builder<Object> builder = Property.Builder.copyFrom(existing).clearTypes().placeholder("")
+                    .optional(true);
             builder.type().fieldType(Property.ValueType.TEXT_SET).ballerinaType(ROLE_LIST_TYPE)
                     .selected(!expression).stepOut();
             if (declared == null) {

@@ -69,8 +69,8 @@
           }
         ],
         "value": [],
-        "placeholder": "()",
-        "optional": false,
+        "placeholder": "",
+        "optional": true,
         "editable": true,
         "advanced": false,
         "hidden": false,
@@ -284,7 +284,7 @@
           }
         ],
         "value": [],
-        "placeholder": "\"\"",
+        "placeholder": "",
         "optional": true,
         "editable": true,
         "advanced": true,
@@ -313,7 +313,7 @@
           }
         ],
         "value": [],
-        "placeholder": "\"\"",
+        "placeholder": "",
         "optional": true,
         "editable": true,
         "advanced": true,
@@ -342,7 +342,7 @@
           }
         ],
         "value": [],
-        "placeholder": "\"\"",
+        "placeholder": "",
         "optional": true,
         "editable": true,
         "advanced": true,
@@ -371,7 +371,7 @@
           }
         ],
         "value": [],
-        "placeholder": "\"\"",
+        "placeholder": "",
         "optional": true,
         "editable": true,
         "advanced": true,
@@ -400,7 +400,7 @@
           }
         ],
         "value": [],
-        "placeholder": "\"\"",
+        "placeholder": "",
         "optional": true,
         "editable": true,
         "advanced": true,
