@@ -70,7 +70,7 @@
         ],
         "value": [],
         "placeholder": "",
-        "optional": false,
+        "optional": true,
         "editable": true,
         "advanced": false,
         "hidden": false,
