@@ -86,6 +86,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Stream;
 
 import static io.ballerina.modelgenerator.commons.FunctionData.Kind.isAiClassKind;
@@ -110,10 +112,12 @@ public class FunctionDataBuilder {
     private static final String WSO2_MODEL_PROVIDER_TYPE_NAME = "Wso2ModelProvider";
     private static final String WSO2_EMBEDDING_PROVIDER_TYPE_NAME = "Wso2EmbeddingProvider";
     private static final String MODEL_TYPE_PARAMETER_NAME = "modelType";
+    private static final Logger LOGGER = Logger.getLogger(FunctionDataBuilder.class.getName());
     private SemanticModel semanticModel;
     private TypeSymbol errorTypeSymbol;
     private Package resolvedPackage;
     private SemanticModel declaringModuleSemanticModel;
+    private boolean declaringModuleCompilationFailed;
     private Document document;
     private FunctionSymbol functionSymbol;
     private FunctionData.Kind functionKind;
@@ -205,16 +209,18 @@ public class FunctionDataBuilder {
      * function of the user's own project both are the same compilation, which is not compiled again.
      * <p>
      * Compiled only once a default names a constant or an enum member. When that fails, such a default is presented
-     * as the name it is written with.
+     * as the name it is written with, and the module is not compiled again for the defaults that follow.
      */
     private SemanticModel declaringModuleSemanticModel() {
-        if (declaringModuleSemanticModel == null && resolvedPackage != null) {
+        if (declaringModuleSemanticModel == null && !declaringModuleCompilationFailed && resolvedPackage != null) {
             Module module = document != null ? document.module() : resolvedPackage.getDefaultModule();
             try {
                 declaringModuleSemanticModel =
                         PackageUtil.getCompilation(module.packageInstance()).getSemanticModel(module.moduleId());
             } catch (RuntimeException e) {
-                return null;
+                declaringModuleCompilationFailed = true;
+                LOGGER.log(Level.WARNING, "Failed to compile module '" + module.descriptor().name()
+                        + "' to resolve the constant defaults it declares", e);
             }
         }
         return declaringModuleSemanticModel;
