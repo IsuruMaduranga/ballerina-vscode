@@ -35,6 +35,7 @@ import org.eclipse.lsp4j.TextEdit;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -90,18 +91,32 @@ public class FunctionCall extends CallBuilder {
                 .build();
     }
 
-    // runWithId's workflow argument is its first required parameter, which the template and the re-read node
-    // both place first. A node without it is treated as blank, or the call would be written without the argument.
+    // A node without the workflow argument is treated as blank, or the call would be written without it.
     private static boolean isWorkflowArgumentBlank(FlowNode flowNode) {
-        if (flowNode.properties() == null) {
-            return true;
-        }
-        return flowNode.properties().values().stream()
-                .filter(property -> property.codedata() != null
-                        && ParameterData.Kind.REQUIRED.name().equals(property.codedata().kind()))
-                .findFirst()
+        return workflowArgumentKey(flowNode)
+                .map(key -> flowNode.properties().get(key))
                 .map(property -> property.value() == null || property.value().toString().isBlank())
                 .orElse(true);
+    }
+
+    /**
+     * The key of {@code workflow:runWithId}'s workflow argument: its first required parameter, which the template
+     * and the re-read node both place first and render as the workflow dropdown.
+     *
+     * @param flowNode a {@code workflow:runWithId} call node
+     * @return the key of the workflow dropdown, or empty when the node has none
+     */
+    public static Optional<String> workflowArgumentKey(FlowNode flowNode) {
+        if (flowNode.properties() == null) {
+            return Optional.empty();
+        }
+        return flowNode.properties().entrySet().stream()
+                .filter(entry -> entry.getValue().codedata() != null
+                        && ParameterData.Kind.REQUIRED.name().equals(entry.getValue().codedata().kind()))
+                .findFirst()
+                .filter(entry -> entry.getValue().types() != null && entry.getValue().types().stream()
+                        .anyMatch(type -> type.fieldType() == Property.ValueType.SINGLE_SELECT))
+                .map(Map.Entry::getKey);
     }
 
     private boolean isGetDefaultModelCall(Codedata codedata) {

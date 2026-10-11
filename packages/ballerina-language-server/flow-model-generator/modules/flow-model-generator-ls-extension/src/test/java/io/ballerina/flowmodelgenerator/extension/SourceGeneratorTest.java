@@ -18,6 +18,7 @@
 
 package io.ballerina.flowmodelgenerator.extension;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -113,13 +114,67 @@ public class SourceGeneratorTest extends AbstractLSTest {
         Assert.assertFalse(response.has("errorMsg"), "Diagnostics failed: " + response);
         Assert.assertTrue(response.has("flowNode") && response.get("flowNode").isJsonObject(),
                 "Diagnostics returned no flow node: " + response);
-        JsonObject other = response.getAsJsonObject("flowNode").getAsJsonObject("properties")
-                .getAsJsonObject(otherKey);
+        JsonObject properties = response.getAsJsonObject("flowNode").getAsJsonObject("properties");
+        // The empty workflow is only reported on save ("Select a workflow..."); the dropdown carries no compiler text.
+        JsonObject workflow = properties.getAsJsonObject(workflowKey);
+        Assert.assertNotNull(workflow, "No '" + workflowKey + "' field in: " + response);
+        Assert.assertFalse(workflow.has("diagnostics") && workflow.getAsJsonObject("diagnostics").get("hasDiagnostics")
+                .getAsBoolean(), "The blank '" + workflowKey + "' field carries diagnostics: " + workflow);
+        JsonObject other = properties.getAsJsonObject(otherKey);
         Assert.assertNotNull(other, "No '" + otherKey + "' field in: " + response);
         Assert.assertTrue(other.has("diagnostics") && other.getAsJsonObject("diagnostics").get("hasDiagnostics")
                 .getAsBoolean(), "No diagnostic on '" + otherKey + "': " + other);
         Assert.assertTrue(other.getAsJsonObject("diagnostics").toString().contains(UNDEFINED_VARIABLE),
                 "The diagnostic on '" + otherKey + "' does not name the undefined variable: " + other);
+    }
+
+    @Test
+    public void testBlankWorkflowInBlockStillGetsDiagnostics() throws IOException {
+        // A block's children are written by child source builders, which must take the diagnostics path too.
+        TestConfig testConfig = gson.fromJson(Files.newBufferedReader(configDir.resolve("workflow_run_to_source.json")),
+                TestConfig.class);
+        JsonObject runNode = testConfig.diagram().getAsJsonObject().deepCopy();
+        runNode.getAsJsonObject("codedata").remove("symbol");
+        runNode.getAsJsonObject("codedata").remove("isNew");
+        runNode.getAsJsonObject("properties").getAsJsonObject("input").addProperty("value", UNDEFINED_VARIABLE);
+
+        JsonObject condition = new JsonObject();
+        condition.addProperty("valueType", "EXPRESSION");
+        condition.addProperty("value", "true");
+        JsonObject branchProperties = new JsonObject();
+        branchProperties.add("condition", condition);
+        JsonObject branchCodedata = new JsonObject();
+        branchCodedata.addProperty("node", "CONDITIONAL");
+        JsonArray children = new JsonArray();
+        children.add(runNode);
+        JsonObject thenBranch = new JsonObject();
+        thenBranch.addProperty("label", "Then");
+        thenBranch.addProperty("kind", "BLOCK");
+        thenBranch.add("codedata", branchCodedata);
+        thenBranch.add("properties", branchProperties);
+        thenBranch.add("children", children);
+        JsonArray branches = new JsonArray();
+        branches.add(thenBranch);
+
+        JsonObject ifCodedata = testConfig.diagram().getAsJsonObject().getAsJsonObject("codedata").deepCopy();
+        ifCodedata.addProperty("node", "IF");
+        ifCodedata.remove("org");
+        ifCodedata.remove("module");
+        ifCodedata.remove("symbol");
+        JsonObject ifNode = new JsonObject();
+        ifNode.addProperty("id", "1");
+        ifNode.add("codedata", ifCodedata);
+        ifNode.add("branches", branches);
+        ifNode.add("properties", new JsonObject());
+
+        FlowModelSourceGeneratorRequest request = new FlowModelSourceGeneratorRequest(
+                sourceDir.resolve(testConfig.source()).toAbsolutePath().toString(), ifNode);
+        CompletableFuture<?> result = serviceEndpoint.request(getServiceName() + "/diagnostics", request);
+        JsonObject response = JsonParser.parseString(TestUtil.getResponseString(result))
+                .getAsJsonObject().getAsJsonObject("result");
+        Assert.assertFalse(response.has("errorMsg"), "Diagnostics failed: " + response);
+        Assert.assertTrue(response.has("flowNode") && response.get("flowNode").isJsonObject(),
+                "Diagnostics returned no flow node: " + response);
     }
 
     private JsonObject requestWithBlankWorkflow(String config, String workflowKey, String api) throws IOException {
@@ -156,7 +211,9 @@ public class SourceGeneratorTest extends AbstractLSTest {
         return new Object[][]{
                 {"workflow_run_to_source.json", "workflow", "Select a workflow in the Workflow field"},
                 {"send_data_to_source.json", "workflow", "Select a workflow in the Workflow Name field"},
-                {"workflow_run_with_id_to_source.json", "processFunction", "Select a workflow in the Workflow field"}
+                {"workflow_run_with_id_to_source.json", "processFunction", "Select a workflow in the Workflow field"},
+                {"child_workflow_run_to_source.json", "workflow", "Select a workflow in the Child Workflow field"},
+                {"child_workflow_call_to_source.json", "workflow", "Select a workflow in the Child Workflow field"}
         };
     }
 
@@ -165,7 +222,9 @@ public class SourceGeneratorTest extends AbstractLSTest {
         return new Object[][]{
                 {"workflow_run_to_source.json", "workflow", "input"},
                 {"send_data_to_source.json", "workflow", "workflowId"},
-                {"workflow_run_with_id_to_source.json", "processFunction", "instanceId"}
+                {"workflow_run_with_id_to_source.json", "processFunction", "instanceId"},
+                {"child_workflow_run_to_source.json", "workflow", "input"},
+                {"child_workflow_call_to_source.json", "workflow", "input"}
         };
     }
 

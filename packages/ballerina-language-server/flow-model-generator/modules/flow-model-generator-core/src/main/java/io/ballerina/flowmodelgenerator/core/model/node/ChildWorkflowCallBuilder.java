@@ -26,6 +26,7 @@ import io.ballerina.compiler.api.symbols.TypeDescKind;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.UnionTypeSymbol;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
 import io.ballerina.flowmodelgenerator.core.model.NodeBuilder;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
@@ -164,7 +165,13 @@ public class ChildWorkflowCallBuilder extends NodeBuilder {
                 .filter(value -> !value.isBlank())
                 .orElseGet(() -> sourceBuilder.flowNode.codedata().symbol());
         if (childWorkflowFunction == null || childWorkflowFunction.isBlank()) {
-            throw new IllegalStateException("A workflow function symbol is required for CHILD_WORKFLOW_CALL");
+            // Saving without a workflow is rejected; a diagnostics pass still writes the call so the other
+            // fields get their diagnostics.
+            if (!sourceBuilder.isForDiagnostics()) {
+                throw new UserFacingException("Select a workflow in the " + ChildWorkflowRunBuilder.WORKFLOW_NAME_LABEL
+                        + " field");
+            }
+            childWorkflowFunction = "";
         }
 
         String resultType = sourceBuilder.getProperty(Property.TYPE_KEY)
