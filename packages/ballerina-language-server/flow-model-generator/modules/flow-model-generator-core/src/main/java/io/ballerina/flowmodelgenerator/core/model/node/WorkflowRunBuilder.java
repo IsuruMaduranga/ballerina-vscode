@@ -32,8 +32,8 @@ import io.ballerina.flowmodelgenerator.core.model.NodeBuilder;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Property;
 import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
+import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
 import io.ballerina.modelgenerator.commons.FileSystemUtils;
-import io.ballerina.modelgenerator.commons.ParameterData;
 import org.ballerinalang.langserver.common.utils.NameUtil;
 import org.eclipse.lsp4j.TextEdit;
 
@@ -111,23 +111,9 @@ public class WorkflowRunBuilder extends NodeBuilder {
         if (!durableAgent) {
             // Pre-selected to whatever the list was clicked on, and editable so the choice can be
             // changed — and read — from the form itself, as the child workflow forms do.
-            properties().custom()
-                    .metadata()
-                        .label(WORKFLOW_NAME_LABEL)
-                        .description(WORKFLOW_NAME_DOC)
-                        .stepOut()
-                    .type()
-                        .fieldType(Property.ValueType.SINGLE_SELECT)
-                        .options(SendDataBuilder.getAvailableWorkflowFunctions(context))
-                        .selected(true)
-                        .stepOut()
-                    .codedata()
-                        .kind(ParameterData.Kind.REQUIRED.name())
-                        .stepOut()
-                    .value(codedata != null && codedata.symbol() != null ? codedata.symbol() : "")
-                    .editable(true)
-                    .stepOut()
-                    .addProperty(WORKFLOW_NAME_KEY);
+            WorkflowUtil.addWorkflowSelectProperty(properties(), WORKFLOW_NAME_KEY, WORKFLOW_NAME_LABEL,
+                    WORKFLOW_NAME_DOC, SendDataBuilder.getAvailableWorkflowFunctions(context),
+                    codedata != null && codedata.symbol() != null ? codedata.symbol() : "", null);
         }
 
         // Get the input parameter type from the workflow function's second parameter
@@ -206,7 +192,12 @@ public class WorkflowRunBuilder extends NodeBuilder {
                 .filter(value -> !value.isBlank())
                 .orElseGet(() -> flowNode.codedata().symbol());
         if (workflowFunction == null) {
-            throw new UserFacingException("Select a workflow in the " + WORKFLOW_NAME_LABEL + " field");
+            // Saving without a workflow is rejected; a diagnostics pass still writes the call so the other
+            // fields get their diagnostics.
+            if (!sourceBuilder.isForDiagnostics()) {
+                throw new UserFacingException("Select a workflow in the " + WORKFLOW_NAME_LABEL + " field");
+            }
+            workflowFunction = "";
         }
 
         // Get input property

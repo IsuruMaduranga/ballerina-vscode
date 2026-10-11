@@ -81,23 +81,8 @@ public class SendDataBuilder extends FunctionCall {
     public void setConcreteTemplateData(TemplateContext context) {
         List<Option> workflowOptions = getAvailableWorkflowFunctions(context);
 
-        properties().custom()
-                .metadata()
-                    .label(WORKFLOW_NAME_LABEL)
-                    .description(WORKFLOW_NAME_DOC)
-                    .stepOut()
-                .type()
-                    .fieldType(Property.ValueType.SINGLE_SELECT)
-                    .options(workflowOptions)
-                    .selected(true)
-                    .stepOut()
-                .codedata()
-                    .kind(REQUIRED.name())
-                .stepOut()
-                .value("")
-                .editable(true)
-                .stepOut()
-                .addProperty(WORKFLOW_NAME_KEY);
+        WorkflowUtil.addWorkflowSelectProperty(properties(), WORKFLOW_NAME_KEY, WORKFLOW_NAME_LABEL, WORKFLOW_NAME_DOC,
+                workflowOptions, "", null);
 
         properties().custom()
                 .metadata()
@@ -164,7 +149,9 @@ public class SendDataBuilder extends FunctionCall {
         Optional<Property> workflowId = sourceBuilder.getProperty(WORKFLOW_ID_KEY);
         Optional<Property> dataName = sourceBuilder.getProperty(DATA_NAME_KEY);
         Optional<Property> data = sourceBuilder.getProperty(DATA_KEY);
-        if (workflow.isPresent() && workflow.get().toSourceCode().isBlank()) {
+        // Saving without a workflow is rejected; a diagnostics pass still writes the call so the other
+        // fields get their diagnostics.
+        if (workflow.isPresent() && workflow.get().toSourceCode().isBlank() && !sourceBuilder.isForDiagnostics()) {
             throw new UserFacingException("Select a workflow in the " + WORKFLOW_NAME_LABEL + " field");
         }
         if (workflow.isPresent() && workflowId.isPresent() && dataName.isPresent() && data.isPresent()) {
