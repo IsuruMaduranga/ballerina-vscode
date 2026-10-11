@@ -745,6 +745,7 @@ public class SourceBuilder {
     public SourceBuilder children(List<FlowNode> flowNodes) {
         for (FlowNode node : flowNodes) {
             SourceBuilder sourceBuilder = new SourceBuilder(node, workspaceManager, filePath, lsClientLogger);
+            sourceBuilder.forDiagnostics = forDiagnostics;
             Map<Path, List<TextEdit>> textEdits =
                     NodeBuilder.getNodeFromKind(node.codedata().node()).toSource(sourceBuilder);
             List<TextEdit> filePathTextEdits = textEdits.get(filePath);

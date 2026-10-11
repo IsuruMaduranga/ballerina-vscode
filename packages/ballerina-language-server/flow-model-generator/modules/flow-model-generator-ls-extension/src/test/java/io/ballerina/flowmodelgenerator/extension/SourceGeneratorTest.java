@@ -49,6 +49,8 @@ import java.util.concurrent.CompletableFuture;
  */
 public class SourceGeneratorTest extends AbstractLSTest {
 
+    private static final String UNDEFINED_VARIABLE = "undefinedVariable";
+
     private static final Type textEditListType = new TypeToken<Map<String, List<TextEdit>>>() { }.getType();
 
     @Override
@@ -102,17 +104,30 @@ public class SourceGeneratorTest extends AbstractLSTest {
         Assert.assertEquals(response.get("errorMsg").getAsString(), expectedMessage);
     }
 
-    @Test(dataProvider = "blank-workflow")
-    public void testBlankWorkflowStillGetsDiagnostics(String config, String workflowKey, String expectedMessage)
+    @Test(dataProvider = "blank-workflow-diagnostics")
+    public void testBlankWorkflowStillGetsDiagnostics(String config, String workflowKey, String otherKey)
             throws IOException {
-        // The form asks for diagnostics on every edit, before a workflow is picked too.
-        JsonObject response = requestWithBlankWorkflow(config, workflowKey, "diagnostics");
+        // The form asks for diagnostics on every edit, before a workflow is picked too: another field with an
+        // undefined variable still gets its diagnostic.
+        JsonObject response = requestWithBlankWorkflow(config, workflowKey, otherKey, "diagnostics");
         Assert.assertFalse(response.has("errorMsg"), "Diagnostics failed: " + response);
         Assert.assertTrue(response.has("flowNode") && response.get("flowNode").isJsonObject(),
                 "Diagnostics returned no flow node: " + response);
+        JsonObject other = response.getAsJsonObject("flowNode").getAsJsonObject("properties")
+                .getAsJsonObject(otherKey);
+        Assert.assertNotNull(other, "No '" + otherKey + "' field in: " + response);
+        Assert.assertTrue(other.has("diagnostics") && other.getAsJsonObject("diagnostics").get("hasDiagnostics")
+                .getAsBoolean(), "No diagnostic on '" + otherKey + "': " + other);
+        Assert.assertTrue(other.getAsJsonObject("diagnostics").toString().contains(UNDEFINED_VARIABLE),
+                "The diagnostic on '" + otherKey + "' does not name the undefined variable: " + other);
     }
 
     private JsonObject requestWithBlankWorkflow(String config, String workflowKey, String api) throws IOException {
+        return requestWithBlankWorkflow(config, workflowKey, null, api);
+    }
+
+    private JsonObject requestWithBlankWorkflow(String config, String workflowKey, String otherKey, String api)
+            throws IOException {
         TestConfig testConfig = gson.fromJson(Files.newBufferedReader(configDir.resolve(config)), TestConfig.class);
         // The form opened from the function search has no workflow until one is picked from the dropdown.
         JsonObject diagram = testConfig.diagram().getAsJsonObject().deepCopy();
@@ -124,6 +139,9 @@ public class SourceGeneratorTest extends AbstractLSTest {
         JsonObject workflow = diagram.getAsJsonObject("properties").getAsJsonObject(workflowKey);
         if (workflow != null) {
             workflow.addProperty("value", "");
+        }
+        if (otherKey != null) {
+            diagram.getAsJsonObject("properties").getAsJsonObject(otherKey).addProperty("value", UNDEFINED_VARIABLE);
         }
 
         FlowModelSourceGeneratorRequest request = new FlowModelSourceGeneratorRequest(
@@ -139,6 +157,15 @@ public class SourceGeneratorTest extends AbstractLSTest {
                 {"workflow_run_to_source.json", "workflow", "Select a workflow in the Workflow field"},
                 {"send_data_to_source.json", "workflow", "Select a workflow in the Workflow Name field"},
                 {"workflow_run_with_id_to_source.json", "processFunction", "Select a workflow in the Workflow field"}
+        };
+    }
+
+    @DataProvider(name = "blank-workflow-diagnostics")
+    private Object[][] blankWorkflowDiagnosticsConfigs() {
+        return new Object[][]{
+                {"workflow_run_to_source.json", "workflow", "input"},
+                {"send_data_to_source.json", "workflow", "workflowId"},
+                {"workflow_run_with_id_to_source.json", "processFunction", "instanceId"}
         };
     }
 

@@ -91,17 +91,17 @@ public class FunctionCall extends CallBuilder {
     }
 
     // runWithId's workflow argument is its first required parameter, which the template and the re-read node
-    // both place first.
+    // both place first. A node without it is treated as blank, or the call would be written without the argument.
     private static boolean isWorkflowArgumentBlank(FlowNode flowNode) {
         if (flowNode.properties() == null) {
-            return false;
+            return true;
         }
         return flowNode.properties().values().stream()
                 .filter(property -> property.codedata() != null
                         && ParameterData.Kind.REQUIRED.name().equals(property.codedata().kind()))
                 .findFirst()
                 .map(property -> property.value() == null || property.value().toString().isBlank())
-                .orElse(false);
+                .orElse(true);
     }
 
     private boolean isGetDefaultModelCall(Codedata codedata) {
