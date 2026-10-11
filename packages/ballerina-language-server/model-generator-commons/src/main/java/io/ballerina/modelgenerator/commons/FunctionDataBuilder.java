@@ -230,6 +230,8 @@ public class FunctionDataBuilder {
         if (heldModel != null) {
             return heldModel;
         }
+        // TODO: Compile the module directly once the compiler's plugin cache is safe for concurrent use
+        //  (https://github.com/wso2/product-integrator/issues/2733).
         if (module.project().kind() != ProjectKind.BALA_PROJECT) {
             Optional<SemanticModel> workspaceModel = workspaceSemanticModel(module);
             if (workspaceModel.isPresent()) {
