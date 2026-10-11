@@ -1858,10 +1858,9 @@ public class CommonUtils {
      * This method contains the core default value extraction logic decoupled from function building.
      *
      * @param paramSymbol     the parameter or record field symbol
-     * @param semanticModel   supplies the semantic model of the module the default is read from: that of
-     *                        {@code document}, or else the default module of {@code resolvedPackage}. A constant or
-     *                        enum member the default names is resolved by its node, which no other model knows. Asked
-     *                        only for such a default (may supply null)
+     * @param semanticModel   supplies the semantic model of the module that declares the symbol, whose source the
+     *                        default is read from. A constant or enum member the default names is resolved by its
+     *                        node, which no other model knows. Asked only for such a default (may supply null)
      * @param resolvedPackage the resolved package containing the symbol (can be null)
      * @return the extracted default value as a string
      */
@@ -1914,8 +1913,8 @@ public class CommonUtils {
 
     /**
      * Whether a parameter or record field declares a default value. Read from the symbol, so it holds whether or
-     * not the source of its module is available. Any other kind of symbol is assumed to declare one, which keeps
-     * the default derived from its type.
+     * not the source of its module is available. Any other kind of symbol is assumed to declare one, so its default
+     * is read from the source, and is unknown when the source cannot be read.
      */
     private static boolean declaresDefaultValue(Symbol symbol) {
         if (symbol instanceof ParameterSymbol parameterSymbol) {
