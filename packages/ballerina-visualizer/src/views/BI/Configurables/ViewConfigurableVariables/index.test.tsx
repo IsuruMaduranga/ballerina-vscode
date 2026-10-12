@@ -44,7 +44,7 @@ jest.mock("@wso2/ui-toolkit", () => ({
     Typography: ({ children, sx }: any) => <p style={sx}>{children}</p>,
     Button: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
     Codicon: ({ name }: any) => <i data-codicon={name} />,
-    Dropdown: (): null => null,
+    Dropdown: ({ onValueChange }: any) => <button data-testid="to-tests" onClick={() => onValueChange("Test")} />,
     ErrorBanner: (): null => null,
     Icon: (): null => null,
     TextField: ({ value, onTextChange }: any) => (
@@ -57,7 +57,7 @@ jest.mock("@wso2/ui-toolkit", () => ({
 }));
 
 jest.mock("../../../../components/TopNavigationBar", () => ({ __esModule: true, TopNavigationBar: (): null => null }));
-jest.mock("../../../../components/TitleBar", () => ({ __esModule: true, TitleBar: (): null => null }));
+jest.mock("../../../../components/TitleBar", () => ({ __esModule: true, TitleBar: ({ actions }: any) => <div>{actions}</div> }));
 jest.mock("../../../../components/RelativeLoader", () => ({ __esModule: true, RelativeLoader: (): null => null }));
 jest.mock("../AddConfigurableVariables", () => ({ __esModule: true, AddForm: (): null => null }));
 jest.mock("../ConfigurableItem", () => ({
@@ -94,7 +94,8 @@ describe("ViewConfigurableVariables imported libraries", () => {
         await act(async () => {
             root.render(
                 <TestRpcContext.Provider value={{ rpcClient }}>
-                    <ViewConfigurableVariables projectPath={PROJECT_PATH} fileName="config.bal" org="wso2" />
+                    <ViewConfigurableVariables projectPath={PROJECT_PATH} fileName="config.bal" org="wso2"
+                        testsConfigTomlPath={`${PROJECT_PATH}/tests/Config.toml`} />
                 </TestRpcContext.Provider>
             );
         });
@@ -163,6 +164,15 @@ describe("ViewConfigurableVariables imported libraries", () => {
         expect(shownVariables()).toEqual(["maxPageSize"]);
     });
 
+    it("expands every library with a matching submodule while searching", async () => {
+        await search("s"); // maxPageSize in workflow.management, bootstrapServers and host in wso2/messaging
+        expect(row("management")).toBeTruthy();
+        expect(row("kafka")).toBeTruthy();
+        expect(row("rabbitmq")).toBeTruthy();
+        await search("");
+        expect(row("kafka")).toBeUndefined();
+    });
+
     it("marks a collapsed library that holds the selected submodule", async () => {
         await click(row("ballerina/workflow"));
         await click(row("management.rest"));
@@ -176,6 +186,13 @@ describe("ViewConfigurableVariables imported libraries", () => {
         expect(chevronOf("ballerina/workflow").className).toContain("chevron-down");
         await click(chevronOf("ballerina/workflow"));
         expect(row("management")).toBeUndefined();
+    });
+
+    it("keeps the selected submodule's library expanded after switching to the Test environment", async () => {
+        await click(row("ballerina/workflow"));
+        await click(row("management.rest"));
+        await click(container.querySelector("[data-testid='to-tests']"));
+        expect(row("management.rest")?.style.fontWeight).toBe("bold");
     });
 
     it("starts libraries collapsed", () => {

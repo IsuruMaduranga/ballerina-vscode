@@ -554,9 +554,9 @@ export function ViewConfigurableVariables(props?: ConfigProps) {
 
         return (
             <TreeView
-                key={category.name}
+                key={`${category.name}-${!!searchValue}`} // remount on search start/end: TreeView reads expandByDefault at mount
                 id={category.name}
-                expandByDefault={selectedModule?.category === category.name} // expands while it holds the selection
+                expandByDefault={!!searchValue || selectedModule?.category === category.name} // shows matches and the selection
                 sx={{ paddingLeft: '16px' }} // 16px + chevron (14px) + gap (5px) lines up with the flat rows' 35px
                 treeViewElementSX={{
                     ...ellipsis,
