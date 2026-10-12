@@ -557,10 +557,15 @@ export function ViewConfigurableVariables(props?: ConfigProps) {
                 key={`${category.name}-${!!searchValue}`} // remount on search start/end: TreeView reads expandByDefault at mount
                 id={category.name}
                 expandByDefault={!!searchValue || selectedModule?.category === category.name} // shows matches and the selection
-                sx={{ paddingLeft: '16px' }} // 16px + chevron (14px) + gap (5px) lines up with the flat rows' 35px
+                sx={{
+                    paddingLeft: '16px', // 16px + chevron (14px) + gap (5px) lines up with the flat rows' 35px
+                    '& > div:first-of-type > div': { paddingTop: 0 } // drop the toolkit's 3px so the label sits as in flat rows
+                }}
                 treeViewElementSX={{
                     ...ellipsis,
                     cursor: 'pointer',
+                    height: '25px', // same row height as the flat rows
+                    boxSizing: 'border-box',
                     border: isLibraryRowCurrent ? '1px solid var(--vscode-focusBorder)' : 'none'
                 }}
                 content={libraryLabel}
