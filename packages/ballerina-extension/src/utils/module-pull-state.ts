@@ -23,9 +23,10 @@ const PULL_MODULE_TOKEN_PREFIX = "pull-module-";
  * How long a pull counts as running without its `end`, and how long a single wait keeps being
  * extended. The LS can fail to send `end` (it restarts, or the pull task throws before reaching it).
  * A wait that is extended near this limit still gets its full delay, so it ends by this limit plus
- * one delay at the latest.
+ * one delay at the latest. Observed first-save pulls took 8–71 s; past two minutes a timeout is
+ * more useful to the user than a longer spinner.
  */
-export const MAX_MODULE_PULL_WAIT_MS = 5 * 60 * 1000;
+export const MAX_MODULE_PULL_WAIT_MS = 2 * 60 * 1000;
 
 export type ProgressKind = "begin" | "report" | "end";
 
