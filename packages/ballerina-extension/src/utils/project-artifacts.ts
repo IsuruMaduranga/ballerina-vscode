@@ -315,6 +315,36 @@ async function rebuildAndPublishArtifacts(
     });
 }
 
+/**
+ * Re-reads the positions of `artifacts` from the LS's current view of the package that owns
+ * `fileUri`. For a notification that cannot be tied to a document state: `getProjectArtifacts`
+ * is answered after every document change sent before it, so its positions match the current text.
+ */
+export async function refreshArtifactPositions(
+    fileUri: string,
+    artifacts: ProjectStructureArtifactResponse[]
+): Promise<ProjectStructureArtifactResponse[]> {
+    const projectStructure = StateMachine.context().projectStructure;
+    const owningProjectPath = projectStructure && resolveOwningProjectPath(fileUri, projectStructure);
+    const project = projectStructure?.projects?.find(project => isSamePath(project.projectPath, owningProjectPath));
+    if (!project) {
+        return artifacts;
+    }
+    const current = await buildProjectArtifactsStructure(
+        project.projectPath, project.projectName, project.projectTitle, StateMachine.langClient()
+    );
+    const entriesByKey = new Map<string, ProjectStructureArtifactResponse>();
+    for (const entries of Object.values(current.directoryMap)) {
+        for (const entry of entries ?? []) {
+            entriesByKey.set(artifactKey(entry.type, entry.id), entry);
+        }
+    }
+    return artifacts.map(artifact => {
+        const entry = entriesByKey.get(artifactKey(artifact.type, artifact.id));
+        return entry ? { ...artifact, position: entry.position } : artifact;
+    });
+}
+
 /** Picks the notification's added/updated artifacts out of an up-to-date structure, flagging additions with `isNew`. */
 function collectPublishedArtifacts(
     publishedArtifacts: ArtifactsNotification,

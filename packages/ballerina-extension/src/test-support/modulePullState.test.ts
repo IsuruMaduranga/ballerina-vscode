@@ -16,11 +16,24 @@
  * under the License.
  */
 
-import { onModulePullProgress, trackModulePullProgress } from '../utils/module-pull-state';
+import {
+    isModulePullInProgress, MAX_MODULE_PULL_WAIT_MS, onModulePullProgress, startPullAwareTimeout, trackModulePullProgress
+} from '../utils/module-pull-state';
 
 const PULL = 'pull-module-19cef91b';
 
 describe('module pull tracking', () => {
+    afterEach(() => trackModulePullProgress(PULL, 'end'));
+
+    it('is in progress between begin and end of a pull-module token', () => {
+        expect(isModulePullInProgress()).toBe(false);
+        trackModulePullProgress(PULL, 'begin');
+        trackModulePullProgress(PULL, 'report');
+        expect(isModulePullInProgress()).toBe(true);
+        trackModulePullProgress(PULL, 'end');
+        expect(isModulePullInProgress()).toBe(false);
+    });
+
     it('notifies listeners of module-pull updates until they stop listening', () => {
         const kinds: string[] = [];
         const stop = onModulePullProgress(kind => kinds.push(kind));
@@ -38,5 +51,50 @@ describe('module pull tracking', () => {
         trackModulePullProgress(42, 'begin');
         stop();
         expect(kinds).toEqual([]);
+        expect(isModulePullInProgress()).toBe(false);
+    });
+});
+
+describe('startPullAwareTimeout', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => {
+        trackModulePullProgress(PULL, 'end');
+        jest.useRealTimers();
+    });
+
+    it('fires after the delay when no pull is running', () => {
+        const onTimeout = jest.fn();
+        startPullAwareTimeout(onTimeout, 10000);
+        jest.advanceTimersByTime(9999);
+        expect(onTimeout).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(1);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    // The repro from wso2/product-integrator#2731: a 47 s pull starts right after the edit.
+    it('keeps waiting while a pull runs, then fires a full delay after the pull ends at the latest', () => {
+        const onTimeout = jest.fn();
+        startPullAwareTimeout(onTimeout, 10000);
+        trackModulePullProgress(PULL, 'begin');
+        jest.advanceTimersByTime(47000);
+        expect(onTimeout).not.toHaveBeenCalled();
+        trackModulePullProgress(PULL, 'end');
+        jest.advanceTimersByTime(10000);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('gives up on a pull whose end never arrives', () => {
+        const onTimeout = jest.fn();
+        startPullAwareTimeout(onTimeout, 10000);
+        trackModulePullProgress(PULL, 'begin');
+        jest.advanceTimersByTime(MAX_MODULE_PULL_WAIT_MS + 10000);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('never fires after cancel', () => {
+        const onTimeout = jest.fn();
+        startPullAwareTimeout(onTimeout, 10000).cancel();
+        jest.advanceTimersByTime(60000);
+        expect(onTimeout).not.toHaveBeenCalled();
     });
 });
