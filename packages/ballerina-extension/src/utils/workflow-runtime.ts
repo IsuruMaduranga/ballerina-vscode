@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -22,8 +22,7 @@ import * as path from 'path';
 import { parse } from '@iarna/toml';
 import { WorkflowRuntimeMode, WorkflowRuntimeStatusResponse } from '@wso2/ballerina-core';
 
-// Defaults of the `ballerina/workflow` configurables, repeated here because the extension reads
-// Config.toml before the program ever runs.
+// Defaults of the `ballerina/workflow` configurables.
 const DEFAULT_MODE: WorkflowRuntimeMode = 'LOCAL';
 const DEFAULT_URL = 'localhost:7233';
 const MODES: WorkflowRuntimeMode[] = ['LOCAL', 'IN_MEMORY', 'SELF_HOSTED', 'CLOUD'];
@@ -34,7 +33,6 @@ export interface WorkflowRuntimeConfig {
     url: string;
 }
 
-/** The runtime selection in the project's Config.toml, falling back to the module defaults. */
 export function readWorkflowRuntimeConfig(projectPath: string): WorkflowRuntimeConfig {
     const configPath = path.join(projectPath, 'Config.toml');
     let table: Record<string, unknown> = {};
@@ -53,7 +51,6 @@ export function readWorkflowRuntimeConfig(projectPath: string): WorkflowRuntimeC
     return { mode, url };
 }
 
-/** True when something accepts a TCP connection at `url` (`host:port`) within the timeout. */
 export function probeWorkflowRuntime(url: string, timeoutMs: number = PROBE_TIMEOUT_MS): Promise<boolean> {
     const target = parseHostPort(url);
     if (!target) {
@@ -76,7 +73,7 @@ export function probeWorkflowRuntime(url: string, timeoutMs: number = PROBE_TIME
     });
 }
 
-// Accepts `host:port`, `[v6]:port` and a `scheme://` prefix; anything without a port is rejected.
+// Accepts `host:port`, `[v6]:port` and a `scheme://` prefix.
 export function parseHostPort(url: string): { host: string; port: number } | undefined {
     const bare = url.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/\/.*$/, '');
     const match = /^(?:\[([^\]]+)\]|([^:]+)):(\d{1,5})$/.exec(bare);
@@ -90,10 +87,9 @@ export function parseHostPort(url: string): { host: string; port: number } | und
     return { host: match[1] ?? match[2], port };
 }
 
-/** What the overview shows: the configured mode and, for a server-backed mode, whether it answers. */
 export async function getWorkflowRuntimeStatus(projectPath: string): Promise<WorkflowRuntimeStatusResponse> {
     const { mode, url } = readWorkflowRuntimeConfig(projectPath);
-    // A managed runtime is remote and authenticated; a TCP probe says nothing useful about it.
+    // A managed runtime is authenticated; a TCP probe says nothing useful about it.
     if (mode === 'IN_MEMORY' || mode === 'CLOUD') {
         return { mode, url };
     }

@@ -82,8 +82,7 @@ public class WorkflowManagementService implements ExtendedLanguageServerService 
 
     private static final String BALLERINA = "ballerina";
     private static final String MODULE_NAME = "workflow.management.rest";
-    // The module durable workflows and durable agents are written against: a syntactic signal that the
-    // project is a workflow integration, unlike the artifact list, which needs the annotation to resolve.
+    // Importing it is a syntactic signal of a workflow integration; the artifact list needs the annotation resolved.
     private static final String WORKFLOW_MODULE_NAME = "workflow";
     /** Where the API lived before 0.9.0; see the class comment for how such an import is treated. */
     private static final String LEGACY_MODULE_NAME = "workflow.management";

@@ -27,7 +27,6 @@ const KEY = 'enableManagementApi';
 // configurable, so they are cleared from there whenever the toggle runs.
 const STALE_TABLE = 'ballerina.workflow.management';
 const STALE_KEYS = [KEY, 'port', 'enableBasicAuth'];
-// The runtime selector of the workflow module itself.
 const RUNTIME_TABLE = 'ballerina.workflow';
 const MODE_KEY = 'mode';
 
@@ -78,11 +77,7 @@ export function disableWorkflowManagementConfig(projectPath: string): void {
     }
 }
 
-/**
- * Selects the workflow runtime by writing `mode` under `[ballerina.workflow]`, with the same
- * text-preserving edit and parse-and-verify safety net as the management toggle. Returns the
- * message shown to the user when the file was left alone, undefined when the mode is in place.
- */
+// Writes `mode` under `[ballerina.workflow]`; returns the user-facing message when the file was left alone.
 export function setWorkflowRuntimeMode(projectPath: string, mode: string): string | undefined {
     const configPath = path.join(projectPath, 'Config.toml');
     const content = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : '';
@@ -280,7 +275,6 @@ function findTable(content: string, name: string): Table | undefined {
     return { headerStart: header.index, bodyStart, body: next ? rest.slice(0, next.index) : rest };
 }
 
-// Adds `line` at the top of `table`, or appends the table with that one line when it is absent.
 function appendKey(content: string, table: Table | undefined, tableName: string, line: string): string {
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
     if (table) {

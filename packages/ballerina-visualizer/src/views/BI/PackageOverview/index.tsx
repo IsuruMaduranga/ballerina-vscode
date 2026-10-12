@@ -694,6 +694,7 @@ interface WorkflowSectionProps {
     handleWorkflowManagement: (checked: boolean) => void;
     // undefined while the runtime check is in flight.
     runtime: WorkflowRuntimeStatusResponse | undefined;
+    runtimeCheckFailed: boolean;
     switchingRuntime: boolean;
     onUseInMemoryRuntime: () => void;
     onConfigureRuntime: () => void;
@@ -715,10 +716,11 @@ const RuntimeStatusLine = styled.p`
     margin: 8px 0;
 `;
 
-// Short lines on the panel; the explanation of what a workflow runtime is lives in the tooltips.
+// Short lines on the panel; the explanations live in the tooltips.
 export const WORKFLOW_RUNTIME_EXPLAINED =
     "Durable workflows run on a workflow runtime: a server that stores each run's progress, so a run survives restarts and can wait for people and timers. The integration connects to the URL set under [ballerina.workflow] in Config.toml.";
 export const NO_RUNTIME_TITLE = "No workflow runtime detected";
+export const RUNTIME_CHECK_FAILED = "Could not check for a workflow runtime";
 export const RUNTIME_DETECTED = "Workflow runtime detected";
 export const IN_MEMORY_RUNTIME = "Using the in-memory runtime (testing only)";
 export const MANAGED_RUNTIME = "Using a managed workflow runtime";
@@ -747,13 +749,22 @@ function WorkflowSection({
     managementEnabled,
     handleWorkflowManagement,
     runtime,
+    runtimeCheckFailed,
     switchingRuntime,
     onUseInMemoryRuntime,
     onConfigureRuntime,
     onRecheckRuntime,
 }: WorkflowSectionProps) {
     let status: ReactNode;
-    if (!runtime) {
+    if (!runtime && runtimeCheckFailed) {
+        status = (
+            <RuntimeStatusLine>
+                <Codicon name="warning" sx={{ color: "var(--vscode-editorWarning-foreground)" }} />
+                <span>{RUNTIME_CHECK_FAILED}.</span>
+                <VSCodeLink onClick={onRecheckRuntime}>Check again</VSCodeLink>
+            </RuntimeStatusLine>
+        );
+    } else if (!runtime) {
         status = <RuntimeStatusLine>Checking for a workflow runtime...</RuntimeStatusLine>;
     } else if (runtime.mode === "IN_MEMORY") {
         status = (
@@ -1044,8 +1055,9 @@ export function PackageOverview(props: PackageOverviewProps) {
     const [workflowMgmtEnabled, setWorkflowMgmtEnabled] = useState(false);
     const [workflowImported, setWorkflowImported] = useState(false);
     const [workflowRuntime, setWorkflowRuntime] = useState<WorkflowRuntimeStatusResponse>();
+    const [runtimeCheckFailed, setRuntimeCheckFailed] = useState(false);
     const [switchingRuntime, setSwitchingRuntime] = useState(false);
-    // Bumped by every context fetch so the runtime check re-runs with it.
+    // Bumped by every context fetch; the runtime check re-runs with it.
     const [contextEpoch, setContextEpoch] = useState(0);
     const [showAlert, setShowAlert] = React.useState(false);
     const [projectStructure, setProjectStructure] = useState<ProjectStructure>();
@@ -1140,22 +1152,26 @@ export function PackageOverview(props: PackageOverviewProps) {
         return getIntegrationTypes(projectStructure);
     }, [projectStructure]);
 
-    // The import is the stable signal: the artifact list only lists a workflow once the language
-    // server resolves its annotation, which it may not have done yet on a fresh structure.
+    // The import is the stable signal; the artifact list needs the annotation resolved first.
     const showWorkflowSection = !isLibrary && (workflowImported || hasWorkflowArtifacts(projectStructure));
 
-    // Runs after every context fetch and on demand; a late answer from an older check is dropped.
+    // A late answer from an older check is dropped.
     const runtimeCheckRef = useRef(0);
     const checkWorkflowRuntime = useCallback(() => {
         const check = ++runtimeCheckRef.current;
         setWorkflowRuntime(undefined);
+        setRuntimeCheckFailed(false);
         rpcClient.getWorkflowManagementRpcClient().getWorkflowRuntimeStatus({ projectPath })
             .then((status) => {
                 if (check === runtimeCheckRef.current) {
                     setWorkflowRuntime(status);
                 }
             })
-            .catch((): void => undefined);
+            .catch((): void => {
+                if (check === runtimeCheckRef.current) {
+                    setRuntimeCheckFailed(true);
+                }
+            });
     }, [rpcClient, projectPath]);
 
     useEffect(() => {
@@ -1166,6 +1182,7 @@ export function PackageOverview(props: PackageOverviewProps) {
 
     const handleUseInMemoryRuntime = () => {
         setSwitchingRuntime(true);
+        setRuntimeCheckFailed(false);
         const check = ++runtimeCheckRef.current;
         rpcClient.getWorkflowManagementRpcClient().useInMemoryWorkflowRuntime({ projectPath })
             .then((status) => {
@@ -1173,7 +1190,11 @@ export function PackageOverview(props: PackageOverviewProps) {
                     setWorkflowRuntime(status);
                 }
             })
-            .catch((): void => undefined)
+            .catch((): void => {
+                if (check === runtimeCheckRef.current) {
+                    setRuntimeCheckFailed(true);
+                }
+            })
             .finally(() => setSwitchingRuntime(false));
     };
 
@@ -1588,6 +1609,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 managementEnabled={workflowMgmtEnabled}
                                                 handleWorkflowManagement={handleWorkflowManagement}
                                                 runtime={workflowRuntime}
+                                                runtimeCheckFailed={runtimeCheckFailed}
                                                 switchingRuntime={switchingRuntime}
                                                 onUseInMemoryRuntime={handleUseInMemoryRuntime}
                                                 onConfigureRuntime={handleLocalConfigure}

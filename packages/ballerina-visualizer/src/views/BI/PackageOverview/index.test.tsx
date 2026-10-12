@@ -142,6 +142,7 @@ import {
     MANAGEMENT_API_DESCRIPTION,
     NO_RUNTIME_TITLE,
     PackageOverview,
+    RUNTIME_CHECK_FAILED,
     RUNTIME_DETECTED,
     USE_IN_MEMORY_LABEL,
 } from "./index";
@@ -162,6 +163,7 @@ function emptyDirectoryMap(): Record<string, unknown[]> {
 interface WorkflowRpc {
     workflowImported?: boolean;
     runtime?: { mode: string; url: string; reachable?: boolean };
+    runtimeCheckRejects?: boolean;
 }
 
 function makeRpc(directoryMap: Record<string, unknown[]>, workflow: WorkflowRpc = {}) {
@@ -182,7 +184,12 @@ function makeRpc(directoryMap: Record<string, unknown[]>, workflow: WorkflowRpc 
         getICPRpcClient: () => ({ isIcpEnabled: async () => ({ enabled: false }) }),
         getWorkflowManagementRpcClient: () => ({
             isWorkflowManagementEnabled: async () => ({ enabled: false, workflowImported: workflow.workflowImported }),
-            getWorkflowRuntimeStatus: async () => runtime,
+            getWorkflowRuntimeStatus: async () => {
+                if (workflow.runtimeCheckRejects) {
+                    throw new Error("rpc down");
+                }
+                return runtime;
+            },
             useInMemoryWorkflowRuntime,
         }),
         getAiPanelRpcClient: () => ({ showSignInAlert: async () => false }),
@@ -287,9 +294,8 @@ describe("PackageOverview add-artifact entry point", () => {
     });
 });
 
-// The Workflow side-panel section: shown from the `ballerina/workflow` import, which the language
-// server reads off the syntax tree, not only from the artifact list, which needs the annotation
-// resolved and so goes empty on a structure rebuilt mid-compilation — the "sometimes hidden" bug.
+// The Workflow section is shown from the import, not only from the artifact list, which goes empty
+// on a structure rebuilt mid-compilation.
 describe("PackageOverview workflow section", () => {
     let container: HTMLDivElement;
     let root: Root;
@@ -381,5 +387,14 @@ describe("PackageOverview workflow section", () => {
         await renderOverview(rpcClient);
 
         expect(text()).toContain(`${MANAGED_RUNTIME} at ns.acct.example:7233.`);
+    });
+
+    it("offers a retry instead of checking forever when the runtime check itself fails", async () => {
+        const { rpcClient } = makeRpc(withWorkflow(), { runtimeCheckRejects: true });
+        await renderOverview(rpcClient);
+
+        expect(text()).toContain(RUNTIME_CHECK_FAILED);
+        expect(text()).not.toContain("Checking for a workflow runtime");
+        expect(Array.from(container.querySelectorAll("a")).some((a) => a.textContent === "Check again")).toBe(true);
     });
 });

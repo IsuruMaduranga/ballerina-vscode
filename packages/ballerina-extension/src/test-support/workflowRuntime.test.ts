@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -42,7 +42,6 @@ function write(content: string): void {
     fs.writeFileSync(path.join(projectPath, "Config.toml"), content, "utf-8");
 }
 
-// A listener on an ephemeral loopback port stands in for a running workflow server.
 async function listen(): Promise<{ url: string; close: () => Promise<void> }> {
     const server = net.createServer();
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
