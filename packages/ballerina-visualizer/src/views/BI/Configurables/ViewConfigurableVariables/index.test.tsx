@@ -143,6 +143,7 @@ describe("ViewConfigurableVariables imported libraries", () => {
     const libraries = Object.keys(CONFIG_VARIABLES).filter(category => category !== INTEGRATION);
 
     it.each(libraries)("reaches every module of %s from the tree", async (library) => {
+        await click(row(library));
         for (const [module, variables] of Object.entries(CONFIG_VARIABLES[library])) {
             const moduleCount = Object.keys(CONFIG_VARIABLES[library]).length;
             await click(row(module === "" || moduleCount === 1 ? library : module));
@@ -163,6 +164,7 @@ describe("ViewConfigurableVariables imported libraries", () => {
     });
 
     it("marks a collapsed library that holds the selected submodule", async () => {
+        await click(row("ballerina/workflow"));
         await click(row("management.rest"));
         await click(chevronOf("ballerina/workflow"));
         expect(row("management.rest")).toBeUndefined();
@@ -176,7 +178,13 @@ describe("ViewConfigurableVariables imported libraries", () => {
         expect(row("management")).toBeUndefined();
     });
 
+    it("starts libraries collapsed", () => {
+        expect(chevronOf("ballerina/workflow").className).toContain("chevron-right");
+        expect(row("management")).toBeUndefined();
+    });
+
     it("lays out the library tree", async () => {
+        await click(row("ballerina/workflow"));
         await click(row("management.rest"));
         expect(outline()).toMatchSnapshot();
     });

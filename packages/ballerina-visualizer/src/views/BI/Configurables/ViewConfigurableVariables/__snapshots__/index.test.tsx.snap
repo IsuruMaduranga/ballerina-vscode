@@ -9,7 +9,5 @@ exports[`ViewConfigurableVariables imported libraries lays out the library tree 
       observe
     ballerina/log
     wso2/notifier
-  ▾ wso2/messaging
-      kafka
-      rabbitmq"
+  ▸ wso2/messaging"
 `;

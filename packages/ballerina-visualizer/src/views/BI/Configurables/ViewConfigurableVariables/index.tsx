@@ -556,7 +556,7 @@ export function ViewConfigurableVariables(props?: ConfigProps) {
             <TreeView
                 key={category.name}
                 id={category.name}
-                expandByDefault={true}
+                expandByDefault={selectedModule?.category === category.name} // expands while it holds the selection
                 sx={{ paddingLeft: '16px' }} // 16px + chevron (14px) + gap (5px) lines up with the flat rows' 35px
                 treeViewElementSX={{
                     ...ellipsis,
