@@ -19,13 +19,16 @@ import {
     WorkflowManagementServiceAPI,
     WorkflowManagementRequest,
     WorkflowManagementResponse,
+    WorkflowRuntimeStatusResponse,
 } from "@wso2/ballerina-core";
 import { StateMachine } from "../../stateMachine";
 import { updateSourceCode } from "../../utils/source-utils";
 import {
     disableWorkflowManagementConfig,
     enableWorkflowManagementConfig,
+    setWorkflowRuntimeMode,
 } from "../../utils/workflow-config-toml";
+import { getWorkflowRuntimeStatus } from "../../utils/workflow-runtime";
 
 export class WorkflowManagementServiceRpcManager implements WorkflowManagementServiceAPI {
 
@@ -73,5 +76,17 @@ export class WorkflowManagementServiceRpcManager implements WorkflowManagementSe
             console.log(error);
             return { enabled: false };
         }
+    }
+
+    async getWorkflowRuntimeStatus(params: WorkflowManagementRequest): Promise<WorkflowRuntimeStatusResponse> {
+        const projectPath: string = params.projectPath || StateMachine.context().projectPath;
+        return getWorkflowRuntimeStatus(projectPath);
+    }
+
+    async useInMemoryWorkflowRuntime(params: WorkflowManagementRequest): Promise<WorkflowRuntimeStatusResponse> {
+        const projectPath: string = params.projectPath || StateMachine.context().projectPath;
+        const errorMsg = setWorkflowRuntimeMode(projectPath, "IN_MEMORY");
+        const status = await getWorkflowRuntimeStatus(projectPath);
+        return errorMsg ? { ...status, errorMsg } : status;
     }
 }

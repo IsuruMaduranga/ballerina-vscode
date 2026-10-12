@@ -36,7 +36,7 @@ import { act } from "react-dom/test-utils";
 jest.mock("@wso2/ballerina-core", () => ({
     __esModule: true,
     EVENT_TYPE: { OPEN_VIEW: "OPEN_VIEW" },
-    MACHINE_VIEW: { BIComponentView: "BIComponentView", PackageOverview: "Overview" },
+    MACHINE_VIEW: { BIComponentView: "BIComponentView", PackageOverview: "Overview", ViewConfigVariables: "View Config Variables" },
     BuildMode: {},
     BI_COMMANDS: {},
     // The real enum, so the fixtures and the real `hasWorkflowArtifacts` below agree on the keys.
@@ -69,6 +69,7 @@ jest.mock("@wso2/ui-toolkit", () => ({
     Icon: (): null => null,
     Divider: (): null => null,
     CheckBox: (): null => null,
+    Tooltip: ({ children }: any) => <>{children}</>,
     ProgressIndicator: (): null => null,
     ProgressRing: () => <div data-testid="progress-ring" />,
     Overlay: (): null => null,
@@ -134,7 +135,16 @@ jest.mock("../ComponentDiagram", () => ({
 }));
 
 import { TestRpcContext } from "../../../test/rpcHarness";
-import { PackageOverview } from "./index";
+import {
+    CONFIGURE_RUNTIME_LABEL,
+    IN_MEMORY_RUNTIME,
+    MANAGED_RUNTIME,
+    MANAGEMENT_API_DESCRIPTION,
+    NO_RUNTIME_TITLE,
+    PackageOverview,
+    RUNTIME_DETECTED,
+    USE_IN_MEMORY_LABEL,
+} from "./index";
 
 (global as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -149,9 +159,16 @@ function emptyDirectoryMap(): Record<string, unknown[]> {
     };
 }
 
-function makeRpc(directoryMap: Record<string, unknown[]>) {
+interface WorkflowRpc {
+    workflowImported?: boolean;
+    runtime?: { mode: string; url: string; reachable?: boolean };
+}
+
+function makeRpc(directoryMap: Record<string, unknown[]>, workflow: WorkflowRpc = {}) {
     // Typed argument so `mock.calls[0][0]` is a real element rather than an empty tuple.
     const openView = jest.fn(async (_request: { type: string; location: { view: string } }): Promise<void> => undefined);
+    const runtime = workflow.runtime ?? { mode: "LOCAL", url: "localhost:7233", reachable: true };
+    const useInMemoryWorkflowRuntime = jest.fn(async () => ({ mode: "IN_MEMORY", url: runtime.url }));
     const rpcClient = {
         getVisualizerRpcClient: () => ({ openView, goBack: jest.fn() }),
         getBIDiagramRpcClient: () => ({
@@ -163,11 +180,15 @@ function makeRpc(directoryMap: Record<string, unknown[]>) {
         }),
         getCommonRpcClient: () => ({ isNPSupported: async () => false }),
         getICPRpcClient: () => ({ isIcpEnabled: async () => ({ enabled: false }) }),
-        getWorkflowManagementRpcClient: () => ({ isWorkflowManagementEnabled: async () => ({ enabled: false }) }),
+        getWorkflowManagementRpcClient: () => ({
+            isWorkflowManagementEnabled: async () => ({ enabled: false, workflowImported: workflow.workflowImported }),
+            getWorkflowRuntimeStatus: async () => runtime,
+            useInMemoryWorkflowRuntime,
+        }),
         getAiPanelRpcClient: () => ({ showSignInAlert: async () => false }),
         onProjectContentUpdated: jest.fn(() => (): void => undefined),
     };
-    return { rpcClient, openView };
+    return { rpcClient, openView, useInMemoryWorkflowRuntime };
 }
 
 describe("PackageOverview add-artifact entry point", () => {
@@ -263,5 +284,102 @@ describe("PackageOverview add-artifact entry point", () => {
             );
             expect(addIntegration).toHaveLength(0);
         }
+    });
+});
+
+// The Workflow side-panel section: shown from the `ballerina/workflow` import, which the language
+// server reads off the syntax tree, not only from the artifact list, which needs the annotation
+// resolved and so goes empty on a structure rebuilt mid-compilation — the "sometimes hidden" bug.
+describe("PackageOverview workflow section", () => {
+    let container: HTMLDivElement;
+    let root: Root;
+
+    beforeEach(() => {
+        container = document.createElement("div");
+        document.body.appendChild(container);
+        root = createRoot(container);
+    });
+
+    afterEach(() => {
+        act(() => root.unmount());
+        container.remove();
+    });
+
+    const renderOverview = async (rpcClient: any) => {
+        await act(async () => {
+            root.render(
+                <TestRpcContext.Provider value={{ rpcClient }}>
+                    <PackageOverview projectPath={PROJECT_PATH} isInDevant={false} />
+                </TestRpcContext.Provider>
+            );
+        });
+        for (let i = 0; i < 10; i++) {
+            await act(async () => undefined);
+        }
+    };
+
+    const text = () => container.textContent ?? "";
+    const buttonNamed = (label: string) =>
+        Array.from(container.querySelectorAll("button")).find((b) => (b.textContent ?? "").trim() === label);
+
+    const withWorkflow = () => ({ ...emptyDirectoryMap(), WORKFLOW: [{ name: "approve" }] });
+
+    it("shows the section when the project imports ballerina/workflow but lists no workflow yet", async () => {
+        const { rpcClient } = makeRpc(emptyDirectoryMap(), { workflowImported: true });
+        await renderOverview(rpcClient);
+
+        expect(text()).toContain(MANAGEMENT_API_DESCRIPTION);
+    });
+
+    it("shows the section from the artifact list alone, for a language server without the flag", async () => {
+        const { rpcClient } = makeRpc(withWorkflow());
+        await renderOverview(rpcClient);
+
+        expect(text()).toContain(MANAGEMENT_API_DESCRIPTION);
+    });
+
+    it("hides the section when neither signal is present", async () => {
+        const { rpcClient } = makeRpc(emptyDirectoryMap(), { workflowImported: false });
+        await renderOverview(rpcClient);
+
+        expect(text()).not.toContain(MANAGEMENT_API_DESCRIPTION);
+    });
+
+    it("reports a detected runtime at its URL", async () => {
+        const { rpcClient } = makeRpc(withWorkflow(), { runtime: { mode: "LOCAL", url: "localhost:7233", reachable: true } });
+        await renderOverview(rpcClient);
+
+        expect(text()).toContain(`${RUNTIME_DETECTED} at localhost:7233.`);
+        expect(text()).not.toContain(NO_RUNTIME_TITLE);
+    });
+
+    it("offers the in-memory and configure options when nothing listens at the configured URL", async () => {
+        const { rpcClient, openView, useInMemoryWorkflowRuntime } = makeRpc(withWorkflow(),
+            { runtime: { mode: "LOCAL", url: "localhost:7233", reachable: false } });
+        await renderOverview(rpcClient);
+
+        expect(text()).toContain(`${NO_RUNTIME_TITLE} at localhost:7233.`);
+
+        await act(async () => {
+            buttonNamed(CONFIGURE_RUNTIME_LABEL)!.click();
+        });
+        expect(openView).toHaveBeenCalledWith({ type: "OPEN_VIEW", location: { view: "View Config Variables" } });
+
+        await act(async () => {
+            buttonNamed(USE_IN_MEMORY_LABEL)!.click();
+        });
+        for (let i = 0; i < 5; i++) {
+            await act(async () => undefined);
+        }
+        expect(useInMemoryWorkflowRuntime).toHaveBeenCalledWith({ projectPath: PROJECT_PATH });
+        expect(text()).toContain(IN_MEMORY_RUNTIME);
+        expect(text()).not.toContain(NO_RUNTIME_TITLE);
+    });
+
+    it("does not probe a managed runtime, and says where it is configured", async () => {
+        const { rpcClient } = makeRpc(withWorkflow(), { runtime: { mode: "CLOUD", url: "ns.acct.example:7233" } });
+        await renderOverview(rpcClient);
+
+        expect(text()).toContain(`${MANAGED_RUNTIME} at ns.acct.example:7233.`);
     });
 });

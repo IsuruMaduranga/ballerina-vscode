@@ -28,9 +28,10 @@ import {
     DIRECTORY_MAP,
     hasWorkflowArtifacts,
     isSamePath,
+    WorkflowRuntimeStatusResponse,
 } from "@wso2/ballerina-core";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
-import { Typography, Codicon, ProgressRing, Button, Icon, Divider, CheckBox, ProgressIndicator, Overlay, Dropdown } from "@wso2/ui-toolkit";
+import { Typography, Codicon, ProgressRing, Button, Icon, Divider, CheckBox, ProgressIndicator, Overlay, Dropdown, Tooltip } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
 import { ThemeColors } from "@wso2/ui-toolkit";
 import { VSCodeLink } from "@vscode/webview-ui-toolkit/react";
@@ -688,21 +689,122 @@ function IntegrationControlPlane({ enabled, handleICP }: IntegrationControlPlane
     );
 }
 
-interface WorkflowManagementProps {
-    enabled: boolean;
+interface WorkflowSectionProps {
+    managementEnabled: boolean;
     handleWorkflowManagement: (checked: boolean) => void;
+    // undefined while the runtime check is in flight.
+    runtime: WorkflowRuntimeStatusResponse | undefined;
+    switchingRuntime: boolean;
+    onUseInMemoryRuntime: () => void;
+    onConfigureRuntime: () => void;
+    onRecheckRuntime: () => void;
 }
 
-function WorkflowManagement({ enabled, handleWorkflowManagement }: WorkflowManagementProps) {
+const RuntimeActions = styled.div`
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+`;
+
+const RuntimeStatusLine = styled.p`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0;
+`;
+
+// Short lines on the panel; the explanation of what a workflow runtime is lives in the tooltips.
+export const WORKFLOW_RUNTIME_EXPLAINED =
+    "Durable workflows run on a workflow runtime: a server that stores each run's progress, so a run survives restarts and can wait for people and timers. The integration connects to the URL set under [ballerina.workflow] in Config.toml.";
+export const NO_RUNTIME_TITLE = "No workflow runtime detected";
+export const RUNTIME_DETECTED = "Workflow runtime detected";
+export const IN_MEMORY_RUNTIME = "Using the in-memory runtime (testing only)";
+export const MANAGED_RUNTIME = "Using a managed workflow runtime";
+export const USE_IN_MEMORY_LABEL = "Use in-memory runtime";
+export const USE_IN_MEMORY_TOOLTIP =
+    "For testing only: runs are kept in memory and lost when the integration stops. Sets mode = \"IN_MEMORY\" in Config.toml.";
+export const CONFIGURE_RUNTIME_LABEL = "Configure runtime";
+export const CONFIGURE_RUNTIME_TOOLTIP =
+    "Point the integration at a running workflow server by setting mode and url under [ballerina.workflow] in Config.toml. Today that server is a Temporal server; an integrated workflow runtime is on the way.";
+export const MANAGEMENT_API_DESCRIPTION =
+    "Enable the workflow management REST API to manage workflow instances, human tasks and reviews in this integration.";
+
+function RuntimeStatus({ icon, color, text, tooltip }: { icon: string; color?: string; text: string; tooltip: string }) {
+    return (
+        <RuntimeStatusLine>
+            <Codicon name={icon} sx={color ? { color } : undefined} />
+            <span>{text}</span>
+            <Tooltip content={tooltip} position="bottom">
+                <Codicon name="info" sx={{ color: "var(--vscode-descriptionForeground)", cursor: "help" }} />
+            </Tooltip>
+        </RuntimeStatusLine>
+    );
+}
+
+function WorkflowSection({
+    managementEnabled,
+    handleWorkflowManagement,
+    runtime,
+    switchingRuntime,
+    onUseInMemoryRuntime,
+    onConfigureRuntime,
+    onRecheckRuntime,
+}: WorkflowSectionProps) {
+    let status: ReactNode;
+    if (!runtime) {
+        status = <RuntimeStatusLine>Checking for a workflow runtime...</RuntimeStatusLine>;
+    } else if (runtime.mode === "IN_MEMORY") {
+        status = (
+            <>
+                <RuntimeStatus icon="beaker" text={`${IN_MEMORY_RUNTIME}.`}
+                    tooltip="Runs are kept in memory and lost when the integration stops. Switch to a workflow server before deploying." />
+                <RuntimeActions>
+                    <Button appearance="secondary" onClick={onConfigureRuntime} tooltip={CONFIGURE_RUNTIME_TOOLTIP}>
+                        {CONFIGURE_RUNTIME_LABEL}
+                    </Button>
+                </RuntimeActions>
+            </>
+        );
+    } else if (runtime.mode === "CLOUD") {
+        status = (
+            <RuntimeStatus icon="cloud" text={`${MANAGED_RUNTIME} at ${runtime.url}.`} tooltip={WORKFLOW_RUNTIME_EXPLAINED} />
+        );
+    } else if (runtime.reachable) {
+        status = (
+            <RuntimeStatus icon="pass" color="var(--vscode-testing-iconPassed)"
+                text={`${RUNTIME_DETECTED} at ${runtime.url}.`} tooltip={WORKFLOW_RUNTIME_EXPLAINED} />
+        );
+    } else {
+        status = (
+            <>
+                <RuntimeStatus icon="warning" color="var(--vscode-editorWarning-foreground)"
+                    text={`${NO_RUNTIME_TITLE} at ${runtime.url}.`}
+                    tooltip={`${WORKFLOW_RUNTIME_EXPLAINED} Nothing is listening there, so pick an option before running the integration.`} />
+                <RuntimeActions>
+                    <Button appearance="secondary" onClick={onUseInMemoryRuntime} disabled={switchingRuntime}
+                        tooltip={USE_IN_MEMORY_TOOLTIP}>
+                        {USE_IN_MEMORY_LABEL}
+                    </Button>
+                    <Button appearance="secondary" onClick={onConfigureRuntime} tooltip={CONFIGURE_RUNTIME_TOOLTIP}>
+                        {CONFIGURE_RUNTIME_LABEL}
+                    </Button>
+                    <VSCodeLink onClick={onRecheckRuntime}>Check again</VSCodeLink>
+                </RuntimeActions>
+            </>
+        );
+    }
+
     return (
         <div>
             <Title variant="h3">Workflow</Title>
-            <p>
-                {"Enable the workflow management REST API to manage workflow instances, human tasks and reviews in this integration."}
-            </p>
+            {status}
+            <Divider sx={{ margin: "12px 0" }} />
+            <p>{MANAGEMENT_API_DESCRIPTION}</p>
             <div style={{ paddingLeft: 10 }}>
                 <CheckBox
-                    checked={enabled}
+                    checked={managementEnabled}
                     onChange={handleWorkflowManagement}
                     label="Enable Workflow Management REST API"
                 />
@@ -940,6 +1042,11 @@ export function PackageOverview(props: PackageOverviewProps) {
     const { platformExtState } = usePlatformExtContext();
     const [enabled, setEnableICP] = useState(false);
     const [workflowMgmtEnabled, setWorkflowMgmtEnabled] = useState(false);
+    const [workflowImported, setWorkflowImported] = useState(false);
+    const [workflowRuntime, setWorkflowRuntime] = useState<WorkflowRuntimeStatusResponse>();
+    const [switchingRuntime, setSwitchingRuntime] = useState(false);
+    // Bumped by every context fetch so the runtime check re-runs with it.
+    const [contextEpoch, setContextEpoch] = useState(0);
     const [showAlert, setShowAlert] = React.useState(false);
     const [projectStructure, setProjectStructure] = useState<ProjectStructure>();
     const [isInProject, setIsInProject] = useState(false);
@@ -1002,7 +1109,9 @@ export function PackageOverview(props: PackageOverviewProps) {
             .isWorkflowManagementEnabled({ projectPath })
             .then((res) => {
                 setWorkflowMgmtEnabled(res.enabled);
+                setWorkflowImported(res.workflowImported ?? false);
             });
+        setContextEpoch((epoch) => epoch + 1);
     }, [rpcClient, projectPath, isICPSupported]);
 
     useEffect(() => {
@@ -1030,6 +1139,43 @@ export function PackageOverview(props: PackageOverviewProps) {
     const deployableIntegrationTypes = useMemo(() => {
         return getIntegrationTypes(projectStructure);
     }, [projectStructure]);
+
+    // The import is the stable signal: the artifact list only lists a workflow once the language
+    // server resolves its annotation, which it may not have done yet on a fresh structure.
+    const showWorkflowSection = !isLibrary && (workflowImported || hasWorkflowArtifacts(projectStructure));
+
+    // Runs after every context fetch and on demand; a late answer from an older check is dropped.
+    const runtimeCheckRef = useRef(0);
+    const checkWorkflowRuntime = useCallback(() => {
+        const check = ++runtimeCheckRef.current;
+        setWorkflowRuntime(undefined);
+        rpcClient.getWorkflowManagementRpcClient().getWorkflowRuntimeStatus({ projectPath })
+            .then((status) => {
+                if (check === runtimeCheckRef.current) {
+                    setWorkflowRuntime(status);
+                }
+            })
+            .catch((): void => undefined);
+    }, [rpcClient, projectPath]);
+
+    useEffect(() => {
+        if (showWorkflowSection) {
+            checkWorkflowRuntime();
+        }
+    }, [showWorkflowSection, contextEpoch, checkWorkflowRuntime]);
+
+    const handleUseInMemoryRuntime = () => {
+        setSwitchingRuntime(true);
+        const check = ++runtimeCheckRef.current;
+        rpcClient.getWorkflowManagementRpcClient().useInMemoryWorkflowRuntime({ projectPath })
+            .then((status) => {
+                if (check === runtimeCheckRef.current) {
+                    setWorkflowRuntime(status);
+                }
+            })
+            .catch((): void => undefined)
+            .finally(() => setSwitchingRuntime(false));
+    };
 
     const integrationTitle = useMemo(() => {
         return projectStructure?.projectTitle || projectStructure?.projectName;
@@ -1435,12 +1581,17 @@ export function PackageOverview(props: PackageOverviewProps) {
                                             </div>
                                         </>
                                     )}
-                                    {hasWorkflowArtifacts(projectStructure) && (
+                                    {showWorkflowSection && (
                                         <>
                                             <Divider sx={{ margin: "16px 0" }} />
-                                            <WorkflowManagement
-                                                enabled={workflowMgmtEnabled}
+                                            <WorkflowSection
+                                                managementEnabled={workflowMgmtEnabled}
                                                 handleWorkflowManagement={handleWorkflowManagement}
+                                                runtime={workflowRuntime}
+                                                switchingRuntime={switchingRuntime}
+                                                onUseInMemoryRuntime={handleUseInMemoryRuntime}
+                                                onConfigureRuntime={handleLocalConfigure}
+                                                onRecheckRuntime={checkWorkflowRuntime}
                                             />
                                         </>
                                     )}

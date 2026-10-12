@@ -30,7 +30,7 @@ import io.ballerina.compiler.syntax.tree.QualifiedNameReferenceNode;
 import io.ballerina.compiler.syntax.tree.SeparatedNodeList;
 import io.ballerina.flowmodelgenerator.extension.request.CreateFilesRequest;
 import io.ballerina.flowmodelgenerator.extension.response.CommonSourceResponse;
-import io.ballerina.flowmodelgenerator.extension.response.ICPEnabledResponse;
+import io.ballerina.flowmodelgenerator.extension.response.WorkflowManagementEnabledResponse;
 import io.ballerina.projects.Document;
 import io.ballerina.projects.DocumentId;
 import io.ballerina.projects.Module;
@@ -82,6 +82,9 @@ public class WorkflowManagementService implements ExtendedLanguageServerService 
 
     private static final String BALLERINA = "ballerina";
     private static final String MODULE_NAME = "workflow.management.rest";
+    // The module durable workflows and durable agents are written against: a syntactic signal that the
+    // project is a workflow integration, unlike the artifact list, which needs the annotation to resolve.
+    private static final String WORKFLOW_MODULE_NAME = "workflow";
     /** Where the API lived before 0.9.0; see the class comment for how such an import is treated. */
     private static final String LEGACY_MODULE_NAME = "workflow.management";
     private static final String UNUSED_PREFIX = "_";
@@ -96,12 +99,15 @@ public class WorkflowManagementService implements ExtendedLanguageServerService 
     }
 
     @JsonRequest
-    public CompletableFuture<ICPEnabledResponse> isWorkflowManagementEnabled(CreateFilesRequest request) {
+    public CompletableFuture<WorkflowManagementEnabledResponse> isWorkflowManagementEnabled(
+            CreateFilesRequest request) {
         return CompletableFuture.supplyAsync(() -> {
-            ICPEnabledResponse response = new ICPEnabledResponse();
+            WorkflowManagementEnabledResponse response = new WorkflowManagementEnabledResponse();
             try {
                 Project project = this.workspaceManager.loadProject(Path.of(request.projectPath()));
-                response.setEnabled(hasManagementImport(project.currentPackage()));
+                Package pkg = project.currentPackage();
+                response.setEnabled(hasManagementImport(pkg));
+                response.setWorkflowImported(hasImport(pkg, WORKFLOW_MODULE_NAME));
             } catch (Throwable e) {
                 response.setError(e);
             }
@@ -174,6 +180,10 @@ public class WorkflowManagementService implements ExtendedLanguageServerService 
     }
 
     private static boolean hasManagementImport(Package pkg) {
+        return hasImport(pkg, MODULE_NAME);
+    }
+
+    private static boolean hasImport(Package pkg, String moduleName) {
         Module defaultModule = pkg.getDefaultModule();
         Collection<DocumentId> documentIds = defaultModule.documentIds();
         for (DocumentId documentId : documentIds) {
@@ -181,7 +191,7 @@ public class WorkflowManagementService implements ExtendedLanguageServerService 
             ModulePartNode root = document.syntaxTree().rootNode();
             NodeList<ImportDeclarationNode> imports = root.imports();
             for (ImportDeclarationNode importNode : imports) {
-                if (validOrg(importNode) && validModuleName(importNode)) {
+                if (validOrg(importNode) && moduleName(importNode).equals(moduleName)) {
                     return true;
                 }
             }
