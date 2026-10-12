@@ -31,6 +31,7 @@ import {
 import { join, sep } from 'path';
 import { exec, spawnSync, execSync } from 'child_process';
 import { LanguageClientOptions, State as LS_STATE, RevealOutputChannelOn, ServerOptions } from "vscode-languageclient/node";
+import { forwardWorkDoneProgress } from "../utils/module-pull-state";
 import { getServerOptions, getJdkMajorVersion, resolveLanguageServerJdkDir, usesBundledLanguageServer, REQUIRED_JDK_MAJOR_VERSION } from '../utils/server/server';
 import { ExtendedLangClient } from './extended-language-client';
 import {
@@ -304,6 +305,9 @@ export class BallerinaExtension {
                         "supportBalaScheme": "true",
                         "supportQuickPick": "true",
                         "supportPositionalRenamePopup": "true"
+                    },
+                    middleware: {
+                        handleWorkDoneProgress: forwardWorkDoneProgress
                     }
                 };
                 debug("[EXTENSION] Client options configured");
