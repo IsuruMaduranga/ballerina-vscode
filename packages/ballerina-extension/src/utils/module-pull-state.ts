@@ -48,6 +48,22 @@ export function trackModulePullProgress(token: string | number, kind: ProgressKi
     listeners.forEach(listener => listener(kind));
 }
 
+/**
+ * The language client's `handleWorkDoneProgress` middleware: records module-pull progress, then
+ * always passes the update on, so a failing pull listener can't stop progress reaching the client.
+ */
+export function forwardWorkDoneProgress<P extends { kind: ProgressKind }>(
+    token: string | number,
+    params: P,
+    next: (token: string | number, params: P) => void
+): void {
+    try {
+        trackModulePullProgress(token, params.kind);
+    } finally {
+        next(token, params);
+    }
+}
+
 export function isModulePullInProgress(): boolean {
     // Forget pulls whose `end` was lost, so they don't stretch every later wait.
     const now = Date.now();

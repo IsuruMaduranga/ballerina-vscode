@@ -17,7 +17,7 @@
  */
 
 import {
-    isModulePullInProgress, MAX_MODULE_PULL_WAIT_MS, onModulePullProgress, startPullAwareTimeout, trackModulePullProgress
+    forwardWorkDoneProgress, isModulePullInProgress, MAX_MODULE_PULL_WAIT_MS, onModulePullProgress, startPullAwareTimeout, trackModulePullProgress
 } from '../utils/module-pull-state';
 
 const PULL = 'pull-module-19cef91b';
@@ -55,6 +55,18 @@ describe('module pull tracking', () => {
     });
 });
 
+describe('forwardWorkDoneProgress', () => {
+    it('passes every update on, even when a pull listener throws', () => {
+        const stop = onModulePullProgress(() => { throw new Error('listener failed'); });
+        const next = jest.fn();
+        expect(() => forwardWorkDoneProgress(PULL, { kind: 'begin' as const }, next)).toThrow('listener failed');
+        forwardWorkDoneProgress('rename-1', { kind: 'begin' as const }, next);
+        stop();
+        trackModulePullProgress(PULL, 'end');
+        expect(next).toHaveBeenCalledTimes(2);
+    });
+});
+
 describe('startPullAwareTimeout', () => {
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => {
@@ -72,30 +84,23 @@ describe('startPullAwareTimeout', () => {
     });
 
     // The repro from wso2/product-integrator#2731: a 47 s pull starts right after the edit.
-    it('keeps waiting while a pull runs, then fires a full delay after the pull ends', () => {
-        const onTimeout = jest.fn();
-        startPullAwareTimeout(onTimeout, 10000);
-        trackModulePullProgress(PULL, 'begin');
-        jest.advanceTimersByTime(47000);
-        expect(onTimeout).not.toHaveBeenCalled();
-        trackModulePullProgress(PULL, 'end');
-        jest.advanceTimersByTime(9999);
-        expect(onTimeout).not.toHaveBeenCalled();
-        jest.advanceTimersByTime(1);
-        expect(onTimeout).toHaveBeenCalledTimes(1);
-    });
-
-    it('gives the full delay again when a pull ends just before the countdown runs out', () => {
-        const onTimeout = jest.fn();
-        startPullAwareTimeout(onTimeout, 10000);
-        trackModulePullProgress(PULL, 'begin');
-        jest.advanceTimersByTime(9900);
-        trackModulePullProgress(PULL, 'end');
-        jest.advanceTimersByTime(9999);
-        expect(onTimeout).not.toHaveBeenCalled();
-        jest.advanceTimersByTime(1);
-        expect(onTimeout).toHaveBeenCalledTimes(1);
-    });
+    // The rule: once a pull ends, the wait always has the full delay left, wherever the end falls
+    // against the countdown. 9 900 ms and 49 900 ms end just before a check; 47 000 ms is the
+    // pull from wso2/product-integrator#2731.
+    it.each([500, 9900, 10000, 25000, 47000, 49900])(
+        'gives the full delay after a pull that ends at %i ms',
+        (pullEndsAt) => {
+            const onTimeout = jest.fn();
+            startPullAwareTimeout(onTimeout, 10000);
+            trackModulePullProgress(PULL, 'begin');
+            jest.advanceTimersByTime(pullEndsAt);
+            trackModulePullProgress(PULL, 'end');
+            jest.advanceTimersByTime(9999);
+            expect(onTimeout).not.toHaveBeenCalled();
+            jest.advanceTimersByTime(1);
+            expect(onTimeout).toHaveBeenCalledTimes(1);
+        }
+    );
 
     it('gives up on a pull whose end never arrives', () => {
         const onTimeout = jest.fn();
