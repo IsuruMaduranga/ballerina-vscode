@@ -17,7 +17,9 @@
  */
 
 import { Category, AvailableNode, BallerinaProjectComponents } from "@wso2/ballerina-core";
+import type { Category as PanelCategory, Item as PanelItem } from "@wso2/ballerina-side-panel";
 import { URI, Utils } from "vscode-uri";
+import type { SidePanelView } from "./PanelManager";
 
 // Filter out connections where name starts with _ and module is "ai" or "ai.agent"
 export const filterConnections = (categories: Category[]): Category[] => {
@@ -77,14 +79,18 @@ export const filterCategoriesLocally = (categories: any[], searchText: string): 
 
     const lowerSearchText = searchText.toLowerCase();
 
+    // A node is found by its label, the method it stands for, or a search-only keyword such as
+    // the name it used to have. Descriptions stay out: nearly every one contains "workflow".
+    const itemMatchesSearch = (item: any): boolean => {
+        const terms: string[] = [item.title || item.label, item.method, ...(item.keywords ?? [])];
+        return terms.some((term) => typeof term === "string" && term.toLowerCase().includes(lowerSearchText));
+    };
+
     const filterItemsRecursively = (items: any[]): any[] => {
         if (!items) return [];
 
         return items.map((item: any) => {
-            // Check if this item matches the search
-            const label = item.title || item.label;
-            const itemMatches = label.toLowerCase().includes(lowerSearchText);
-            if (itemMatches) {
+            if (itemMatchesSearch(item)) {
                 return item;
             }
             // If this item has nested items (subcategory), recursively filter them
@@ -109,6 +115,76 @@ export const filterCategoriesLocally = (categories: any[], searchText: string): 
         items: filterItemsRecursively(category.items || [])
     })).filter(category => category.items && category.items.length > 0);
 };
+
+// Identifies a panel item when merging categories. A node's id is its node kind, which every function or connector
+// shares, so nodes are told apart by their codedata.
+export const getPanelItemKey = (item: PanelItem): string => {
+    if (!("id" in item)) {
+        return `category:${item.title}`;
+    }
+    const codedata = item.metadata?.codedata;
+    return codedata
+        ? `node:${item.id}:${codedata.org}:${codedata.module}:${codedata.object}:${codedata.symbol}`
+        : `node:${item.id}:${item.label}`;
+};
+
+// Merges panel items: subcategories that share a title are merged recursively, and nodes already present are dropped.
+const mergePanelItems = (prev: PanelItem[], next: PanelItem[]): PanelItem[] => {
+    const merged = [...prev];
+    const nodeKeys = new Set(prev.filter((item) => "id" in item).map(getPanelItemKey));
+    for (const item of next) {
+        if ("id" in item) {
+            const key = getPanelItemKey(item);
+            if (!nodeKeys.has(key)) {
+                nodeKeys.add(key);
+                merged.push(item);
+            }
+            continue;
+        }
+        const index = merged.findIndex((existing) => !("id" in existing) && existing.title === item.title);
+        if (index < 0) {
+            merged.push(item);
+            continue;
+        }
+        const existing = merged[index] as PanelCategory;
+        merged[index] = { ...existing, items: mergePanelItems(existing.items ?? [], item.items ?? []) };
+    }
+    return merged;
+};
+
+const countFunctionLeafNodes = (categories: PanelCategory[] = []): number =>
+    categories.reduce((total, category) => {
+        const items = (category?.items ?? []) as any[];
+        return total + items.reduce((sum, item) => sum + ("id" in item ? 1 : countFunctionLeafNodes([item])), 0);
+    }, 0);
+
+// Counts the leaf nodes within a single section (top-level category matched by title).
+export const countSectionLeafNodes = (categories: PanelCategory[], sectionTitle: string): number =>
+    countFunctionLeafNodes(categories.filter((category) => category.title === sectionTitle));
+
+// Merges categories into the given ones, keeping each category at its first position. Used both to combine the
+// master search results and to add a "Show more" page to the categories already shown.
+export const mergePanelCategories = (prev: PanelCategory[], next: PanelCategory[]): PanelCategory[] =>
+    mergePanelItems(prev, next) as PanelCategory[];
+
+// The palette's own views: the node list and the cross-kind search over it. A list-opening node
+// (Call Activity, Run Workflow, ...) picked from either is a first click, not a pick from its list.
+// Typed against the enum's values so a renamed member fails the build instead of turning this off.
+export const opensListFromPalette = (sidePanelView: `${SidePanelView}`): boolean =>
+    sidePanelView === "NODE_LIST" || sidePanelView === "ALL";
+
+// Builds the master search panel. Only the static panel nodes are filtered by label: the language server has already
+// matched its results on name, description and package, the same way the function and connection searches do, so
+// filtering them again by label would drop valid results.
+export const buildMasterSearchCategories = (
+    staticCategories: PanelCategory[],
+    searchCategories: PanelCategory[],
+    searchText: string
+): PanelCategory[] =>
+    mergePanelCategories([], [
+        ...filterCategoriesLocally(staticCategories, searchText),
+        ...searchCategories.filter((category) => category.items?.length > 0),
+    ]);
 
 export const findFunctionByName = (components: BallerinaProjectComponents, functionName: string) => {
     for (const pkg of components.packages) {

@@ -976,6 +976,8 @@ export type SearchQueryParams = {
     limit?: number;
     offset?: number;
     orgName?: string;
+    /** Keeps raw pagination offsets tied to the source that emitted them. */
+    functionSource?: "central" | "index";
     includeAvailableFunctions?: string;
     filterByCurrentOrg?: boolean;
     /** ACTIVITY_CALL search: "true" hides the prebuilt (builtin) activities. */
@@ -1016,8 +1018,20 @@ export type BISearchRequest = {
     searchKind: SearchKind;
 }
 
+export type FunctionPageInfo = {
+    hasMore: boolean;
+    /** Offset in the underlying search source, before version/category filtering. */
+    nextOffset: number;
+    /** Continuation requests must stay on this source, whose ordering owns the offset. */
+    source?: "central" | "index";
+};
+
+export type FunctionSearchPagination = Partial<Record<"ballerina" | "ballerinax", FunctionPageInfo>>;
+
 export type BISearchResponse = {
     categories: Category[];
+    /** Absent with older language servers; consumers retain legacy pagination in that case. */
+    functionPagination?: FunctionSearchPagination;
 }
 
 export interface WorkflowDataRequest {
@@ -1464,6 +1478,21 @@ export interface ModelResolutionIssue {
     requiredVersion?: string;
 }
 
+export type ModelResolutionErrorCode =
+    | "PACKAGE_NOT_RESOLVED"
+    | "TRIGGER_METADATA_NOT_FOUND"
+    | "TRIGGER_METADATA_INVALID"
+    | "SERVICE_NOT_FOUND"
+    | "DOCUMENT_NOT_AVAILABLE";
+
+export interface ModelResolutionError {
+    code: ModelResolutionErrorCode;
+    message: string;
+    orgName?: string;
+    packageName?: string;
+    moduleName?: string;
+}
+
 export interface ConnectorUpgradeAdviceRequest {
     filePath: string;
 }
@@ -1478,8 +1507,14 @@ export interface ConnectorUpgradeAdvice {
     usedInFile?: string;
 }
 
+export interface ConnectorReference {
+    orgName: string;
+    packageName: string;
+}
+
 export interface ConnectorUpgradeAdviceResponse {
     advice: ConnectorUpgradeAdvice[];
+    pendingReload?: ConnectorReference[];
     errorMsg?: string;
     stacktrace?: string;
 }
@@ -1489,6 +1524,7 @@ export interface PullConnectorUpgradeRequest {
     moduleName: string;
     packageName: string;
     targetVersion: string;
+    promptReload?: boolean;
 }
 
 export interface PullConnectorUpgradeResult {
@@ -1647,7 +1683,14 @@ export interface ServiceModelFromCodeRequest {
     };
 }
 export interface ServiceModelFromCodeResponse {
-    service: ServiceModel;
+    /**
+     * Absent when the model could not be resolved; `resolutionError` then says why. Language servers older
+     * than this contract return neither field in that case. Consumers must check for it before use.
+     */
+    service?: ServiceModel;
+    errorMsg?: string;
+    stacktrace?: string;
+    resolutionError?: ModelResolutionError;
 }
 export interface ListenerModelFromCodeRequest {
     filePath: string;
@@ -1675,6 +1718,7 @@ export interface ServiceModelInitResponse {
     errorMsg?: string;
     stacktrace?: string;
     issue?: ModelResolutionIssue;
+    resolutionError?: ModelResolutionError;
 }
 
 export interface ServiceInitSourceRequest {

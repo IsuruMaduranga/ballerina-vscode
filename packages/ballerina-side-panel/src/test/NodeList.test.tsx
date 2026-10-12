@@ -32,7 +32,7 @@ jest.mock("@wso2/ballerina-rpc-client", () => {
     return { __esModule: true, useRpcContext: h.useRpcContext, Context: h.TestRpcContext };
 });
 
-import { renderWithRpc } from "./rpcHarness";
+import { renderWithRpc, TestRpcContext } from "./rpcHarness";
 import { NodeList } from "../components/NodeList";
 import type { Category } from "../components/NodeList/types";
 
@@ -131,6 +131,165 @@ const createFunctionCases: CreateFunctionCase[] = [
 ];
 
 describe("NodeList (rpc-driven)", () => {
+    describe("manual library pagination", () => {
+        const sections = ["Standard Library", "Extended Library"];
+        const cases = sections.flatMap((section) => ["", "workflow"].map((searchText) => ({ section, searchText })));
+
+        it.each(cases)("keeps an empty continuing $section page reachable for query '$searchText'", async ({ section, searchText }) => {
+            const onLoadMoreSection = jest.fn();
+            const { getByLabelText } = renderWithRpc(
+                <NodeList categories={[{ title: section, description: "", items: [] }]}
+                    title="Functions" onSelect={jest.fn()} searchText={searchText}
+                    alwaysExpandedCategories={sections}
+                    sectionsWithMore={{ [section]: true }} loadingSections={{}}
+                    onLoadMoreSection={onLoadMoreSection} />,
+                fakeRpc()
+            );
+            const button = await waitFor(() => getByLabelText(`Load more ${section} functions`));
+            expect(button.tagName).toBe("BUTTON");
+            expect(button).toHaveAttribute("type", "button");
+            const linkStyle = getComputedStyle(button);
+            expect(linkStyle.textDecoration).toBe("underline");
+            expect(linkStyle.whiteSpace).toBe("nowrap");
+            expect(linkStyle.alignSelf).toBe("center");
+            expect(linkStyle.display).toBe("flex");
+            // jsdom cannot resolve fit-content widths; assert the centering rules it supports.
+            expect(linkStyle.marginLeft).toBe("auto");
+            expect(linkStyle.marginRight).toBe("auto");
+            expect(linkStyle.marginBottom).toBe("12px");
+            expect(onLoadMoreSection).not.toHaveBeenCalled();
+            fireEvent.click(button);
+            expect(onLoadMoreSection).toHaveBeenCalledTimes(1);
+            expect(onLoadMoreSection).toHaveBeenCalledWith(section);
+        });
+
+        it.each(["", "match"])("loads only the clicked section for query '%s', never on mount or scroll", async (searchText) => {
+            const clientHeight = jest.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(500);
+            const scrollHeight = jest.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(100);
+            try {
+                const onLoadMoreSection = jest.fn();
+                const { container, getByLabelText } = renderWithRpc(
+                    <NodeList categories={sections.map((title) => ({ title, description: "", items: [node(title, "match")] }))}
+                        title="Functions" onSelect={jest.fn()} searchText={searchText}
+                        alwaysExpandedCategories={sections}
+                        sectionsWithMore={{ "Standard Library": true, "Extended Library": true }}
+                        onLoadMoreSection={onLoadMoreSection} panelBodySx={{ outline: "1px solid red" }} />,
+                    fakeRpc()
+                );
+                await waitFor(() => expect(getByLabelText("Load more Standard Library functions")).toBeTruthy());
+                fireEvent.scroll(container.querySelector<HTMLElement>('[style*="outline"]')!);
+                expect(onLoadMoreSection).not.toHaveBeenCalled();
+                fireEvent.click(getByLabelText("Load more Extended Library functions"));
+                expect(onLoadMoreSection).toHaveBeenCalledTimes(1);
+                expect(onLoadMoreSection).toHaveBeenLastCalledWith("Extended Library");
+                fireEvent.click(getByLabelText("Load more Standard Library functions"));
+                expect(onLoadMoreSection).toHaveBeenCalledTimes(2);
+                expect(onLoadMoreSection).toHaveBeenLastCalledWith("Standard Library");
+            } finally {
+                clientHeight.mockRestore();
+                scrollHeight.mockRestore();
+            }
+        });
+
+        it.each(sections)("disables %s's button while fetching without blocking the other section", async (section) => {
+            const otherSection = sections.find((title) => title !== section)!;
+            const onLoadMoreSection = jest.fn();
+            const { getByLabelText, getByText } = renderWithRpc(
+                <NodeList categories={sections.map((title) => ({ title, description: "", items: [node(title, "match")] }))}
+                    title="Functions" onSelect={jest.fn()} alwaysExpandedCategories={sections}
+                    sectionsWithMore={{ "Standard Library": true, "Extended Library": true }}
+                    loadingSections={{ [section]: true }} onLoadMoreSection={onLoadMoreSection} />,
+                fakeRpc()
+            );
+            const loadingButton = await waitFor(() => getByLabelText(`Load more ${section} functions`));
+            expect(getByText("Loading...")).toBeTruthy();
+            expect(loadingButton).toHaveAttribute("aria-busy", "true");
+            await waitFor(() => expect(loadingButton).toHaveAttribute("aria-disabled", "true"));
+            expect(loadingButton).not.toHaveAttribute("disabled");
+            fireEvent.click(loadingButton);
+            expect(onLoadMoreSection).not.toHaveBeenCalled();
+            fireEvent.click(getByLabelText(`Load more ${otherSection} functions`));
+            expect(onLoadMoreSection).toHaveBeenCalledTimes(1);
+            expect(onLoadMoreSection).toHaveBeenCalledWith(otherSection);
+        });
+
+        it.each(sections)("hides %s's button when exhausted", async (section) => {
+            const category = { title: section, description: "", items: [node("fn", "match")] };
+            const onLoadMoreSection = jest.fn();
+            const { getByText, queryByLabelText } = renderWithRpc(
+                <NodeList categories={[category]} title="Functions" onSelect={jest.fn()}
+                    alwaysExpandedCategories={[section]} sectionsWithMore={{ [section]: false }}
+                    onLoadMoreSection={onLoadMoreSection} />,
+                fakeRpc()
+            );
+            await waitFor(() => expect(getByText("match")).toBeTruthy());
+            expect(queryByLabelText(`Load more ${section} functions`)).toBeNull();
+            expect(onLoadMoreSection).not.toHaveBeenCalled();
+        });
+
+        it.each(sections)("hides %s's button while collapsed without fetching on expand", async (section) => {
+            const onLoadMoreSection = jest.fn();
+            const { getByText, getByLabelText, queryByLabelText } = renderWithRpc(
+                <NodeList categories={[{ title: section, description: "", items: [node("fn", "match")] }]}
+                    title="Functions" onSelect={jest.fn()} alwaysExpandedCategories={[section]}
+                    sectionsWithMore={{ [section]: true }}
+                    onLoadMoreSection={onLoadMoreSection} />,
+                fakeRpc()
+            );
+            await waitFor(() => expect(getByLabelText(`Load more ${section} functions`)).toBeTruthy());
+            fireEvent.click(getByText(section));
+            expect(queryByLabelText(`Load more ${section} functions`)).toBeNull();
+            fireEvent.click(getByText(section));
+            expect(getByLabelText(`Load more ${section} functions`)).toBeTruthy();
+            expect(onLoadMoreSection).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("Show More Functions", () => {
+        const searchResults = [{ title: "Extended Library", description: "", items: [node("fn", "fromEdiString")] }];
+        const nodePanel = [{ title: "Statements", description: "", items: [node("FUNCTION", "Call Function")] }];
+        // A search shows a skeleton until the parent delivers that query's results as new categories.
+        const renderSearchResults = (list: (categories: any[]) => React.ReactElement, categories: any[]) => {
+            const view = renderWithRpc(list(categories), fakeRpc());
+            view.rerender(<TestRpcContext.Provider value={{ rpcClient: fakeRpc() }}>{list([...categories])}</TestRpcContext.Provider>);
+            return view;
+        };
+
+        it("opens the function search for the query from a search result list", async () => {
+            const onShowMoreFunctions = jest.fn();
+            const onSelect = jest.fn();
+            const { getByText } = renderSearchResults((categories) =>
+                <NodeList categories={categories} title="All Components" onSelect={onSelect}
+                    onSearchTextChange={jest.fn()} searchText="edi" onShowMoreFunctions={onShowMoreFunctions} />,
+            searchResults);
+            fireEvent.click(await waitFor(() => getByText("Show More Functions")));
+            expect(onShowMoreFunctions).toHaveBeenCalledTimes(1);
+            expect(onSelect).not.toHaveBeenCalled();
+        });
+
+        it("is not offered for a search without a function search to open", async () => {
+            const { getByText, queryByText } = renderSearchResults((categories) =>
+                <NodeList categories={categories} title="All Components" onSelect={jest.fn()}
+                    onSearchTextChange={jest.fn()} searchText="edi" />,
+            [...nodePanel, ...searchResults]);
+            await waitFor(() => expect(getByText("fromEdiString")).toBeTruthy());
+            expect(queryByText("Show More Functions")).toBeNull();
+        });
+
+        it("still opens the function list from the node panel without a query", async () => {
+            const onShowMoreFunctions = jest.fn();
+            const onSelect = jest.fn();
+            const { getByText } = renderWithRpc(
+                <NodeList categories={nodePanel} title="Nodes" onSelect={onSelect}
+                    onShowMoreFunctions={onShowMoreFunctions} />,
+                fakeRpc()
+            );
+            fireEvent.click(await waitFor(() => getByText("Show More Functions")));
+            expect(onSelect).toHaveBeenCalledWith("FUNCTION", expect.anything());
+            expect(onShowMoreFunctions).not.toHaveBeenCalled();
+        });
+    });
+
     it("INVARIANT: renders every category title from the categories prop", async () => {
         const categories = [
             { title: "Statements", items: [node("log", "Log"), node("if", "If")] },
@@ -223,13 +382,13 @@ describe("NodeList (rpc-driven)", () => {
         expect(grids).toHaveLength(0);
     });
     // Regression (wso2/product-integrator): two columns of a side panel are too narrow for a
-    // name like "Send Data to Child Workflow", and the row used to cut it to one clipped line.
+    // name like "Reconcile Quarterly Ledger Entries", and the row used to cut it to one clipped line.
     // The name now wraps within its row rather than being held on one line.
     it("INVARIANT: a long node name wraps rather than being held on one line", async () => {
-        const label = "Send Data to Child Workflow";
-        const categories = [{ title: "Child Workflows", items: [node("CHILD_WORKFLOW_SEND_DATA", label)] }];
+        const label = "Reconcile Quarterly Ledger Entries";
+        const categories = [{ title: "Activities", items: [node("ACTIVITY_CALL", label)] }];
         const { findByText } = renderWithRpc(
-            <NodeList {...props(categories)} searchText="Child" />,
+            <NodeList {...props(categories)} searchText="Reconcile" />,
             fakeRpc()
         );
 
@@ -243,18 +402,37 @@ describe("NodeList (rpc-driven)", () => {
     // The name must not appear twice in the document: the styled tooltip's content is mounted
     // whether or not it is shown, and a duplicate breaks every locator that matches on the name.
     it.each([
-        ["described", "Sends a data event to a running child workflow", 0],
+        ["described", "Reconciles the quarter's ledger entries against the bank feed", 0],
         ["undescribed", "", 1],
     ])("INVARIANT: a %s node row carries exactly one tooltip", async (_desc, description, nativeTitles) => {
-        const label = "Send Data to Child Workflow";
-        const item = { ...node("CHILD_WORKFLOW_SEND_DATA", label), description };
+        const label = "Reconcile Quarterly Ledger Entries";
+        const item = { ...node("ACTIVITY_CALL", label), description };
         const { container, findByText } = renderWithRpc(
-            <NodeList {...props([{ title: "Child Workflows", items: [item] }])} searchText="Child" />,
+            <NodeList {...props([{ title: "Activities", items: [item] }])} searchText="Reconcile" />,
             fakeRpc()
         );
 
         await findByText(label);
         expect(container.querySelectorAll(`[title="${label}"]`)).toHaveLength(nativeTitles);
+        const showingTheName = Array.from(container.querySelectorAll("div"))
+            .filter((el) => el.textContent === label && el.children.length === 0);
+        expect(showingTheName).toHaveLength(1);
+    });
+
+    // A short palette name ("Human Task") hides which context method the node stands for, so the
+    // tooltip carries the method name under the description. It is a code line, not the name, so
+    // the exact-name locators the e2e suite relies on still match one element.
+    it("shows a node's context method in its tooltip, without repeating the name", async () => {
+        const label = "Human Task";
+        const method = "awaitHumanTask";
+        const item = { ...node("HUMAN_TASK", label), description: "Create a human task", method };
+        const { container, findByText } = renderWithRpc(
+            <NodeList {...props([{ title: "Steps", items: [item] }])} searchText="Human" />,
+            fakeRpc()
+        );
+
+        expect((await findByText(method)).tagName).toBe("CODE");
+        expect(container.querySelectorAll(`[title="${label}"]`)).toHaveLength(0);
         const showingTheName = Array.from(container.querySelectorAll("div"))
             .filter((el) => el.textContent === label && el.children.length === 0);
         expect(showingTheName).toHaveLength(1);

@@ -21,7 +21,6 @@ package io.ballerina.flowmodelgenerator.core.utils;
 import io.ballerina.centralconnector.CentralAPI;
 import io.ballerina.centralconnector.response.ConnectorsResponse;
 import io.ballerina.centralconnector.response.SymbolResponse;
-import io.ballerina.modelgenerator.commons.ModuleCoordinate;
 import io.ballerina.modelgenerator.commons.SearchResult;
 import org.ballerinalang.diagramutil.connector.models.connector.Connector;
 
@@ -30,8 +29,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Centralizes all Ballerina Central API search operations. This class encapsulates the logic for searching connectors
@@ -42,15 +43,29 @@ import java.util.stream.Collectors;
  */
 public class CentralSearchUtil {
 
+    private static final Logger LOGGER = Logger.getLogger(CentralSearchUtil.class.getName());
     private static final int OVERFETCH_FACTOR = 3;
     private static final int MAX_FETCH_ITERATIONS = 3;
     private static final int MAX_FETCH_LIMIT = 1000;
     private static final String FUNCTION_SYMBOL_TYPE = "function";
 
     private final CentralAPI centralClient;
+    private final BiPredicate<String, String> toolPackageCheck;
 
     public CentralSearchUtil(CentralAPI centralClient) {
+        this(centralClient, SearchResultFilter::isToolPackage);
+    }
+
+    /**
+     * Creates a Central search with the given tool package check. Every search drops the packages it accepts, since
+     * Central does not mark a bal tool package in its search responses.
+     *
+     * @param centralClient the Central client to query with
+     * @param toolPackageCheck checks whether an organization and package name identify a bal tool package
+     */
+    public CentralSearchUtil(CentralAPI centralClient, BiPredicate<String, String> toolPackageCheck) {
         this.centralClient = centralClient;
+        this.toolPackageCheck = toolPackageCheck;
     }
 
     /**
@@ -98,7 +113,10 @@ public class CentralSearchUtil {
                     if (!allowedOrgs.contains(connector.packageInfo.getOrganization())) {
                         continue;
                     }
-                    if (isBlacklisted(connector.name, blacklistedNamePatterns)) {
+                    if (isToolPackage(connector)) {
+                        continue;
+                    }
+                    if (SearchResultFilter.isBlacklistedConnector(connector.name, blacklistedNamePatterns)) {
                         continue;
                     }
                     if (skipped < offset) {
@@ -178,7 +196,10 @@ public class CentralSearchUtil {
                 if (connector == null || connector.packageInfo == null || connector.name == null) {
                     continue;
                 }
-                if (isBlacklisted(connector.name, blacklistedNamePatterns)) {
+                if (isToolPackage(connector)) {
+                    continue;
+                }
+                if (SearchResultFilter.isBlacklistedConnector(connector.name, blacklistedNamePatterns)) {
                     continue;
                 }
                 if (skipped < offset) {
@@ -202,158 +223,38 @@ public class CentralSearchUtil {
     }
 
     /**
-     * Searches functions from Ballerina Central with over-fetching to compensate for post-filtering by allowed
-     * organizations. Returns null if the request fails or times out, allowing the caller to fall back to the local
-     * database.
+     * One unfiltered org-scoped window. Null slots retain offsets of tools/non-function symbols.
      *
-     * @param query       the search query string
-     * @param limit       the desired number of results
-     * @param offset      the pagination offset
-     * @param allowedOrgs the set of allowed organization names
-     * @return a list of matching search results, or null if the request failed
+     * @param rows raw source rows, including null slots
+     * @param hasMore whether the source has further rows
      */
-    public List<SearchResult> searchFunctions(String query, int limit, int offset, Set<String> allowedOrgs) {
-        limit = Math.max(limit, 0);
-        offset = Math.max(offset, 0);
-        if (allowedOrgs.isEmpty()) {
-            return new ArrayList<>();
-        }
+    public record FunctionRawPage(List<SearchResult> rows, boolean hasMore) { }
+
+    /** Fetches exactly one raw window; null signals Central failure rather than exhaustion. */
+    public FunctionRawPage searchFunctionPage(String query, int limit, int offset, String org) {
         try {
-            List<SearchResult> filteredResults = new ArrayList<>();
-            int fetchOffset = 0;
-            int fetchLimit = safeFetchLimit(limit, offset);
-            int skipped = 0;
-
-            for (int iteration = 0; iteration < MAX_FETCH_ITERATIONS; iteration++) {
-                Map<String, String> queryMap = new HashMap<>();
-                if (!query.isEmpty()) {
-                    queryMap.put("q", query);
-                }
-                queryMap.put("symbolType", FUNCTION_SYMBOL_TYPE);
-                queryMap.put("limit", String.valueOf(fetchLimit));
-                queryMap.put("offset", String.valueOf(fetchOffset));
-                SymbolResponse symbolResponse = centralClient.searchSymbols(queryMap);
-
-                if (symbolResponse == null || symbolResponse.symbols() == null) {
-                    break;
-                }
-
-                for (SymbolResponse.Symbol symbol : symbolResponse.symbols()) {
-                    if (symbol == null || symbol.symbolType() == null || symbol.organization() == null) {
-                        continue;
-                    }
-                    if (!FUNCTION_SYMBOL_TYPE.equals(symbol.symbolType())) {
-                        continue;
-                    }
-                    if (!allowedOrgs.contains(symbol.organization())) {
-                        continue;
-                    }
-                    if (skipped < offset) {
-                        skipped++;
-                        continue;
-                    }
-                    filteredResults.add(toSearchResult(symbol, false));
-                    if (filteredResults.size() >= limit) {
-                        return filteredResults.subList(0, limit);
-                    }
-                }
-
-                // Check if Central has more results
-                if (symbolResponse.count() <= fetchOffset + fetchLimit) {
-                    break;
-                }
-                fetchOffset += fetchLimit;
-            }
-
-            return filteredResults;
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
-    /**
-     * Searches functions from Ballerina Central scoped to a single organization. The organization and symbol type
-     * filters are applied by Central, so {@code limit} and {@code offset} map directly to stable pages (no
-     * over-fetching or post-filtering). This suits paginated listing of an organization's functions. Returns null if
-     * the request fails or times out, allowing the caller to fall back to the local database.
-     *
-     * @param query  the search query string (empty to list all functions of the organization)
-     * @param limit  the desired number of results
-     * @param offset the pagination offset
-     * @param org    the organization name to scope the search to
-     * @return a list of matching search results, or null if the request failed
-     */
-    public List<SearchResult> searchFunctionsByOrg(String query, int limit, int offset, String org) {
-        limit = Math.max(limit, 0);
-        offset = Math.max(offset, 0);
-        if (org == null || org.isEmpty()) {
-            return new ArrayList<>();
-        }
-        try {
-            Map<String, String> queryMap = new HashMap<>();
+            Map<String, String> params = new HashMap<>();
             if (!query.isEmpty()) {
-                queryMap.put("q", query);
+                params.put("q", query);
             }
-            queryMap.put("org", org);
-            queryMap.put("symbolType", FUNCTION_SYMBOL_TYPE);
-            queryMap.put("limit", String.valueOf(limit));
-            queryMap.put("offset", String.valueOf(offset));
-            SymbolResponse symbolResponse = centralClient.searchSymbols(queryMap);
-
-            if (symbolResponse == null || symbolResponse.symbols() == null) {
-                return new ArrayList<>();
+            params.put("org", org);
+            params.put("symbolType", FUNCTION_SYMBOL_TYPE);
+            params.put("limit", String.valueOf(limit));
+            params.put("offset", String.valueOf(offset));
+            SymbolResponse response = centralClient.searchSymbols(params);
+            if (response == null || response.symbols() == null) {
+                return null;
             }
-
-            List<SearchResult> results = new ArrayList<>();
-            for (SymbolResponse.Symbol symbol : symbolResponse.symbols()) {
-                if (symbol == null || symbol.symbolType() == null) {
-                    continue;
-                }
-                if (!FUNCTION_SYMBOL_TYPE.equals(symbol.symbolType())) {
-                    continue;
-                }
-                results.add(toSearchResult(symbol, false));
+            List<SearchResult> rows = new ArrayList<>();
+            for (var symbol : response.symbols()) {
+                rows.add(symbol != null && FUNCTION_SYMBOL_TYPE.equals(symbol.symbolType()) && !isToolPackage(symbol)
+                        ? toSearchResult(symbol, false) : null);
             }
-            return results;
+            return new FunctionRawPage(rows, response.count() > offset + rows.size());
         } catch (RuntimeException e) {
-            // Failed to fetch functions from Central, falling back to local database
+            LOGGER.log(Level.FINE, "Central function page unavailable for " + org + " at offset " + offset, e);
             return null;
         }
-    }
-
-    /**
-     * Searches the functions a single module declares.
-     *
-     * <p>Central has no module parameter, but its {@code q} is matched against module names as well as symbol names
-     * and additional terms narrow the match, so naming the module alongside the query scopes the search to it:
-     * {@code q=fromEdiString edifact.d03a.finance.mINVOIC} matches seven symbols, all of that module's, where
-     * {@code q=fromEdiString edifact.d03a.finance} matches two hundred and ten across the package's thirty modules.
-     * Naming it only biases the ranking rather than restricting it, so the module is matched exactly here to drop
-     * the near misses that come back anyway - a package root alongside its submodules, or a {@code d04a} sibling of
-     * a {@code d03a} module.</p>
-     *
-     * <p>The request itself is {@link #searchFunctionsByOrg}: same query keys, same guards, same symbol-type check,
-     * same null-on-failure contract. Only the scoping of {@code q} and the exact-module filter are new.</p>
-     *
-     * @param query  the search query string (empty to list all of the module's functions)
-     * @param limit  the maximum number of the module's functions to return
-     * @param module the module to scope the search to
-     * @return the module's matching functions, or null if the request failed
-     */
-    public List<SearchResult> searchFunctionsInModule(String query, int limit, ModuleCoordinate module) {
-        if (module == null || module.moduleName().isEmpty()) {
-            return new ArrayList<>();
-        }
-        String scopedQuery = query == null || query.isEmpty()
-                ? module.moduleName() : query + " " + module.moduleName();
-        List<SearchResult> results = searchFunctionsByOrg(scopedQuery, limit, 0, module.org());
-        if (results == null) {
-            // The request failed; the caller keeps whatever general results it already has.
-            return null;
-        }
-        return results.stream()
-                .filter(result -> module.equals(result.packageInfo().coordinate()))
-                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     /**
@@ -401,7 +302,7 @@ public class CentralSearchUtil {
                     if (symbol == null || symbol.symbolType() == null) {
                         continue;
                     }
-                    if (symbolTypeFilter.test(symbol.symbolType())) {
+                    if (symbolTypeFilter.test(symbol.symbolType()) && !isToolPackage(symbol)) {
                         if (skipped < offset) {
                             skipped++;
                             continue;
@@ -465,8 +366,12 @@ public class CentralSearchUtil {
         return moduleName == null || moduleName.isEmpty() ? symbol.name() : moduleName;
     }
 
-    private static boolean isBlacklisted(String connectorName, Set<String> patterns) {
-        return connectorName != null && patterns.stream().anyMatch(connectorName::contains);
+    private boolean isToolPackage(Connector connector) {
+        return toolPackageCheck.test(connector.packageInfo.getOrganization(), connector.packageInfo.getName());
+    }
+
+    private boolean isToolPackage(SymbolResponse.Symbol symbol) {
+        return toolPackageCheck.test(symbol.organization(), symbol.name());
     }
 
     private static int safeFetchLimit(int limit, int offset) {

@@ -304,7 +304,7 @@ const MainPanel = () => {
 
             try {
                 if (isStaleNavigation()) return;
-                const navTarget = `${value?.view ?? ''}-${value?.identifier ?? ''}-${value?.documentUri ?? ''}-${value?.projectPath ?? ''}-${value?.reviewData?.generationId ?? ''}`;
+                const navTarget = `${value?.view ?? ''}-${value?.identifier ?? ''}-${value?.documentUri ?? ''}-${value?.projectPath ?? ''}-${value?.reviewData?.generationId ?? ''}-${value?.navigationKey ?? ''}`;
                 if (navTarget !== previousNavTargetRef.current) {
                     remountKeyRef.current += 1;
                     previousNavTargetRef.current = navTarget;
@@ -410,7 +410,7 @@ const MainPanel = () => {
                                 if (isStaleNavigation()) return;
                                 setViewComponent(
                                     <DiagramWrapper
-                                        key={[value?.documentUri, value?.identifier].filter(Boolean).join('#')}
+                                        key={[value?.documentUri, value?.identifier, value?.navigationKey].filter(Boolean).join('#')}
                                         syntaxTree={st.syntaxTree}
                                         projectPath={value?.projectPath}
                                         filePath={value?.documentUri}
@@ -425,7 +425,7 @@ const MainPanel = () => {
                                 // Fallback to render without waiting
                                 setViewComponent(
                                     <DiagramWrapper
-                                        key={[value?.documentUri, value?.identifier].filter(Boolean).join('#')}
+                                        key={[value?.documentUri, value?.identifier, value?.navigationKey].filter(Boolean).join('#')}
                                         projectPath={value?.projectPath}
                                         filePath={value?.documentUri}
                                         artifactType={value?.artifactType}

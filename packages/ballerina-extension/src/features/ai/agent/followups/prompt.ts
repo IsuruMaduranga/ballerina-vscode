@@ -89,7 +89,7 @@ ${framing}
 ${SHARED_RULES}${situation === "completed" ? COMPLETED_ONLY_RULE : ""}`;
 }
 
-export function buildFollowupMessages(input: FollowupPromptInput): ModelMessage[] {
+export function buildFollowupPrompt(input: FollowupPromptInput): { system: string; messages: ModelMessage[] } {
     const { userQuery, assistantResponse, earlierExchanges, mode, situation = "completed", errorMessage } = input;
     const responseTag = situation === "completed" ? "assistant_response" : "assistant_response_interrupted";
     const errorBlock = situation === "error" && errorMessage
@@ -112,8 +112,8 @@ ${assistantResponse}
 ${errorBlock}
 Suggest the user's likely next actions.`;
 
-    return [
-        { role: "system", content: buildSystemPrompt(situation) },
-        { role: "user", content: userContent },
-    ];
+    return {
+        system: buildSystemPrompt(situation),
+        messages: [{ role: "user", content: userContent }],
+    };
 }

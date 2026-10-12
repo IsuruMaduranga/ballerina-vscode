@@ -32,6 +32,7 @@ import {
 } from '@wso2/ui-toolkit';
 import { LinkButton } from "@wso2/ui-toolkit/lib/components/LinkButton/LinkButton";
 import { buildRequiredRule, getPropertyFromFormField, isExpandableMode, sanitizeType, toEditorMode } from './utils';
+import { getDefaultHint } from './defaultHint';
 import { buildValidate } from '../Form/validationRules';
 import { useFieldDiagnostics } from '../Form/useFieldDiagnostics';
 import { WarningBanner } from '../Form/WarningBanner';
@@ -428,6 +429,7 @@ export const ExpressionEditor = (props: ExpressionEditorProps) => {
 
     const key = fieldKey ?? field.key;
     const readOnly = field.editable === false;
+    const defaultHint = getDefaultHint(field);
     const [focused, setFocused] = useState<boolean>(false);
     const [formDiagnostics, setFormDiagnostics] = useState(field.diagnostics);
     const [isExpandedModalOpen, setIsExpandedModalOpen] = useState(false);
@@ -652,7 +654,9 @@ export const ExpressionEditor = (props: ExpressionEditorProps) => {
     const modeSwitcherNode = modeSwitcherContext?.isModeSwitcherEnabled && !field.hideModeSwitcher ? (
         <S.FieldInfoSection>
             {isLoading ? (
-                <SkeletonBase height="24px" width="112px" style={{ borderRadius: '2px', marginTop: '2px' }} />
+                // 140px is the rendered ModeSwitcher width for any "<mode> / Expression" pair, not its
+                // 112px min-width: both columns size to the longer label, which is normally Expression.
+                <SkeletonBase height="24px" width="140px" style={{ borderRadius: '2px', marginTop: '2px' }} />
             ) : (
                 <ModeSwitcher
                     fieldKey={field.key}
@@ -690,7 +694,7 @@ export const ExpressionEditor = (props: ExpressionEditorProps) => {
                                                 </span>
                                             )}
                                         </span>
-                                        {(field.defaultValue && field.defaultValue?.trim() !== "()" && field.defaultValue?.trim() !== "object {}") && <S.DefaultValue style={{ marginLeft: '8px' }}>{`(Default: ${field.defaultValue}) `}</S.DefaultValue>}
+                                        {defaultHint && <S.DefaultValue style={{ marginLeft: '8px' }}>{`(Default: ${defaultHint}) `}</S.DefaultValue>}
                                         {(required ?? !field.optional) && <RequiredFormInput />}
                                         {getFieldTypeLabel(field.types) && (
                                             <S.Type style={{ marginLeft: '5px' }} isVisible={focused} title={getFieldTypeLabel(field.types)}>

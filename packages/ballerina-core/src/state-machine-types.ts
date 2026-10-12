@@ -180,6 +180,7 @@ export interface VisualizerLocation {
     projectInfo?: ProjectInfo;
     identifier?: string;
     parentIdentifier?: string;
+    navigationKey?: string;
     artifactType?: DIRECTORY_MAP;
     position?: NodePosition;
     syntaxTree?: STNode;
@@ -745,6 +746,8 @@ export interface AgentRunStatus {
     label?: string;
     /** True while the Copilot chat panel is open — ambient indicators hide themselves then. */
     aiPanelOpen: boolean;
+    /** `ballerina.copilot.showOrb` is off; Copilot is reached from the editor title bar's Copilot button. */
+    orbHidden?: boolean;
     /** Generation (run) the status belongs to, when a run is/was active. */
     generationId?: string;
     /** Epoch millis of the last status change. */
@@ -872,6 +875,10 @@ export interface Checkpoint {
     workspaceSnapshot: { [filePath: string]: string };
     fileList: string[];
     snapshotSize: number;
+    /** Absolute root the paths above are relative to. Absent on checkpoints captured before it was recorded. */
+    workspaceRoot?: string;
+    /** Exclude globs in force when this was captured; a restore must not re-read the live settings. */
+    ignorePatterns?: string[];
 }
 
 // ==================================
@@ -984,6 +991,8 @@ export interface Generation {
     codeContext?: CodeContext;
     /** Post-turn follow-up suggestions; runtime-only, not persisted across a restart */
     followupSuggestions?: FollowupSuggestion[];
+    /** Summary of this turn published to the WSO2 Integration Platform console (cloud editor only). Persisted, so a revert after a reload can still remove it */
+    consoleSummary?: string;
     /** Generation metadata */
     metadata: GenerationMetadata;
 }
@@ -1000,6 +1009,8 @@ export interface ChatThread {
     generations: Generation[];
     /** Session ID for backend correlation */
     sessionId?: string;
+    /** The console plan this cloud editor session was opened with started this thread; only its turns publish console summaries */
+    consoleOrigin?: boolean;
     /** Thread creation timestamp */
     createdAt: number;
     /** Last update timestamp */

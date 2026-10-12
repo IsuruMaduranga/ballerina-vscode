@@ -26,6 +26,7 @@ import io.ballerina.compiler.api.symbols.TypeDescKind;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.UnionTypeSymbol;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
 import io.ballerina.flowmodelgenerator.core.model.NodeBuilder;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
@@ -69,6 +70,9 @@ public class ChildWorkflowCallBuilder extends NodeBuilder {
     public static final String INPUT_KEY = "input";
     public static final String INPUT_LABEL = "Input";
     public static final String INPUT_DOC = "Input data for the child workflow";
+    public static final String WORKFLOW_NAME_KEY = ChildWorkflowRunBuilder.WORKFLOW_NAME_KEY;
+    public static final String RESULT_TYPE_LABEL = "Result Type";
+    public static final String RESULT_TYPE_DOC = "Type of the child workflow's result.";
     private static final String DEFAULT_VARIABLE_NAME = "childResult";
     private static final String DEFAULT_RESULT_TYPE = "json";
 
@@ -98,6 +102,13 @@ public class ChildWorkflowCallBuilder extends NodeBuilder {
                     .version(codedata.version());
         }
 
+        // Pre-selected to whatever the list was clicked on, and editable so the choice can be
+        // changed — and read — from the form itself, as the run form does.
+        String selectedWorkflow = codedata != null && codedata.symbol() != null ? codedata.symbol() : "";
+        WorkflowUtil.addWorkflowSelectProperty(properties(), WORKFLOW_NAME_KEY,
+                ChildWorkflowRunBuilder.WORKFLOW_NAME_LABEL, ChildWorkflowRunBuilder.WORKFLOW_NAME_DOC,
+                SendDataBuilder.getAvailableWorkflowFunctions(context), selectedWorkflow, null);
+
         TypeSymbol inputType = ChildWorkflowRunBuilder.findSelectedWorkflowInputType(context, codedata);
         if (inputType != null) {
             properties().custom()
@@ -106,6 +117,8 @@ public class ChildWorkflowCallBuilder extends NodeBuilder {
                         .description(INPUT_DOC)
                         .stepOut()
                     .typeWithExpression(inputType, moduleInfo)
+                    // Typed from the chosen workflow, so a new choice in the form retypes it.
+                    .codedata().dependentProperty(WORKFLOW_NAME_KEY).stepOut()
                     .placeholder("")
                     .value("")
                     .editable(true)
@@ -118,10 +131,11 @@ public class ChildWorkflowCallBuilder extends NodeBuilder {
         String resultType = resolveResultType(context, codedata);
         properties().custom()
                 .metadata()
-                    .label("Result Type")
-                    .description("Type of the child workflow's result.")
+                    .label(RESULT_TYPE_LABEL)
+                    .description(RESULT_TYPE_DOC)
                     .stepOut()
                 .type(Property.ValueType.TYPE)
+                .codedata().dependentProperty(WORKFLOW_NAME_KEY).stepOut()
                 .value(resultType)
                 .editable(true)
                 .stepOut()
@@ -144,9 +158,20 @@ public class ChildWorkflowCallBuilder extends NodeBuilder {
 
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
-        String childWorkflowFunction = sourceBuilder.flowNode.codedata().symbol();
+        // The form's selection wins, so changing it in the form changes the generated call; the
+        // codedata symbol is what the palette selected and remains the fallback.
+        String childWorkflowFunction = sourceBuilder.getProperty(WORKFLOW_NAME_KEY)
+                .map(property -> property.value() == null ? "" : property.value().toString().trim())
+                .filter(value -> !value.isBlank())
+                .orElseGet(() -> sourceBuilder.flowNode.codedata().symbol());
         if (childWorkflowFunction == null || childWorkflowFunction.isBlank()) {
-            throw new IllegalStateException("A workflow function symbol is required for CHILD_WORKFLOW_CALL");
+            // Saving without a workflow is rejected; a diagnostics pass still writes the call so the other
+            // fields get their diagnostics.
+            if (!sourceBuilder.isForDiagnostics()) {
+                throw new UserFacingException("Select a workflow in the " + ChildWorkflowRunBuilder.WORKFLOW_NAME_LABEL
+                        + " field");
+            }
+            childWorkflowFunction = "";
         }
 
         String resultType = sourceBuilder.getProperty(Property.TYPE_KEY)

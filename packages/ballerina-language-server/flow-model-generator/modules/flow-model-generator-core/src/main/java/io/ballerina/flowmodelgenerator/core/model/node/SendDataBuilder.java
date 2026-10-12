@@ -18,9 +18,8 @@
 
 package io.ballerina.flowmodelgenerator.core.model.node;
 
-import io.ballerina.compiler.api.symbols.FunctionSymbol;
-import io.ballerina.compiler.api.symbols.SymbolKind;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
+import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
@@ -36,7 +35,6 @@ import io.ballerina.projects.Package;
 import org.eclipse.lsp4j.TextEdit;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,23 +81,8 @@ public class SendDataBuilder extends FunctionCall {
     public void setConcreteTemplateData(TemplateContext context) {
         List<Option> workflowOptions = getAvailableWorkflowFunctions(context);
 
-        properties().custom()
-                .metadata()
-                    .label(WORKFLOW_NAME_LABEL)
-                    .description(WORKFLOW_NAME_DOC)
-                    .stepOut()
-                .type()
-                    .fieldType(Property.ValueType.SINGLE_SELECT)
-                    .options(workflowOptions)
-                    .selected(true)
-                    .stepOut()
-                .codedata()
-                    .kind(REQUIRED.name())
-                .stepOut()
-                .value("")
-                .editable(true)
-                .stepOut()
-                .addProperty(WORKFLOW_NAME_KEY);
+        WorkflowUtil.addWorkflowSelectProperty(properties(), WORKFLOW_NAME_KEY, WORKFLOW_NAME_LABEL, WORKFLOW_NAME_DOC,
+                workflowOptions, "", null);
 
         properties().custom()
                 .metadata()
@@ -166,6 +149,11 @@ public class SendDataBuilder extends FunctionCall {
         Optional<Property> workflowId = sourceBuilder.getProperty(WORKFLOW_ID_KEY);
         Optional<Property> dataName = sourceBuilder.getProperty(DATA_NAME_KEY);
         Optional<Property> data = sourceBuilder.getProperty(DATA_KEY);
+        // Saving without a workflow is rejected; a diagnostics pass still writes the call so the other
+        // fields get their diagnostics.
+        if (workflow.isPresent() && workflow.get().toSourceCode().isBlank() && !sourceBuilder.isForDiagnostics()) {
+            throw new UserFacingException("Select a workflow in the " + WORKFLOW_NAME_LABEL + " field");
+        }
         if (workflow.isPresent() && workflowId.isPresent() && dataName.isPresent() && data.isPresent()) {
             // The data name correlates with an event declared by the workflow function, so it must
             // always be a string literal even when the form submits the bare event name
@@ -197,22 +185,9 @@ public class SendDataBuilder extends FunctionCall {
      * @return List of options containing workflow function names
      */
     public static List<Option> getAvailableWorkflowFunctions(TemplateContext context) {
-        List<Option> options = new ArrayList<>();
         Package currentPackage = PackageUtil.loadProject(context.workspaceManager(), context.filePath())
                 .currentPackage();
         PackageUtil.getCompilation(currentPackage);
-        currentPackage.modules().forEach(module -> {
-            module.getCompilation().getSemanticModel().moduleSymbols().stream()
-                    .filter(symbol -> symbol.kind() == SymbolKind.FUNCTION)
-                    .map(symbol -> (FunctionSymbol) symbol)
-                    .filter(WorkflowUtil::isWorkflowFunction)
-                    .forEach(funcSymbol -> {
-                        String funcName = funcSymbol.getName().orElse("");
-                        if (!funcName.isEmpty()) {
-                            options.add(new Option(funcName, funcName));
-                        }
-                    });
-        });
-        return options;
+        return WorkflowUtil.workflowFunctionOptions(currentPackage);
     }
 }

@@ -1,0 +1,484 @@
+{
+  "description": "ALL search places ballerinax functions under Extended Library and ballerina functions under Standard Library, as the function search does",
+  "kind": "ALL",
+  "source": "empty.bal",
+  "position": {
+    "startLine": {
+      "line": 1,
+      "offset": 1
+    },
+    "endLine": {
+      "line": 1,
+      "offset": 1
+    }
+  },
+  "queryMap": {
+    "q": "parse",
+    "limit": "20"
+  },
+  "categories": [
+    {
+      "metadata": {
+        "label": "Agent Tools",
+        "description": "Functions used as agent tools",
+        "keywords": [
+          "Project",
+          "Local",
+          "Function"
+        ]
+      },
+      "items": []
+    },
+    {
+      "metadata": {
+        "label": "Current Integration",
+        "description": "Components defined within the current integration",
+        "keywords": [
+          "Project",
+          "Local",
+          "Function",
+          "Types",
+          "Data Mapper"
+        ]
+      },
+      "items": []
+    },
+    {
+      "metadata": {
+        "label": "Imported Functions",
+        "description": "Functions imported from other integrations",
+        "keywords": [
+          "Imported",
+          "Function",
+          "Library"
+        ]
+      },
+      "items": []
+    },
+    {
+      "metadata": {
+        "label": "Standard Library",
+        "description": "Components supported officially by Ballerina",
+        "keywords": [
+          "Ballerina",
+          "Library"
+        ]
+      },
+      "items": [
+        {
+          "metadata": {
+            "label": "pdf",
+            "description": "",
+            "keywords": []
+          },
+          "items": [
+            {
+              "metadata": {
+                "label": "parseHtml",
+                "description": "Converts HTML content to PDF bytes.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_pdf_0.9.1.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerina",
+                "module": "pdf",
+                "packageName": "pdf",
+                "symbol": "parseHtml",
+                "version": "0.9.1"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "label": "data.xmldata",
+            "description": "",
+            "keywords": []
+          },
+          "items": [
+            {
+              "metadata": {
+                "label": "parseAsType",
+                "description": "Converts XML to record type with projection.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_data.xmldata_1.6.2.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerina",
+                "module": "data.xmldata",
+                "packageName": "data.xmldata",
+                "symbol": "parseAsType",
+                "version": "1.6.2"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseBytes",
+                "description": "Converts XML byte[] to record type with projection.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_data.xmldata_1.6.2.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerina",
+                "module": "data.xmldata",
+                "packageName": "data.xmldata",
+                "symbol": "parseBytes",
+                "version": "1.6.2"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseString",
+                "description": "Converts XML string to record type with projection.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_data.xmldata_1.6.2.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerina",
+                "module": "data.xmldata",
+                "packageName": "data.xmldata",
+                "symbol": "parseString",
+                "version": "1.6.2"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "label": "data.jsondata",
+            "description": "",
+            "keywords": []
+          },
+          "items": [
+            {
+              "metadata": {
+                "label": "parseBytes",
+                "description": "Converts JSON byte[] to subtype of anydata.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_data.jsondata_1.1.3.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerina",
+                "module": "data.jsondata",
+                "packageName": "data.jsondata",
+                "symbol": "parseBytes",
+                "version": "1.1.3"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseString",
+                "description": "Converts JSON string to subtype of anydata.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_data.jsondata_1.1.3.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerina",
+                "module": "data.jsondata",
+                "packageName": "data.jsondata",
+                "symbol": "parseString",
+                "version": "1.1.3"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseAsType",
+                "description": "Convert value of type `json` to subtype of `anydata`.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_data.jsondata_1.1.3.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerina",
+                "module": "data.jsondata",
+                "packageName": "data.jsondata",
+                "symbol": "parseAsType",
+                "version": "1.1.3"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseStream",
+                "description": "Converts JSON byte-block-stream to subtype of anydata.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_data.jsondata_1.1.3.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerina",
+                "module": "data.jsondata",
+                "packageName": "data.jsondata",
+                "symbol": "parseStream",
+                "version": "1.1.3"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "label": "ai",
+            "description": "",
+            "keywords": []
+          },
+          "items": [
+            {
+              "metadata": {
+                "label": "parseOpenApiSpec",
+                "description": "Parses the given OpenAPI specification as a JSON to a OpenApiSpec object.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_ai_1.11.1.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerina",
+                "module": "ai",
+                "packageName": "ai",
+                "symbol": "parseOpenApiSpec",
+                "version": "1.11.1"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "label": "xlsx",
+            "description": "",
+            "keywords": []
+          },
+          "items": [
+            {
+              "metadata": {
+                "label": "parseTable",
+                "description": "Parse an Excel table by name into records, maps, or a string grid.",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_xlsx_1.0.1.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerina",
+                "module": "xlsx",
+                "packageName": "xlsx",
+                "symbol": "parseTable",
+                "version": "1.0.1"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "label": "Extended Library",
+        "description": "Components from the ballerinax organization",
+        "keywords": [
+          "Ballerinax",
+          "Library"
+        ]
+      },
+      "items": [
+        {
+          "metadata": {
+            "label": "health.fhir.r4.parser",
+            "description": "",
+            "keywords": []
+          },
+          "items": [
+            {
+              "metadata": {
+                "label": "parseConstraintErrors",
+                "description": "",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_health.fhir.r4.parser_7.1.1.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerinax",
+                "module": "health.fhir.r4.parser",
+                "packageName": "health.fhir.r4.parser",
+                "symbol": "parseConstraintErrors",
+                "version": "7.1.1"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseWithValidation",
+                "description": "Function to validate and parse FHIR resource payload.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_health.fhir.r4.parser_7.1.1.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerinax",
+                "module": "health.fhir.r4.parser",
+                "packageName": "health.fhir.r4.parser",
+                "symbol": "parseWithValidation",
+                "version": "7.1.1"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "label": "health.fhir.r5.parser",
+            "description": "",
+            "keywords": []
+          },
+          "items": [
+            {
+              "metadata": {
+                "label": "parseConstraintErrors",
+                "description": "",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_health.fhir.r5.parser_1.0.1.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerinax",
+                "module": "health.fhir.r5.parser",
+                "packageName": "health.fhir.r5.parser",
+                "symbol": "parseConstraintErrors",
+                "version": "1.0.1"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseWithValidation",
+                "description": "Function to validate and parse FHIR resource payload.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_health.fhir.r5.parser_1.0.1.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerinax",
+                "module": "health.fhir.r5.parser",
+                "packageName": "health.fhir.r5.parser",
+                "symbol": "parseWithValidation",
+                "version": "1.0.1"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "label": "health.ccda.r3",
+            "description": "",
+            "keywords": []
+          },
+          "items": [
+            {
+              "metadata": {
+                "label": "parse",
+                "description": "",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_health.ccda.r3_0.9.0.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerinax",
+                "module": "health.ccda.r3",
+                "packageName": "health.ccda.r3",
+                "symbol": "parse",
+                "version": "0.9.0"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "label": "health.dicom.dicomparser",
+            "description": "",
+            "keywords": []
+          },
+          "items": [
+            {
+              "metadata": {
+                "label": "parse",
+                "description": "Parses a DICOM source.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_health.dicom.dicomparser_0.1.0.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerinax",
+                "module": "health.dicom.dicomparser",
+                "packageName": "health.dicom.dicomparser",
+                "symbol": "parse",
+                "version": "0.1.0"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseFile",
+                "description": "Parses a DICOM File.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_health.dicom.dicomparser_0.1.0.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerinax",
+                "module": "health.dicom.dicomparser",
+                "packageName": "health.dicom.dicomparser",
+                "symbol": "parseFile",
+                "version": "0.1.0"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseTag",
+                "description": "Parses a DICOM Tag.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_health.dicom.dicomparser_0.1.0.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerinax",
+                "module": "health.dicom.dicomparser",
+                "packageName": "health.dicom.dicomparser",
+                "symbol": "parseTag",
+                "version": "0.1.0"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseDataset",
+                "description": "Parses a DICOM Data Set.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_health.dicom.dicomparser_0.1.0.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerinax",
+                "module": "health.dicom.dicomparser",
+                "packageName": "health.dicom.dicomparser",
+                "symbol": "parseDataset",
+                "version": "0.1.0"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "parseSequenceValue",
+                "description": "Parses a DICOM sequence value.\n",
+                "icon": "https://bcentral-packageicons.azureedge.net/images/ballerinax_health.dicom.dicomparser_0.1.0.png"
+              },
+              "codedata": {
+                "node": "FUNCTION_CALL",
+                "org": "ballerinax",
+                "module": "health.dicom.dicomparser",
+                "packageName": "health.dicom.dicomparser",
+                "symbol": "parseSequenceValue",
+                "version": "0.1.0"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

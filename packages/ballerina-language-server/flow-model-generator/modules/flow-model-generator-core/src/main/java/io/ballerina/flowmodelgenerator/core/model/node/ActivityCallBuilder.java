@@ -36,6 +36,7 @@ import io.ballerina.flowmodelgenerator.core.Constants;
 import io.ballerina.flowmodelgenerator.core.UserFacingException;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
 import io.ballerina.flowmodelgenerator.core.model.FlowNode;
+import io.ballerina.flowmodelgenerator.core.model.FormBuilder;
 import io.ballerina.flowmodelgenerator.core.model.ItemOption;
 import io.ballerina.flowmodelgenerator.core.model.Metadata;
 import io.ballerina.flowmodelgenerator.core.model.NodeBuilder;
@@ -142,6 +143,15 @@ public class ActivityCallBuilder extends CallBuilder {
     public static final String RETRY_DELAY_KEY = "retryDelay";
     public static final String RETRY_BACKOFF_KEY = "retryBackoff";
     public static final String MAX_RETRY_DELAY_KEY = "maxRetryDelay";
+    // The dropdown's escape hatch: a RetryPolicy typed as source (a constant, a variable, a call or a
+    // literal), stored under this key and written back verbatim.
+    public static final String RETRY_POLICY_EXPRESSION_KEY = "retryPolicyExpression";
+    private static final String RETRY_POLICY_TYPE = "workflow:RetryPolicy";
+    private static final String RETRY_POLICY_EXPRESSION_LABEL = "Retry Policy Expression";
+    private static final String RETRY_POLICY_EXPRESSION_DOC = "A workflow:RetryPolicy value: a constant, a "
+            + "variable or a record literal. A literal reopens as the option it declares.";
+    private static final String NO_RETRY_EXPRESSION_MESSAGE =
+            "From Expression needs a value: fill in Retry Policy Expression";
     // Messages of the checks the form runs before writing a policy. Neither shape can be written
     // with the field missing, and filling it in silently would declare something nobody asked for:
     // a review nobody can decide, or an attempt count the author never chose.
@@ -847,19 +857,25 @@ public class ActivityCallBuilder extends CallBuilder {
                                                     String maxRetries, String retryDelay,
                                                     String retryBackoff, String maxRetryDelay,
                                                     ReviewFormValues review) {
-        String selectedValue = retryPolicyValue == null || retryPolicyValue.isBlank()
-                ? NO_RETRY_VALUE : retryPolicyValue;
-        List<Option> options = new ArrayList<>(List.of(
+        addRetryPolicyFormProperties(nodeBuilder, retryPolicyValue, maxRetries, retryDelay, retryBackoff,
+                maxRetryDelay, review, "");
+    }
+
+    public static void addRetryPolicyFormProperties(NodeBuilder nodeBuilder, String retryPolicyValue,
+                                                    String maxRetries, String retryDelay,
+                                                    String retryBackoff, String maxRetryDelay,
+                                                    ReviewFormValues review, String expression) {
+        List<Option> options = List.of(
                 new Option("No Retry", NO_RETRY_VALUE),
                 new Option("Auto Retry", AUTO_RETRY_VALUE),
                 new Option("Human Review", MANUAL_RETRY_VALUE),
-                new Option("Retry, then Review", RETRY_BEFORE_REVIEW_VALUE)));
-        // A policy the form cannot represent (a const or variable reference, say) is carried as its
-        // own option, so it renders as the selection and is written back verbatim on save.
-        boolean opaquePolicy = options.stream().noneMatch(option -> selectedValue.equals(option.value()));
-        if (opaquePolicy) {
-            options.add(new Option(selectedValue, selectedValue));
-        }
+                new Option("Retry, then Review", RETRY_BEFORE_REVIEW_VALUE),
+                FromExpressionOption.option());
+        String requested = retryPolicyValue == null || retryPolicyValue.isBlank() ? NO_RETRY_VALUE : retryPolicyValue;
+        // A caller still passing the policy source as the selection lands on the expression option.
+        boolean known = options.stream().anyMatch(option -> requested.equals(option.value()));
+        String selectedValue = known ? requested : FromExpressionOption.VALUE;
+        String expressionValue = known ? (expression == null ? "" : expression) : requested;
 
         // Sub-property definitions for the AutoRetry option. Empty values are intentional:
         // the UI reads real values from the root hidden properties with matching keys. Every
@@ -900,9 +916,9 @@ public class ActivityCallBuilder extends CallBuilder {
                 buildRetrySubProperty("Max Retries", MAX_RETRIES_DOC, "int", false));
         retryBeforeReviewFields.putAll(manualRetryFields);
         dynamicFields.put(RETRY_BEFORE_REVIEW_VALUE, retryBeforeReviewFields);
-        if (opaquePolicy) {
-            dynamicFields.put(selectedValue, Map.of());
-        }
+        dynamicFields.put(FromExpressionOption.VALUE, Map.of(RETRY_POLICY_EXPRESSION_KEY,
+                FromExpressionOption.subProperty(RETRY_POLICY_EXPRESSION_LABEL, RETRY_POLICY_EXPRESSION_DOC,
+                        RETRY_POLICY_TYPE)));
 
         nodeBuilder.properties().custom()
                 .metadata()
@@ -933,6 +949,8 @@ public class ActivityCallBuilder extends CallBuilder {
         addHiddenRetrySubFieldProperty(nodeBuilder, MAX_RETRY_DELAY_KEY,
                 "Max Retry Delay", MAX_RETRY_DELAY_DOC, "decimal", maxRetryDelay);
         addHiddenReviewProperties(nodeBuilder, RETRY_REVIEW_KEYS, review, RETRY_TITLE_DOC, RETRY_DESCRIPTION_DOC);
+        FromExpressionOption.addHiddenProperty(nodeBuilder, RETRY_POLICY_EXPRESSION_KEY,
+                RETRY_POLICY_EXPRESSION_LABEL, RETRY_POLICY_EXPRESSION_DOC, RETRY_POLICY_TYPE, expressionValue);
     }
 
     /**
@@ -963,16 +981,16 @@ public class ActivityCallBuilder extends CallBuilder {
     static Map<String, Property> reviewSubProperties(ReviewKeys keys, String titleDoc, String descriptionDoc,
                                                      boolean dualModeText) {
         Map<String, Property> fields = new LinkedHashMap<>();
-        fields.put(keys.userRoles(), buildReviewerRolesSubProperty(RETRY_USER_ROLES_LABEL, RETRY_USER_ROLES_DOC));
-        fields.put(keys.users(), buildReviewerRolesSubProperty(RETRY_USERS_LABEL, RETRY_USERS_DOC));
+        fields.put(keys.userRoles(), buildReviewerRolesSubProperty(RETRY_USER_ROLES_LABEL, RETRY_USER_ROLES_DOC, true));
+        fields.put(keys.users(), buildReviewerRolesSubProperty(RETRY_USERS_LABEL, RETRY_USERS_DOC, false));
         fields.put(keys.excludedUsers(),
-                buildReviewerRolesSubProperty(RETRY_EXCLUDED_USERS_LABEL, RETRY_EXCLUDED_USERS_DOC));
+                buildReviewerRolesSubProperty(RETRY_EXCLUDED_USERS_LABEL, RETRY_EXCLUDED_USERS_DOC, false));
         fields.put(keys.excludedRoles(),
-                buildReviewerRolesSubProperty(RETRY_EXCLUDED_ROLES_LABEL, RETRY_EXCLUDED_ROLES_DOC));
+                buildReviewerRolesSubProperty(RETRY_EXCLUDED_ROLES_LABEL, RETRY_EXCLUDED_ROLES_DOC, false));
         fields.put(keys.administratorRoles(),
-                buildReviewerRolesSubProperty(RETRY_ADMINISTRATOR_ROLES_LABEL, RETRY_ADMINISTRATOR_ROLES_DOC));
+                buildReviewerRolesSubProperty(RETRY_ADMINISTRATOR_ROLES_LABEL, RETRY_ADMINISTRATOR_ROLES_DOC, false));
         fields.put(keys.administratorUsers(),
-                buildReviewerRolesSubProperty(RETRY_ADMINISTRATOR_USERS_LABEL, RETRY_ADMINISTRATOR_USERS_DOC));
+                buildReviewerRolesSubProperty(RETRY_ADMINISTRATOR_USERS_LABEL, RETRY_ADMINISTRATOR_USERS_DOC, false));
         // Title and description offer a plain-text box as well as the expression editor, so a
         // wording typed as text is quoted on save while a reference to one is written as it stands.
         fields.put(keys.title(), dualModeText ? buildReviewTextSubProperty(RETRY_TITLE_LABEL, titleDoc)
@@ -1011,18 +1029,19 @@ public class ActivityCallBuilder extends CallBuilder {
      */
     static void addHiddenReviewProperties(NodeBuilder nodeBuilder, ReviewKeys keys, ReviewFormValues review,
                                           String titleDoc, String descriptionDoc, boolean dualModeText) {
-        addHiddenRetrySubFieldProperty(nodeBuilder, keys.userRoles(),
-                RETRY_USER_ROLES_LABEL, RETRY_USER_ROLES_DOC, "string|string[]", review.userRoles());
-        addHiddenRetrySubFieldProperty(nodeBuilder, keys.users(),
-                RETRY_USERS_LABEL, RETRY_USERS_DOC, "string|string[]", review.users());
-        addHiddenRetrySubFieldProperty(nodeBuilder, keys.excludedUsers(),
-                RETRY_EXCLUDED_USERS_LABEL, RETRY_EXCLUDED_USERS_DOC, "string|string[]", review.excludedUsers());
-        addHiddenRetrySubFieldProperty(nodeBuilder, keys.excludedRoles(),
-                RETRY_EXCLUDED_ROLES_LABEL, RETRY_EXCLUDED_ROLES_DOC, "string|string[]", review.excludedRoles());
-        addHiddenRetrySubFieldProperty(nodeBuilder, keys.administratorRoles(), RETRY_ADMINISTRATOR_ROLES_LABEL,
-                RETRY_ADMINISTRATOR_ROLES_DOC, "string|string[]", review.administratorRoles());
-        addHiddenRetrySubFieldProperty(nodeBuilder, keys.administratorUsers(), RETRY_ADMINISTRATOR_USERS_LABEL,
-                RETRY_ADMINISTRATOR_USERS_DOC, "string|string[]", review.administratorUsers());
+        // The audience values are shaped for the list mode (names as a list, anything else as the
+        // expression it is), the way the sub-form's role fields edit them.
+        addHiddenRoleProperty(nodeBuilder, keys.userRoles(), RETRY_USER_ROLES_LABEL, RETRY_USER_ROLES_DOC,
+                review.userRoles(), true);
+        addHiddenRoleProperty(nodeBuilder, keys.users(), RETRY_USERS_LABEL, RETRY_USERS_DOC, review.users(), false);
+        addHiddenRoleProperty(nodeBuilder, keys.excludedUsers(), RETRY_EXCLUDED_USERS_LABEL,
+                RETRY_EXCLUDED_USERS_DOC, review.excludedUsers(), false);
+        addHiddenRoleProperty(nodeBuilder, keys.excludedRoles(), RETRY_EXCLUDED_ROLES_LABEL,
+                RETRY_EXCLUDED_ROLES_DOC, review.excludedRoles(), false);
+        addHiddenRoleProperty(nodeBuilder, keys.administratorRoles(), RETRY_ADMINISTRATOR_ROLES_LABEL,
+                RETRY_ADMINISTRATOR_ROLES_DOC, review.administratorRoles(), false);
+        addHiddenRoleProperty(nodeBuilder, keys.administratorUsers(), RETRY_ADMINISTRATOR_USERS_LABEL,
+                RETRY_ADMINISTRATOR_USERS_DOC, review.administratorUsers(), false);
         if (dualModeText) {
             addHiddenReviewTextProperty(nodeBuilder, keys.title(), RETRY_TITLE_LABEL, titleDoc, review.title());
             addHiddenReviewTextProperty(nodeBuilder, keys.description(), RETRY_DESCRIPTION_LABEL, descriptionDoc,
@@ -1043,13 +1062,14 @@ public class ActivityCallBuilder extends CallBuilder {
      * sub-properties, except the role field offers every mode a role field offers elsewhere —
      * see {@link WorkflowUtil#addRoleFieldTypes}.
      */
-    private static Property buildReviewerRolesSubProperty(String label, String description) {
-        return WorkflowUtil.addRoleFieldTypes(
-                        new Property.Builder<Void>(null)
-                                .metadata()
-                                    .label(label)
-                                    .description(description)
-                                    .stepOut())
+    // `deciding` marks the reviewer roles themselves, whose expression mode takes `()`.
+    private static Property buildReviewerRolesSubProperty(String label, String description, boolean deciding) {
+        Property.Builder<Void> builder = new Property.Builder<Void>(null)
+                .metadata()
+                    .label(label)
+                    .description(description)
+                    .stepOut();
+        return (deciding ? WorkflowUtil.addDecidingRoleFieldTypes(builder) : WorkflowUtil.addRoleFieldTypes(builder))
                 .value("")
                 .editable(true)
                 // Optional on purpose: an empty role list is the documented "any role may decide"
@@ -1091,6 +1111,20 @@ public class ActivityCallBuilder extends CallBuilder {
                 .editable(true)
                 .optional(optional)
                 .build();
+    }
+
+    // `deciding` marks the reviewer roles themselves, whose expression mode takes `()`.
+    private static void addHiddenRoleProperty(NodeBuilder nodeBuilder, String key, String label, String description,
+                                              String source, boolean deciding) {
+        Property.Builder<FormBuilder<NodeBuilder>> builder = nodeBuilder.properties().custom()
+                .metadata().label(label).description(description).stepOut();
+        Object value = WorkflowUtil.roleFieldValue(source);
+        Property.Builder<FormBuilder<NodeBuilder>> typed = deciding
+                ? WorkflowUtil.addDecidingRoleFieldTypes(builder, value)
+                : WorkflowUtil.addRoleFieldTypes(builder, value);
+        typed.editable(true).optional(true).hidden(true)
+                .stepOut()
+                .addProperty(key);
     }
 
     private static void addHiddenRetrySubFieldProperty(NodeBuilder nodeBuilder, String key,
@@ -1400,7 +1434,8 @@ public class ActivityCallBuilder extends CallBuilder {
         // ADVANCED_PARAM_KEY is the nested options group forms used to send; never an argument.
         Set<String> keys = new java.util.HashSet<>(Set.of(Property.VARIABLE_KEY, Property.TYPE_KEY,
                 Property.CHECK_ERROR_KEY, Property.ADVANCED_PARAM_KEY, STEP_ID_PARAM, RETRY_POLICY_PARAM,
-                MAX_RETRIES_KEY, RETRY_DELAY_KEY, RETRY_BACKOFF_KEY, MAX_RETRY_DELAY_KEY));
+                MAX_RETRIES_KEY, RETRY_DELAY_KEY, RETRY_BACKOFF_KEY, MAX_RETRY_DELAY_KEY,
+                RETRY_POLICY_EXPRESSION_KEY));
         keys.addAll(RETRY_REVIEW_KEYS.all());
         keys.addAll(ApprovalPolicyForm.PROPERTY_KEYS);
         return Set.copyOf(keys);
@@ -1499,7 +1534,9 @@ public class ActivityCallBuilder extends CallBuilder {
             // NO_RETRY is handled (and skipped) by populateRetryPolicyArg before reaching here.
             case MANUAL_RETRY_VALUE -> humanReviewRecordLiteral(properties);
             case RETRY_BEFORE_REVIEW_VALUE -> retryBeforeReviewRecordLiteral(properties);
-            // A policy expression the form could not represent: written back as it was read.
+            case FromExpressionOption.VALUE -> FromExpressionOption.expression(properties,
+                    RETRY_POLICY_EXPRESSION_KEY, NO_RETRY_EXPRESSION_MESSAGE);
+            // A policy an older form carried as its own option: written back as it was read.
             default -> value;
         };
     }

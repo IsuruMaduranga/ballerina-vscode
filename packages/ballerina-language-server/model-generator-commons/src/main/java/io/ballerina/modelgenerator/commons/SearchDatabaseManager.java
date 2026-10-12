@@ -117,7 +117,13 @@ public class SearchDatabaseManager {
      * @throws RuntimeException if there is an error executing the search
      */
     public List<SearchResult> searchFunctions(String q, int limit, int offset) {
+        return searchFunctions(q, limit, offset, null);
+    }
+
+    /** Searches a single organization using a stable raw pagination window. */
+    public List<SearchResult> searchFunctions(String q, int limit, int offset, String org) {
         String sanitizedQuery = sanitizeQuery(q);
+        String orgFilter = org == null ? "" : " AND p.org = ?";
         Page page = Page.of(limit, offset);
         String sql;
         if (sanitizedQuery.isEmpty()) {
@@ -135,10 +141,11 @@ public class SearchDatabaseManager {
                         p.version AS package_version
                     FROM Function AS f
                     JOIN Package AS p ON f.package_id = p.id
-                    ORDER BY f.name, p.name, p.org
+                    WHERE 1 = 1%ORG_FILTER%
+                    ORDER BY f.name, p.name, p.org, f.id
                     LIMIT ?
                     OFFSET ?;
-                    """;
+                    """.replace("%ORG_FILTER%", orgFilter);
         } else {
             sql = """
                     SELECT id, function_name, function_description, package_id,
@@ -158,7 +165,7 @@ public class SearchDatabaseManager {
                         FROM FunctionFTS AS fts
                         JOIN Function AS f ON fts.rowid = f.id
                         JOIN Package AS p ON f.package_id = p.id
-                        WHERE fts.FunctionFTS MATCH ?
+                        WHERE fts.FunctionFTS MATCH ?%ORG_FILTER%
                         UNION ALL
                         SELECT
                             f.id,
@@ -172,7 +179,7 @@ public class SearchDatabaseManager {
                             %LIKE_MATCH_RANK AS rank
                         FROM Function AS f
                         JOIN Package AS p ON f.package_id = p.id
-                        WHERE f.name LIKE ? COLLATE NOCASE
+                        WHERE f.name LIKE ? COLLATE NOCASE%ORG_FILTER%
                     )
                     GROUP BY id
                     -- package_org separates same-named modules from different organizations, and id is unique
@@ -180,14 +187,22 @@ public class SearchDatabaseManager {
                     -- duplicate or drop across a LIMIT/OFFSET boundary.
                     ORDER BY rank, function_name, module_name, package_org, id
                     LIMIT ?
-                    OFFSET ?;""".replace("%LIKE_MATCH_RANK", LIKE_MATCH_RANK);
+                    OFFSET ?;""".replace("%LIKE_MATCH_RANK", LIKE_MATCH_RANK)
+                    .replace("%ORG_FILTER%", orgFilter);
         }
 
         return queryList(sql, "searching functions", stmt -> {
             int paramIndex = 1;
             if (!sanitizedQuery.isEmpty()) {
                 stmt.setString(paramIndex++, sanitizedQuery + "*");
+                if (org != null) {
+                    stmt.setString(paramIndex++, org);
+                }
                 stmt.setString(paramIndex++, "%" + sanitizedQuery + "%");
+            }
+            if (org != null) {
+                // Empty queries have one predicate; searched queries bind the second (LIKE) branch here.
+                stmt.setString(paramIndex++, org);
             }
             page.bind(stmt, paramIndex);
         }, rs -> readRow(rs, "function_name", "function_description"));
@@ -1016,124 +1031,6 @@ public class SearchDatabaseManager {
             stmt.setInt(paramIndex, limit);
             stmt.setInt(paramIndex + 1, offset);
         }
-    }
-
-    /**
-     * Unified search across functions and connectors using a single SQL query.
-     * This provides better performance than multiple separate queries.
-     *
-     * @param q      the search query string
-     * @param limit  the maximum number of results to return
-     * @param offset the offset from which to start returning results
-     * @return a list of unified search results with type information
-     * @throws RuntimeException if there is an error executing the search
-     */
-    public List<UnifiedSearchResult> searchAllTypes(String q, int limit, int offset) {
-        String sanitizedQuery = sanitizeQuery(q);
-        // Clamped before the per-kind split below, which would otherwise propagate a negative limit into both
-        // inner LIMITs as well.
-        Page page = Page.of(limit, offset);
-
-        String sql;
-        if (sanitizedQuery.isEmpty()) {
-            // When the query is empty, query base tables directly
-            // since FTS rank is only meaningful with a MATCH clause.
-            sql = """
-                WITH FunctionResults AS (
-                    SELECT 'function' as result_type,
-                           f.name,
-                           f.description,
-                           p.org AS package_org,
-                           p.name AS module_name,
-                           p.package_name,
-                           p.version AS package_version,
-                           0 as relevance_score
-                    FROM Function f
-                    JOIN Package p ON f.package_id = p.id
-                    ORDER BY f.name
-                    LIMIT ?
-                ),
-                ConnectorResults AS (
-                    SELECT 'connector' as result_type,
-                           c.name,
-                           c.description,
-                           p.org AS package_org,
-                           p.name AS module_name,
-                           p.package_name,
-                           p.version AS package_version,
-                           0 as relevance_score
-                    FROM Connector c
-                    JOIN Package p ON c.package_id = p.id
-                    ORDER BY c.name
-                    LIMIT ?
-                )
-                SELECT * FROM (
-                    SELECT * FROM FunctionResults
-                    UNION ALL
-                    SELECT * FROM ConnectorResults
-                    ORDER BY result_type, name
-                )
-                LIMIT ? OFFSET ?
-                """;
-        } else {
-            sql = """
-                WITH FunctionResults AS (
-                    SELECT 'function' as result_type,
-                           f.name,
-                           f.description,
-                           p.org AS package_org,
-                           p.name AS module_name,
-                           p.package_name,
-                           p.version AS package_version,
-                           fts.rank as relevance_score
-                    FROM FunctionFTS fts
-                    JOIN Function f ON fts.rowid = f.id
-                    JOIN Package p ON f.package_id = p.id
-                    WHERE fts.FunctionFTS MATCH ?
-                    ORDER BY fts.rank
-                    LIMIT ?
-                ),
-                ConnectorResults AS (
-                    SELECT 'connector' as result_type,
-                           c.name,
-                           c.description,
-                           p.org AS package_org,
-                           p.name AS module_name,
-                           p.package_name,
-                           p.version AS package_version,
-                           fts.rank as relevance_score
-                    FROM ConnectorFTS fts
-                    JOIN Connector c ON fts.rowid = c.id
-                    JOIN Package p ON c.package_id = p.id
-                    WHERE fts.ConnectorFTS MATCH ?
-                    ORDER BY fts.rank
-                    LIMIT ?
-                )
-                SELECT * FROM (
-                    SELECT * FROM FunctionResults
-                    UNION ALL
-                    SELECT * FROM ConnectorResults
-                    ORDER BY relevance_score ASC, result_type, name
-                )
-                LIMIT ? OFFSET ?
-                """;
-        }
-
-        return queryList(sql, "searching all types", stmt -> {
-            int paramIndex = 1;
-            int functionsLimit = page.limit() / 2;
-            int connectorsLimit = page.limit() - functionsLimit;
-            if (sanitizedQuery.isEmpty()) {
-                stmt.setInt(paramIndex++, functionsLimit);
-                stmt.setInt(paramIndex++, connectorsLimit);
-            } else {
-                stmt.setString(paramIndex++, sanitizedQuery + "*");
-                stmt.setInt(paramIndex++, functionsLimit);
-                stmt.setString(paramIndex++, sanitizedQuery + "*");
-                stmt.setInt(paramIndex++, connectorsLimit);
-            }
-            page.bind(stmt, paramIndex);
-        }, rs -> new UnifiedSearchResult(rs.getString("result_type"), readRow(rs, "name", "description")));
     }
 
     /**

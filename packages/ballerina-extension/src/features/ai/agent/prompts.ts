@@ -234,6 +234,7 @@ When a connector authenticates via an OAuth2 refresh-token grant that includes a
 - Always use named arguments when providing values to any parameter (e.g., .get(key="value")).
 - Mention types EXPLICITLY in variable declarations and foreach statements. (Avoid var at all costs)
 - To narrow down a union type(or optional type), always declare a separate variable and then use that variable in the if condition.
+- In a loop over independent items (files, messages, rows) where items should be skipped, do NOT \`check\` the per-item work: \`check\` exits the whole loop, and so does an \`on fail\` attached to the loop itself. Capture the error and continue instead: \`error? result = processItem(item); if result is error { log:printError("Skipped item", 'error = result); continue; }\`. Keep \`check\` for failures that should abort all the work.
 
 ${DATA_BINDING_CODING_RULES}
 

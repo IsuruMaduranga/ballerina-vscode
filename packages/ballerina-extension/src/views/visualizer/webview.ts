@@ -25,7 +25,7 @@ import { debounce } from "lodash";
 import { WebViewOptions, getComposerWebViewOptions, getLibraryWebViewContent } from "../../utils/webview-utils";
 import { extension } from "../../BalExtensionContext";
 import { StateMachine, undoRedoManager, updateView } from "../../stateMachine";
-import { EXTENSION_ID, LANGUAGE } from "../../core";
+import { BallerinaUpdateOutcome, LANGUAGE } from "../../core";
 import { MACHINE_VIEW, isPathInside, getIntegrationCreationCopy } from "@wso2/ballerina-core";
 import { refreshDataMapper } from "../../rpc-managers/data-mapper/utils";
 import { AiPanelWebview } from "../ai-panel/webview";
@@ -38,6 +38,8 @@ import { chatStateStorage } from "../ai-panel/chatStateStorage";
 import { isAiTouchedFile } from "../../rpc-managers/diagram-validity";
 import { setCompanionVisualizer } from "../ai-panel/activeFileContext";
 import { getStartupIntegrationProgress } from "../../features/bi/startup-progress";
+import { showUpdateOutput, updateDependenciesFromPanel } from "../../features/project/dependency-compatibility";
+import { REQUIRED_BALLERINA_VERSION } from "../../features/project/dependency-lock";
 
 /** Escapes text interpolated into the startup screen's HTML (integration names are user input). */
 function escapeHtml(value: string): string {
@@ -56,13 +58,45 @@ function toInlineJson(value: unknown): string {
     return JSON.stringify(value ?? null).replace(/</g, "\\u003c");
 }
 
+/** Linked from a failed dependency update. */
+const TROUBLESHOOTING_DOCS_URL = "https://wso2.com/integration-platform/docs/develop/troubleshooting/ide-troubleshooting";
+const MOVING_TO_2201_14_DOCS_URL = "https://wso2.com/integration-platform/docs/integrator/editor/editor-troubleshooting/moving-to-ballerina-2201-14";
+/** Where each blocked screen sends users who want to stay on an earlier version. */
+const EARLIER_BALLERINA_DOCS_URL = `${MOVING_TO_2201_14_DOCS_URL}#keep-your-current-ballerina-version`;
+const EARLIER_DEPENDENCIES_DOCS_URL = `${MOVING_TO_2201_14_DOCS_URL}#keep-the-current-dependencies`;
+/** One label on both screens; a link, since it opens docs rather than downgrading anything. */
+const EARLIER_VERSION_LINK = `<a href="#" class="earlier-version-link" id="use-earlier-version">How to stay on an earlier version ↗</a>`;
+
+export interface JdkIncompatibilityInfo {
+    ballerinaVersion: string;
+    jdkMajorVersion: number;
+    requiredJdkMajorVersion: number;
+    requiredBallerinaVersion: string;
+    /** Shown in place of the actions once the screen's update starts: streaming, waiting on a terminal or UAC prompt, or why it failed. */
+    update?: { kind: "updating" } | { kind: "external" } | { kind: "failed"; message: string };
+}
+
+export interface DependencyUpdateRequiredInfo {
+    /** The package, or the workspace whose members are checked together. */
+    rootPath: string;
+    title: string;
+    /** Why, then the two ways out. */
+    paragraphs: string[];
+    /** What updating changes, then which packages in a workspace, one line each. */
+    note: string[];
+    /** Shown in place of a popup: the update in progress, or why it failed. */
+    status?: { kind: "updating"; message: string } | { kind: "failed"; message: string };
+}
+
 export class VisualizerWebview {
     public static currentPanel: VisualizerWebview | undefined;
     public static readonly viewType = "ballerina.visualizer";
     public static readonly ballerinaTitle = "Ballerina Visualizer";
     public static readonly biTitle = "WSO2 Integrator";
     /** Set when the JRE is too old to start the server; the panel then explains why. */
-    public static jdkIncompatibility: { ballerinaVersion: string; jdkMajorVersion: number; requiredJdkMajorVersion: number; requiredBallerinaVersion: string; } | undefined;
+    public static jdkIncompatibility: JdkIncompatibilityInfo | undefined;
+    /** Set while a Dependencies.toml of the open project predates Java 25; the panel then offers the update. */
+    public static dependencyUpdateRequired: DependencyUpdateRequiredInfo | undefined;
     private _panel: vscode.WebviewPanel | undefined;
     private _disposables: vscode.Disposable[] = [];
     private _pendingProjectInfoRefresh = false;
@@ -71,6 +105,8 @@ export class VisualizerWebview {
         this._panel = VisualizerWebview.createWebview();
         agentStatusManager.setVisualizerVisible(this._panel.visible);
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+        // A reopened panel loads the app again; the compatibility check re-blocks it if still needed.
+        this._panel.onDidDispose(() => { VisualizerWebview.dependencyUpdateRequired = undefined; }, null, this._disposables);
         this._panel.webview.html = this.getWebviewContent(this._panel.webview);
         RPCLayer.create(this._panel);
         // Attach the BI migrated-forms WS-manager bridge (proxy mode) to this panel,
@@ -81,10 +117,19 @@ export class VisualizerWebview {
         // Posted by the blocked-startup panel, which never loads the React app's own messaging.
         this._disposables.push(this._panel.webview.onDidReceiveMessage(async (message) => {
             if (message?.command === 'jdkIncompatibility.updateBallerina') {
-                VisualizerWebview.clearJdkIncompatibility();
-                await vscode.commands.executeCommand('ballerina.update-ballerina-visually');
-            } else if (message?.command === 'jdkIncompatibility.installPreviousVersion') {
-                await vscode.commands.executeCommand('extension.open', EXTENSION_ID);
+                await this.updateBallerinaFromPanel();
+            } else if (message?.command === 'jdkIncompatibility.reload') {
+                await vscode.commands.executeCommand('workbench.action.reloadWindow');
+            } else if (message?.command === 'useEarlierVersion') {
+                // Same precedence as the rendered screen.
+                const url = VisualizerWebview.jdkIncompatibility ? EARLIER_BALLERINA_DOCS_URL : EARLIER_DEPENDENCIES_DOCS_URL;
+                await vscode.env.openExternal(vscode.Uri.parse(url));
+            } else if (message?.command === 'dependencyUpdate.update') {
+                await updateDependenciesFromPanel();
+            } else if (message?.command === 'dependencyUpdate.showOutput') {
+                showUpdateOutput();
+            } else if (message?.command === 'dependencyUpdate.troubleshoot') {
+                await vscode.env.openExternal(vscode.Uri.parse(TROUBLESHOOTING_DOCS_URL));
             }
         }));
 
@@ -236,23 +281,76 @@ export class VisualizerWebview {
         return panel;
     }
 
+    /** Runs on the cannot-start screen itself; without a language server the app would never get past its loader. */
+    private async updateBallerinaFromPanel(): Promise<void> {
+        const blocked = VisualizerWebview.jdkIncompatibility;
+        if (!blocked) {
+            return;
+        }
+        // Output sent before the re-rendered page attaches its listener is dropped; "Starting the update…" covers it.
+        VisualizerWebview.showJdkIncompatibility({ ...blocked, update: { kind: "updating" } });
+        let lastError: string | undefined;
+        const progress = extension.ballerinaExtInstance.onDownloadProgress(({ message, percentage, step }) => {
+            if (step === -1 && message.startsWith("Error: ")) {
+                // The last line, as the log shows it; a chunk can hold \r redraws.
+                lastError = message.slice("Error: ".length).split(/[\r\n]/).map((line) => line.trim()).filter(Boolean).pop() || lastError;
+            }
+            // The current panel, since one closed and reopened mid-update is a new instance.
+            VisualizerWebview.currentPanel?.getWebview()?.webview.postMessage({ command: "jdkIncompatibility.progress", message, percentage });
+        });
+        let outcome: BallerinaUpdateOutcome;
+        try {
+            // Pinned, since `bal dist update` may stay on the current update line.
+            outcome = await vscode.commands.executeCommand<BallerinaUpdateOutcome>('ballerina.update-ballerina-visually', {
+                version: REQUIRED_BALLERINA_VERSION,
+                showSetup: false
+            });
+        } catch (error) {
+            console.error("[SETUP] Ballerina update failed", error);
+            outcome = "failed";
+        } finally {
+            progress.dispose();
+        }
+        if (outcome === "external") {
+            VisualizerWebview.showJdkIncompatibility({ ...blocked, update: { kind: "external" } });
+        } else if (outcome === "failed") {
+            VisualizerWebview.showJdkIncompatibility({
+                ...blocked,
+                update: { kind: "failed", message: lastError || "Check your internet connection and try again." }
+            });
+        } // "updated" reloads the window
+    }
+
     public getWebview(): vscode.WebviewPanel | undefined {
         return this._panel;
     }
 
     /** Records the failure and re-renders an open panel; the HTML is built once at creation. */
-    /** Cleared before any action that opens a panel of its own, which would otherwise inherit this. */
-    public static clearJdkIncompatibility(): void {
-        VisualizerWebview.jdkIncompatibility = undefined;
+    public static showJdkIncompatibility(info: JdkIncompatibilityInfo): void {
+        VisualizerWebview.jdkIncompatibility = info;
+        if (VisualizerWebview.currentPanel) {
+            VisualizerWebview.rerender();
+        } else {
+            // Without a popup, this screen is the only explanation; outside BI mode no panel is open yet.
+            VisualizerWebview.currentPanel = new VisualizerWebview();
+        }
     }
 
-    public static showJdkIncompatibility(info: {
-        ballerinaVersion: string;
-        jdkMajorVersion: number;
-        requiredJdkMajorVersion: number;
-        requiredBallerinaVersion: string;
-    }): void {
-        VisualizerWebview.jdkIncompatibility = info;
+    public static showDependencyUpdateRequired(info: DependencyUpdateRequiredInfo): void {
+        VisualizerWebview.dependencyUpdateRequired = info;
+        VisualizerWebview.rerender();
+    }
+
+    /** Re-renders the app in place of the blocked panel; the caller waits for it to report ready. */
+    public static clearDependencyUpdateRequired(): void {
+        if (!VisualizerWebview.dependencyUpdateRequired) {
+            return;
+        }
+        VisualizerWebview.dependencyUpdateRequired = undefined;
+        VisualizerWebview.rerender();
+    }
+
+    private static rerender(): void {
         const current = VisualizerWebview.currentPanel;
         const panel = current?.getWebview();
         if (current && panel) {
@@ -281,34 +379,146 @@ export class VisualizerWebview {
             ? escapeHtml(creationCopy.subtitle)
             : "Your project is being prepared. This may take a few moments.";
         const incompatibility = VisualizerWebview.jdkIncompatibility;
-        const body = incompatibility
+        const dependencyUpdate = VisualizerWebview.dependencyUpdateRequired;
+        const body = incompatibility?.update?.kind === "updating" || incompatibility?.update?.kind === "external"
             ? `<div class="container" id="jdk-incompatibility-container">
                 <div class="loader-wrapper">
-                    <div class="welcome-content">
-                        <h1 class="welcome-title">${escapeHtml(productTitle)} cannot start</h1>
-                        <p class="welcome-subtitle">
-                            Your Ballerina ${escapeHtml(incompatibility.ballerinaVersion)} is
-                            incompatible with the current extension.
-                            <br><br>
-                            Update Ballerina to
-                            ${escapeHtml(incompatibility.requiredBallerinaVersion)} or later, or keep
-                            your current Ballerina version and install an older extension: expand the
-                            dropdown next to Uninstall and pick
-                            &quot;Install Specific Version...&quot;.
-                        </p>
-                        <div class="action-row">
-                            <button class="action-button" id="update-ballerina">Update Ballerina</button>
-                            <button class="action-button secondary" id="install-previous">Install Previous Extension Version</button>
-                        </div>
+                    <div class="welcome-content no-fade">
+                        <h1 class="welcome-title">Updating Ballerina to ${escapeHtml(incompatibility.requiredBallerinaVersion)}</h1>
+                        ${incompatibility.update.kind === "updating"
+                            ? `<p class="welcome-subtitle">This can take a few minutes. VS Code reloads when the update finishes.</p>
+                            <div class="status-progress" role="status">
+                                <span class="status-spinner" aria-hidden="true"></span>
+                                <span id="update-status">Starting the update…</span>
+                            </div>
+                            <div class="update-log" id="update-log" aria-live="polite"></div>`
+                            : `<p class="welcome-subtitle">
+                                ${process.platform === "win32"
+                                    ? "Approve the administrator prompt to continue, then reload VS Code once the update finishes."
+                                    : "Enter your password in the Update Ballerina terminal to continue, then reload VS Code once the update finishes."}
+                            </p>
+                            <div class="action-row">
+                                <button class="action-button" id="reload">Reload VS Code</button>
+                            </div>`}
                     </div>
                 </div>
             </div>
             <script>
                 const vscodeApi = acquireVsCodeApi();
-                document.getElementById('update-ballerina').addEventListener('click', () =>
-                    vscodeApi.postMessage({ command: 'jdkIncompatibility.updateBallerina' }));
-                document.getElementById('install-previous').addEventListener('click', () =>
-                    vscodeApi.postMessage({ command: 'jdkIncompatibility.installPreviousVersion' }));
+                document.getElementById('reload')?.addEventListener('click', () =>
+                    vscodeApi.postMessage({ command: 'jdkIncompatibility.reload' }));
+                const status = document.getElementById('update-status');
+                const log = document.getElementById('update-log');
+                window.addEventListener('message', ({ data }) => {
+                    if (data?.command !== 'jdkIncompatibility.progress' || !log) {
+                        return;
+                    }
+                    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 8;
+                    // Only the distribution download reports a percentage; start and finish carry 0 and 100.
+                    const percentage = typeof data.percentage === 'number' && /^Downloading /.test(data.message)
+                        ? ' ' + data.percentage + '%'
+                        : '';
+                    for (const chunk of String(data.message).split('\\n')) {
+                        // A progress bar redraws its line with a carriage return; only the last redraw matters.
+                        const line = chunk.split('\\r').map((part) => part.trim()).filter(Boolean).pop();
+                        if (!line) {
+                            continue;
+                        }
+                        const text = line + percentage;
+                        const key = (line.match(/^Downloading\\s+\\S+/) || [])[0];
+                        const last = log.lastElementChild;
+                        if (key && last && last.dataset.key === key) {
+                            last.textContent = text; // one row per download, not one per redraw
+                        } else {
+                            const row = document.createElement('div');
+                            row.textContent = text;
+                            if (key) {
+                                row.dataset.key = key;
+                            }
+                            log.appendChild(row);
+                        }
+                        status.textContent = text;
+                    }
+                    if (atBottom) {
+                        log.scrollTop = log.scrollHeight; // follows the output unless the user scrolled up
+                    }
+                });
+            </script>`
+            : incompatibility
+            ? `<div class="container" id="jdk-incompatibility-container">
+                <div class="loader-wrapper">
+                    <div class="welcome-content${incompatibility.update ? " no-fade" : ""}">
+                        <h1 class="welcome-title">${escapeHtml(productTitle)} cannot start</h1>
+                        <p class="welcome-subtitle">
+                            The installed Ballerina version, ${escapeHtml(incompatibility.ballerinaVersion)}, isn't
+                            compatible with the current ${biExtension ? "extensions" : "extension"}.
+                            <br><br>
+                            Update Ballerina to
+                            ${escapeHtml(incompatibility.requiredBallerinaVersion)} or later, or keep
+                            your current Ballerina version and
+                            ${biExtension
+                                ? "switch extensions to their previous versions"
+                                : "switch the extension to its previous version"}.
+                        </p>
+                        ${incompatibility.update?.kind === "failed"
+                            ? `<p class="status-error">Couldn't update Ballerina. ${escapeHtml(incompatibility.update.message)}</p>`
+                            : ""}
+                        <div class="action-row">
+                            <button class="action-button" id="update-ballerina">${incompatibility.update?.kind === "failed" ? "Retry Update" : "Update Ballerina"}</button>
+                        </div>
+                        <p class="status-links">${EARLIER_VERSION_LINK}</p>
+                    </div>
+                </div>
+            </div>
+            <script>
+                const vscodeApi = acquireVsCodeApi();
+                document.getElementById('update-ballerina').addEventListener('click', (event) => {
+                    event.currentTarget.disabled = true; // re-rendered with progress
+                    vscodeApi.postMessage({ command: 'jdkIncompatibility.updateBallerina' });
+                });
+                document.getElementById('use-earlier-version').addEventListener('click', (event) => {
+                    event.preventDefault(); // an anchor
+                    vscodeApi.postMessage({ command: 'useEarlierVersion' });
+                });
+            </script>`
+            : dependencyUpdate
+            ? `<div class="container" id="dependency-update-container">
+                <div class="loader-wrapper">
+                    <div class="welcome-content${dependencyUpdate.status ? " no-fade" : ""}">
+                        <h1 class="welcome-title">${escapeHtml(dependencyUpdate.title)}</h1>
+                        <p class="welcome-subtitle">${dependencyUpdate.paragraphs.map(escapeHtml).join("<br><br>")}</p>
+                        <p class="welcome-subtitle status-note">${dependencyUpdate.note.map(escapeHtml).join("<br>")}</p>
+                        ${dependencyUpdate.status?.kind === "updating"
+                            ? `<div class="status-progress" role="status">
+                                <span class="status-spinner" aria-hidden="true"></span>
+                                <span>${escapeHtml(dependencyUpdate.status.message)}</span>
+                            </div>
+                            <p class="status-links">This can take a few minutes. · <a href="#" id="show-output">Show output</a></p>`
+                            : `${dependencyUpdate.status?.kind === "failed"
+                                ? `<p class="status-error">${escapeHtml(dependencyUpdate.status.message)}</p>
+                                <p class="status-links">
+                                    <a href="#" id="show-output">Show output</a> ·
+                                    <a href="#" id="troubleshooting-docs">See the troubleshooting guide</a>
+                                </p>`
+                                : ""}
+                            <div class="action-row">
+                                <button class="action-button" id="update-dependencies">Update Dependencies</button>
+                            </div>
+                            <p class="status-links">${EARLIER_VERSION_LINK}</p>`}
+                    </div>
+                </div>
+            </div>
+            <script>
+                const vscodeApi = acquireVsCodeApi();
+                const post = (id, command) => document.getElementById(id)?.addEventListener('click', (event) => {
+                    event.preventDefault(); // the links are anchors
+                    event.currentTarget.disabled = command === 'dependencyUpdate.update'; // re-rendered with progress
+                    vscodeApi.postMessage({ command });
+                });
+                post('update-dependencies', 'dependencyUpdate.update');
+                post('use-earlier-version', 'useEarlierVersion');
+                post('show-output', 'dependencyUpdate.showOutput');
+                post('troubleshooting-docs', 'dependencyUpdate.troubleshoot');
             </script>`
             : `<div class="container" id="webview-container">
                 <div class="loader-wrapper">
@@ -399,6 +609,76 @@ export class VisualizerWebview {
             .action-button.secondary:hover {
                 background-color: var(--vscode-button-secondaryHoverBackground);
             }
+            .action-button:disabled {
+                opacity: 0.5;
+                cursor: default;
+            }
+            .status-error {
+                color: var(--vscode-errorForeground);
+                font-size: 13px;
+                margin: 20px 0 0;
+            }
+            .status-links {
+                font-size: 13px;
+                margin: 12px 0 0;
+                color: var(--vscode-descriptionForeground);
+            }
+            .status-error + .status-links {
+                margin-top: 6px;
+            }
+            .welcome-subtitle.status-note {
+                margin-top: 12px; /* outranks .welcome-subtitle's margin: 0, which comes later */
+            }
+            .status-links a {
+                color: var(--vscode-textLink-foreground);
+            }
+            /* Takes the action row's place, so it keeps the row's spacing and height. */
+            .status-progress {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                margin-top: 20px;
+                min-height: 26px;
+                color: var(--vscode-descriptionForeground);
+                font-size: 13px;
+            }
+            .status-spinner {
+                box-sizing: border-box;
+                width: 14px;
+                height: 14px;
+                border: 2px solid var(--vscode-progressBar-background);
+                border-right-color: transparent;
+                border-radius: 50%;
+                animation: status-spin 0.8s linear infinite;
+            }
+            @keyframes status-spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+            .update-log {
+                margin-top: 16px;
+                max-height: 180px;
+                overflow-y: auto;
+                padding: 8px 10px;
+                text-align: left;
+                font-family: var(--vscode-editor-font-family);
+                font-size: 12px;
+                line-height: 1.5;
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+                color: var(--vscode-descriptionForeground);
+                background-color: var(--vscode-textCodeBlock-background);
+                border-radius: 2px;
+            }
+            .update-log:empty {
+                display: none;
+            }
+            /* Status changes re-render the page; replaying the fade-in on each would flicker. */
+            .welcome-content.no-fade {
+                animation: none;
+            }
             .welcome-title {
                 color: var(--vscode-foreground);
                 margin: 1.5rem 0 0.5rem 0;
@@ -437,7 +717,7 @@ export class VisualizerWebview {
 
             function loadedScript() {
                 // Mounting the app here would replace the explanation with an endless loader.
-                if (${incompatibility ? 'true' : 'false'}) {
+                if (${incompatibility || dependencyUpdate ? 'true' : 'false'}) {
                     return;
                 }
                 function renderDiagrams() {

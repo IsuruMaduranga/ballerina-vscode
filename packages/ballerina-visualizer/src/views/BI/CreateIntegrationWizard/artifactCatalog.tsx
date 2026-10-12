@@ -26,6 +26,7 @@ import {
     INTEGRATION_API_CARDS,
     WORKFLOW_CARD,
     DURABLE_AGENT_CARD,
+    triggerTooltip,
 } from "../components/artifactCards";
 import { isBetaModule } from "../ComponentListView/componentListUtils";
 import { getIntegrationIcon } from "../ComponentListView/integrationIcon";
@@ -41,7 +42,7 @@ import { effectiveTriggerKind } from "../ComponentListView/triggerKind";
 export type { ArtifactCard, ArtifactCategoryKey, ArtifactKind } from "../components/artifactCards";
 
 /** Trigger types resolved dynamically via `getTriggerModels`. */
-export type DynamicTriggerType = "event" | "file" | "mcp";
+export type DynamicTriggerType = "event" | "file" | "mcp" | "ai";
 
 /** Marker expanded at render time into `triggersToCards(triggers, <type>)`. */
 export type DynamicCardSource = `dynamic:${DynamicTriggerType}`;
@@ -62,7 +63,7 @@ export interface ArtifactCategory {
 /**
  * Converts trigger models into artifact cards, replicating the per-panel
  * filtering, icon resolution, and beta badging:
- * - `event` mirrors EventIntegrationPanel, `mcp` mirrors the trigger cards in AIAgentPanel
+ * - `event` mirrors EventIntegrationPanel, `mcp`/`ai` mirror the trigger cards in AIAgentPanel
  *   (dotted module names dashed in ids, `getIntegrationIcon`, `isBetaModule` badges).
  * - `file` mirrors FileIntegrationPanel (raw module name in ids,
  *   `getIntegrationIcon`, no beta badge).
@@ -74,6 +75,8 @@ export interface ArtifactCategory {
 export function triggersToCards(triggers: TriggerModelsResponse, type: DynamicTriggerType): ArtifactCard[] {
     return triggers.local
         .filter((trigger) => effectiveTriggerKind(trigger) === type)
+        // Superseded by VOICE_AGENT_CARD (ComponentListView/AIAgentPanel).
+        .filter((trigger) => trigger.moduleName !== "ai.wso2.integration")
         .map((trigger) => triggerToCard(trigger, type));
 }
 
@@ -92,6 +95,7 @@ function triggerToCard(item: ServiceModel, type: DynamicTriggerType): ArtifactCa
             displayName: item.name,
             icon: getIntegrationIcon(item),
             artifactInfo,
+            tooltip: triggerTooltip(item, "file"),
         };
     }
 
@@ -102,6 +106,8 @@ function triggerToCard(item: ServiceModel, type: DynamicTriggerType): ArtifactCa
         icon: getIntegrationIcon(item),
         isBeta: isBetaModule(item.moduleName),
         artifactInfo,
+        // `ai` triggers sit with `mcp` in the AI panel, so they share its wording.
+        tooltip: triggerTooltip(item, type === "event" ? "event" : "mcp"),
     };
 }
 
@@ -122,7 +128,7 @@ export const ARTIFACT_CATEGORIES: ArtifactCategory[] = [
     // first card here once creating an AI chat agent from the pre-project wizard is
     // fully supported. It stays available on the in-project Add-Artifact screen
     // (ComponentListView/AIAgentPanel), which is why the card itself is untouched.
-    category("ai-integration", [DURABLE_AGENT_CARD, "dynamic:mcp"]),
+    category("ai-integration", [DURABLE_AGENT_CARD, "dynamic:mcp", "dynamic:ai"]),
     category("integration-as-api", [...INTEGRATION_API_CARDS]),
     category("event-integration", ["dynamic:event"]),
     category("file-integration", ["dynamic:file"]),
