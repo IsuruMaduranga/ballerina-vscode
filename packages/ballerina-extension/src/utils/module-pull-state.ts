@@ -71,20 +71,36 @@ export interface PullAwareTimeout {
 
 /**
  * Calls `onTimeout` after `ms` without a module pull running. While the LS pulls modules, the
- * countdown starts over each time it runs out, for up to {@link MAX_MODULE_PULL_WAIT_MS} from the start.
+ * countdown starts over each time it runs out, and again in full when a pull ends, for up to
+ * {@link MAX_MODULE_PULL_WAIT_MS} from the start.
  */
 export function startPullAwareTimeout(onTimeout: () => void, ms: number): PullAwareTimeout {
     const startedAt = Date.now();
+    const withinCap = () => Date.now() - startedAt < MAX_MODULE_PULL_WAIT_MS;
     let timeoutId: ReturnType<typeof setTimeout>;
     const arm = () => {
+        clearTimeout(timeoutId);
         timeoutId = setTimeout(() => {
-            if (isModulePullInProgress() && Date.now() - startedAt < MAX_MODULE_PULL_WAIT_MS) {
+            if (isModulePullInProgress() && withinCap()) {
                 arm();
                 return;
             }
+            stopListening();
             onTimeout();
         }, ms);
     };
+    // A pull that ends just before the countdown runs out would leave the LS almost no time to
+    // publish what it was waiting on, so give it the full delay again.
+    const stopListening = onModulePullProgress(kind => {
+        if (kind === "end" && withinCap()) {
+            arm();
+        }
+    });
     arm();
-    return { cancel: () => clearTimeout(timeoutId) };
+    return {
+        cancel: () => {
+            clearTimeout(timeoutId);
+            stopListening();
+        }
+    };
 }
