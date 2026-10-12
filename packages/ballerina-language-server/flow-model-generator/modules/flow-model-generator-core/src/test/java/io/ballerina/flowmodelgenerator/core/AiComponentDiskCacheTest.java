@@ -118,6 +118,18 @@ public class AiComponentDiskCacheTest {
         Assert.assertTrue(loaded.isEmpty());
     }
 
+    @Test(description = "Verifies load rejects the file when a group path is missing or has an unlabelled segment.")
+    public void testInvalidGroupPathRejectsFile() {
+        cache.save("ballerinax", "ai.nopath", "1.0.0", List.of(
+                new CachedComponent("X", "label", "desc", NodeKind.MODEL_PROVIDER.name(), "init", "icon", null)));
+        cache.save("ballerinax", "ai.nolabel", "1.0.0", List.of(
+                new CachedComponent("X", "label", "desc", NodeKind.MODEL_PROVIDER.name(), "init", "icon",
+                        List.of(new AiUtils.GroupSegment(null, null, null)))));
+
+        Assert.assertTrue(cache.load("ballerinax", "ai.nopath", "1.0.0").isEmpty());
+        Assert.assertTrue(cache.load("ballerinax", "ai.nolabel", "1.0.0").isEmpty());
+    }
+
     @Test(description = "Verifies load rejects the whole file when any category is not a valid NodeKind name.")
     public void testUnknownCategoryRejectsFile() {
         List<CachedComponent> bad = List.of(

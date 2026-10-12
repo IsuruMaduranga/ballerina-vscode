@@ -210,7 +210,7 @@ public class AiUtils {
     private static final String REQUIRES_APPROVAL = "requiresApproval";
     private static final String DISPLAY_ANNOT = "display";
     private static final String DISPLAY_GROUPS = "groups";
-    public static final String AI_GROUP_PATH_KEY = "aiGroupPath";
+    static final String AI_GROUP_PATH_KEY = "aiGroupPath";
     private static final String SYSTEM_PROMPT_ROLE = "role";
     private static final String SYSTEM_PROMPT_INSTRUCTIONS = "instructions";
 
@@ -914,7 +914,7 @@ public class AiUtils {
             for (GroupSegment segment : groupPathOf(component)) {
                 current = current.subgroup(segment, categoryLabel);
             }
-            current.children.add(component);
+            current.children.add(withoutGroupPath(component));
         }
 
         Item tree = root.toItem(packageIcon);
@@ -1312,6 +1312,19 @@ public class AiUtils {
         return path == null || path.isEmpty() ? builder : builder.addData(AI_GROUP_PATH_KEY, List.copyOf(path));
     }
 
+    // The path only shapes the tree, so it is not sent to the client with the leaf.
+    private static AvailableNode withoutGroupPath(AvailableNode node) {
+        Metadata metadata = node.metadata();
+        if (metadata == null || metadata.data() == null || !metadata.data().containsKey(AI_GROUP_PATH_KEY)) {
+            return node;
+        }
+        Map<String, Object> data = new LinkedHashMap<>(metadata.data());
+        data.remove(AI_GROUP_PATH_KEY);
+        return new AvailableNode(new Metadata(metadata.label(), metadata.description(), metadata.keywords(),
+                metadata.icon(), metadata.functionKind(), data.isEmpty() ? null : data, metadata.connectors(),
+                metadata.draft()), node.codedata(), node.enabled());
+    }
+
     private static List<GroupSegment> groupPathOf(AvailableNode node) {
         Map<String, Object> data = node.metadata() != null ? node.metadata().data() : null;
         if (data == null || !(data.get(AI_GROUP_PATH_KEY) instanceof List<?> path)) {
@@ -1320,7 +1333,7 @@ public class AiUtils {
         return path.stream().filter(GroupSegment.class::isInstance).map(GroupSegment.class::cast).toList();
     }
 
-    private static List<GroupSegment> getGroupPath(ClassSymbol classSymbol) {
+    static List<GroupSegment> getGroupPath(ClassSymbol classSymbol) {
         for (AnnotationAttachmentSymbol annot : classSymbol.annotAttachments()) {
             if (!annot.typeDescriptor().nameEquals(DISPLAY_ANNOT) || annot.attachmentValue().isEmpty()
                     || !(unwrapConstant(annot.attachmentValue().get()) instanceof Map<?, ?> display)
@@ -1329,17 +1342,29 @@ public class AiUtils {
             }
             List<GroupSegment> segments = new ArrayList<>();
             for (Object element : path) {
-                Object value = unwrapConstant(element);
-                Map<?, ?> segment = value instanceof Map<?, ?> map ? map : Map.of();
-                String label = constantString(segment.isEmpty() ? value : segment.get("label"));
-                if (label != null) {
-                    segments.add(new GroupSegment(label.strip(), constantString(segment.get("description")),
-                            constantString(segment.get("iconPath"))));
+                GroupSegment segment = toGroupSegment(unwrapConstant(element));
+                if (segment == null) {
+                    LOGGER.warning("Ignoring the @display groups of " + classSymbol.getName().orElse("")
+                            + ": each entry must be a label or a record with a label");
+                    return List.of();
                 }
+                segments.add(segment);
             }
             return segments;
         }
         return List.of();
+    }
+
+    private static GroupSegment toGroupSegment(Object value) {
+        if (value instanceof String label) {
+            return label.isBlank() ? null : new GroupSegment(label.strip(), null, null);
+        }
+        if (value instanceof Map<?, ?> segment && unwrapConstant(segment.get("label")) instanceof String label
+                && !label.isBlank()) {
+            return new GroupSegment(label.strip(), constantString(segment.get("description")),
+                    constantString(segment.get("iconPath")));
+        }
+        return null;
     }
 
     private static Optional<String> getDisplayLabel(ClassSymbol classSymbol) {

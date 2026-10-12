@@ -18,17 +18,25 @@
 
 package io.ballerina.flowmodelgenerator.core;
 
+import io.ballerina.compiler.api.symbols.ClassSymbol;
 import io.ballerina.flowmodelgenerator.core.model.AvailableNode;
 import io.ballerina.flowmodelgenerator.core.model.Category;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
+import io.ballerina.flowmodelgenerator.core.model.Item;
 import io.ballerina.flowmodelgenerator.core.model.Metadata;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.modelgenerator.commons.CommonUtils;
+import io.ballerina.projects.BuildOptions;
+import io.ballerina.projects.Package;
+import io.ballerina.projects.directory.SingleFileProject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Tests adaptive package grouping for AI component search results.
@@ -36,6 +44,9 @@ import java.util.Map;
  * @since 1.8.0
  */
 public class AiUtilsGroupingTest {
+
+    private static final Path RES_DIR = Paths.get("src", "test", "resources", "ballerina", "ai_utils")
+            .toAbsolutePath();
 
     private static final List<String> AI_COMPONENT_CATEGORY_LABELS = List.of(
             "Model Providers", "Embedding Providers", "Vector Stores", "Chunkers", "Data Loaders",
@@ -133,13 +144,14 @@ public class AiUtilsGroupingTest {
         Assert.assertEquals(bedrock.metadata().label(), "Bedrock");
         Assert.assertEquals(bedrock.metadata().description(), "Bedrock models");
         Category anthropic = (Category) bedrock.items().getFirst();
-        Assert.assertEquals(anthropic.items(), List.of(sonnet, haiku));
-        Assert.assertSame(bedrock.items().get(1), llama);
-        Assert.assertSame(bedrock.items().get(2), titan);
+        Assert.assertEquals(objects(anthropic.items()), List.of("AwsSonnet", "AwsHaiku"));
+        Assert.assertEquals(objects(bedrock.items().subList(1, 3)), List.of("AwsLlama", "AwsTitan"));
         Category outposts = (Category) aws.items().get(2);
         Assert.assertEquals(outposts.items().size(), 1);
-        Assert.assertEquals(((Category) outposts.items().getFirst()).items(), List.of(local1, local2));
-        Assert.assertSame(aws.items().get(3), nova);
+        Assert.assertEquals(objects(((Category) outposts.items().getFirst()).items()),
+                List.of("AwsLocal1", "AwsLocal2"));
+        Assert.assertEquals(objects(aws.items().subList(3, 4)), List.of("AwsNova"));
+        assertNoGroupPath(category);
     }
 
     @Test(description = "Uses a default description for subgroups that declare none.")
@@ -184,15 +196,46 @@ public class AiUtilsGroupingTest {
         Category aws = (Category) leafSearch.items().getFirst();
         Assert.assertEquals(aws.items().size(), 1);
         Category bedrock = (Category) aws.items().getFirst();
-        Assert.assertEquals(((Category) bedrock.items().getFirst()).items(), List.of(haiku));
+        Assert.assertEquals(objects(((Category) bedrock.items().getFirst()).items()), List.of("AwsHaiku"));
 
         Category groupSearch = AiUtils.buildAdaptiveAiComponentCategory("Model Providers", components, "anthropic");
         Category anthropic = (Category) ((Category) ((Category) groupSearch.items().getFirst()).items().getFirst())
                 .items().getFirst();
-        Assert.assertEquals(anthropic.items(), List.of(sonnet, haiku));
+        Assert.assertEquals(objects(anthropic.items()), List.of("AwsSonnet", "AwsHaiku"));
 
         Category noMatch = AiUtils.buildAdaptiveAiComponentCategory("Model Providers", components, "vertex");
         Assert.assertTrue(noMatch.items().isEmpty());
+    }
+
+    @Test(description = "Reads @display groups as labels or label records, and drops a path with any malformed entry.")
+    public void testGroupPathFromDisplayAnnotation() {
+        BuildOptions buildOptions = BuildOptions.builder().setOffline(true).build();
+        Package pkg = SingleFileProject.load(RES_DIR.resolve("display_groups.bal"), buildOptions).currentPackage();
+        Map<String, List<AiUtils.GroupSegment>> paths = pkg.getCompilation()
+                .getSemanticModel(pkg.getDefaultModule().moduleId()).moduleSymbols().stream()
+                .filter(ClassSymbol.class::isInstance).map(ClassSymbol.class::cast)
+                .collect(Collectors.toMap(c -> c.getName().orElseThrow(), AiUtils::getGroupPath));
+
+        Assert.assertEquals(paths.get("Labels"), List.of(segment("Bedrock", null), segment("Anthropic", null)));
+        Assert.assertEquals(paths.get("Records"), List.of(
+                new AiUtils.GroupSegment("Bedrock", "Models on Bedrock", "https://icons/b.svg"),
+                segment("Meta", null)));
+        for (String malformed : List.of("NoGroups", "EmptyRecord", "RecordWithoutLabel", "NestedList", "BlankLabel")) {
+            Assert.assertEquals(paths.get(malformed), List.of(), malformed);
+        }
+    }
+
+    private static List<String> objects(List<Item> items) {
+        return items.stream().map(item -> ((AvailableNode) item).codedata().object()).toList();
+    }
+
+    private static void assertNoGroupPath(Item item) {
+        if (item instanceof Category category) {
+            category.items().forEach(AiUtilsGroupingTest::assertNoGroupPath);
+            return;
+        }
+        Map<String, Object> data = ((AvailableNode) item).metadata().data();
+        Assert.assertTrue(data == null || !data.containsKey(AiUtils.AI_GROUP_PATH_KEY));
     }
 
     private static AiUtils.GroupSegment segment(String label, String description) {

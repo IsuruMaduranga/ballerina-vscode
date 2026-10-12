@@ -148,7 +148,8 @@ class AiComponentDiskCache {
 
     private static boolean isValid(CachedComponent c) {
         if (c == null || c.className() == null || c.label() == null
-                || c.description() == null || c.category() == null || c.symbol() == null) {
+                || c.description() == null || c.category() == null || c.symbol() == null
+                || c.groupPath() == null || c.groupPath().stream().anyMatch(s -> s == null || s.label() == null)) {
             return false;
         }
         try {
