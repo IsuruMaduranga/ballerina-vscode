@@ -55,8 +55,13 @@ export default function createTests() {
             logStep('Point the runtime at an unserved port, then open the integration overview');
             await page.page.getByRole('treeitem', { name: /^OrderProcessor/ }).first().waitFor({ state: 'visible', timeout: 180000 });
             fs.writeFileSync(path.join(newProjectPath, 'Config.toml'), `[ballerina.workflow]\nurl = "${UNSERVED_RUNTIME_URL}"\n`, 'utf-8');
+            // The overview probes on mount, so leave it for a workflow's card and come back to get a fresh probe.
             await new ProjectExplorer(page.page).goToOverview();
             let webview = await getWebview();
+            await webview.getByText('orderWorkflow', { exact: true }).first().click({ timeout: 120000 });
+            await webview.getByText('Start', { exact: true }).first().waitFor({ state: 'visible', timeout: 60000 }).catch(() => undefined);
+            await new ProjectExplorer(page.page).goToOverview();
+            webview = await getWebview();
             const section = webview.getByTestId('workflow-section');
             await section.waitFor({ state: 'visible', timeout: 120000 });
 

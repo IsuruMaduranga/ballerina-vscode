@@ -718,7 +718,7 @@ const RuntimeStatusLine = styled.p`
 
 // Short lines on the panel; the explanations live in the tooltips.
 export const WORKFLOW_RUNTIME_EXPLAINED =
-    "A workflow runtime stores each run's progress, so runs survive restarts and can wait for people and timers. The URL comes from [ballerina.workflow] in Config.toml.";
+    "A workflow runtime stores each run's progress, so runs survive restarts and can wait for people and timers. Its URL is set in the Configuration view under ballerina/workflow.";
 export const NO_RUNTIME_TITLE = "No workflow runtime detected";
 export const RUNTIME_CHECK_FAILED = "Could not check for a workflow runtime";
 export const RUNTIME_DETECTED = "Workflow runtime detected";
@@ -726,21 +726,30 @@ export const IN_MEMORY_RUNTIME = "Using the in-memory runtime (testing only)";
 export const MANAGED_RUNTIME = "Using a managed workflow runtime";
 export const USE_IN_MEMORY_LABEL = "Use in-memory runtime";
 export const USE_IN_MEMORY_TOOLTIP =
-    "Testing only: runs are lost when the integration stops. Sets mode = \"IN_MEMORY\" in Config.toml.";
+    "Testing only: runs are lost when the integration stops. Sets the workflow mode to IN_MEMORY.";
 export const CONFIGURE_RUNTIME_LABEL = "Configure runtime";
 export const CONFIGURE_RUNTIME_TOOLTIP =
-    "Point the integration at a running workflow server with mode and url under [ballerina.workflow] in Config.toml. Today that is a Temporal server.";
-export const MANAGEMENT_API_DESCRIPTION =
-    "Enable the workflow management REST API in this integration to manage its workflow instances, human tasks and reviews.";
+    "Opens the Configuration view. Set mode and url under ballerina/workflow to use a running workflow server; today that is a Temporal server.";
+export const MANAGEMENT_API_TOOLTIP =
+    "Adds a REST API to this integration for managing its workflow instances, human tasks and reviews.";
 
-function RuntimeStatus({ icon, color, text, tooltip }: { icon: string; color?: string; text: string; tooltip: string }) {
+function InfoTip({ content }: { content: string }) {
+    return (
+        <Tooltip content={content} position="bottom-end" sx={{ whiteSpace: "normal", maxWidth: 260 }}>
+            <Codicon name="info" sx={{ color: "var(--vscode-descriptionForeground)", cursor: "help" }} />
+        </Tooltip>
+    );
+}
+
+function RuntimeStatus({ icon, color, text, tooltip, children }: {
+    icon: string; color?: string; text: string; tooltip: string; children?: ReactNode;
+}) {
     return (
         <RuntimeStatusLine>
             <Codicon name={icon} sx={color ? { color } : undefined} />
             <span>{text}</span>
-            <Tooltip content={tooltip} position="bottom-end" sx={{ whiteSpace: "normal", maxWidth: 260 }}>
-                <Codicon name="info" sx={{ color: "var(--vscode-descriptionForeground)", cursor: "help" }} />
-            </Tooltip>
+            <InfoTip content={tooltip} />
+            {children}
         </RuntimeStatusLine>
     );
 }
@@ -755,13 +764,18 @@ function WorkflowSection({
     onConfigureRuntime,
     onRecheckRuntime,
 }: WorkflowSectionProps) {
+    const recheck = (
+        <Button appearance="icon" onClick={onRecheckRuntime} tooltip="Check again" data-testid="workflow-runtime-recheck">
+            <Codicon name="refresh" />
+        </Button>
+    );
     let status: ReactNode;
     if (!runtime && runtimeCheckFailed) {
         status = (
             <RuntimeStatusLine>
                 <Codicon name="warning" sx={{ color: "var(--vscode-editorWarning-foreground)" }} />
                 <span>{RUNTIME_CHECK_FAILED}.</span>
-                <VSCodeLink onClick={onRecheckRuntime}>Check again</VSCodeLink>
+                {recheck}
             </RuntimeStatusLine>
         );
     } else if (!runtime) {
@@ -792,7 +806,9 @@ function WorkflowSection({
             <>
                 <RuntimeStatus icon="warning" color="var(--vscode-editorWarning-foreground)"
                     text={`${NO_RUNTIME_TITLE} at ${runtime.url}.`}
-                    tooltip={`${WORKFLOW_RUNTIME_EXPLAINED} Nothing is listening there.`} />
+                    tooltip={`${WORKFLOW_RUNTIME_EXPLAINED} Nothing is listening there.`}>
+                    {recheck}
+                </RuntimeStatus>
                 <RuntimeActions data-testid="workflow-runtime-actions">
                     <Button appearance="secondary" onClick={onUseInMemoryRuntime} disabled={switchingRuntime}
                         tooltip={USE_IN_MEMORY_TOOLTIP}>
@@ -801,7 +817,6 @@ function WorkflowSection({
                     <Button appearance="secondary" onClick={onConfigureRuntime} tooltip={CONFIGURE_RUNTIME_TOOLTIP}>
                         {CONFIGURE_RUNTIME_LABEL}
                     </Button>
-                    <VSCodeLink onClick={onRecheckRuntime}>Check again</VSCodeLink>
                 </RuntimeActions>
             </>
         );
@@ -810,14 +825,16 @@ function WorkflowSection({
     return (
         <div data-testid="workflow-section">
             <Title variant="h3">Workflow</Title>
-            {status}
-            <p>{MANAGEMENT_API_DESCRIPTION}</p>
             <div style={{ paddingLeft: 10 }}>
-                <CheckBox
-                    checked={managementEnabled}
-                    onChange={handleWorkflowManagement}
-                    label="Enable Workflow Management REST API"
-                />
+                {status}
+                <RuntimeStatusLine>
+                    <CheckBox
+                        checked={managementEnabled}
+                        onChange={handleWorkflowManagement}
+                        label="Enable Workflow Management REST API"
+                    />
+                    <InfoTip content={MANAGEMENT_API_TOOLTIP} />
+                </RuntimeStatusLine>
             </div>
         </div>
     );

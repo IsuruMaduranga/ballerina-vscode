@@ -139,7 +139,6 @@ import {
     CONFIGURE_RUNTIME_LABEL,
     IN_MEMORY_RUNTIME,
     MANAGED_RUNTIME,
-    MANAGEMENT_API_DESCRIPTION,
     NO_RUNTIME_TITLE,
     PackageOverview,
     RUNTIME_CHECK_FAILED,
@@ -325,6 +324,7 @@ describe("PackageOverview workflow section", () => {
     };
 
     const text = () => container.textContent ?? "";
+    const sectionShown = () => container.querySelector('[data-testid="workflow-section"]') !== null;
     const buttonNamed = (label: string) =>
         Array.from(container.querySelectorAll("button")).find((b) => (b.textContent ?? "").trim() === label);
 
@@ -334,21 +334,21 @@ describe("PackageOverview workflow section", () => {
         const { rpcClient } = makeRpc(emptyDirectoryMap(), { workflowImported: true });
         await renderOverview(rpcClient);
 
-        expect(text()).toContain(MANAGEMENT_API_DESCRIPTION);
+        expect(sectionShown()).toBe(true);
     });
 
     it("shows the section from the artifact list alone, for a language server without the flag", async () => {
         const { rpcClient } = makeRpc(withWorkflow());
         await renderOverview(rpcClient);
 
-        expect(text()).toContain(MANAGEMENT_API_DESCRIPTION);
+        expect(sectionShown()).toBe(true);
     });
 
     it("hides the section when neither signal is present", async () => {
         const { rpcClient } = makeRpc(emptyDirectoryMap(), { workflowImported: false });
         await renderOverview(rpcClient);
 
-        expect(text()).not.toContain(MANAGEMENT_API_DESCRIPTION);
+        expect(sectionShown()).toBe(false);
     });
 
     it("reports a detected runtime at its URL", async () => {
@@ -395,6 +395,6 @@ describe("PackageOverview workflow section", () => {
 
         expect(text()).toContain(RUNTIME_CHECK_FAILED);
         expect(text()).not.toContain("Checking for a workflow runtime");
-        expect(Array.from(container.querySelectorAll("a")).some((a) => a.textContent === "Check again")).toBe(true);
+        expect(container.querySelector('[data-testid="workflow-runtime-recheck"]')).not.toBeNull();
     });
 });
