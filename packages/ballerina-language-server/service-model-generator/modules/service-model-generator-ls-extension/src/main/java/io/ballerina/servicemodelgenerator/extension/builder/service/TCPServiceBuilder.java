@@ -110,7 +110,8 @@ public final class TCPServiceBuilder extends AbstractServiceBuilder {
             edits.addFirst(new TextEdit(Utils.toRange(lineRange.startLine()), importStatement));
         }
 
-        Set<String> propertyImportStmts = Utils.getMissingPropertyImportStmts(rootNode, service.getProperties());
+        Set<String> propertyImportStmts = Utils.getMissingPropertyImportStmts(rootNode, service.getProperties(),
+                Set.of(service.getOrgName() + "/" + service.getModuleName()));
         if (!propertyImportStmts.isEmpty()) {
             edits.addFirst(new TextEdit(Utils.toRange(lineRange.startLine()),
                     String.join(NEW_LINE, propertyImportStmts)));

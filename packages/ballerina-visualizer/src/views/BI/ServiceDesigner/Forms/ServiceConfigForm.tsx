@@ -346,7 +346,10 @@ function updateConfig(formFields: FormField[], service: ServiceModel): ServiceMo
             service.properties[field.key].enabled = true;
         }
         if (field.imports) {
-            service.properties[field.key].imports = field.imports;
+            service.properties[field.key].imports = {
+                ...service.properties[field.key].imports,
+                ...field.imports
+            };
         }
     })
     return service;

@@ -1561,6 +1561,10 @@ public final class Utils {
                 String.join(Constants.NEW_LINE, importStmts)));
     }
 
+    /**
+     * Tells whether the property's value ends up in the generated source: enabled properties with a value, and
+     * disabled properties that the user cannot edit (fixed values that are always emitted).
+     */
     private static boolean contributesSource(Value property) {
         return property.isEnabledWithValue() || !property.isEnabled() && !property.isEditable();
     }

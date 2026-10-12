@@ -114,7 +114,8 @@ public class PropertyImportEditsTest {
         Map<String, Value> properties = properties(
                 "a", propertyWithImports(Map.of("clockAlias", "ballerina/time")),
                 "b", propertyWithImports(Map.of("time", "ballerina/time")));
-        Assert.assertEquals(Utils.getMissingPropertyImportStmts(rootOf(""), properties).size(), 1);
+        Assert.assertEquals(Utils.getMissingPropertyImportStmts(rootOf(""), properties),
+                Set.of(Utils.getImportStmt("ballerina", "time", "clockAlias")));
     }
 
     @Test

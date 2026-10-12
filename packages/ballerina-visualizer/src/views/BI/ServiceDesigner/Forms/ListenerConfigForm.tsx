@@ -251,7 +251,10 @@ function updateConfig(formFields: FormField[], listener: ListenerModel): Listene
             listener.properties[field.key].enabled = true;
         }
         if (field.imports) {
-            listener.properties[field.key].imports = field.imports;
+            listener.properties[field.key].imports = {
+                ...listener.properties[field.key].imports,
+                ...field.imports
+            };
         }
     })
     return listener;

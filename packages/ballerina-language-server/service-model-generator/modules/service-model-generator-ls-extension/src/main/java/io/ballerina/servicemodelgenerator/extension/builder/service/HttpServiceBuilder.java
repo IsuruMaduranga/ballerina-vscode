@@ -209,6 +209,8 @@ public final class HttpServiceBuilder extends AbstractServiceBuilder {
         edits.add(new TextEdit(Utils.toRange(rootNode.lineRange().endLine()), serviceBuilder.toString()));
 
         Set<String> importStmts = new HashSet<>();
+        Set<String> coveredModules = new HashSet<>();
+        coveredModules.add(service.getOrgName() + "/" + service.getModuleName());
         if (!importExists(rootNode, service.getOrgName(), service.getModuleName())) {
             importStmts.add(Utils.getImportStmt(service.getOrgName(), service.getModuleName()));
         }
@@ -216,11 +218,12 @@ public final class HttpServiceBuilder extends AbstractServiceBuilder {
             String[] importParts = moduleId.split("/");
             String orgName = importParts[0];
             String moduleName = importParts[1].split(":")[0];
+            coveredModules.add(orgName + "/" + moduleName);
             if (!importExists(rootNode, orgName, moduleName)) {
                 importStmts.add(getImportStmt(orgName, moduleName));
             }
         });
-        importStmts.addAll(Utils.getMissingPropertyImportStmts(rootNode, service.getProperties()));
+        importStmts.addAll(Utils.getMissingPropertyImportStmts(rootNode, service.getProperties(), coveredModules));
 
         if (!importStmts.isEmpty()) {
             String importsStmts = String.join(NEW_LINE, importStmts);

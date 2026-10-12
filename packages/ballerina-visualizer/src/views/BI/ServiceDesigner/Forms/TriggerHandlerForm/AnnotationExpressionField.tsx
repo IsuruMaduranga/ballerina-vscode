@@ -48,7 +48,7 @@ import { getHelperPaneNew } from "../../../HelperPaneNew";
 import { ConfigureRecordPage } from "../../../HelperPaneNew/Views/RecordConfigModal";
 import DynamicModal from "../../../../../components/Modal";
 import { EXPRESSION_EXTRACTION_REGEX } from "../../../../../constants";
-import { calculateExpressionOffsets, convertBalCompletion, removeDuplicateDiagnostics } from "../../../../../utils/bi";
+import { calculateExpressionOffsets, convertBalCompletion, removeDuplicateDiagnostics, updateLineRange } from "../../../../../utils/bi";
 
 /**
  * The react-hook-form field key every leaf binds to. Each leaf renders its own isolated
@@ -142,7 +142,11 @@ export const AnnotationExpressionField = forwardRef<AnnotationExpressionFieldHan
             onValidationStateChangeRef.current?.({ isValidating: false });
         }, []);
 
-        const effectiveTargetLineRange = targetLineRange ?? EMPTY_LINE_RANGE;
+        const [importOffset, setImportOffset] = useState(0);
+        const effectiveTargetLineRange = useMemo(
+            () => updateLineRange(targetLineRange ?? EMPTY_LINE_RANGE, importOffset),
+            [targetLineRange, importOffset]
+        );
 
         // ----- mirror the bound value back to the model tree -----
         const watchedValue = watch(FIELD_KEY);
@@ -413,6 +417,7 @@ export const AnnotationExpressionField = forwardRef<AnnotationExpressionFieldHan
                 filePath,
                 importStatement: additionalTextEdits[0].newText,
             });
+            setImportOffset((offset) => offset + (response.importStatementOffset ?? 0));
             if (response.prefix && response.moduleId) {
                 onImportsChangeRef.current?.({ [response.prefix]: response.moduleId });
             }
