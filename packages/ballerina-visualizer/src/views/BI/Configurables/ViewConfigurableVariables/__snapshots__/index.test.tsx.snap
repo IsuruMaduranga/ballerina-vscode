@@ -1,0 +1,223 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ViewConfigurableVariables imported libraries renders the library tree with submodules expanded 1`] = `
+<div
+  id="package-treeview"
+  style="padding: 10px 0px 50px 0px;"
+>
+  <div
+    class="css-1cak3x3"
+  >
+    <div>
+      <div
+        class="css-dadx1m"
+      >
+        <div
+          class="css-n4zz3l"
+        />
+        <div
+          style="display: flex; height: 22px; align-items: center;"
+        >
+          <p
+            style="font-weight: normal;"
+          >
+            Integration
+          </p>
+          <div
+            style="display: flex; align-items: center;"
+          >
+            <i
+              data-codicon="warning"
+            />
+            <span
+              id="integration-warning-count"
+              style="margin-left: 3px; font-size: 0.85em;"
+            >
+              1
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div />
+  </div>
+  <div
+    class="css-1cak3x3"
+  >
+    <div>
+      <div
+        class="css-dadx1m"
+      >
+        <div
+          class="css-pk5gz1"
+        >
+          <i
+            class="codicon codicon-chevron-down"
+          />
+        </div>
+        <div
+          style="display: flex; height: 22px; align-items: center;"
+        >
+          <p
+            style="font-weight: normal;"
+          >
+            Imported libraries
+          </p>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div
+        class="css-1ejtn1l"
+      >
+        <div
+          style="cursor: pointer;"
+        >
+          <div
+            class="css-dadx1m"
+          >
+            <div
+              class="css-pk5gz1"
+            >
+              <i
+                class="codicon codicon-chevron-down"
+              />
+            </div>
+            <div
+              style="display: flex; height: 22px; align-items: center;"
+            >
+              <p
+                style="font-weight: normal;"
+              >
+                ballerina/workflow
+              </p>
+              <div
+                style="display: flex; align-items: center;"
+              >
+                <i
+                  data-codicon="warning"
+                />
+                <span
+                  id="ballerina/workflow-warning-count"
+                  style="margin-left: 3px; font-size: 0.85em;"
+                >
+                  1
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div
+            class="css-y8d57i"
+          >
+            <div
+              style="display: flex; height: 20px; align-items: center;"
+            >
+              <p
+                style="font-weight: normal;"
+              >
+                management
+              </p>
+            </div>
+          </div>
+          <div
+            class="css-y8d57i"
+          >
+            <div
+              style="display: flex; height: 20px; align-items: center;"
+            >
+              <p
+                style="font-weight: normal;"
+              >
+                management.rest
+              </p>
+              <div
+                style="display: flex; align-items: center;"
+              >
+                <i
+                  data-codicon="warning"
+                />
+                <span
+                  style="margin-left: 3px; font-size: 0.85em;"
+                >
+                  1
+                </span>
+              </div>
+            </div>
+          </div>
+          <div
+            class="css-y8d57i"
+          >
+            <div
+              style="display: flex; height: 20px; align-items: center;"
+            >
+              <p
+                style="font-weight: normal;"
+              >
+                observe
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        class="css-1od9crp"
+      >
+        <div
+          style="display: flex; height: 22px; align-items: center;"
+        >
+          <p
+            style="font-weight: normal;"
+          >
+            ballerina/log
+          </p>
+        </div>
+      </div>
+      <div
+        class="css-1ejtn1l"
+      >
+        <div
+          style="cursor: pointer;"
+        >
+          <div
+            class="css-dadx1m"
+          >
+            <div
+              class="css-pk5gz1"
+            >
+              <i
+                class="codicon codicon-chevron-down"
+              />
+            </div>
+            <div
+              style="display: flex; height: 22px; align-items: center;"
+            >
+              <p
+                style="font-weight: bold;"
+              >
+                wso2/notifier
+              </p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div
+            class="css-1ykak9i"
+          >
+            <div
+              style="display: flex; height: 20px; align-items: center;"
+            >
+              <p
+                style="font-weight: bold;"
+              >
+                email
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
