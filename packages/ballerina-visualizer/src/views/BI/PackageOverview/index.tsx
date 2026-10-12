@@ -793,7 +793,7 @@ function WorkflowSection({
                 <RuntimeStatus icon="warning" color="var(--vscode-editorWarning-foreground)"
                     text={`${NO_RUNTIME_TITLE} at ${runtime.url}.`}
                     tooltip={`${WORKFLOW_RUNTIME_EXPLAINED} Nothing is listening there, so pick an option before running the integration.`} />
-                <RuntimeActions>
+                <RuntimeActions data-testid="workflow-runtime-actions">
                     <Button appearance="secondary" onClick={onUseInMemoryRuntime} disabled={switchingRuntime}
                         tooltip={USE_IN_MEMORY_TOOLTIP}>
                         {USE_IN_MEMORY_LABEL}
@@ -808,7 +808,7 @@ function WorkflowSection({
     }
 
     return (
-        <div>
+        <div data-testid="workflow-section">
             <Title variant="h3">Workflow</Title>
             {status}
             <Divider sx={{ margin: "12px 0" }} />
