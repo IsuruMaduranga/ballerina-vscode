@@ -718,7 +718,7 @@ const RuntimeStatusLine = styled.p`
 
 // Short lines on the panel; the explanations live in the tooltips.
 export const WORKFLOW_RUNTIME_EXPLAINED =
-    "Durable workflows run on a workflow runtime: a server that stores each run's progress, so a run survives restarts and can wait for people and timers. The integration connects to the URL set under [ballerina.workflow] in Config.toml.";
+    "A workflow runtime stores each run's progress, so runs survive restarts and can wait for people and timers. The URL comes from [ballerina.workflow] in Config.toml.";
 export const NO_RUNTIME_TITLE = "No workflow runtime detected";
 export const RUNTIME_CHECK_FAILED = "Could not check for a workflow runtime";
 export const RUNTIME_DETECTED = "Workflow runtime detected";
@@ -726,19 +726,19 @@ export const IN_MEMORY_RUNTIME = "Using the in-memory runtime (testing only)";
 export const MANAGED_RUNTIME = "Using a managed workflow runtime";
 export const USE_IN_MEMORY_LABEL = "Use in-memory runtime";
 export const USE_IN_MEMORY_TOOLTIP =
-    "For testing only: runs are kept in memory and lost when the integration stops. Sets mode = \"IN_MEMORY\" in Config.toml.";
+    "Testing only: runs are lost when the integration stops. Sets mode = \"IN_MEMORY\" in Config.toml.";
 export const CONFIGURE_RUNTIME_LABEL = "Configure runtime";
 export const CONFIGURE_RUNTIME_TOOLTIP =
-    "Point the integration at a running workflow server by setting mode and url under [ballerina.workflow] in Config.toml. Today that server is a Temporal server; an integrated workflow runtime is on the way.";
+    "Point the integration at a running workflow server with mode and url under [ballerina.workflow] in Config.toml. Today that is a Temporal server.";
 export const MANAGEMENT_API_DESCRIPTION =
-    "Enable the workflow management REST API to manage workflow instances, human tasks and reviews in this integration.";
+    "Enable the workflow management REST API in this integration to manage its workflow instances, human tasks and reviews.";
 
 function RuntimeStatus({ icon, color, text, tooltip }: { icon: string; color?: string; text: string; tooltip: string }) {
     return (
         <RuntimeStatusLine>
             <Codicon name={icon} sx={color ? { color } : undefined} />
             <span>{text}</span>
-            <Tooltip content={tooltip} position="bottom">
+            <Tooltip content={tooltip} position="bottom-end" sx={{ whiteSpace: "normal", maxWidth: 260 }}>
                 <Codicon name="info" sx={{ color: "var(--vscode-descriptionForeground)", cursor: "help" }} />
             </Tooltip>
         </RuntimeStatusLine>
@@ -770,7 +770,7 @@ function WorkflowSection({
         status = (
             <>
                 <RuntimeStatus icon="beaker" text={`${IN_MEMORY_RUNTIME}.`}
-                    tooltip="Runs are kept in memory and lost when the integration stops. Switch to a workflow server before deploying." />
+                    tooltip="Runs are lost when the integration stops. Switch to a workflow server before deploying." />
                 <RuntimeActions>
                     <Button appearance="secondary" onClick={onConfigureRuntime} tooltip={CONFIGURE_RUNTIME_TOOLTIP}>
                         {CONFIGURE_RUNTIME_LABEL}
@@ -792,7 +792,7 @@ function WorkflowSection({
             <>
                 <RuntimeStatus icon="warning" color="var(--vscode-editorWarning-foreground)"
                     text={`${NO_RUNTIME_TITLE} at ${runtime.url}.`}
-                    tooltip={`${WORKFLOW_RUNTIME_EXPLAINED} Nothing is listening there, so pick an option before running the integration.`} />
+                    tooltip={`${WORKFLOW_RUNTIME_EXPLAINED} Nothing is listening there.`} />
                 <RuntimeActions data-testid="workflow-runtime-actions">
                     <Button appearance="secondary" onClick={onUseInMemoryRuntime} disabled={switchingRuntime}
                         tooltip={USE_IN_MEMORY_TOOLTIP}>
@@ -811,7 +811,6 @@ function WorkflowSection({
         <div data-testid="workflow-section">
             <Title variant="h3">Workflow</Title>
             {status}
-            <Divider sx={{ margin: "12px 0" }} />
             <p>{MANAGEMENT_API_DESCRIPTION}</p>
             <div style={{ paddingLeft: 10 }}>
                 <CheckBox
