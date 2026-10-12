@@ -143,6 +143,7 @@ import {
     PackageOverview,
     RUNTIME_CHECK_FAILED,
     RUNTIME_DETECTED,
+    SWITCH_FAILED,
     USE_IN_MEMORY_LABEL,
 } from "./index";
 
@@ -163,13 +164,19 @@ interface WorkflowRpc {
     workflowImported?: boolean;
     runtime?: { mode: string; url: string; reachable?: boolean };
     runtimeCheckRejects?: boolean;
+    switchRejects?: boolean;
 }
 
 function makeRpc(directoryMap: Record<string, unknown[]>, workflow: WorkflowRpc = {}) {
     // Typed argument so `mock.calls[0][0]` is a real element rather than an empty tuple.
     const openView = jest.fn(async (_request: { type: string; location: { view: string } }): Promise<void> => undefined);
     const runtime = workflow.runtime ?? { mode: "LOCAL", url: "localhost:7233", reachable: true };
-    const useInMemoryWorkflowRuntime = jest.fn(async () => ({ mode: "IN_MEMORY", url: runtime.url }));
+    const useInMemoryWorkflowRuntime = jest.fn(async () => {
+        if (workflow.switchRejects) {
+            throw new Error("write failed");
+        }
+        return { mode: "IN_MEMORY", url: runtime.url };
+    });
     const rpcClient = {
         getVisualizerRpcClient: () => ({ openView, goBack: jest.fn() }),
         getBIDiagramRpcClient: () => ({
@@ -396,5 +403,20 @@ describe("PackageOverview workflow section", () => {
         expect(text()).toContain(RUNTIME_CHECK_FAILED);
         expect(text()).not.toContain("Checking for a workflow runtime");
         expect(container.querySelector('[data-testid="workflow-runtime-recheck"]')).not.toBeNull();
+    });
+
+    it("keeps the not-detected state and says so when the in-memory switch fails", async () => {
+        const { rpcClient } = makeRpc(withWorkflow(),
+            { runtime: { mode: "LOCAL", url: "localhost:7233", reachable: false }, switchRejects: true });
+        await renderOverview(rpcClient);
+
+        await act(async () => {
+            buttonNamed(USE_IN_MEMORY_LABEL)!.click();
+        });
+        for (let i = 0; i < 5; i++) {
+            await act(async () => undefined);
+        }
+        expect(text()).toContain(SWITCH_FAILED);
+        expect(text()).toContain(NO_RUNTIME_TITLE);
     });
 });

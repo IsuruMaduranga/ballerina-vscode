@@ -696,6 +696,7 @@ interface WorkflowSectionProps {
     runtime: WorkflowRuntimeStatusResponse | undefined;
     runtimeCheckFailed: boolean;
     switchingRuntime: boolean;
+    switchError?: string;
     onUseInMemoryRuntime: () => void;
     onConfigureRuntime: () => void;
     onRecheckRuntime: () => void;
@@ -721,6 +722,7 @@ export const WORKFLOW_RUNTIME_EXPLAINED =
     "A workflow runtime stores each run's progress, so runs survive restarts and can wait for people and timers. Its URL is set in the Configuration view under ballerina/workflow.";
 export const NO_RUNTIME_TITLE = "No workflow runtime detected";
 export const RUNTIME_CHECK_FAILED = "Could not check for a workflow runtime";
+export const SWITCH_FAILED = "Could not switch to the in-memory runtime";
 export const RUNTIME_DETECTED = "Workflow runtime detected";
 export const IN_MEMORY_RUNTIME = "Using the in-memory runtime (testing only)";
 export const MANAGED_RUNTIME = "Using a managed workflow runtime";
@@ -760,6 +762,7 @@ function WorkflowSection({
     runtime,
     runtimeCheckFailed,
     switchingRuntime,
+    switchError,
     onUseInMemoryRuntime,
     onConfigureRuntime,
     onRecheckRuntime,
@@ -818,6 +821,12 @@ function WorkflowSection({
                         {CONFIGURE_RUNTIME_LABEL}
                     </Button>
                 </RuntimeActions>
+                {switchError && (
+                    <RuntimeStatusLine>
+                        <Codicon name="error" sx={{ color: "var(--vscode-errorForeground)" }} />
+                        <span>{switchError}</span>
+                    </RuntimeStatusLine>
+                )}
             </>
         );
     }
@@ -1072,6 +1081,7 @@ export function PackageOverview(props: PackageOverviewProps) {
     const [workflowImported, setWorkflowImported] = useState(false);
     const [workflowRuntime, setWorkflowRuntime] = useState<WorkflowRuntimeStatusResponse>();
     const [runtimeCheckFailed, setRuntimeCheckFailed] = useState(false);
+    const [switchError, setSwitchError] = useState<string>();
     const [switchingRuntime, setSwitchingRuntime] = useState(false);
     // Bumped by every context fetch; the runtime check re-runs with it.
     const [contextEpoch, setContextEpoch] = useState(0);
@@ -1177,6 +1187,7 @@ export function PackageOverview(props: PackageOverviewProps) {
         const check = ++runtimeCheckRef.current;
         setWorkflowRuntime(undefined);
         setRuntimeCheckFailed(false);
+        setSwitchError(undefined);
         rpcClient.getWorkflowManagementRpcClient().getWorkflowRuntimeStatus({ projectPath })
             .then((status) => {
                 if (check === runtimeCheckRef.current) {
@@ -1198,17 +1209,19 @@ export function PackageOverview(props: PackageOverviewProps) {
 
     const handleUseInMemoryRuntime = () => {
         setSwitchingRuntime(true);
-        setRuntimeCheckFailed(false);
+        setSwitchError(undefined);
         const check = ++runtimeCheckRef.current;
         rpcClient.getWorkflowManagementRpcClient().useInMemoryWorkflowRuntime({ projectPath })
             .then((status) => {
                 if (check === runtimeCheckRef.current) {
                     setWorkflowRuntime(status);
+                    // The extension has already shown the full message as a warning.
+                    setSwitchError(status.errorMsg ? `${SWITCH_FAILED}.` : undefined);
                 }
             })
             .catch((): void => {
                 if (check === runtimeCheckRef.current) {
-                    setRuntimeCheckFailed(true);
+                    setSwitchError(`${SWITCH_FAILED}.`);
                 }
             })
             .finally(() => setSwitchingRuntime(false));
@@ -1627,6 +1640,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 runtime={workflowRuntime}
                                                 runtimeCheckFailed={runtimeCheckFailed}
                                                 switchingRuntime={switchingRuntime}
+                                                switchError={switchError}
                                                 onUseInMemoryRuntime={handleUseInMemoryRuntime}
                                                 onConfigureRuntime={handleLocalConfigure}
                                                 onRecheckRuntime={checkWorkflowRuntime}
