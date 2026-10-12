@@ -86,7 +86,9 @@ public class ConfigVariablesV2UpdateTest extends AbstractLSTest {
                 return false;
             }
             for (int i = 0; i < expectedEdits.length; i++) {
-                if (!expectedEdits[i].equals(actualEdits[i])) {
+                if (!expectedEdits[i].getRange().equals(actualEdits[i].getRange())
+                        || !expectedEdits[i].getNewText().equals(
+                                actualEdits[i].getNewText().replace("\r\n", "\n"))) { // edits use the OS separator
                     return false;
                 }
             }
