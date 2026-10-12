@@ -68,7 +68,11 @@ jest.mock("../ConfigurableItem", () => ({
 import { TestRpcContext } from "../../../../test/rpcHarness";
 import { ViewConfigurableVariables } from "./index";
 
-(global as any).IS_REACT_ACT_ENVIRONMENT = true;
+declare global {
+    // eslint-disable-next-line no-var
+    var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const PROJECT_PATH = "/ws/sample";
 const INTEGRATION = "wso2/sample";
