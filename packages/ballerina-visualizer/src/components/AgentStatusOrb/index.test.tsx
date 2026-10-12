@@ -25,6 +25,7 @@ import * as React from "react";
 import { act } from "react-dom/test-utils";
 import { createRoot, Root } from "react-dom/client";
 import type { AgentRunStatus } from "@wso2/ballerina-core";
+import type { MiniChatPrompt } from "./promptHandoff";
 import { loadFixtures } from "@wso2/test-config/fixtures";
 
 // The core barrel re-exports ESM-only LS transport modules jest cannot load. shared.ts
@@ -51,9 +52,17 @@ jest.mock("@wso2/ballerina-rpc-client", () => ({
     useRpcContext: () => ({ rpcClient: mockRpcClient }),
 }));
 
-// A WebGL surface jsdom has no renderer for, and a chat overlay irrelevant here.
+/** What the orb last handed the mini chat; undefined while it is closed. */
+let mockMiniChatProps: { takeInitialPrompt?: () => MiniChatPrompt | undefined } | undefined;
+
+// A WebGL surface jsdom has no renderer for, and a chat overlay that only needs its props recorded.
 jest.mock("./CopilotOrb", () => ({ CopilotOrb: (): null => null }));
-jest.mock("./MiniChat", () => ({ MiniChat: (): null => null }));
+jest.mock("./MiniChat", () => ({
+    MiniChat: (props: { takeInitialPrompt?: () => MiniChatPrompt | undefined }): null => {
+        mockMiniChatProps = props;
+        return null;
+    },
+}));
 
 import { AgentStatusOrb } from "./index";
 import { __resetAgentRunStatusStoreForTests, ORB_SIZE } from "./shared";
@@ -153,6 +162,7 @@ describe("AgentStatusOrb idle invite", () => {
 
     beforeEach(() => {
         __resetAgentRunStatusStoreForTests();
+        mockMiniChatProps = undefined;
         seedProductMode("integrator");
         const rpc = makeRpcClient();
         mockRpcClient = rpc.client;
@@ -336,6 +346,31 @@ describe("AgentStatusOrb idle invite", () => {
 
         expect(invite()!.value).toBe("");
         expect(opacity()).toBe("0");
+    });
+
+    // product-integrator#2217: clicking the orb with a draft in the invite used to open an empty mini chat.
+    it("carries an unsent draft into the mini chat's input when the orb is clicked, without sending it", () => {
+        hover();
+        focusInvite();
+        type("build me a service");
+
+        act(() => orb().focus());
+        click(orb());
+
+        expect(mockMiniChatProps?.takeInitialPrompt?.()).toMatchObject({
+            type: "text",
+            text: "build me a service",
+            autoSubmit: false,
+        });
+        expect(invite()!.value).toBe("");
+    });
+
+    it("opens an unseeded mini chat when the orb is clicked with an empty invite", () => {
+        hover();
+        click(orb());
+
+        expect(mockMiniChatProps).toBeDefined();
+        expect(mockMiniChatProps!.takeInitialPrompt?.()).toBeUndefined();
     });
 
     it("reveals the invite while the orb has keyboard focus", () => {
