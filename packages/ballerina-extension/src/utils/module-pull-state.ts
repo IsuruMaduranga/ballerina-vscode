@@ -19,12 +19,16 @@
 /** Token prefix of the LS's module-pull work-done progress (`PullModuleExecutor`). */
 const PULL_MODULE_TOKEN_PREFIX = "pull-module-";
 
-/** Stop extending a wait for a pull after this long, in case its `end` never arrives. */
+/**
+ * How long a pull counts as running without its `end`, and the longest a single wait is extended.
+ * The LS can fail to send `end` (it restarts, or the pull task throws before reaching it).
+ */
 export const MAX_MODULE_PULL_WAIT_MS = 5 * 60 * 1000;
 
 export type ProgressKind = "begin" | "report" | "end";
 
-const activePulls = new Set<string>();
+/** Running pulls by token, with when each began. */
+const activePulls = new Map<string, number>();
 const listeners = new Set<(kind: ProgressKind) => void>();
 
 /**
@@ -37,7 +41,7 @@ export function trackModulePullProgress(token: string | number, kind: ProgressKi
         return;
     }
     if (kind === "begin") {
-        activePulls.add(token);
+        activePulls.set(token, Date.now());
     } else if (kind === "end") {
         activePulls.delete(token);
     }
@@ -45,6 +49,13 @@ export function trackModulePullProgress(token: string | number, kind: ProgressKi
 }
 
 export function isModulePullInProgress(): boolean {
+    // Forget pulls whose `end` was lost, so they don't stretch every later wait.
+    const now = Date.now();
+    activePulls.forEach((beganAt, token) => {
+        if (now - beganAt >= MAX_MODULE_PULL_WAIT_MS) {
+            activePulls.delete(token);
+        }
+    });
     return activePulls.size > 0;
 }
 

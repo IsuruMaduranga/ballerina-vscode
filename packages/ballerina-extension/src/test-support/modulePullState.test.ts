@@ -91,6 +91,18 @@ describe('startPullAwareTimeout', () => {
         expect(onTimeout).toHaveBeenCalledTimes(1);
     });
 
+    it('forgets a pull whose end never arrives, so later waits time out normally', () => {
+        trackModulePullProgress(PULL, 'begin');
+        startPullAwareTimeout(jest.fn(), 10000);
+        jest.advanceTimersByTime(MAX_MODULE_PULL_WAIT_MS + 10000);
+        expect(isModulePullInProgress()).toBe(false);
+
+        const onTimeout = jest.fn();
+        startPullAwareTimeout(onTimeout, 10000);
+        jest.advanceTimersByTime(10000);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
     it('never fires after cancel', () => {
         const onTimeout = jest.fn();
         startPullAwareTimeout(onTimeout, 10000).cancel();
