@@ -41,8 +41,10 @@ overrides:
   pbkdf2: 3.1.7
   postcss@8: 8.5.23
   prismjs: 1.30.0
-  prosemirror-view@>=1 <1.42.3: 1.42.3
+  prosemirror-keymap@>=1 <1.2.3: 1.2.3
   prosemirror-model@>=1 <1.25.9: 1.25.9
+  prosemirror-state@>=1 <1.4.4: 1.4.4
+  prosemirror-view@>=1 <1.42.3: 1.42.3
   protobufjs@>=7 <8: 7.6.5
   proxy-addr: 2.0.8
   qs@6: 6.16.0
@@ -821,8 +823,8 @@ importers:
         specifier: 1.5.1
         version: 1.5.1
       prosemirror-keymap:
-        specifier: 1.2.2
-        version: 1.2.2
+        specifier: 1.2.3
+        version: 1.2.3
       prosemirror-markdown:
         specifier: 1.13.2
         version: 1.13.2
@@ -836,8 +838,8 @@ importers:
         specifier: 1.5.1
         version: 1.5.1
       prosemirror-state:
-        specifier: 1.4.3
-        version: 1.4.3
+        specifier: 1.4.4
+        version: 1.4.4
       prosemirror-tables:
         specifier: 1.8.5
         version: 1.8.5
@@ -14052,9 +14054,6 @@ packages:
   prosemirror-inputrules@1.5.1:
     resolution: {integrity: sha512-7wj4uMjKaXWAQ1CDgxNzNtR9AlsuwzHfdFH1ygEHA2KHF2DOEaXl1CJfNPAKCg9qNEh4rum975QLaCiQPyY6Fw==}
 
-  prosemirror-keymap@1.2.2:
-    resolution: {integrity: sha512-EAlXoksqC6Vbocqc0GtzCruZEzYgrn+iiGnNjsJsH4mrnIGex4qbLdWWNza3AW5W36ZRrlBID0eM6bdKH4OStQ==}
-
   prosemirror-keymap@1.2.3:
     resolution: {integrity: sha512-4HucRlpiLd1IPQQXNqeo81BGtkY8Ai5smHhKW9jjPKRc2wQIxksg7Hl1tTI2IfT2B/LgX6bfYvXxEpJl7aKYKw==}
 
@@ -14069,9 +14068,6 @@ packages:
 
   prosemirror-schema-list@1.5.1:
     resolution: {integrity: sha512-927lFx/uwyQaGwJxLWCZRkjXG0p48KpMj6ueoYiu4JX05GGuGcgzAy62dfiV8eFZftgyBUvLx76RsMe20fJl+Q==}
-
-  prosemirror-state@1.4.3:
-    resolution: {integrity: sha512-goFKORVbvPuAQaXhpbemJFRKJ2aixr+AZMGiquiqKxaucC6hlpHNZHWgz5R7dS4roHiwq9vDctE//CZ++o0W1Q==}
 
   prosemirror-state@1.4.4:
     resolution: {integrity: sha512-6jiYHH2CIGbCfnxdHbXZ12gySFY/fz/ulZE333G6bPqIZ4F+TXo9ifiR86nAHpWnfoNjOb3o5ESi7J8Uz1jXHw==}
@@ -35225,36 +35221,31 @@ snapshots:
   prosemirror-commands@1.7.1:
     dependencies:
       prosemirror-model: 1.25.9
-      prosemirror-state: 1.4.3
+      prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
 
   prosemirror-gapcursor@1.4.0:
     dependencies:
-      prosemirror-keymap: 1.2.2
+      prosemirror-keymap: 1.2.3
       prosemirror-model: 1.25.9
-      prosemirror-state: 1.4.3
+      prosemirror-state: 1.4.4
       prosemirror-view: 1.42.3
 
   prosemirror-history@1.5.0:
     dependencies:
-      prosemirror-state: 1.4.3
+      prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
       prosemirror-view: 1.42.3
       rope-sequence: 1.3.4
 
   prosemirror-inputrules@1.5.1:
     dependencies:
-      prosemirror-state: 1.4.3
+      prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
-
-  prosemirror-keymap@1.2.2:
-    dependencies:
-      prosemirror-state: 1.4.3
-      w3c-keyname: 2.2.8
 
   prosemirror-keymap@1.2.3:
     dependencies:
-      prosemirror-state: 1.4.3
+      prosemirror-state: 1.4.4
       w3c-keyname: 2.2.8
 
   prosemirror-markdown@1.13.2:
@@ -35274,14 +35265,8 @@ snapshots:
   prosemirror-schema-list@1.5.1:
     dependencies:
       prosemirror-model: 1.25.9
-      prosemirror-state: 1.4.3
+      prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
-
-  prosemirror-state@1.4.3:
-    dependencies:
-      prosemirror-model: 1.25.9
-      prosemirror-transform: 1.12.0
-      prosemirror-view: 1.42.3
 
   prosemirror-state@1.4.4:
     dependencies:
@@ -35304,7 +35289,7 @@ snapshots:
   prosemirror-view@1.42.3:
     dependencies:
       prosemirror-model: 1.25.9
-      prosemirror-state: 1.4.3
+      prosemirror-state: 1.4.4
       prosemirror-transform: 1.12.0
 
   protobufjs@7.6.5:
