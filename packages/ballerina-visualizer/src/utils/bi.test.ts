@@ -33,7 +33,7 @@ jest.mock('@wso2/ballerina-core', () => ({
         (value?.fieldType === 'SINGLE_SELECT' || value?.fieldType === 'MULTIPLE_SELECT'),
 }));
 
-import type { NodeProperties, Property } from '@wso2/ballerina-core';
+import type { Imports, NodeProperties, Property } from '@wso2/ballerina-core';
 import { convertNodePropertiesToFormFields, mergeFormImports, updateNodeProperties } from './node-property-utils';
 
 // ---------------------------------------------------------------------------
@@ -414,7 +414,7 @@ describe('mergeFormImports', () => {
     it('returns the input unchanged for empty imports', () => {
         const prev = { expression: { time: 'ballerina/time' } };
         expect(mergeFormImports(prev, 'expression', {})).toBe(prev);
-        expect(mergeFormImports(prev, 'expression', undefined as any)).toBe(prev);
+        expect(mergeFormImports(prev, 'expression', undefined as unknown as Imports)).toBe(prev);
     });
 
     it('does not mutate the previous map', () => {
