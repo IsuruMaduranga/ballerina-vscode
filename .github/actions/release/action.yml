@@ -78,6 +78,8 @@ runs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        # build.zip carries the Build job's checkout header (read-only, revoked); it would override the token below.
+        git config --local --unset-all http.https://github.com/.extraheader || true
         git remote set-url origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
 
     - name: Resolve release refs
