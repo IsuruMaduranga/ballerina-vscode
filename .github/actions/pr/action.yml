@@ -121,8 +121,8 @@ runs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      # The head branch already exists: actions/release pushed it earlier in this same job,
-      # together with the version commit it points at.
+      # The head branch normally exists: actions/release pushed it earlier in this same job,
+      # together with the version commit it points at. That push is not release-blocking.
       #
       # The 'X.Y.x' line branch, by contrast, is cut by hand — when a line opens is a human
       # decision — so it can legitimately not exist yet. Skipped with a notice rather than
@@ -136,6 +136,11 @@ runs:
           set -euo pipefail
           baseBranch="${{ steps.ver.outputs.line }}"
           headBranch="${{ steps.ver.outputs.releaseBranch }}"
+          # The release branch push is continue-on-error in actions/release, so it may be missing.
+          if ! git ls-remote --exit-code --heads origin "${headBranch}" >/dev/null 2>&1; then
+            echo "::warning::${headBranch} was not pushed, so no release PR was opened."
+            exit 0
+          fi
           if ! git ls-remote --exit-code --heads origin "${baseBranch}" >/dev/null 2>&1; then
             echo "::notice::No ${baseBranch} branch, so no release PR was opened." \
                  "Cut ${baseBranch} and merge ${headBranch} into it to open the line."
