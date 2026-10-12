@@ -206,6 +206,16 @@ describe("applyGroupedChildIcons", () => {
         expect(childIcon.props.type).toBe("CLASS_INIT");
     });
 
+    it("takes icons from the raw group with the same title and description when titles repeat", () => {
+        const group: any = { title: "MSSQL Memory Stores", description: "in ballerinax/ai.memory.mssql", items: [] };
+        const raw = [
+            { metadata: { label: "MSSQL Memory Stores", description: "in ballerinax/ai.mssql", icon: "https://icons/a.png" } },
+            { metadata: { label: "MSSQL Memory Stores", description: "in ballerinax/ai.memory.mssql", icon: "https://icons/b.png" } },
+        ];
+        applyGroupedChildIcons(group, raw);
+        expect(group.icon.props.url).toBe("https://icons/b.png");
+    });
+
     it("recurses into subgroups, giving each its own icon", () => {
         const leaf = { id: "1", metadata: { codedata: { node: "MODEL_PROVIDER" }, metadata: { icon: "https://icons/pkg.png" } } };
         const group: any = { title: "AWS", items: [{ title: "Bedrock", items: [{ title: "Meta", items: [leaf] }] }] };

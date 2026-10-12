@@ -80,8 +80,10 @@ export function vectorStoreIconFactory(codedata: any, iconUrl?: string): React.R
     return <AIModelIcon type={codedata?.module} codedata={codedata} iconUrl={iconUrl} />;
 }
 
-function findRawGroup(rawItems: any[] | undefined, title: string): any {
-    return rawItems?.find((r) => r && !("codedata" in r) && r.metadata?.label === title);
+// Titles can repeat across packages; the description names org/package, so match both.
+function findRawGroup(rawItems: any[] | undefined, group: PanelCategory): any {
+    return rawItems?.find((r) => r && !("codedata" in r) && r.metadata?.label === group.title
+        && (r.metadata?.description ?? undefined) === (group.description ?? undefined));
 }
 
 const SUBGROUP_ICON_STYLE = { width: "18px", height: "18px", fontSize: "18px" };
@@ -102,7 +104,7 @@ export function applyGroupedChildIcons(
     groupIconFactory?: IconFactory,
     useClassBadges = false
 ): void {
-    const rawGroup = findRawGroup(rawItems, group.title);
+    const rawGroup = findRawGroup(rawItems, group);
     const packageIconUrl: string | undefined = rawGroup?.metadata?.icon;
     const firstChild = group.items?.at(0) as PanelNode | undefined;
 
@@ -134,7 +136,7 @@ function applyChildIcons(
     group.items?.forEach((child) => {
         const subgroup = child as PanelCategory;
         if (subgroup.items) {
-            const rawSubgroup = findRawGroup(rawItems, subgroup.title);
+            const rawSubgroup = findRawGroup(rawItems, subgroup);
             const subgroupIconUrl: string | undefined = rawSubgroup?.metadata?.icon;
             subgroup.icon = subgroupIcon(subgroupIconUrl, packageIconUrl);
             applyChildIcons(subgroup, rawSubgroup?.items, packageIconUrl, useClassBadges,
