@@ -312,12 +312,12 @@ describe("FunctionForm pulling status while saving", () => {
     };
 
     /** Renders a create form and submits it; the save stays in flight on `getSourceCode`. */
-    const submitCreate = async (kind: { isWorkflow?: boolean }) => {
+    const submitCreate = async (kind: { isWorkflow?: boolean; isDurableAgent?: boolean; isActivity?: boolean }) => {
         const pendingSave = deferred<unknown>();
         const rpc = makeRpc({ getSourceCode: () => pendingSave.promise });
         await act(async () => {
             root.render(
-                <TestRpcContext.Provider value={{ rpcClient: rpc as any }}>
+                <TestRpcContext.Provider value={{ rpcClient: rpc }}>
                     <FunctionForm filePath={FILE_PATH} projectPath={PROJECT_PATH} functionName={undefined} {...kind} />
                 </TestRpcContext.Provider>
             );
@@ -333,8 +333,13 @@ describe("FunctionForm pulling status while saving", () => {
     const pullCard = () => container.textContent?.includes(SAVE_PULL_TEXT) ?? false;
     const loadingRing = () => container.querySelector('[data-testid="loading-ring"]');
 
-    it("shows the plain loader first, then the pulling status once a workflow save runs past the delay", async () => {
-        await submitCreate({ isWorkflow: true });
+    // All three create flows import ballerina/workflow, so all three can wait on its dependencies.
+    it.each([
+        ["Durable Workflow", { isWorkflow: true }],
+        ["Durable Agentic Workflow", { isDurableAgent: true }],
+        ["Workflow Activity", { isActivity: true }],
+    ])("%s: shows the plain loader first, then the pulling status once the save runs past the delay", async (_, kind) => {
+        await submitCreate(kind);
         expect(loadingRing()).not.toBeNull();
         expect(pullCard()).toBe(false);
 
