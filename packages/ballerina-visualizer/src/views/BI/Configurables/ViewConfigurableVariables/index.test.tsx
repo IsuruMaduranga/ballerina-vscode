@@ -23,7 +23,7 @@
 import React from "react";
 import { createRoot, Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import fixture from "./fixtures/imported-libraries-with-submodules.json";
+import fixture from "./fixtures/issue-2738.json";
 
 jest.mock("@wso2/ballerina-core", () => ({
     __esModule: true,
