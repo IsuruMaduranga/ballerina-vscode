@@ -503,52 +503,51 @@ export function ViewConfigurableVariables(props?: ConfigProps) {
         </div>
     );
 
+    const libraryRowId = (category: string, module: string) => module === "" ? category : `${category}-${module}`; // "" is the library node itself
+
+    const ellipsis = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+
     const renderImportedLibrary = (category: CategoryWithModules) => {
         const isSelected = (module: string) =>
             selectedModule?.category === category.name && selectedModule?.module === module;
         const submodules = category.modules.filter(module => module !== "");
-        // The package row stands for its default module; fall back to a submodule when the default has none.
-        const packageRowModule = category.modules.includes("") ? "" : submodules[0];
-        const packageLabel = (
+        const hasDefaultModule = category.modules.includes("");
+        const allModules = Object.keys((isTestsContext ? testConfigVariables : configVariables)[category.name] ?? {});
+        const isFlat = allModules.length === 1; // a single-module library is a flat row bound to it, even mid-search
+        const rowModule = isFlat ? allModules[0] : hasDefaultModule ? "" : submodules[0];
+        const label = (name: string, module: string, isCurrent: boolean, warningCount: number, warningId?: string) => (
             <div
-                style={{ display: 'flex', height: '22px', alignItems: 'center' }}
+                style={{ display: 'flex', height: '22px', alignItems: 'center', minWidth: 0 }}
                 onClick={(e) => {
-                    if (submodules.length === 0) {
-                        e.stopPropagation();
-                    }
-                    handleModuleSelect(category.name, packageRowModule);
+                    e.stopPropagation(); // select only; the chevron expands and collapses
+                    handleModuleSelect(category.name, module);
                 }}
             >
-                <Typography
-                    variant="body3"
-                    sx={{ fontWeight: isSelected(packageRowModule) ? 'bold' : 'normal' }}
-                >
-                    {category.name}
+                <Typography variant="body3" sx={{ ...ellipsis, fontWeight: isCurrent ? 'bold' : 'normal' }}>
+                    {name}
                 </Typography>
-                {renderWarningCount(categoryWarningCount(category.name), `${category.name}-warning-count`)}
+                {renderWarningCount(warningCount, warningId)}
             </div>
         );
+        const isLibraryRowCurrent = isSelected(rowModule) && (isFlat || hasDefaultModule); // else the child is marked
+        const libraryLabel = label(category.name, rowModule, selectedModule?.category === category.name, // bold even when collapsed
+            categoryWarningCount(category.name), `${category.name}-warning-count`);
 
-        if (submodules.length === 0) {
+        if (isFlat) {
             return (
                 <TreeViewItem
                     key={category.name}
-                    id={category.name}
+                    id={libraryRowId(category.name, rowModule)}
                     sx={{
+                        ...ellipsis,
                         backgroundColor: 'transparent',
                         paddingLeft: '35px',
                         height: '25px',
-                        border: selectedModule?.category === category.name
-                            ? '1px solid var(--vscode-focusBorder)'
-                            : 'none',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
+                        border: isLibraryRowCurrent ? '1px solid var(--vscode-focusBorder)' : 'none',
                         boxSizing: 'border-box'
                     }}
-                    selectedId={category.name}
                 >
-                    {packageLabel}
+                    {libraryLabel}
                 </TreeViewItem>
             );
         }
@@ -557,40 +556,28 @@ export function ViewConfigurableVariables(props?: ConfigProps) {
             <TreeView
                 key={category.name}
                 id={category.name}
+                expandByDefault={true}
                 sx={{ paddingLeft: '16px' }} // 16px + chevron (14px) + gap (5px) lines up with the flat rows' 35px
                 treeViewElementSX={{
+                    ...ellipsis,
                     cursor: 'pointer',
-                    border: isSelected(packageRowModule) ? '1px solid var(--vscode-focusBorder)' : 'none'
+                    border: isLibraryRowCurrent ? '1px solid var(--vscode-focusBorder)' : 'none'
                 }}
-                content={packageLabel}
+                content={libraryLabel}
             >
                 {submodules.map((moduleName) => (
                     <TreeViewItem
-                        key={`${category.name}-${moduleName}`}
-                        id={`${category.name}-${moduleName}`}
+                        key={libraryRowId(category.name, moduleName)}
+                        id={libraryRowId(category.name, moduleName)}
                         sx={{
+                            ...ellipsis,
                             backgroundColor: 'transparent',
                             paddingLeft: '35px',
                             height: '25px',
                             border: isSelected(moduleName) ? '1px solid var(--vscode-focusBorder)' : 'none'
                         }}
-                        selectedId={`${category.name}-${moduleName}`}
                     >
-                        <div
-                            style={{ display: 'flex', height: '20px', alignItems: 'center' }}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleModuleSelect(category.name, moduleName);
-                            }}
-                        >
-                            <Typography
-                                variant="body3"
-                                sx={{ fontWeight: isSelected(moduleName) ? 'bold' : 'normal' }}
-                            >
-                                {moduleName}
-                            </Typography>
-                            {renderWarningCount(moduleWarningCount(category.name, moduleName))}
-                        </div>
+                        {label(moduleName, moduleName, isSelected(moduleName), moduleWarningCount(category.name, moduleName))}
                     </TreeViewItem>
                 ))}
             </TreeView>
@@ -685,26 +672,7 @@ export function ViewConfigurableVariables(props?: ConfigProps) {
                                                     >
                                                         Integration
                                                     </Typography>
-                                                    {categoryWarningCount(category.name) > 0 && (
-                                                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                                                            <Codicon name="warning"
-                                                                sx={{
-                                                                    marginLeft: 5,
-                                                                    fontSize: '0.8em',
-                                                                    color: 'var(--vscode-editorWarning-foreground)'
-                                                                }}
-                                                            />
-                                                            <span
-                                                                id={`integration-warning-count`}
-                                                                style={{
-                                                                    marginLeft: 3,
-                                                                    color: 'var(--vscode-editorWarning-foreground)',
-                                                                    fontSize: '0.85em'
-                                                                }}>
-                                                                {categoryWarningCount(category.name)}
-                                                            </span>
-                                                        </div>
-                                                    )}
+                                                    {renderWarningCount(categoryWarningCount(category.name), "integration-warning-count")}
                                                 </div>
                                             }
                                         >
@@ -738,21 +706,7 @@ export function ViewConfigurableVariables(props?: ConfigProps) {
                                                         >
                                                             {moduleName}
                                                         </Typography>
-                                                        {moduleWarningCount(category.name, moduleName) > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center' }}>
-                                                                <Codicon
-                                                                    name="warning"
-                                                                    sx={{
-                                                                        marginLeft: 5,
-                                                                        fontSize: '0.8em',
-                                                                        color: 'var(--vscode-editorWarning-foreground)'
-                                                                    }}
-                                                                />
-                                                                <span style={{ marginLeft: 3, color: 'var(--vscode-editorWarning-foreground)', fontSize: '0.85em' }}>
-                                                                    {moduleWarningCount(category.name, moduleName)}
-                                                                </span>
-                                                            </div>
-                                                        )}
+                                                        {renderWarningCount(moduleWarningCount(category.name, moduleName))}
                                                     </div>
                                                 </TreeViewItem>
                                             ))}
@@ -766,6 +720,7 @@ export function ViewConfigurableVariables(props?: ConfigProps) {
                                             rootTreeView
                                             id="imported-libraries"
                                             expandByDefault={true}
+                                            selectedId={selectedModule && libraryRowId(selectedModule.category, selectedModule.module)} // keeps the selection's library expanded
                                             content={
                                                 <div
                                                     style={{

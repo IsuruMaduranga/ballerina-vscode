@@ -47,7 +47,9 @@ jest.mock("@wso2/ui-toolkit", () => ({
     Dropdown: (): null => null,
     ErrorBanner: (): null => null,
     Icon: (): null => null,
-    TextField: (): null => null,
+    TextField: ({ value, onTextChange }: any) => (
+        <input data-testid="search" value={value} onChange={e => onTextChange(e.target.value)} />
+    ),
     Tooltip: ({ children }: any) => <>{children}</>,
     SplitView: ({ children }: any) => <div>{children}</div>,
     View: ({ children }: any) => <div>{children}</div>,
@@ -104,43 +106,78 @@ describe("ViewConfigurableVariables imported libraries", () => {
     });
 
     const libraryTree = () => container.querySelector("#package-treeview") as HTMLElement; // TreeView ids never reach the DOM
-    const row = (text: string) => Array.from(libraryTree().querySelectorAll("p, span, div"))
-        .find(el => el.childElementCount === 0 && el.textContent === text) as HTMLElement;
+    const row = (text: string) => Array.from(libraryTree().querySelectorAll("p"))
+        .find(el => el.textContent === text) as HTMLElement;
     const shownVariables = () => Array.from(container.querySelectorAll("[data-testid='config-item']"))
         .map(el => el.textContent);
-    const click = async (el: HTMLElement) => {
+    const click = async (el: Element) => {
         await act(async () => {
             el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
     };
+    const chevronOf = (text: string) => row(text).parentElement.previousElementSibling?.querySelector("i.codicon");
+    const search = async (text: string) => {
+        const input = container.querySelector("[data-testid='search']") as HTMLInputElement;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, text);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+    };
+
+    // One line per row: indent per TreeView level, ▾/▸ for an expanded/collapsed node, * for the marked row.
+    const outline = () => Array.from(libraryTree().querySelectorAll("p")).map(p => {
+        let depth = 0;
+        for (let el = p.parentElement.parentElement; el && el !== libraryTree(); el = el.parentElement) {
+            // A TreeView's children div follows its header, whose first child holds the chevron.
+            if (el.previousElementSibling?.firstElementChild?.firstElementChild?.querySelector(":scope > i.codicon")) {
+                depth++;
+            }
+        }
+        const chevron = chevronOf(p.textContent)?.className.includes("chevron-down") ? "▾ "
+            : chevronOf(p.textContent) ? "▸ " : "  ";
+        const warnings = p.parentElement.querySelector("span")?.textContent;
+        return "  ".repeat(depth) + chevron + p.textContent + (warnings ? ` ⚠${warnings}` : "")
+            + (p.style.fontWeight === "bold" ? " *" : "");
+    }).join("\n");
 
     const libraries = Object.keys(CONFIG_VARIABLES).filter(category => category !== INTEGRATION);
 
-    it("lists every imported library", () => {
-        for (const library of libraries) {
-            expect(row(library)).toBeTruthy();
-        }
-    });
-
     it.each(libraries)("reaches every module of %s from the tree", async (library) => {
-        await click(row(library));
         for (const [module, variables] of Object.entries(CONFIG_VARIABLES[library])) {
-            if (module !== "") {
-                await click(row(module));
-            }
+            const moduleCount = Object.keys(CONFIG_VARIABLES[library]).length;
+            await click(row(module === "" || moduleCount === 1 ? library : module));
             expect(shownVariables()).toEqual(variables.map(v => v.properties.variable.value));
         }
     });
 
     it("opens the first submodule from the library row when the default module has none", async () => {
-        await click(row("wso2/notifier"));
-        expect(shownVariables()).toEqual(["timeout"]);
+        await click(row("wso2/messaging"));
+        expect(shownVariables()).toEqual(["bootstrapServers"]);
     });
 
-    it("renders the library tree with submodules expanded", async () => {
-        for (const library of libraries) {
-            await click(row(library));
-        }
-        expect(libraryTree()).toMatchSnapshot();
+    it("keeps a library expanded while a search selects one of its submodules", async () => {
+        await search("maxPageSize");
+        expect(chevronOf("ballerina/workflow").className).toContain("chevron-down");
+        expect(row("management").style.fontWeight).toBe("bold");
+        expect(shownVariables()).toEqual(["maxPageSize"]);
+    });
+
+    it("marks a collapsed library that holds the selected submodule", async () => {
+        await click(row("management.rest"));
+        await click(chevronOf("ballerina/workflow"));
+        expect(row("management.rest")).toBeUndefined();
+        expect(row("ballerina/workflow").style.fontWeight).toBe("bold");
+    });
+
+    it("collapses a library from its chevron, not its label", async () => {
+        await click(row("ballerina/workflow"));
+        expect(chevronOf("ballerina/workflow").className).toContain("chevron-down");
+        await click(chevronOf("ballerina/workflow"));
+        expect(row("management")).toBeUndefined();
+    });
+
+    it("lays out the library tree", async () => {
+        await click(row("management.rest"));
+        expect(outline()).toMatchSnapshot();
     });
 });

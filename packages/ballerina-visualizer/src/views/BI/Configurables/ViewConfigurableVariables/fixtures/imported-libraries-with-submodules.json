@@ -1,5 +1,5 @@
 {
-    "_comment": "getConfigVariablesV2 shaped like a project importing ballerina/workflow.management.rest (issue 2738): a library with configurables in its default module and its submodules, one with only a default module, and one with only a submodule.",
+    "_comment": "getConfigVariablesV2 shaped like a project importing ballerina/workflow.management.rest (issue 2738): libraries with configurables in a default module plus submodules, only a default module, only one submodule, and only several submodules.",
     "configVariables": {
         "wso2/sample": {
             "": [
@@ -102,6 +102,32 @@
                         },
                         "defaultValue": {
                             "value": "30"
+                        }
+                    }
+                }
+            ]
+        },
+        "wso2/messaging": {
+            "kafka": [
+                {
+                    "properties": {
+                        "variable": {
+                            "value": "bootstrapServers"
+                        },
+                        "defaultValue": {
+                            "value": "\"localhost:9092\""
+                        }
+                    }
+                }
+            ],
+            "rabbitmq": [
+                {
+                    "properties": {
+                        "variable": {
+                            "value": "host"
+                        },
+                        "defaultValue": {
+                            "value": "\"localhost\""
                         }
                     }
                 }
