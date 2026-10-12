@@ -434,8 +434,9 @@ public class ConfigEditorV2Service implements ExtendedLanguageServerService {
         String defaultValue = node.properties().get(DEFAULT_VALUE_KEY).toSourceCode();
         String variableDoc = node.properties().get(CONFIG_VAR_DOC_KEY).toSourceCode();
         // Blank lines inside the doc become a bare `#` so paragraph breaks survive; outer blank lines are dropped.
+        // Split on any line break since the UI sends \n even on Windows.
         List<String> docLines = variableDoc.isBlank() ? List.of()
-                : Arrays.stream(variableDoc.strip().split("\\R")).toList(); // UI sends \n even on Windows
+                : Arrays.stream(variableDoc.strip().split("\\R")).toList();
 
         StringBuilder configStatementBuilder = new StringBuilder();
         docLines.forEach(docLine -> configStatementBuilder
