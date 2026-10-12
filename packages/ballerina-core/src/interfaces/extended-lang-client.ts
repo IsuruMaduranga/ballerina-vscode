@@ -655,8 +655,21 @@ export interface WorkflowManagementRequest {
     projectPath: string;
 }
 
+// `mode` under `[ballerina.workflow]` in Config.toml; the module default is LOCAL.
+export type WorkflowRuntimeMode = "LOCAL" | "IN_MEMORY" | "SELF_HOSTED" | "CLOUD";
+
+export interface WorkflowRuntimeStatusResponse {
+    mode: WorkflowRuntimeMode;
+    url: string;
+    // Undefined when the mode is not probed (IN_MEMORY, CLOUD).
+    reachable?: boolean;
+    errorMsg?: string;
+}
+
 export interface WorkflowManagementResponse {
     enabled?: boolean;
+    // Syntax-level signal that this is a workflow integration; stable while artifacts are still resolving.
+    workflowImported?: boolean;
     errorMsg?: string;
     stacktrace?: string;
 }
