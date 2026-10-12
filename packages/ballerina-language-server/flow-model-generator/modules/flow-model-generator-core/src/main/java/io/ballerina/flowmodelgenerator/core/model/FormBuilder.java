@@ -837,10 +837,12 @@ public class FormBuilder<T> extends FacetedBuilder<T> {
 
         NodeList<Node> docLineNodes = ((MarkdownDocumentationNode) docNode).documentationLines();
         for (Node docLineNode : docLineNodes) {
+            // Skip leading minutiae (e.g. a license header) but keep the whole line; documentElements() would
+            // drop the content of parameter and other non-description lines.
             int leadingMinutiaeLength = docLineNode.textRange().startOffset()
-                    - docLineNode.textRangeWithMinutiae().startOffset(); // skip comments (e.g. license header)
+                    - docLineNode.textRangeWithMinutiae().startOffset();
             String docLine = docLineNode.toSourceCode().substring(leadingMinutiaeLength).trim();
-            docLineJoiner.add(docLine.replaceFirst("# ", ""));
+            docLineJoiner.add(docLine.replaceFirst("^# ?", ""));
         }
 
         return docLineJoiner.toString();

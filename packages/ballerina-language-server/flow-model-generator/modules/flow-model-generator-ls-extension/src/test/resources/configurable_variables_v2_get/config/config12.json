@@ -117,7 +117,7 @@
                   "selected": true
                 }
               ],
-              "value": "Deployment mode.\n#\n- `LOCAL` — Connects to a local server.\n  This is the default mode.",
+              "value": "Deployment mode.\n\n- `LOCAL` — Connects to a local server.\n  This is the default mode.",
               "optional": true,
               "editable": true,
               "advanced": false,
