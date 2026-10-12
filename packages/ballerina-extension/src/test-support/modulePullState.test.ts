@@ -110,6 +110,19 @@ describe('startPullAwareTimeout', () => {
         expect(onTimeout).toHaveBeenCalledTimes(1);
     });
 
+    it('gives the full delay to a pull that ends just before the cap, so the wait ends by the cap plus one delay', () => {
+        const onTimeout = jest.fn();
+        startPullAwareTimeout(onTimeout, 10000);
+        trackModulePullProgress(PULL, 'begin');
+        jest.advanceTimersByTime(MAX_MODULE_PULL_WAIT_MS - 100);
+        trackModulePullProgress(PULL, 'end');
+        jest.advanceTimersByTime(9999);
+        expect(onTimeout).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(1);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+        // MAX_MODULE_PULL_WAIT_MS - 100 + 10000 ms from the start: within the cap plus one delay.
+    });
+
     it('forgets a pull whose end never arrives, so later waits time out normally', () => {
         trackModulePullProgress(PULL, 'begin');
         startPullAwareTimeout(jest.fn(), 10000);

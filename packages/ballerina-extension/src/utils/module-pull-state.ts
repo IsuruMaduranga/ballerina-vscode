@@ -20,8 +20,10 @@
 const PULL_MODULE_TOKEN_PREFIX = "pull-module-";
 
 /**
- * How long a pull counts as running without its `end`, and the longest a single wait is extended.
- * The LS can fail to send `end` (it restarts, or the pull task throws before reaching it).
+ * How long a pull counts as running without its `end`, and how long a single wait keeps being
+ * extended. The LS can fail to send `end` (it restarts, or the pull task throws before reaching it).
+ * A wait that is extended near this limit still gets its full delay, so it ends by this limit plus
+ * one delay at the latest.
  */
 export const MAX_MODULE_PULL_WAIT_MS = 5 * 60 * 1000;
 
@@ -87,8 +89,10 @@ export interface PullAwareTimeout {
 
 /**
  * Calls `onTimeout` after `ms` without a module pull running. While the LS pulls modules, the
- * countdown starts over each time it runs out, and again in full when a pull ends, for up to
- * {@link MAX_MODULE_PULL_WAIT_MS} from the start.
+ * countdown starts over each time it runs out, and again in full when a pull ends. It stops being
+ * extended {@link MAX_MODULE_PULL_WAIT_MS} after the start, so `onTimeout` runs by that limit plus
+ * `ms` at the latest. The last delay is not shortened to fit the limit: a pull ending just before
+ * it would otherwise leave the LS almost no time to publish.
  */
 export function startPullAwareTimeout(onTimeout: () => void, ms: number): PullAwareTimeout {
     const startedAt = Date.now();
