@@ -177,6 +177,8 @@
       "prismjs": "1.30.0",
       // Security fix: also lifts the 1.41.9 transitive, not only the direct pin.
       "prosemirror-view@>=1 <1.42.3": "1.42.3",
+      // prosemirror-view 1.42.3 needs prosemirror-model ^1.25.8; one copy, or the editor's view rejects its own nodes.
+      "prosemirror-model@>=1 <1.25.9": "1.25.9",
       "protobufjs@>=7 <8": "7.6.5",
       "proxy-addr": "2.0.8",
       // Security fix: bump past the previous override version, which is now
