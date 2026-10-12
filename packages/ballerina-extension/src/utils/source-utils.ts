@@ -252,10 +252,20 @@ export async function updateSourceCode(updateSourceCodeRequest: UpdateSourceCode
                             // The raw edit's notification did not arrive before formatting, so this can be
                             // it, with positions in the unformatted text. Read the formatted text's instead.
                             unsubscribe();
+                            // Bounded: the save's own timeout no longer applies once unsubscribed.
+                            let refreshTimeoutId: ReturnType<typeof setTimeout>;
+                            const refreshTimedOut = new Promise<undefined>(done => {
+                                refreshTimeoutId = setTimeout(() => done(undefined), 10000);
+                            });
                             try {
-                                data = await refreshArtifactPositions(Object.keys(modificationRequests)[0], data);
+                                data = (await Promise.race([
+                                    refreshArtifactPositions(Object.keys(modificationRequests)[0], data),
+                                    refreshTimedOut
+                                ])) ?? data;
                             } catch (error) {
                                 console.error("Failed to refresh artifact positions:", error);
+                            } finally {
+                                clearTimeout(refreshTimeoutId);
                             }
                         }
                         if (newArtifactIds?.size) {
@@ -275,7 +285,7 @@ export async function updateSourceCode(updateSourceCodeRequest: UpdateSourceCode
 
                 // Set a timeout to reject if no notification is received within 10 seconds outside a module pull
                 const timeout = startPullAwareTimeout(() => {
-                    console.log("No artifact update notification received within 10 seconds");
+                    console.log("No artifact update notification received within 10 seconds outside a module pull");
                     unsubscribe();
                     StateMachine.setReadyMode();
                     // Don't navigate away while migration enhancement is running — it would
