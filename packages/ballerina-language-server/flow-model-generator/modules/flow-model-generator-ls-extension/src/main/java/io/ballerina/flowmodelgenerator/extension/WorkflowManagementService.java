@@ -182,16 +182,18 @@ public class WorkflowManagementService implements ExtendedLanguageServerService 
         return hasImport(pkg, MODULE_NAME);
     }
 
+    // Every module counts: a workflow declared in a submodule is still this integration's workflow.
     private static boolean hasImport(Package pkg, String moduleName) {
-        Module defaultModule = pkg.getDefaultModule();
-        Collection<DocumentId> documentIds = defaultModule.documentIds();
-        for (DocumentId documentId : documentIds) {
-            Document document = defaultModule.document(documentId);
-            ModulePartNode root = document.syntaxTree().rootNode();
-            NodeList<ImportDeclarationNode> imports = root.imports();
-            for (ImportDeclarationNode importNode : imports) {
-                if (validOrg(importNode) && moduleName(importNode).equals(moduleName)) {
-                    return true;
+        for (Module module : pkg.modules()) {
+            Collection<DocumentId> documentIds = module.documentIds();
+            for (DocumentId documentId : documentIds) {
+                Document document = module.document(documentId);
+                ModulePartNode root = document.syntaxTree().rootNode();
+                NodeList<ImportDeclarationNode> imports = root.imports();
+                for (ImportDeclarationNode importNode : imports) {
+                    if (validOrg(importNode) && moduleName(importNode).equals(moduleName)) {
+                        return true;
+                    }
                 }
             }
         }

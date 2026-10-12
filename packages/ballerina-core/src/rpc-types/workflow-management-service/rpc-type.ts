@@ -29,3 +29,5 @@ export const getWorkflowRuntimeStatus: RequestType<WorkflowManagementRequest, Wo
     { method: `${_preFix}/getWorkflowRuntimeStatus` };
 export const useInMemoryWorkflowRuntime: RequestType<WorkflowManagementRequest, WorkflowRuntimeStatusResponse> =
     { method: `${_preFix}/useInMemoryWorkflowRuntime` };
+export const useLocalWorkflowRuntime: RequestType<WorkflowManagementRequest, WorkflowRuntimeStatusResponse> =
+    { method: `${_preFix}/useLocalWorkflowRuntime` };

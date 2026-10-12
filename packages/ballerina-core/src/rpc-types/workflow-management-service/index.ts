@@ -24,4 +24,5 @@ export interface WorkflowManagementServiceAPI {
     disableWorkflowManagement: (params: WorkflowManagementRequest) => Promise<WorkflowManagementResponse>;
     getWorkflowRuntimeStatus: (params: WorkflowManagementRequest) => Promise<WorkflowRuntimeStatusResponse>;
     useInMemoryWorkflowRuntime: (params: WorkflowManagementRequest) => Promise<WorkflowRuntimeStatusResponse>;
+    useLocalWorkflowRuntime: (params: WorkflowManagementRequest) => Promise<WorkflowRuntimeStatusResponse>;
 }

@@ -59,14 +59,14 @@ export default function createTests() {
             await new ProjectExplorer(page.page).goToOverview();
             let webview = await getWebview();
             await webview.getByText('orderWorkflow', { exact: true }).first().click({ timeout: 120000 });
-            await webview.getByText('Start', { exact: true }).first().waitFor({ state: 'visible', timeout: 60000 }).catch(() => undefined);
+            await webview.getByText('Start', { exact: true }).first().waitFor({ state: 'visible', timeout: 60000 });
             await new ProjectExplorer(page.page).goToOverview();
             webview = await getWebview();
             const section = webview.getByTestId('workflow-section');
             await section.waitFor({ state: 'visible', timeout: 120000 });
 
-            logStep('No runtime listens at the default URL, so both options are offered');
-            await expect(section.getByText(`No workflow runtime detected at ${UNSERVED_RUNTIME_URL}.`)).toBeVisible({ timeout: 30000 });
+            logStep('Nothing listens at the unserved URL, so both options are offered');
+            await expect(section.getByText(`No workflow runtime at ${UNSERVED_RUNTIME_URL}.`)).toBeVisible({ timeout: 30000 });
             const actions = section.getByTestId('workflow-runtime-actions');
             await expect(actions.getByRole('button', { name: 'Use in-memory runtime' })).toBeVisible();
             await expect(actions.getByRole('button', { name: 'Configure runtime' })).toBeVisible();
@@ -76,7 +76,7 @@ export default function createTests() {
             logStep('Switch to the in-memory runtime');
             await actions.getByRole('button', { name: 'Use in-memory runtime' }).click();
             await expect(section.getByText('Using the in-memory runtime (testing only).')).toBeVisible({ timeout: 30000 });
-            await expect(section.getByText(`No workflow runtime detected at ${UNSERVED_RUNTIME_URL}.`)).toHaveCount(0);
+            await expect(section.getByText(`No workflow runtime at ${UNSERVED_RUNTIME_URL}.`)).toHaveCount(0);
             await expect.poll(configToml, { timeout: 30000 }).toMatch(/\[ballerina\.workflow\]\s*\nmode = "IN_MEMORY"\s*\nurl = /);
             await section.screenshot({ path: path.join(__dirname, '..', '..', 'test-resources', 'screenshots', 'workflow-section-in-memory.png') }).catch(() => undefined);
 

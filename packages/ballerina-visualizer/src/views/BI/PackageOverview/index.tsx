@@ -698,6 +698,7 @@ interface WorkflowSectionProps {
     switchingRuntime: boolean;
     switchError?: string;
     onUseInMemoryRuntime: () => void;
+    onUseLocalRuntime: () => void;
     onConfigureRuntime: () => void;
     onRecheckRuntime: () => void;
 }
@@ -710,8 +711,10 @@ const RuntimeActions = styled.div`
     margin: 8px 0;
 `;
 
-const RuntimeStatusLine = styled.p`
+// A div: the tooltip and the checkbox render block elements, which a <p> may not hold.
+const RuntimeStatusLine = styled.div`
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     margin: 8px 0;
@@ -720,15 +723,19 @@ const RuntimeStatusLine = styled.p`
 // Short lines on the panel; the explanations live in the tooltips.
 export const WORKFLOW_RUNTIME_EXPLAINED =
     "A workflow runtime stores each run's progress, so runs survive restarts and can wait for people and timers. Its URL is set in the Configuration view under ballerina/workflow.";
-export const NO_RUNTIME_TITLE = "No workflow runtime detected";
+export const NO_RUNTIME_TITLE = "No workflow runtime";
 export const RUNTIME_CHECK_FAILED = "Could not check for a workflow runtime";
-export const SWITCH_FAILED = "Could not switch to the in-memory runtime";
-export const RUNTIME_DETECTED = "Workflow runtime detected";
+export const SWITCH_FAILED = "Could not switch the workflow runtime";
+// A TCP connect is all the probe does, so the line claims no more than reachability.
+export const RUNTIME_DETECTED = "Workflow runtime reachable";
 export const IN_MEMORY_RUNTIME = "Using the in-memory runtime (testing only)";
 export const MANAGED_RUNTIME = "Using a managed workflow runtime";
 export const USE_IN_MEMORY_LABEL = "Use in-memory runtime";
 export const USE_IN_MEMORY_TOOLTIP =
     "Testing only: runs are lost when the integration stops. Sets the workflow mode to IN_MEMORY.";
+export const USE_LOCAL_LABEL = "Use local runtime";
+export const USE_LOCAL_TOOLTIP =
+    "Sets the workflow mode back to LOCAL: a workflow server at the configured url.";
 export const CONFIGURE_RUNTIME_LABEL = "Configure runtime";
 export const CONFIGURE_RUNTIME_TOOLTIP =
     "Opens the Configuration view. Set mode and url under ballerina/workflow to use a running workflow server; today that is a Temporal server.";
@@ -764,6 +771,7 @@ function WorkflowSection({
     switchingRuntime,
     switchError,
     onUseInMemoryRuntime,
+    onUseLocalRuntime,
     onConfigureRuntime,
     onRecheckRuntime,
 }: WorkflowSectionProps) {
@@ -782,17 +790,28 @@ function WorkflowSection({
             </RuntimeStatusLine>
         );
     } else if (!runtime) {
+        // Only before the first answer: a re-check keeps the last status on screen.
         status = <RuntimeStatusLine>Checking for a workflow runtime...</RuntimeStatusLine>;
     } else if (runtime.mode === "IN_MEMORY") {
         status = (
             <>
                 <RuntimeStatus icon="beaker" text={`${IN_MEMORY_RUNTIME}.`}
                     tooltip="Runs are lost when the integration stops. Switch to a workflow server before deploying." />
-                <RuntimeActions>
+                <RuntimeActions data-testid="workflow-runtime-actions">
+                    <Button appearance="secondary" onClick={onUseLocalRuntime} disabled={switchingRuntime}
+                        tooltip={USE_LOCAL_TOOLTIP}>
+                        {USE_LOCAL_LABEL}
+                    </Button>
                     <Button appearance="secondary" onClick={onConfigureRuntime} tooltip={CONFIGURE_RUNTIME_TOOLTIP}>
                         {CONFIGURE_RUNTIME_LABEL}
                     </Button>
                 </RuntimeActions>
+                {switchError && (
+                    <RuntimeStatusLine>
+                        <Codicon name="error" sx={{ color: "var(--vscode-errorForeground)" }} />
+                        <span>{switchError}</span>
+                    </RuntimeStatusLine>
+                )}
             </>
         );
     } else if (runtime.mode === "CLOUD") {
@@ -813,10 +832,13 @@ function WorkflowSection({
                     {recheck}
                 </RuntimeStatus>
                 <RuntimeActions data-testid="workflow-runtime-actions">
-                    <Button appearance="secondary" onClick={onUseInMemoryRuntime} disabled={switchingRuntime}
-                        tooltip={USE_IN_MEMORY_TOOLTIP}>
-                        {USE_IN_MEMORY_LABEL}
-                    </Button>
+                    {/* A self-hosted server that is briefly down is a deliberate choice, not one to overwrite. */}
+                    {runtime.mode === "LOCAL" && (
+                        <Button appearance="secondary" onClick={onUseInMemoryRuntime} disabled={switchingRuntime}
+                            tooltip={USE_IN_MEMORY_TOOLTIP}>
+                            {USE_IN_MEMORY_LABEL}
+                        </Button>
+                    )}
                     <Button appearance="secondary" onClick={onConfigureRuntime} tooltip={CONFIGURE_RUNTIME_TOOLTIP}>
                         {CONFIGURE_RUNTIME_LABEL}
                     </Button>
@@ -1181,11 +1203,11 @@ export function PackageOverview(props: PackageOverviewProps) {
     // The import is the stable signal; the artifact list needs the annotation resolved first.
     const showWorkflowSection = !isLibrary && (workflowImported || hasWorkflowArtifacts(projectStructure));
 
-    // A late answer from an older check is dropped.
+    // A late answer from an older check is dropped. The last status stays on screen while a re-check
+    // runs: every source edit re-runs the check, and a blank line would move the section under the cursor.
     const runtimeCheckRef = useRef(0);
     const checkWorkflowRuntime = useCallback(() => {
         const check = ++runtimeCheckRef.current;
-        setWorkflowRuntime(undefined);
         setRuntimeCheckFailed(false);
         setSwitchError(undefined);
         rpcClient.getWorkflowManagementRpcClient().getWorkflowRuntimeStatus({ projectPath })
@@ -1207,11 +1229,21 @@ export function PackageOverview(props: PackageOverviewProps) {
         }
     }, [showWorkflowSection, contextEpoch, checkWorkflowRuntime]);
 
-    const handleUseInMemoryRuntime = () => {
+    // Starting a server changes no file, so coming back to the window is the other moment to look again.
+    useEffect(() => {
+        if (!showWorkflowSection) {
+            return;
+        }
+        const onFocus = () => checkWorkflowRuntime();
+        window.addEventListener("focus", onFocus);
+        return () => window.removeEventListener("focus", onFocus);
+    }, [showWorkflowSection, checkWorkflowRuntime]);
+
+    const switchWorkflowRuntime = (request: Promise<WorkflowRuntimeStatusResponse>) => {
         setSwitchingRuntime(true);
         setSwitchError(undefined);
         const check = ++runtimeCheckRef.current;
-        rpcClient.getWorkflowManagementRpcClient().useInMemoryWorkflowRuntime({ projectPath })
+        request
             .then((status) => {
                 if (check === runtimeCheckRef.current) {
                     setWorkflowRuntime(status);
@@ -1226,6 +1258,10 @@ export function PackageOverview(props: PackageOverviewProps) {
             })
             .finally(() => setSwitchingRuntime(false));
     };
+    const handleUseInMemoryRuntime = () =>
+        switchWorkflowRuntime(rpcClient.getWorkflowManagementRpcClient().useInMemoryWorkflowRuntime({ projectPath }));
+    const handleUseLocalRuntime = () =>
+        switchWorkflowRuntime(rpcClient.getWorkflowManagementRpcClient().useLocalWorkflowRuntime({ projectPath }));
 
     const integrationTitle = useMemo(() => {
         return projectStructure?.projectTitle || projectStructure?.projectName;
@@ -1642,6 +1678,7 @@ export function PackageOverview(props: PackageOverviewProps) {
                                                 switchingRuntime={switchingRuntime}
                                                 switchError={switchError}
                                                 onUseInMemoryRuntime={handleUseInMemoryRuntime}
+                                                onUseLocalRuntime={handleUseLocalRuntime}
                                                 onConfigureRuntime={handleLocalConfigure}
                                                 onRecheckRuntime={checkWorkflowRuntime}
                                             />
