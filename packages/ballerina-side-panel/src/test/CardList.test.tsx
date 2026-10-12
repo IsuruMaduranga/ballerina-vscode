@@ -104,7 +104,9 @@ describe("CardList", () => {
             fireEvent.click(screen.getByText("Anthropic"));
             fireEvent.click(screen.getByRole("button", { name: "Back to Bedrock" }));
             expect(screen.getByText("Titan")).toBeTruthy();
+            expect(document.activeElement?.textContent).toContain("Anthropic");
             fireEvent.click(screen.getByRole("button", { name: "Back to AWS" }));
+            expect(document.activeElement?.textContent).toContain("Bedrock");
             expect(screen.queryByRole("heading", { name: "Bedrock" })).toBeNull();
             expect(screen.getByText("AWS Default")).toBeTruthy();
         });
@@ -157,6 +159,13 @@ describe("CardList", () => {
             fireEvent.click(screen.getByText("AWS Model Providers"));
             fireEvent.input(search, { target: { value: "" } });
             expect(screen.getByRole("heading", { name: "Bedrock" })).toBeTruthy();
+        });
+
+        it("lists search matches flat, with the group path above the description", () => {
+            renderNested();
+            fireEvent.input(screen.getByPlaceholderText("Search"), { target: { value: "sonnet" } });
+            expect(screen.getByText("Bedrock › Anthropic")).toBeTruthy();
+            expect(screen.getByText("Sonnet description")).toBeTruthy();
         });
 
         it("merges a single-subgroup chain into one row and one level", () => {

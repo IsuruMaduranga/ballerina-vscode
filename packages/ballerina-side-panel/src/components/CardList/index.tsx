@@ -480,6 +480,15 @@ namespace S {
         white-space: nowrap;
     `;
 
+    export const ChildPath = styled.div`
+        font-size: 11px;
+        color: ${ThemeColors.ON_SURFACE_VARIANT};
+        margin-top: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    `;
+
     export const Row = styled.div<{}>`
         display: flex;
         flex-direction: row;
@@ -547,7 +556,7 @@ export interface CardListProps {
     fillContainerHeight?: boolean;
 }
 
-// Joins nested group ids; a control character cannot appear in a title or description.
+// Joins nested group ids; a control character is not expected in a title or description.
 const GROUP_ID_SEPARATOR = "\u001f";
 
 const isCategory = (item: Item): item is Category => "items" in item && "title" in item;
@@ -624,7 +633,7 @@ function flattenLeaves(items: Item[], path: string[] = []): { node: Node; path: 
 }
 
 const countLeaves = (category: Category): number =>
-    category.items.reduce((count, item) => count + (item && isCategory(item) ? countLeaves(item) : 1), 0);
+    category.items.reduce((count, item) => !item ? count : count + (isCategory(item) ? countLeaves(item) : 1), 0);
 
 function CardList(props: CardListProps) {
     const { categories, title, searchPlaceholder, onSelect, onSearch, onBack, onClose,
@@ -689,20 +698,27 @@ function CardList(props: CardListProps) {
         setExpandedGroupId(isGroupExpanded(groupId) ? null : groupId);
     };
 
+    const containerRef = useRef<HTMLDivElement>(null);
     const drillListRef = useRef<HTMLDivElement>(null);
-    const focusDrillList = useRef(false);
+    const pendingFocus = useRef<{ groupId?: string } | null>(null);
 
-    const drillInto = (groupId: string) => {
-        focusDrillList.current = true;
+    const drillInto = (groupId: string, focusGroupId?: string) => {
+        pendingFocus.current = { groupId: focusGroupId };
         setExpandedGroupId(groupId);
     };
 
-    // Keyboard users land on the first row of the level they moved to, not back at the top of the panel.
+    // Keyboard focus moves to the first row on the way in, and back to the row just left on the way out.
     useEffect(() => {
-        if (focusDrillList.current) {
-            focusDrillList.current = false;
-            drillListRef.current?.querySelector<HTMLElement>("[role='button']")?.focus();
+        const target = pendingFocus.current;
+        pendingFocus.current = null;
+        if (!target) {
+            return;
         }
+        const row = target.groupId === undefined
+            ? drillListRef.current?.querySelector<HTMLElement>("[role='button']")
+            : Array.from(containerRef.current?.querySelectorAll<HTMLElement>("[data-group-id]") ?? [])
+                .find((element) => element.dataset.groupId === target.groupId);
+        row?.focus();
     }, [expandedGroupId]);
 
     const getCountLabel = (category: Category) => {
@@ -717,7 +733,7 @@ function CardList(props: CardListProps) {
         return items
             .filter((item) => item != null)
             .map((item) => {
-                if ("items" in item && "title" in item) {
+                if (isCategory(item)) {
                     // This is a Category
                     const filteredItems = filterItems(item.items);
                     const categoryMatches =
@@ -758,6 +774,7 @@ function CardList(props: CardListProps) {
         return (
             <S.SubGroupRow
                 key={category.title + index}
+                data-group-id={groupId}
                 onClick={() => drillInto(groupId)}
                 onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -784,7 +801,6 @@ function CardList(props: CardListProps) {
 
     const renderLeaf = (node: Node, groupIcon: JSX.Element | undefined, key: string, caption?: string) => {
         const mainIcon = node.contextIcon ?? groupIcon;
-        const subtitle = caption ?? node.description;
         return (
             <S.ChildCard
                 key={key}
@@ -806,7 +822,8 @@ function CardList(props: CardListProps) {
                 </S.ChildIcon>
                 <S.ChildContent>
                     <S.ChildTitle>{node.label}</S.ChildTitle>
-                    {subtitle && <S.ChildDescription>{subtitle}</S.ChildDescription>}
+                    {caption && <S.ChildPath>{caption}</S.ChildPath>}
+                    {node.description && <S.ChildDescription>{node.description}</S.ChildDescription>}
                 </S.ChildContent>
             </S.ChildCard>
         );
@@ -830,7 +847,7 @@ function CardList(props: CardListProps) {
         const currentId = drill.ids[drill.ids.length - 1];
         const segments = pathSegments(drill);
         const parent = segments[segments.length - 2];
-        const goUp = () => drillInto(parent.id);
+        const goUp = () => drillInto(parent.id, currentId);
         return (
             <S.CategorySection
                 onKeyDown={(event) => {
@@ -865,7 +882,7 @@ function CardList(props: CardListProps) {
 
     const renderCards = (items: Item[]) => {
         const cards = items.filter((item): item is Node | Category => item != null && (
-            ("id" in item && "label" in item) || ("items" in item && "title" in item)
+            ("id" in item && "label" in item) || isCategory(item)
         ));
 
         if (cards.length === 0) {
@@ -953,7 +970,7 @@ function CardList(props: CardListProps) {
     const canGoBack = Boolean(onBack);
     const shouldShowHeaderActions = (canGoBack && headerTitle) || onClose;
     return (
-        <S.Container fillContainerHeight={fillContainerHeight}>
+        <S.Container ref={containerRef} fillContainerHeight={fillContainerHeight}>
             <S.HeaderContainer>
                 {shouldShowHeaderActions && (
                     <S.Row>
