@@ -36,17 +36,22 @@ import { approvalManager } from '../../state/ApprovalManager';
 import { SUBAGENT_TOOL_NAME } from "../subagents/types";
 import { recordAiTouchedFile } from "../../../../rpc-managers/diagram-validity";
 import { addToIntegration } from "../../../../rpc-managers/ai-panel/utils";
+import type { FileAttatchment } from "@wso2/ballerina-core";
+import { resolveProvidedSpec } from "./connector-spec-source";
 
 export const CONNECTOR_GENERATOR_TOOL = "ConnectorGeneratorTool";
 
 const SpecFetcherInputSchema = z.object({
     serviceName: z.string().describe("Name of the service/API that needs specification"),
     serviceDescription: z.string().optional().describe("Optional description of what the service is for"),
+    attachmentFileName: z.string().optional().describe("File name of an OpenAPI spec the user attached to the current message, exactly as shown in <User Attachments>. The tool reads the file itself; do not copy its content into specContent."),
+    specUrl: z.string().optional().describe("URL of the OpenAPI spec, when the user gave one"),
+    specContent: z.string().optional().describe("Full OpenAPI spec text, only when the user pasted it into the message text or attached it in an earlier turn"),
 });
 
 
 
-export function createConnectorGeneratorTool(eventHandler: CopilotEventHandler, tempProjectPath: string, projectName?: string, modifiedFiles?: string[]) {
+export function createConnectorGeneratorTool(eventHandler: CopilotEventHandler, tempProjectPath: string, projectName?: string, modifiedFiles?: string[], fileAttachments?: FileAttatchment[]) {
     return tool({
         description: `
 Generates a connector for an external service by deriving the service contract from user-provided OpenAPI specifications.
@@ -59,8 +64,14 @@ Use this tool when:
 
 **CRITICAL: Do NOT call this tool again for the same service if the user has already skipped it (errorCode: USER_SKIPPED). Accept the skip and proceed without the connector.**
 
+**If the user has already supplied the spec, pass it so they are not asked for it again:**
+- Attached file → attachmentFileName
+- URL → specUrl
+- Pasted into the message text, or attached in an earlier turn → specContent
+Only when none of these apply does the tool ask the user for the spec.
+
 The tool will:
-1. Request OpenAPI spec from user (supports JSON and YAML formats)
+1. Use the spec the user already supplied, or otherwise request it from the user (supports JSON and YAML formats)
 2. Generate complete Ballerina connector module with client class, typed methods, record types, and authentication
 3. Save the spec to resources/specs/ directory
 4. Generate connector files in generated/moduleName submodule
@@ -78,7 +89,7 @@ Returns complete connector information (DO NOT read files, use the returned cont
 **Result**: Returns importStatement and generatedFiles with complete content → Use importStatement in your code`,
         inputSchema: SpecFetcherInputSchema,
         execute: async (input: SpecFetcherInput): Promise<SpecFetcherResult> => {
-            return await ConnectorGeneratorTool(input, eventHandler, tempProjectPath, projectName, modifiedFiles);
+            return await ConnectorGeneratorTool(input, eventHandler, tempProjectPath, projectName, modifiedFiles, fileAttachments);
         },
     });
 }
@@ -88,7 +99,8 @@ export async function ConnectorGeneratorTool(
     eventHandler: CopilotEventHandler,
     tempProjectPath: string,
     projectName?: string,
-    modifiedFiles?: string[]
+    modifiedFiles?: string[],
+    fileAttachments?: FileAttatchment[]
 ): Promise<SpecFetcherResult> {
     if (!eventHandler) {
         return createErrorResult(
@@ -110,13 +122,23 @@ export async function ConnectorGeneratorTool(
     const requestId = crypto.randomUUID();
 
     try {
-        const userInput = await requestSpecFromUser(requestId, input, eventHandler);
-
-        if (!userInput.provided) {
-            return handleUserSkip(requestId, input.serviceName, userInput.comment, eventHandler);
+        // Ask only when the user has not already supplied the spec through the chat.
+        const provided = await resolveProvidedSpec(input, fileAttachments);
+        let spec: any;
+        if (provided.kind === "resolved") {
+            spec = provided.spec;
+        } else {
+            if (provided.kind === "unresolved") {
+                console.warn(`[ConnectorGeneratorTool] Could not use the supplied spec for ${input.serviceName}: ${provided.reason}`);
+            }
+            const userInput = await requestSpecFromUser(requestId, input, eventHandler);
+            if (!userInput.provided) {
+                return handleUserSkip(requestId, input.serviceName, userInput.comment, eventHandler);
+            }
+            spec = userInput.spec;
         }
 
-        const { rawSpec, parsedSpec, originalContent, format } = parseAndValidateSpec(userInput.spec);
+        const { rawSpec, parsedSpec, originalContent, format } = parseAndValidateSpec(spec);
 
         const { specFilePath, sanitizedServiceName } = await saveSpecToWorkspace(
             originalContent,

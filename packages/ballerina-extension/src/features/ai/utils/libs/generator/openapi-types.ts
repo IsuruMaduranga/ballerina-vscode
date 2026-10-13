@@ -17,6 +17,12 @@
 export interface SpecFetcherInput {
     serviceName: string;
     serviceDescription?: string;
+    /** Name of a file the user attached to the current message that holds the spec. */
+    attachmentFileName?: string;
+    /** URL of the spec, when the user gave one. */
+    specUrl?: string;
+    /** The spec text, when the user pasted it into the chat rather than attaching it. */
+    specContent?: string;
 }
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";

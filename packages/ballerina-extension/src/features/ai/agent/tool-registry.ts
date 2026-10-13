@@ -17,7 +17,7 @@
 /**
  * Tool registry factory extracted from AgentExecutor.
  */
-import { ExecutionContext, ProjectSource } from '@wso2/ballerina-core';
+import { ExecutionContext, FileAttatchment, ProjectSource } from '@wso2/ballerina-core';
 import { CopilotEventHandler } from '../utils/events';
 import { createTaskWriteTool, TASK_WRITE_TOOL_NAME } from './tools/task-writer';
 import { createDiagnosticsTool, DIAGNOSTICS_TOOL_NAME } from './tools/diagnostics';
@@ -81,13 +81,15 @@ export interface ToolRegistryOptions {
     runningServices: RunningServicesManager;
     webSearchEnabled: boolean;
     ctx: ExecutionContext;
+    /** Files attached to the current user message; the connector generator reads a spec from them. */
+    fileAttachments?: FileAttatchment[];
     // TODO(auto-memory): temporarily disabled for this release.
     // /** When true, registers save_memory and consolidate_memories tools in the main agent registry. */
     // autoMemoryEnabled?: boolean;
 }
 
 export function createToolRegistry(opts: ToolRegistryOptions) {
-    const { eventHandler, toolModelUsage, tempProjectPath, modifiedFiles, allModifiedFiles, projects, generationType, projectRootPath, generationId, threadId, migrationSourcePath, webSearchEnabled, ctx } = opts;
+    const { eventHandler, toolModelUsage, tempProjectPath, modifiedFiles, allModifiedFiles, projects, generationType, projectRootPath, generationId, threadId, migrationSourcePath, webSearchEnabled, ctx, fileAttachments } = opts;
     const resolvedThreadId = threadId || 'default';
     // Library lookups happen only inside subagents; their histories live next to the thread.
     const subagentCtx: SubagentRunContext = {
@@ -115,7 +117,8 @@ export function createToolRegistry(opts: ToolRegistryOptions) {
             eventHandler,
             tempProjectPath,
             projects[0]?.projectName,
-            modifiedFiles
+            modifiedFiles,
+            fileAttachments
         ),
         [CONFIG_COLLECTOR_TOOL]: createConfigCollectorTool(
             eventHandler,
