@@ -36,22 +36,21 @@ import { approvalManager } from '../../state/ApprovalManager';
 import { SUBAGENT_TOOL_NAME } from "../subagents/types";
 import { recordAiTouchedFile } from "../../../../rpc-managers/diagram-validity";
 import { addToIntegration } from "../../../../rpc-managers/ai-panel/utils";
-import type { FileAttatchment } from "@wso2/ballerina-core";
-import { resolveProvidedSpec } from "./connector-spec-source";
+import { resolveProvidedSpec, SpecContext } from "./connector-spec-source";
 
 export const CONNECTOR_GENERATOR_TOOL = "ConnectorGeneratorTool";
 
 const SpecFetcherInputSchema = z.object({
     serviceName: z.string().describe("Name of the service/API that needs specification"),
     serviceDescription: z.string().optional().describe("Optional description of what the service is for"),
-    attachmentFileName: z.string().optional().describe("File name of an OpenAPI spec the user attached to the current message, exactly as shown in <User Attachments>. The tool reads the file itself; do not copy its content into specContent."),
-    specUrl: z.string().optional().describe("URL of the OpenAPI spec, when the user gave one"),
-    specContent: z.string().optional().describe("Full OpenAPI spec text, only when the user pasted it into the message text or attached it in an earlier turn"),
+    attachmentFileName: z.string().optional().describe("File name of an OpenAPI spec the user attached in this conversation, exactly as shown in <User Attachments>. The tool reads the file itself; do not copy its content into specContent."),
+    specUrl: z.string().optional().describe("URL of the OpenAPI spec, exactly as the user wrote it in their message"),
+    specContent: z.string().optional().describe("Full OpenAPI spec text, only when the user pasted it into the message text"),
 });
 
 
 
-export function createConnectorGeneratorTool(eventHandler: CopilotEventHandler, tempProjectPath: string, projectName?: string, modifiedFiles?: string[], fileAttachments?: FileAttatchment[]) {
+export function createConnectorGeneratorTool(eventHandler: CopilotEventHandler, tempProjectPath: string, projectName?: string, modifiedFiles?: string[], specContext?: SpecContext) {
     return tool({
         description: `
 Generates a connector for an external service by deriving the service contract from user-provided OpenAPI specifications.
@@ -61,13 +60,14 @@ Use this tool when:
 2. User request is ambiguous and needs a SaaS connector
 3. User explicitly requests to create a SaaS connector
 4. After the Librarian subagent (${SUBAGENT_TOOL_NAME}) reports that no suitable connector exists
+5. The user supplied an OpenAPI spec (attached, linked or pasted). Call this tool with it first, then build on the generated code and fix any remaining issues.
 
 **CRITICAL: Do NOT call this tool again for the same service if the user has already skipped it (errorCode: USER_SKIPPED). Accept the skip and proceed without the connector.**
 
 **If the user has already supplied the spec, pass it so they are not asked for it again:**
-- Attached file → attachmentFileName
-- URL → specUrl
-- Pasted into the message text, or attached in an earlier turn → specContent
+- Attached file, in this or an earlier message → attachmentFileName
+- URL the user wrote → specUrl
+- Pasted into the message text → specContent
 Only when none of these apply does the tool ask the user for the spec.
 
 The tool will:
@@ -89,7 +89,7 @@ Returns complete connector information (DO NOT read files, use the returned cont
 **Result**: Returns importStatement and generatedFiles with complete content → Use importStatement in your code`,
         inputSchema: SpecFetcherInputSchema,
         execute: async (input: SpecFetcherInput): Promise<SpecFetcherResult> => {
-            return await ConnectorGeneratorTool(input, eventHandler, tempProjectPath, projectName, modifiedFiles, fileAttachments);
+            return await ConnectorGeneratorTool(input, eventHandler, tempProjectPath, projectName, modifiedFiles, specContext);
         },
     });
 }
@@ -100,7 +100,7 @@ export async function ConnectorGeneratorTool(
     tempProjectPath: string,
     projectName?: string,
     modifiedFiles?: string[],
-    fileAttachments?: FileAttatchment[]
+    specContext?: SpecContext
 ): Promise<SpecFetcherResult> {
     if (!eventHandler) {
         return createErrorResult(
@@ -123,7 +123,7 @@ export async function ConnectorGeneratorTool(
 
     try {
         // Ask only when the user has not already supplied the spec through the chat.
-        const provided = await resolveProvidedSpec(input, fileAttachments);
+        const provided = await resolveProvidedSpec(input, specContext ?? {});
         let spec: any;
         if (provided.kind === "resolved") {
             spec = provided.spec;

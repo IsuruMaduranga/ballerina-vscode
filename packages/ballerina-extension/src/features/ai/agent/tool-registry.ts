@@ -17,7 +17,7 @@
 /**
  * Tool registry factory extracted from AgentExecutor.
  */
-import { ExecutionContext, FileAttatchment, ProjectSource } from '@wso2/ballerina-core';
+import { ExecutionContext, ProjectSource } from '@wso2/ballerina-core';
 import { CopilotEventHandler } from '../utils/events';
 import { createTaskWriteTool, TASK_WRITE_TOOL_NAME } from './tools/task-writer';
 import { createDiagnosticsTool, DIAGNOSTICS_TOOL_NAME } from './tools/diagnostics';
@@ -37,6 +37,7 @@ import {
 } from './tools/text-editor';
 import { GenerationType } from '../utils/libs/libraries';
 import { createConnectorGeneratorTool, CONNECTOR_GENERATOR_TOOL } from './tools/connector-generator';
+import { SpecContext } from './tools/connector-spec-source';
 import { createSubagentTool } from './tools/subagent-tool';
 import { createKillTaskTool, createTaskOutputTool } from './tools/task-tools';
 import { buildRunKey, KILL_TASK_TOOL_NAME, SUBAGENT_TOOL_NAME, SubagentRunContext, TASK_OUTPUT_TOOL_NAME } from './subagents/types';
@@ -81,15 +82,15 @@ export interface ToolRegistryOptions {
     runningServices: RunningServicesManager;
     webSearchEnabled: boolean;
     ctx: ExecutionContext;
-    /** Files attached to the current user message; the connector generator reads a spec from them. */
-    fileAttachments?: FileAttatchment[];
+    /** The thread's attachments and user text; the connector generator reads a supplied spec from them. */
+    specContext?: SpecContext;
     // TODO(auto-memory): temporarily disabled for this release.
     // /** When true, registers save_memory and consolidate_memories tools in the main agent registry. */
     // autoMemoryEnabled?: boolean;
 }
 
 export function createToolRegistry(opts: ToolRegistryOptions) {
-    const { eventHandler, toolModelUsage, tempProjectPath, modifiedFiles, allModifiedFiles, projects, generationType, projectRootPath, generationId, threadId, migrationSourcePath, webSearchEnabled, ctx, fileAttachments } = opts;
+    const { eventHandler, toolModelUsage, tempProjectPath, modifiedFiles, allModifiedFiles, projects, generationType, projectRootPath, generationId, threadId, migrationSourcePath, webSearchEnabled, ctx, specContext } = opts;
     const resolvedThreadId = threadId || 'default';
     // Library lookups happen only inside subagents; their histories live next to the thread.
     const subagentCtx: SubagentRunContext = {
@@ -118,7 +119,7 @@ export function createToolRegistry(opts: ToolRegistryOptions) {
             tempProjectPath,
             projects[0]?.projectName,
             modifiedFiles,
-            fileAttachments
+            specContext
         ),
         [CONFIG_COLLECTOR_TOOL]: createConfigCollectorTool(
             eventHandler,
