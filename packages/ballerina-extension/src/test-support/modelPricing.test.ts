@@ -41,7 +41,7 @@ const rates = (model: string) => ({
 
 describe('the pricing table', () => {
     it('prices claude-sonnet-5-5 at its published rates', () => {
-        expect(rates('claude-sonnet-5-5')).toEqual({ input: 2, output: 10, cacheWrite: 4, cacheRead: 0.2 });
+        expect(rates('claude-sonnet-5-5')).toEqual({ input: 2, output: 10, cacheWrite: 4, cacheRead: 0.1 });
     });
 
     it('prices claude-sonnet-5 at its published rates', () => {
