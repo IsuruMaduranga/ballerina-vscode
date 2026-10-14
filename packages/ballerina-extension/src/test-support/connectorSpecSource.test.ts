@@ -25,6 +25,7 @@
 
 import {
     collectThreadAttachments,
+    isSupportedSpecVersion,
     MAX_SPEC_BYTES,
     notAnOpenApiSpec,
     readLimited,
@@ -132,8 +133,23 @@ describe("collectThreadAttachments", () => {
 });
 
 describe("notAnOpenApiSpec", () => {
-    it.each([[SPEC], [SWAGGER_JSON]])("accepts an OpenAPI or Swagger document", (text) => {
+    it.each([
+        ["OpenAPI 3 YAML", SPEC],
+        ["Swagger 2 JSON", SWAGGER_JSON],
+        ["Swagger 2 YAML with an unquoted version, which loads as a number", "swagger: 2.0\ninfo:\n  title: x\npaths: {}"],
+        ["OpenAPI 3.1", "openapi: 3.1.0\ninfo:\n  title: x\npaths: {}"],
+    ])("accepts %s", (_label, text) => {
         expect(notAnOpenApiSpec(text)).toBeUndefined();
+    });
+
+    // The generator only supports these versions, so anything else must fall back to the upload
+    // card here rather than fail in the generator after the card was skipped.
+    it.each([
+        ["OpenAPI 4", "openapi: 4.0.0\ninfo:\n  title: x"],
+        ["Swagger 1.2", "swagger: '1.2'\ninfo:\n  title: x"],
+        ["a version that only starts with 3", "openapi: '30.0'\ninfo:\n  title: x"],
+    ])("rejects unsupported version %s", (_label, text) => {
+        expect(notAnOpenApiSpec(text)).toMatch(/unsupported version/);
     });
 
     it.each([
@@ -143,6 +159,16 @@ describe("notAnOpenApiSpec", () => {
         ["an object without openapi/swagger", "info:\n  title: x"],
     ])("rejects %s", (_label, text) => {
         expect(notAnOpenApiSpec(text)).toEqual(expect.any(String));
+    });
+});
+
+describe("isSupportedSpecVersion", () => {
+    it.each(["3.0.3", "3.1.0", "3", "2.0", "2"])("supports %s", (version) => {
+        expect(isSupportedSpecVersion(version)).toBe(true);
+    });
+
+    it.each(["4.0.0", "1.2", "30.0", "", "v3.0"])("rejects %p", (version) => {
+        expect(isSupportedSpecVersion(version)).toBe(false);
     });
 });
 

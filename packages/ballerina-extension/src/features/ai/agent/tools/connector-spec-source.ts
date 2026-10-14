@@ -129,6 +129,23 @@ export function findAttachment(
 }
 
 /**
+ * The document's `openapi` or `swagger` version as a string. An unquoted YAML version such as
+ * `swagger: 2.0` loads as the number 2, so a number is accepted and turned into a string.
+ */
+export function specVersion(doc: Record<string, unknown>): string | undefined {
+    const raw = doc.openapi ?? doc.swagger;
+    if (typeof raw === "string") {
+        return raw;
+    }
+    return typeof raw === "number" ? String(raw) : undefined;
+}
+
+/** Whether the generator supports this version: OpenAPI 3.x or Swagger 2.x. */
+export function isSupportedSpecVersion(version: string): boolean {
+    return /^[23](\.|$)/.test(version);
+}
+
+/**
  * Returns why the text is not an OpenAPI or Swagger document, or undefined when it is one.
  * Checked before a source counts as resolved, so a docs page, an error body or an unrelated
  * file falls back to asking the user instead of failing later in the generator.
@@ -143,9 +160,12 @@ export function notAnOpenApiSpec(text: string): string | undefined {
     if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
         return "it is not a JSON or YAML object";
     }
-    const { openapi, swagger } = doc as Record<string, unknown>;
-    if (typeof openapi !== "string" && typeof swagger !== "string") {
+    const version = specVersion(doc as Record<string, unknown>);
+    if (version === undefined) {
         return "it has no top-level 'openapi' or 'swagger' field";
+    }
+    if (!isSupportedSpecVersion(version)) {
+        return `it uses unsupported version ${version}; only OpenAPI 3.x and Swagger 2.x are supported`;
     }
     return undefined;
 }

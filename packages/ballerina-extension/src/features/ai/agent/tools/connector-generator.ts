@@ -37,7 +37,7 @@ import { approvalManager } from '../../state/ApprovalManager';
 import { SUBAGENT_TOOL_NAME } from "../subagents/types";
 import { recordAiTouchedFile } from "../../../../rpc-managers/diagram-validity";
 import { addToIntegration } from "../../../../rpc-managers/ai-panel/utils";
-import { resolveProvidedSpec, SpecContext } from "./connector-spec-source";
+import { isSupportedSpecVersion, resolveProvidedSpec, SpecContext, specVersion } from "./connector-spec-source";
 import { blockingValidationMessages, selectOpenApiDesign, toServiceTypeName } from "./openapi-service-model";
 
 export const CONNECTOR_GENERATOR_TOOL = "ConnectorGeneratorTool";
@@ -573,9 +573,9 @@ function parseSpec(content: string): { spec: any; format: "json" | "yaml" } {
 }
 
 function parseOpenApiSpec(spec: any): ParsedSpec {
-    const version = spec.openapi || spec.swagger || "unknown";
+    const version = specVersion(spec) ?? "unknown";
 
-    if (!version.startsWith("3.") && !version.startsWith("2.")) {
+    if (!isSupportedSpecVersion(version)) {
         throw new Error(`Unsupported OpenAPI version: ${version}`);
     }
 
