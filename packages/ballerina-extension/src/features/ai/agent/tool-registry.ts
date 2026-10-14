@@ -102,6 +102,8 @@ export function createToolRegistry(opts: ToolRegistryOptions) {
         threadDir: chatStateStorage.getThreadDir(projectRootPath, resolvedThreadId),
         runKey: buildRunKey(projectRootPath, resolvedThreadId),
     };
+    // In a workspace project, generated code goes into the package the user is working in.
+    const activeProject = projects.find(project => project.isActive) ?? projects[0];
     const tools = {
         [TASK_WRITE_TOOL_NAME]: createTaskWriteTool(
             eventHandler,
@@ -117,9 +119,10 @@ export function createToolRegistry(opts: ToolRegistryOptions) {
         [CONNECTOR_GENERATOR_TOOL]: createConnectorGeneratorTool(
             eventHandler,
             tempProjectPath,
-            projects[0]?.projectName,
+            activeProject?.projectName,
             modifiedFiles,
-            specContext
+            specContext,
+            activeProject?.packagePath
         ),
         [CONFIG_COLLECTOR_TOOL]: createConfigCollectorTool(
             eventHandler,

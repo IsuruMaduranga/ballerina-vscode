@@ -31,12 +31,14 @@ import {
 } from "../../utils/libs/generator/openapi-types";
 import { CopilotEventHandler } from "../../utils/events";
 import { langClient } from "../../activator";
+import type { TextEdit } from "vscode-languageserver-protocol";
 import { applyTextEdits } from "../utils";
 import { approvalManager } from '../../state/ApprovalManager';
 import { SUBAGENT_TOOL_NAME } from "../subagents/types";
 import { recordAiTouchedFile } from "../../../../rpc-managers/diagram-validity";
 import { addToIntegration } from "../../../../rpc-managers/ai-panel/utils";
 import { resolveProvidedSpec, SpecContext } from "./connector-spec-source";
+import { blockingValidationMessages, selectOpenApiDesign, toServiceTypeName } from "./openapi-service-model";
 
 export const CONNECTOR_GENERATOR_TOOL = "ConnectorGeneratorTool";
 
@@ -46,21 +48,24 @@ const SpecFetcherInputSchema = z.object({
     attachmentFileName: z.string().optional().describe("File name of an OpenAPI spec the user attached in this conversation, exactly as shown in <User Attachments>. The tool reads the file itself; do not copy its content into specContent."),
     specUrl: z.string().optional().describe("URL of the OpenAPI spec, exactly as the user wrote it in their message"),
     specContent: z.string().optional().describe("Full OpenAPI spec text, only when the user pasted it into the message text"),
+    mode: z.enum(["client", "service"]).optional().describe("client (default): generate a client connector for CALLING the API. service: generate an HTTP service that IMPLEMENTS the API described by the spec; use it when the user wants to create, build, implement or expose that API."),
 });
 
 
 
-export function createConnectorGeneratorTool(eventHandler: CopilotEventHandler, tempProjectPath: string, projectName?: string, modifiedFiles?: string[], specContext?: SpecContext) {
+export function createConnectorGeneratorTool(eventHandler: CopilotEventHandler, tempProjectPath: string, projectName?: string, modifiedFiles?: string[], specContext?: SpecContext, packagePath?: string) {
     return tool({
         description: `
-Generates a connector for an external service by deriving the service contract from user-provided OpenAPI specifications.
+Generates Ballerina code from a user-provided OpenAPI specification, in one of two modes:
+- client (default): a connector module for CALLING the API described by the spec.
+- service: an HTTP service that IMPLEMENTS the API described by the spec, with a resource for every operation and the spec's types. Use it when the user wants to create, build, implement or expose that API (e.g. "create an API using the attached definition").
 
 Use this tool when:
 1. Target service is custom, internal, or niche
 2. User request is ambiguous and needs a SaaS connector
 3. User explicitly requests to create a SaaS connector
 4. After the Librarian subagent (${SUBAGENT_TOOL_NAME}) reports that no suitable connector exists
-5. The user supplied an OpenAPI spec (attached, linked or pasted). Call this tool with it first, then build on the generated code and fix any remaining issues.
+5. The user supplied an OpenAPI spec (attached, linked or pasted). Call this tool with it first, in the mode that matches the request, then build on the generated code and fix any remaining issues.
 
 **CRITICAL: Do NOT call this tool again for the same service if the user has already skipped it (errorCode: USER_SKIPPED). Accept the skip and proceed without the connector.**
 
@@ -70,26 +75,35 @@ Use this tool when:
 - Pasted into the message text → specContent
 Only when none of these apply does the tool ask the user for the spec.
 
+**If the user has not supplied a spec, still call this tool; do not ask for the spec in chat.** The tool shows the user a form to upload, link or paste the spec, and lets them skip.
+
 The tool will:
 1. Use the spec the user already supplied, or otherwise request it from the user (supports JSON and YAML formats)
-2. Generate complete Ballerina connector module with client class, typed methods, record types, and authentication
-3. Save the spec to resources/specs/ directory
-4. Generate connector files in generated/moduleName submodule
+2. Save the spec to resources/specs/ directory
+3. client mode: generate a connector module (client class, typed methods, record types, authentication) in the generated/moduleName submodule
+4. service mode: generate the service contract type and the spec's record types in service_contract_<Type>.bal, and the listener plus a service with a stub for every resource in main.bal
 
-Returns complete connector information (DO NOT read files, use the returned content directly):
+In service mode the generated types and resource signatures come from the spec: do not rewrite, rename or duplicate them. Implement the resource bodies, then fix any remaining compilation errors.
+
+Returns complete connector information for client mode (DO NOT read files, use the returned content directly):
 - moduleName: Name of the generated submodule
 - importStatement: Import statement to use in your code (e.g., "import project.moduleName")
 - generatedFiles: Array with path and COMPLETE CONTENT of each generated .bal file
   * Each file object contains: { path: "relative/path/to/file.bal", content: "full file content" }
   * The content field contains the entire generated code - use it directly without reading files
 
-# Example
-**Query**: Write a passthrough service for Foo service.
-**Tool Call**: Call with serviceName: "Foo API", serviceDescription: "Foo API"
-**Result**: Returns importStatement and generatedFiles with complete content → Use importStatement in your code`,
+# Examples
+**Query**: Call the Foo API and sync its orders to Salesforce.
+**Tool Call**: mode "client" → use the returned importStatement and client in your code.
+
+**Query**: Create an API using the attached definition.
+**Tool Call**: mode "service" → implement the generated resource stubs.
+
+**Query**: Write a passthrough (proxy) service for the API in the attached spec.
+**Tool Calls**: call this tool TWICE with the same spec: mode "service" to expose the API, then mode "client" to call the backend. Implement each resource by forwarding to the matching client method; do not hand-write HTTP calls to the backend.`,
         inputSchema: SpecFetcherInputSchema,
         execute: async (input: SpecFetcherInput): Promise<SpecFetcherResult> => {
-            return await ConnectorGeneratorTool(input, eventHandler, tempProjectPath, projectName, modifiedFiles, specContext);
+            return await ConnectorGeneratorTool(input, eventHandler, tempProjectPath, projectName, modifiedFiles, specContext, packagePath);
         },
     });
 }
@@ -100,7 +114,8 @@ export async function ConnectorGeneratorTool(
     tempProjectPath: string,
     projectName?: string,
     modifiedFiles?: string[],
-    specContext?: SpecContext
+    specContext?: SpecContext,
+    packagePath?: string
 ): Promise<SpecFetcherResult> {
     if (!eventHandler) {
         return createErrorResult(
@@ -140,19 +155,32 @@ export async function ConnectorGeneratorTool(
 
         const { rawSpec, parsedSpec, originalContent, format } = parseAndValidateSpec(spec);
 
+        // Code is generated into a package, which in a workspace project is a subfolder of the
+        // workspace root; the root itself belongs to no package, so a module there cannot resolve.
+        const packageRoot = path.join(tempProjectPath, packagePath ?? "");
+        const isService = input.mode === "service";
+
         const { specFilePath, sanitizedServiceName } = await saveSpecToWorkspace(
             originalContent,
             format,
             rawSpec,
             input.serviceName,
+            packageRoot,
             tempProjectPath,
             modifiedFiles
         );
+
+        if (isService) {
+            sendGeneratingNotification(requestId, input.serviceName, parsedSpec, eventHandler, "service");
+            const service = await generateService(specFilePath, packageRoot, tempProjectPath, parsedSpec, modifiedFiles);
+            return handleServiceSuccess(requestId, input.serviceName, parsedSpec, service, eventHandler);
+        }
 
         sendGeneratingNotification(requestId, input.serviceName, parsedSpec, eventHandler);
 
         const { moduleName, importStatement, generatedFiles } = await generateConnector(
             specFilePath,
+            packageRoot,
             tempProjectPath,
             sanitizedServiceName,
             projectName,
@@ -169,7 +197,7 @@ export async function ConnectorGeneratorTool(
             eventHandler
         );
     } catch (error: any) {
-        return handleError(error, input.serviceName, requestId, eventHandler);
+        return handleError(error, input.serviceName, requestId, eventHandler, input.mode);
     }
 }
 
@@ -229,11 +257,12 @@ async function saveSpecToWorkspace(
     format: "json" | "yaml",
     rawSpec: any,
     serviceName: string,
+    saveRoot: string,
     tempProjectPath: string,
     modifiedFiles?: string[]
 ): Promise<{ specFilePath: string; sanitizedServiceName: string }> {
     const sanitizedServiceName = serviceName.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-    const specsDir = path.join(tempProjectPath, "resources", "specs");
+    const specsDir = path.join(saveRoot, "resources", "specs");
     const fileExtension = format === "yaml" ? "yaml" : "json";
     const specFilePath = path.join(specsDir, `${sanitizedServiceName}.${fileExtension}`);
 
@@ -256,12 +285,14 @@ function sendGeneratingNotification(
     requestId: string,
     serviceName: string,
     parsedSpec: ParsedSpec,
-    eventHandler: CopilotEventHandler
+    eventHandler: CopilotEventHandler,
+    mode: "client" | "service" = "client"
 ): void {
     eventHandler({
         type: "connector_generation_notification",
         requestId,
         stage: "generating",
+        mode,
         serviceName,
         spec: {
             version: parsedSpec.version,
@@ -271,23 +302,23 @@ function sendGeneratingNotification(
             endpointCount: parsedSpec.endpointCount,
             methods: parsedSpec.methods,
         },
-        message: `Generating connector for "${parsedSpec.title}"...`,
+        message: `Generating ${mode === "service" ? "service" : "connector"} for "${parsedSpec.title}"...`,
     });
 }
 
 async function generateConnector(
     specFilePath: string,
+    packageRoot: string,
     tempProjectPath: string,
     moduleName: string,
     projectName?: string,
     modifiedFiles?: string[]
 ): Promise<{ moduleName: string; importStatement: string; generatedFiles: Array<{ path: string; content: string }> }> {
     const importStatement = `import ${projectName || "project"}.${moduleName}`;
-    const generatedFiles: Array<{ path: string; content: string }> = [];
 
     const response = await langClient.openApiGenerateClient({
         openApiContractPath: specFilePath,
-        projectPath: tempProjectPath,
+        projectPath: packageRoot,
         module: moduleName,
     });
 
@@ -295,9 +326,23 @@ async function generateConnector(
         throw new Error("LS API returned empty textEditsMap");
     }
 
-    const textEditsMap = new Map(Object.entries(response.source.textEditsMap));
+    const generatedFiles = await writeGeneratedEdits(response.source.textEditsMap, tempProjectPath, modifiedFiles);
 
-    for (const [filePath, edits] of textEditsMap.entries()) {
+    return { moduleName, importStatement, generatedFiles };
+}
+
+/**
+ * Applies the language server's edits to the temp project and returns every edited .bal file in
+ * full, so the agent can use it without reading the file.
+ */
+async function writeGeneratedEdits(
+    textEditsMap: { [filePath: string]: TextEdit[] },
+    tempProjectPath: string,
+    modifiedFiles?: string[]
+): Promise<Array<{ path: string; content: string }>> {
+    const generatedFiles: Array<{ path: string; content: string }> = [];
+
+    for (const [filePath, edits] of Object.entries(textEditsMap)) {
         const content = await applyTextEdits(filePath, edits);
         const relativePath = path.relative(tempProjectPath, filePath);
 
@@ -311,10 +356,7 @@ async function generateConnector(
 
         // Add .bal files to generatedFiles for agent visibility
         if (filePath.endsWith(".bal") && edits.length > 0) {
-            generatedFiles.push({
-                path: relativePath,
-                content: edits[0].newText,
-            });
+            generatedFiles.push({ path: relativePath, content });
         }
 
         // Track all generated files (including Ballerina.toml) for integration
@@ -323,7 +365,54 @@ async function generateConnector(
         }
     }
 
-    return { moduleName, importStatement, generatedFiles };
+    return generatedFiles;
+}
+
+/**
+ * Generates an HTTP service implementing the spec, through the service designer's "Import From
+ * OpenAPI Specification" path: the contract type and record types in service_contract_<Type>.bal,
+ * and the listener plus a stub for every resource in main.bal.
+ */
+async function generateService(
+    specFilePath: string,
+    packageRoot: string,
+    tempProjectPath: string,
+    parsedSpec: ParsedSpec,
+    modifiedFiles?: string[]
+): Promise<{ serviceTypeName: string; generatedFiles: Array<{ path: string; content: string }> }> {
+    const mainFile = path.join(packageRoot, "main.bal");
+    if (!fs.existsSync(mainFile)) {
+        fs.writeFileSync(mainFile, "", "utf-8");
+    }
+
+    const initResponse = await langClient.getServiceInitModel({
+        filePath: mainFile,
+        orgName: "ballerina",
+        pkgName: "http",
+        moduleName: "http",
+        listenerName: "",
+    });
+    if (!initResponse.serviceInitModel) {
+        throw new Error(`Could not load the HTTP service model: ${initResponse.errorMsg ?? "no model returned"}`);
+    }
+
+    const serviceTypeName = toServiceTypeName(parsedSpec.title);
+    const serviceInitModel = selectOpenApiDesign(initResponse.serviceInitModel, specFilePath, serviceTypeName);
+    const response = await langClient.createServiceAndListener({ filePath: mainFile, serviceInitModel });
+
+    if (response.errorMsg) {
+        throw new Error(`Service generation failed: ${response.errorMsg}`);
+    }
+    const blocking = blockingValidationMessages(response.validationErrors);
+    if (blocking.length > 0) {
+        throw new Error(`Service generation was rejected: ${blocking.join("; ")}`);
+    }
+    if (!response.textEdits || Object.keys(response.textEdits).length === 0) {
+        throw new Error("Service generation returned no source");
+    }
+
+    const generatedFiles = await writeGeneratedEdits(response.textEdits, tempProjectPath, modifiedFiles);
+    return { serviceTypeName, generatedFiles };
 }
 
 function handleSuccess(
@@ -366,11 +455,46 @@ function handleSuccess(
     };
 }
 
+function handleServiceSuccess(
+    requestId: string,
+    serviceName: string,
+    parsedSpec: ParsedSpec,
+    service: { serviceTypeName: string; generatedFiles: Array<{ path: string; content: string }> },
+    eventHandler: CopilotEventHandler
+): SpecFetcherResult {
+    eventHandler({
+        type: "connector_generation_notification",
+        requestId,
+        stage: "generated",
+        mode: "service",
+        serviceName,
+        spec: {
+            version: parsedSpec.version,
+            title: parsedSpec.title,
+            description: parsedSpec.description,
+            baseUrl: parsedSpec.baseUrl,
+            endpointCount: parsedSpec.endpointCount,
+            methods: parsedSpec.methods,
+        },
+        message: `Generated service "${service.serviceTypeName}" for "${parsedSpec.title}"`,
+    });
+
+    return {
+        success: true,
+        message: `Service generated for "${parsedSpec.title}" as ${service.serviceTypeName}. The types and resource signatures come from the spec: do not rewrite, rename or duplicate them. Implement the resource bodies in main.bal, then fix any remaining compilation errors.`,
+        service: {
+            serviceTypeName: service.serviceTypeName,
+            generatedFiles: service.generatedFiles,
+        },
+    };
+}
+
 function handleError(
     error: any,
     serviceName: string,
     requestId: string,
-    eventHandler?: CopilotEventHandler
+    eventHandler?: CopilotEventHandler,
+    mode?: "client" | "service"
 ): SpecFetcherResult {
     const errorMessage = error.message || "Unknown error";
     let errorCode: "USER_SKIPPED" | "INVALID_SPEC" | "PARSE_ERROR" | "UNSUPPORTED_VERSION" | "INVALID_INPUT";
@@ -390,6 +514,7 @@ function handleError(
             type: "connector_generation_notification",
             requestId,
             stage: "error",
+            mode,
             serviceName,
             error: {
                 message: errorMessage,

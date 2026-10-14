@@ -23,6 +23,8 @@ export interface SpecFetcherInput {
     specUrl?: string;
     /** The spec text, when the user pasted it into the chat rather than attaching it. */
     specContent?: string;
+    /** client (default): a connector for calling the API. service: a service implementing it. */
+    mode?: "client" | "service";
 }
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
@@ -69,6 +71,13 @@ export interface SpecFetcherSuccess {
     connector?: {
         moduleName: string;
         importStatement: string;
+        generatedFiles: Array<{
+            path: string;
+            content: string;
+        }>;
+    };
+    service?: {
+        serviceTypeName: string;
         generatedFiles: Array<{
             path: string;
             content: string;

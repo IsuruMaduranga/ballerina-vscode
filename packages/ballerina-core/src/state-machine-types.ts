@@ -629,6 +629,8 @@ export interface ConnectorGenerationNotification {
     type: "connector_generation_notification";
     requestId: string;
     stage: "requesting_input" | "input_received" | "generating" | "generated" | "skipped" | "error";
+    /** What is generated from the spec: a client connector (default) or a service implementing it. */
+    mode?: "client" | "service";
     serviceName?: string;
     serviceDescription?: string;
     spec?: {

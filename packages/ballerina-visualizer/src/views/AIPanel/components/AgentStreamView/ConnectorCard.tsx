@@ -107,6 +107,7 @@ interface ConnectorCardProps {
 
 const ConnectorCard: React.FC<ConnectorCardProps> = ({ data, rpcClient }) => {
     const stage: string = data.stage;
+    const isService = data.mode === "service";
     const [inputMethod, setInputMethod] = useState<"file" | "paste" | "url">("file");
     const [specContent, setSpecContent] = useState("");
     const [specUrl, setSpecUrl] = useState("");
@@ -298,7 +299,7 @@ const ConnectorCard: React.FC<ConnectorCardProps> = ({ data, rpcClient }) => {
                         <span className="codicon codicon-loading codicon-modifier-spin" />
                     </InlineCardIcon>
                     <InlineCardTitle>
-                        Generating connector{data.spec?.title ? ` for ${data.spec.title}` : "..."}
+                        Generating {isService ? "service" : "connector"}{data.spec?.title ? ` for ${data.spec.title}` : "..."}
                     </InlineCardTitle>
                 </InlineCardHeader>
             </InlineCard>
@@ -313,7 +314,7 @@ const ConnectorCard: React.FC<ConnectorCardProps> = ({ data, rpcClient }) => {
                         <span className="codicon codicon-pass" />
                     </InlineCardIcon>
                     <InlineCardTitle>
-                        Connector ready{data.spec?.title ? `: ${data.spec.title}` : (data.serviceName ? `: ${data.serviceName}` : "")}
+                        {isService ? "Service ready" : "Connector ready"}{data.spec?.title ? `: ${data.spec.title}` : (data.serviceName ? `: ${data.serviceName}` : "")}
                     </InlineCardTitle>
                 </InlineCardHeader>
                 {(data.connector || data.spec) && (
@@ -364,7 +365,7 @@ const ConnectorCard: React.FC<ConnectorCardProps> = ({ data, rpcClient }) => {
                     <InlineCardIcon style={{ color: "var(--vscode-errorForeground)" }}>
                         <span className="codicon codicon-warning" />
                     </InlineCardIcon>
-                    <InlineCardTitle>Connector generation failed</InlineCardTitle>
+                    <InlineCardTitle>{isService ? "Service generation failed" : "Connector generation failed"}</InlineCardTitle>
                 </InlineCardHeader>
                 <InlineStatusRow>{data.error.message}</InlineStatusRow>
             </InlineCard>

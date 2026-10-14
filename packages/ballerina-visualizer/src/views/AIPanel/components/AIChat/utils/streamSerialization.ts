@@ -193,7 +193,7 @@ export function upsertRequestCard(
  * here — otherwise it is silently dropped from the persisted transcript.
  */
 const REQUEST_CARD_FIELDS: Record<RequestCardKind, readonly string[]> = {
-    connector: ["requestId", "stage", "serviceName", "serviceDescription", "spec", "connector",
+    connector: ["requestId", "stage", "mode", "serviceName", "serviceDescription", "spec", "connector",
         "error", "message", "inputMethod", "sourceIdentifier"],
     config: ["requestId", "stage", "variables", "existingValues", "message", "isTestConfig", "error"],
     ask: ["requestId", "stage", "questions", "answers"],
