@@ -499,14 +499,7 @@ async function openDescriptionInEditor(docPath: string): Promise<void> {
     }
 }
 
-export function getFirstBalaPath(projectPath: string): string | null {
-    const balaDirPath = path.join(projectPath, 'target', 'bala');
-    if (!fs.existsSync(balaDirPath)) {
-        return null;
-    }
-    const files = fs.readdirSync(balaDirPath);
-    return files.length > 0 ? path.join(balaDirPath, files[0]) : null;
-}
+export { getBalaPath } from './bala';
 
 function resolveDocPath(projectPath: string, fileName: string): string | undefined {
     try {

@@ -81,7 +81,7 @@ import {
     askProjectPath,
     copyIntoIntegration,
     findWorkspaceTypeFromWorkspaceFolders,
-    getFirstBalaPath,
+    getBalaPath,
     getPublishDescriptionInfo,
     getPublishConfirmation,
     PublishPackageInfo,
@@ -817,7 +817,7 @@ export class CommonRpcManager implements CommonRPCAPI {
                     }
 
                     progress.report({ message: 'Publishing...' });
-                    const balaFilePath = getFirstBalaPath(projectPath);
+                    const balaFilePath = getBalaPath(projectPath);
                     if (!balaFilePath) {
                         result.message = 'No publishable artifact found at the target/bala directory';
                         return;
