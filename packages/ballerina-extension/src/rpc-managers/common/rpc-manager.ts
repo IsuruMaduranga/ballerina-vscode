@@ -81,7 +81,6 @@ import {
     askProjectPath,
     copyIntoIntegration,
     findWorkspaceTypeFromWorkspaceFolders,
-    getBalaPath,
     getPublishDescriptionInfo,
     getPublishConfirmation,
     PublishPackageInfo,
@@ -95,6 +94,7 @@ import {
     selectSampleDownloadPath,
     toIntegrationRelative
 } from "./utils";
+import { getBalaDirPath, getBalaPath } from "./bala";
 import { VisualizerWebview } from "../../views/visualizer/webview";
 
 export class CommonRpcManager implements CommonRPCAPI {
@@ -810,6 +810,8 @@ export class CommonRpcManager implements CommonRPCAPI {
             async (progress) => {
                 try {
                     progress.report({ message: 'Packing...' });
+                    // Never push a bala left over from an earlier pack.
+                    fs.rmSync(getBalaDirPath(projectPath), { recursive: true, force: true });
                     const packResult = await this.runPackCommand(projectPath);
                     if (packResult.error) {
                         result.message = packResult.message ?? '';

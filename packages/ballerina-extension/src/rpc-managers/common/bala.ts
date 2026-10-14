@@ -19,29 +19,23 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+export function getBalaDirPath(projectPath: string): string {
+    return path.join(projectPath, 'target', 'bala');
+}
+
 /**
  * Returns the `.bala` produced by `bal pack` under `target/bala`. The directory also holds
- * non-bala outputs (e.g. the `.cdx.json` SBOM) and may keep balas from earlier packs of
- * another version or platform, so pick the most recently written `.bala`.
+ * non-bala outputs (e.g. the `.cdx.json` SBOM), so the bala is matched by extension rather
+ * than by position. Callers clear the directory before packing, so it holds at most one.
  */
 export function getBalaPath(projectPath: string): string | null {
-    const balaDirPath = path.join(projectPath, 'target', 'bala');
+    const balaDirPath = getBalaDirPath(projectPath);
     let entries: fs.Dirent[];
     try {
         entries = fs.readdirSync(balaDirPath, { withFileTypes: true });
     } catch {
         return null;
     }
-    let latest: { filePath: string; mtimeMs: number } | null = null;
-    for (const entry of entries) {
-        if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== '.bala') {
-            continue;
-        }
-        const filePath = path.join(balaDirPath, entry.name);
-        const { mtimeMs } = fs.statSync(filePath);
-        if (!latest || mtimeMs > latest.mtimeMs) {
-            latest = { filePath, mtimeMs };
-        }
-    }
-    return latest?.filePath ?? null;
+    const bala = entries.find((entry) => entry.isFile() && path.extname(entry.name).toLowerCase() === '.bala');
+    return bala ? path.join(balaDirPath, bala.name) : null;
 }

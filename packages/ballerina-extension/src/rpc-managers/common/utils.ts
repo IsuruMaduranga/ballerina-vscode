@@ -499,8 +499,6 @@ async function openDescriptionInEditor(docPath: string): Promise<void> {
     }
 }
 
-export { getBalaPath } from './bala';
-
 function resolveDocPath(projectPath: string, fileName: string): string | undefined {
     try {
         const entries = fs.readdirSync(projectPath, { withFileTypes: true });

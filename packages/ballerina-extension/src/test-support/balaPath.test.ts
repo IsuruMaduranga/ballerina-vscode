@@ -19,8 +19,8 @@
 /**
  * @jest-environment node
  *
- * `bal pack` writes more than the bala into target/bala (a `.cdx.json` SBOM sorts ahead of it), and
- * older packs leave their balas behind, so the push step must pick the bala the pack just wrote.
+ * `bal pack` writes more than the bala into target/bala (e.g. a `.cdx.json` SBOM),
+ * so the push step must match the bala by extension rather than take the first entry.
  */
 
 import * as fs from "fs";
@@ -36,27 +36,18 @@ beforeEach(() => {
 });
 afterEach(() => { fs.rmSync(projectDir, { recursive: true, force: true }); });
 
-function writeFile(name: string, mtimeSeconds = 1_700_000_000): string {
+function writeFile(name: string): string {
     fs.mkdirSync(balaDir, { recursive: true });
     const filePath = path.join(balaDir, name);
     fs.writeFileSync(filePath, "");
-    fs.utimesSync(filePath, mtimeSeconds, mtimeSeconds);
     return filePath;
 }
 
 describe("getBalaPath", () => {
-    it("skips the SBOM that sorts ahead of the bala", () => {
+    it("skips the SBOM written next to the bala", () => {
         writeFile("alib1-0.1.0.cdx.json");
         const bala = writeFile("madusha-alib1-any-0.1.0.bala");
-        expect(fs.readdirSync(balaDir)[0]).toBe("alib1-0.1.0.cdx.json");
         expect(getBalaPath(projectDir)).toBe(bala);
-    });
-
-    it("returns the most recently written bala when stale ones remain", () => {
-        writeFile("madusha-alib1-any-0.1.0.bala", 1_700_000_000);
-        const latest = writeFile("madusha-alib1-any-0.2.0.bala", 1_700_000_100);
-        writeFile("madusha-alib1-java21-0.1.5.bala", 1_700_000_050);
-        expect(getBalaPath(projectDir)).toBe(latest);
     });
 
     it("ignores directories named like a bala", () => {
