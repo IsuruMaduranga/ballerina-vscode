@@ -17,10 +17,8 @@
  */
 
 /**
- * Prepares the HTTP service init model so the language server generates a service from an OpenAPI
- * spec: the same "Import From OpenAPI Specification" path the service designer takes. Kept apart
- * from connector-generator.ts because that module imports the language client, which cannot be
- * loaded in a unit test.
+ * Prepares the HTTP service init model for "Import From OpenAPI Specification". Kept apart from
+ * connector-generator.ts, which imports the language client and cannot be loaded in a unit test.
  */
 
 import type { ServiceInitModel, ValidationResult } from "@wso2/ballerina-core";
@@ -30,9 +28,8 @@ const SPEC = "spec";
 const SERVICE_TYPE_NAME = "serviceTypeName";
 
 /**
- * A service contract type name from the spec title, e.g. "Order Management API" ->
- * "OrderManagementAPIService". The suffix keeps it clear of the record types the spec generates,
- * which the language server rejects as a collision.
+ * "Order Management API" -> "OrderManagementAPIService". The suffix avoids a clash with the spec's
+ * record types, which the language server rejects.
  */
 export function toServiceTypeName(title: string | undefined): string {
     const words = (title ?? "").replace(/[^A-Za-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
@@ -43,10 +40,7 @@ export function toServiceTypeName(title: string | undefined): string {
     return name.endsWith("Service") ? name : `${name}Service`;
 }
 
-/**
- * Returns a copy of the model with the OpenAPI design approach selected and pointed at the spec.
- * Throws when the model has no such option, which means the language server is too old for it.
- */
+/** Returns a copy of the model with the OpenAPI design approach selected and pointed at the spec. */
 export function selectOpenApiDesign(model: ServiceInitModel, specPath: string, typeName: string): ServiceInitModel {
     const result: ServiceInitModel = structuredClone(model);
     const designApproach = result.properties?.[DESIGN_APPROACH];
@@ -65,7 +59,7 @@ export function selectOpenApiDesign(model: ServiceInitModel, specPath: string, t
     return result;
 }
 
-/** The messages of the validation results that stop the language server from generating source. */
+/** Messages of the validation errors that block generation. */
 export function blockingValidationMessages(results: ValidationResult[] | undefined): string[] {
     return (results ?? []).filter(result => result.severity === "ERROR").map(result => result.message);
 }

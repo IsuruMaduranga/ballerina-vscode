@@ -17,9 +17,8 @@
  */
 
 /**
- * Resolves an OpenAPI spec the user has already supplied, so the connector generator only asks for
- * one when there is none. Kept apart from connector-generator.ts because that module imports the
- * language client, which cannot be loaded in a unit test.
+ * Resolves an OpenAPI spec the user has already supplied. Kept apart from connector-generator.ts,
+ * which imports the language client and cannot be loaded in a unit test.
  */
 
 import * as yaml from "js-yaml";
@@ -51,10 +50,7 @@ export interface SpecContext {
 const URL_FETCH_TIMEOUT_MS = 30000;
 export const MAX_SPEC_BYTES = 10 * 1024 * 1024;
 
-/**
- * Reads the body as a stream and stops at MAX_SPEC_BYTES, so an oversized response is never
- * buffered whole into the extension host.
- */
+/** Reads the body as a stream and stops at MAX_SPEC_BYTES. */
 export async function readLimited(response: Response): Promise<string> {
     const reader = response.body?.getReader();
     if (!reader) {
@@ -87,9 +83,7 @@ const defaultFetch: SpecFetch = async (url) => {
     };
 };
 
-/**
- * Images and PDFs reach the agent as base64 data URLs, never as spec text.
- */
+/** Images and PDFs arrive as base64 data URLs, never as spec text. */
 export function isTextAttachment(attachment: FileAttatchment): boolean {
     const mimeType = attachment.mimeType ?? "";
     if (mimeType.startsWith("image/") || mimeType === "application/pdf") {
@@ -102,16 +96,18 @@ export function textAttachments(attachments: FileAttatchment[] | undefined): Fil
     return (attachments ?? []).filter(isTextAttachment);
 }
 
-/**
- * The thread's attachments, newest first: the current turn's, then each earlier turn's from the
- * most recent back. A file name attached twice therefore resolves to the latest copy.
- */
+/** The thread's attachments, newest first, so a file attached twice resolves to the latest copy. */
 export function collectThreadAttachments(
     current: FileAttatchment[] | undefined,
     earlierTurns: Array<{ fileAttachments?: FileAttatchment[] }>
 ): FileAttatchment[] {
     const earlier = [...earlierTurns].reverse().flatMap(turn => textAttachments(turn.fileAttachments));
     return [...textAttachments(current), ...earlier];
+}
+
+/** Only spec attachments are kept on a turn; the thread file is rewritten on every save. */
+export function specAttachments(attachments: FileAttatchment[] | undefined): FileAttatchment[] {
+    return textAttachments(attachments).filter(attachment => notAnOpenApiSpec(attachment.content) === undefined);
 }
 
 function baseName(fileName: string): string {
@@ -128,10 +124,7 @@ export function findAttachment(
         ?? candidates.find(a => baseName(a.fileName).toLowerCase() === wanted);
 }
 
-/**
- * The document's `openapi` or `swagger` version as a string. An unquoted YAML version such as
- * `swagger: 2.0` loads as the number 2, so a number is accepted and turned into a string.
- */
+/** The `openapi` or `swagger` version. An unquoted YAML `swagger: 2.0` loads as the number 2. */
 export function specVersion(doc: Record<string, unknown>): string | undefined {
     const raw = doc.openapi ?? doc.swagger;
     if (typeof raw === "string") {
@@ -145,11 +138,7 @@ export function isSupportedSpecVersion(version: string): boolean {
     return /^[23](\.|$)/.test(version);
 }
 
-/**
- * Returns why the text is not an OpenAPI or Swagger document, or undefined when it is one.
- * Checked before a source counts as resolved, so a docs page, an error body or an unrelated
- * file falls back to asking the user instead of failing later in the generator.
- */
+/** Returns why the text is not a usable OpenAPI or Swagger document, or undefined when it is one. */
 export function notAnOpenApiSpec(text: string): string | undefined {
     let doc: unknown;
     try {
@@ -176,9 +165,8 @@ function urlInUserText(url: string, userText: string | undefined): boolean {
 }
 
 /**
- * Returns the spec the user supplied through the chat: an attached file, pasted text or a URL, in
- * that order. "none" means nothing was supplied and the user should be asked. "unresolved" means
- * something was supplied but could not be used; asking the user is the fallback there too.
+ * Returns the spec the user supplied: an attached file, pasted text or a URL, in that order.
+ * The user is asked for one on "none" (nothing supplied) and "unresolved" (supplied but unusable).
  */
 export async function resolveProvidedSpec(
     input: SpecFetcherInput,
@@ -218,8 +206,7 @@ export async function resolveProvidedSpec(
     if (input.specUrl?.trim()) {
         const url = input.specUrl.trim();
         if (!urlInUserText(url, context.userText)) {
-            // The URL came from the model, not the user; fetching it from the extension host
-            // could reach anything the user's machine can.
+            // A URL the user did not write could point anywhere the user's machine can reach.
             reasons.push(`${url} does not appear in the user's messages`);
         } else {
             try {

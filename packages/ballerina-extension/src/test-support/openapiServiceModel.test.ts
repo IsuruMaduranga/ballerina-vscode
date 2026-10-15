@@ -17,10 +17,8 @@
  */
 
 /**
- * The connector generator's service mode drives the same "Import From OpenAPI Specification" path
- * as the service designer, by editing the HTTP service init model the language server returns. The
- * model is read from the language server's own resource file, so a change to its shape fails here
- * instead of silently generating a from-scratch service.
+ * Service mode edits the language server's HTTP service init model. It is read from the language
+ * server's own resource file, so a change to its shape fails here.
  */
 
 import * as fs from "fs";

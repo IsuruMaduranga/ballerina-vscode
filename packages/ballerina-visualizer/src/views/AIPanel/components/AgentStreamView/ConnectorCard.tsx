@@ -186,13 +186,17 @@ const ConnectorCard: React.FC<ConnectorCardProps> = ({ data, rpcClient }) => {
                     <InlineCardIcon><span className="codicon codicon-plug" /></InlineCardIcon>
                     <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
                         <InlineCardTitle>
-                            Generate Connector{data.serviceName ? `: ${data.serviceName}` : ""}
+                            {isService ? "Generate Service" : "Generate Connector"}{data.serviceName ? `: ${data.serviceName}` : ""}
                         </InlineCardTitle>
                         {data.serviceDescription && (
                             <InlineCardSubtitle>{data.serviceDescription}</InlineCardSubtitle>
                         )}
                     </div>
                 </InlineCardHeader>
+
+                {data.reason && (
+                    <InlineErrorText>Couldn't use the spec you supplied: {data.reason}</InlineErrorText>
+                )}
 
                 <InlineTabRow>
                     {(["file", "url", "paste"] as const).map(m => (
@@ -269,7 +273,7 @@ const ConnectorCard: React.FC<ConnectorCardProps> = ({ data, rpcClient }) => {
                 <SkipRow>
                     {showSkipConfirm ? (
                         <>
-                            <SkipWarning>Skip connector generation?</SkipWarning>
+                            <SkipWarning>{isService ? "Skip service generation?" : "Skip connector generation?"}</SkipWarning>
                             <InlineButton variant="secondary" onClick={() => setShowSkipConfirm(false)}>
                                 Cancel
                             </InlineButton>
@@ -351,7 +355,7 @@ const ConnectorCard: React.FC<ConnectorCardProps> = ({ data, rpcClient }) => {
                         <span className="codicon codicon-circle-slash" />
                     </InlineCardIcon>
                     <InlineCardTitle>
-                        Connector generation skipped{data.serviceName ? `: ${data.serviceName}` : ""}
+                        {isService ? "Service generation skipped" : "Connector generation skipped"}{data.serviceName ? `: ${data.serviceName}` : ""}
                     </InlineCardTitle>
                 </InlineCardHeader>
             </InlineCard>

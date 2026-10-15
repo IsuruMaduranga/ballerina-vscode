@@ -21,6 +21,7 @@ import * as path from "path";
 import * as yaml from "js-yaml";
 import { z } from "zod";
 import {
+    SpecFetcherErrorCode,
     SpecFetcherInput,
     SpecFetcherResult,
     ParsedSpec,
@@ -37,6 +38,7 @@ import { approvalManager } from '../../state/ApprovalManager';
 import { SUBAGENT_TOOL_NAME } from "../subagents/types";
 import { recordAiTouchedFile } from "../../../../rpc-managers/diagram-validity";
 import { addToIntegration } from "../../../../rpc-managers/ai-panel/utils";
+import { writeBallerinaFileDidOpen } from "../../../../utils/modification";
 import { isSupportedSpecVersion, resolveProvidedSpec, SpecContext, specVersion } from "./connector-spec-source";
 import { blockingValidationMessages, selectOpenApiDesign, toServiceTypeName } from "./openapi-service-model";
 
@@ -136,6 +138,9 @@ export async function ConnectorGeneratorTool(
     // requestId must be defined before try block to ensure it's available in catch
     const requestId = crypto.randomUUID();
 
+    // A failure after the spec parses is in generation, not in the spec.
+    let specAccepted = false;
+
     try {
         // Ask only when the user has not already supplied the spec through the chat.
         const provided = await resolveProvidedSpec(input, specContext ?? {});
@@ -143,20 +148,21 @@ export async function ConnectorGeneratorTool(
         if (provided.kind === "resolved") {
             spec = provided.spec;
         } else {
-            if (provided.kind === "unresolved") {
-                console.warn(`[ConnectorGeneratorTool] Could not use the supplied spec for ${input.serviceName}: ${provided.reason}`);
+            const reason = provided.kind === "unresolved" ? provided.reason : undefined;
+            if (reason) {
+                console.warn(`[ConnectorGeneratorTool] Could not use the supplied spec for ${input.serviceName}: ${reason}`);
             }
-            const userInput = await requestSpecFromUser(requestId, input, eventHandler);
+            const userInput = await requestSpecFromUser(requestId, input, eventHandler, reason);
             if (!userInput.provided) {
-                return handleUserSkip(requestId, input.serviceName, userInput.comment, eventHandler);
+                return handleUserSkip(requestId, input, userInput.comment, eventHandler, reason);
             }
             spec = userInput.spec;
         }
 
         const { rawSpec, parsedSpec, originalContent, format } = parseAndValidateSpec(spec);
+        specAccepted = true;
 
-        // Code is generated into a package, which in a workspace project is a subfolder of the
-        // workspace root; the root itself belongs to no package, so a module there cannot resolve.
+        // In a workspace project the package is a subfolder; the workspace root belongs to no package.
         const packageRoot = path.join(tempProjectPath, packagePath ?? "");
         const isService = input.mode === "service";
 
@@ -197,46 +203,50 @@ export async function ConnectorGeneratorTool(
             eventHandler
         );
     } catch (error: any) {
-        return handleError(error, input.serviceName, requestId, eventHandler, input.mode);
+        return handleError(error, input.serviceName, requestId, eventHandler, input.mode, specAccepted);
     }
 }
 
 async function requestSpecFromUser(
     requestId: string,
     input: SpecFetcherInput,
-    eventHandler: CopilotEventHandler
+    eventHandler: CopilotEventHandler,
+    reason?: string
 ): Promise<{ provided: boolean; spec?: any; comment?: string }> {
-    eventHandler({
-        type: "connector_generation_notification",
-        requestId,
-        stage: "requesting_input",
+    // ApprovalManager emits the requesting_input event, so the card details go through it.
+    return approvalManager.requestConnectorSpec(requestId, eventHandler, {
+        mode: input.mode,
         serviceName: input.serviceName,
         serviceDescription: input.serviceDescription,
+        reason,
         message: `Please provide OpenAPI specification for ${input.serviceName}${
             input.serviceDescription ? ` (${input.serviceDescription})` : ""
         }`,
     });
-
-    return waitForUserResponse(requestId, eventHandler);
 }
 
 function handleUserSkip(
     requestId: string,
-    serviceName: string,
+    input: SpecFetcherInput,
     comment: string | undefined,
-    eventHandler: CopilotEventHandler
+    eventHandler: CopilotEventHandler,
+    reason?: string
 ): SpecFetcherResult {
+    const serviceName = input.serviceName;
     eventHandler({
         type: "connector_generation_notification",
         requestId,
         stage: "skipped",
+        mode: input.mode,
         serviceName,
+        reason,
         message: `Skipped providing spec for ${serviceName}${comment ? ": " + comment : ""}`,
     });
 
+    const unusable = reason ? ` The spec the user supplied could not be used (${reason}), and they did not provide another.` : "";
     return {
         success: false,
-        message: `User skipped providing OpenAPI specification for ${serviceName}. Do NOT call this tool again for ${serviceName} — proceed with the implementation without this connector.`,
+        message: `User skipped providing OpenAPI specification for ${serviceName}.${unusable} Do NOT call this tool again for ${serviceName} — proceed with the implementation without this connector.`,
         error: `User skipped providing spec for ${serviceName}${comment ? ": " + comment : ""}`,
         errorCode: "USER_SKIPPED",
         details: "User chose not to provide the OpenAPI specification",
@@ -331,10 +341,7 @@ async function generateConnector(
     return { moduleName, importStatement, generatedFiles };
 }
 
-/**
- * Applies the language server's edits to the temp project and returns every edited .bal file in
- * full, so the agent can use it without reading the file.
- */
+/** Applies the language server's edits and returns each edited .bal file in full. */
 async function writeGeneratedEdits(
     textEditsMap: { [filePath: string]: TextEdit[] },
     tempProjectPath: string,
@@ -368,21 +375,29 @@ async function writeGeneratedEdits(
     return generatedFiles;
 }
 
-/**
- * Generates an HTTP service implementing the spec, through the service designer's "Import From
- * OpenAPI Specification" path: the contract type and record types in service_contract_<Type>.bal,
- * and the listener plus a stub for every resource in main.bal.
- */
+/** Generates an HTTP service implementing the spec, the same way the service designer imports one. */
 async function generateService(
     specFilePath: string,
     packageRoot: string,
     tempProjectPath: string,
     parsedSpec: ParsedSpec,
     modifiedFiles?: string[]
-): Promise<{ serviceTypeName: string; generatedFiles: Array<{ path: string; content: string }> }> {
+): Promise<GeneratedService> {
+    const serviceTypeName = toServiceTypeName(parsedSpec.title);
+
+    // Generating again would duplicate the service and every type. Only the name is checked, not the spec.
+    const contractFile = path.join(packageRoot, `service_contract_${serviceTypeName}.bal`);
+    if (fs.existsSync(contractFile)) {
+        const generatedFiles = [contractFile, path.join(packageRoot, "main.bal")]
+            .filter(file => fs.existsSync(file))
+            .map(file => ({ path: path.relative(tempProjectPath, file), content: fs.readFileSync(file, "utf-8") }));
+        return { serviceTypeName, generatedFiles, alreadyExisted: true };
+    }
+
     const mainFile = path.join(packageRoot, "main.bal");
     if (!fs.existsSync(mainFile)) {
-        fs.writeFileSync(mainFile, "", "utf-8");
+        // Through the language server, so its loaded package includes the new file.
+        await writeBallerinaFileDidOpen(mainFile, "\n");
     }
 
     const initResponse = await langClient.getServiceInitModel({
@@ -396,7 +411,6 @@ async function generateService(
         throw new Error(`Could not load the HTTP service model: ${initResponse.errorMsg ?? "no model returned"}`);
     }
 
-    const serviceTypeName = toServiceTypeName(parsedSpec.title);
     const serviceInitModel = selectOpenApiDesign(initResponse.serviceInitModel, specFilePath, serviceTypeName);
     const response = await langClient.createServiceAndListener({ filePath: mainFile, serviceInitModel });
 
@@ -412,7 +426,7 @@ async function generateService(
     }
 
     const generatedFiles = await writeGeneratedEdits(response.textEdits, tempProjectPath, modifiedFiles);
-    return { serviceTypeName, generatedFiles };
+    return { serviceTypeName, generatedFiles, alreadyExisted: false };
 }
 
 function handleSuccess(
@@ -455,11 +469,18 @@ function handleSuccess(
     };
 }
 
+interface GeneratedService {
+    serviceTypeName: string;
+    generatedFiles: Array<{ path: string; content: string }>;
+    /** True when a service of this name already existed and was left unchanged. */
+    alreadyExisted: boolean;
+}
+
 function handleServiceSuccess(
     requestId: string,
     serviceName: string,
     parsedSpec: ParsedSpec,
-    service: { serviceTypeName: string; generatedFiles: Array<{ path: string; content: string }> },
+    service: GeneratedService,
     eventHandler: CopilotEventHandler
 ): SpecFetcherResult {
     eventHandler({
@@ -479,6 +500,14 @@ function handleServiceSuccess(
         message: `Generated service "${service.serviceTypeName}" for "${parsedSpec.title}"`,
     });
 
+    if (service.alreadyExisted) {
+        return {
+            success: true,
+            message: `The project already has a service generated as ${service.serviceTypeName} (from a spec titled "${parsedSpec.title}"), so nothing was regenerated and no files were changed. This only means a service with that name exists: it does NOT mean the existing files match the supplied spec, which may have changed since. Do NOT call this tool again for it. Compare the existing contract below with the supplied spec, update the contract and the implementation in main.bal for any differences, and tell the user what you changed.`,
+            service: { serviceTypeName: service.serviceTypeName, generatedFiles: service.generatedFiles },
+        };
+    }
+
     return {
         success: true,
         message: `Service generated for "${parsedSpec.title}" as ${service.serviceTypeName}. The types and resource signatures come from the spec: do not rewrite, rename or duplicate them. Implement the resource bodies in main.bal, then fix any remaining compilation errors.`,
@@ -494,12 +523,15 @@ function handleError(
     serviceName: string,
     requestId: string,
     eventHandler?: CopilotEventHandler,
-    mode?: "client" | "service"
+    mode?: "client" | "service",
+    specAccepted = false
 ): SpecFetcherResult {
     const errorMessage = error.message || "Unknown error";
-    let errorCode: "USER_SKIPPED" | "INVALID_SPEC" | "PARSE_ERROR" | "UNSUPPORTED_VERSION" | "INVALID_INPUT";
+    let errorCode: SpecFetcherErrorCode;
 
-    if (errorMessage.includes("Unsupported OpenAPI version")) {
+    if (specAccepted) {
+        errorCode = "GENERATION_FAILED";
+    } else if (errorMessage.includes("Unsupported OpenAPI version")) {
         errorCode = "UNSUPPORTED_VERSION";
     } else if (errorMessage.includes("JSON") || errorMessage.includes("YAML")) {
         errorCode = "PARSE_ERROR";
@@ -527,20 +559,22 @@ function handleError(
     return createErrorResult(errorCode, errorMessage, serviceName, error.stack);
 }
 
-async function waitForUserResponse(
-    requestId: string,
-    eventHandler: CopilotEventHandler
-): Promise<{ provided: boolean; spec?: any; comment?: string }> {
-    // Use ApprovalManager for connector spec approval (replaces state machine subscription)
-    return approvalManager.requestConnectorSpec(requestId, eventHandler);
-}
-
 function createErrorResult(
-    errorCode: "USER_SKIPPED" | "INVALID_SPEC" | "PARSE_ERROR" | "UNSUPPORTED_VERSION" | "INVALID_INPUT",
+    errorCode: SpecFetcherErrorCode,
     errorMessage: string,
     serviceName: string,
     details?: string
 ): SpecFetcherResult {
+    if (errorCode === "GENERATION_FAILED") {
+        return {
+            success: false,
+            message: `The OpenAPI specification for ${serviceName} was accepted, but generating code from it failed. Do NOT ask the user for the spec again. Read the error, then fix the cause in the project if it is there, or implement the integration directly from the spec.`,
+            error: errorMessage,
+            errorCode,
+            details,
+        };
+    }
+
     const errorDescriptions = {
         PARSE_ERROR: "The spec format is invalid.",
         UNSUPPORTED_VERSION: "The OpenAPI version is not supported.",

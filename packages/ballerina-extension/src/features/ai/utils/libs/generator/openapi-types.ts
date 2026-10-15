@@ -85,11 +85,20 @@ export interface SpecFetcherSuccess {
     };
 }
 
+export type SpecFetcherErrorCode =
+    | "USER_SKIPPED"
+    | "INVALID_SPEC"
+    | "PARSE_ERROR"
+    | "UNSUPPORTED_VERSION"
+    | "INVALID_INPUT"
+    /** The spec was accepted; generating code from it failed. */
+    | "GENERATION_FAILED";
+
 export interface SpecFetcherError {
     success: false;
     message?: string;
     error: string;
-    errorCode: "USER_SKIPPED" | "INVALID_SPEC" | "PARSE_ERROR" | "UNSUPPORTED_VERSION" | "INVALID_INPUT";
+    errorCode: SpecFetcherErrorCode;
     details?: string;
 }
 

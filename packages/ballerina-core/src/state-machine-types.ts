@@ -633,6 +633,8 @@ export interface ConnectorGenerationNotification {
     mode?: "client" | "service";
     serviceName?: string;
     serviceDescription?: string;
+    /** Why a spec the user already supplied could not be used, shown on the upload card. */
+    reason?: string;
     spec?: {
         version: string;
         title: string;

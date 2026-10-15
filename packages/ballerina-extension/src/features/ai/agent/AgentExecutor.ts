@@ -43,7 +43,7 @@ import { StreamContext } from './stream-handlers/stream-context';
 import { checkCompilationErrors } from './tools/diagnostics-utils';
 import { TASK_WRITE_TOOL_NAME } from './tools/task-writer';
 import { FILE_BATCH_EDIT_TOOL_NAME, FILE_SINGLE_EDIT_TOOL_NAME } from './tools/text-editor';
-import { collectThreadAttachments, SpecContext, textAttachments } from './tools/connector-spec-source';
+import { collectThreadAttachments, SpecContext, specAttachments, textAttachments } from './tools/connector-spec-source';
 import {
     MAX_TRUNCATION_RETRIES,
     addUsage,
@@ -329,9 +329,8 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
     }
 
     /**
-     * What the user has supplied in this thread, for the connector generator to take a spec from.
-     * This turn's text attachments are saved on its generation first, so a later turn can still
-     * read a spec attached here instead of asking for it again.
+     * The thread's attachments and user text, for the connector generator to take a spec from.
+     * This turn's spec attachments are saved so a later turn can still use them.
      */
     private buildSpecContext(threadId: string): SpecContext {
         const params = this.config.params;
@@ -340,8 +339,9 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             return { attachments: current, userText: params.usecase };
         }
         const generationId = this.config.generationId;
-        if (current.length > 0 && chatStateStorage.getGeneration(this.chatStoreKey, threadId, generationId)) {
-            chatStateStorage.updateGeneration(this.chatStoreKey, threadId, generationId, { fileAttachments: current });
+        const specs = specAttachments(current);
+        if (specs.length > 0 && chatStateStorage.getGeneration(this.chatStoreKey, threadId, generationId)) {
+            chatStateStorage.updateGeneration(this.chatStoreKey, threadId, generationId, { fileAttachments: specs });
         }
         const earlier = chatStateStorage.getGenerations(this.chatStoreKey, threadId).filter(g => g.id !== generationId);
         return {

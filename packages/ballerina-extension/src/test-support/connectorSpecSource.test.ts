@@ -17,15 +17,14 @@
  */
 
 /**
- * The connector generator must ask the user for an OpenAPI spec only when none was supplied. A spec
- * the user already attached, pasted or linked has to be used directly, otherwise the run blocks on an
- * upload card the user believes they have already answered. Anything supplied that is not a usable
- * spec has to fall back to that card rather than fail in the generator.
+ * A spec the user already attached, pasted or linked must be used without asking again. Anything
+ * supplied that is not a usable spec must fall back to the upload card, not fail in the generator.
  */
 
 import {
     collectThreadAttachments,
     isSupportedSpecVersion,
+    specAttachments,
     MAX_SPEC_BYTES,
     notAnOpenApiSpec,
     readLimited,
@@ -132,6 +131,17 @@ describe("collectThreadAttachments", () => {
     });
 });
 
+describe("specAttachments", () => {
+    it("keeps only attachments that are OpenAPI or Swagger specs", () => {
+        const kept = specAttachments([
+            ...attachments,
+            { fileName: "legacy.json", content: SWAGGER_JSON },
+            { fileName: "openapi-4.yaml", content: "openapi: 4.0.0\ninfo:\n  title: x" },
+        ]);
+        expect(kept.map(a => a.fileName)).toEqual(["order-api.yaml", "legacy.json"]);
+    });
+});
+
 describe("notAnOpenApiSpec", () => {
     it.each([
         ["OpenAPI 3 YAML", SPEC],
@@ -142,8 +152,7 @@ describe("notAnOpenApiSpec", () => {
         expect(notAnOpenApiSpec(text)).toBeUndefined();
     });
 
-    // The generator only supports these versions, so anything else must fall back to the upload
-    // card here rather than fail in the generator after the card was skipped.
+    // Unsupported versions must fall back to the upload card rather than fail in the generator.
     it.each([
         ["OpenAPI 4", "openapi: 4.0.0\ninfo:\n  title: x"],
         ["Swagger 1.2", "swagger: '1.2'\ninfo:\n  title: x"],

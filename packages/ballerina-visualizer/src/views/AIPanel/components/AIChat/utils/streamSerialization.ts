@@ -194,7 +194,7 @@ export function upsertRequestCard(
  */
 const REQUEST_CARD_FIELDS: Record<RequestCardKind, readonly string[]> = {
     connector: ["requestId", "stage", "mode", "serviceName", "serviceDescription", "spec", "connector",
-        "error", "message", "inputMethod", "sourceIdentifier"],
+        "error", "message", "inputMethod", "sourceIdentifier", "reason"],
     config: ["requestId", "stage", "variables", "existingValues", "message", "isTestConfig", "error"],
     ask: ["requestId", "stage", "questions", "answers"],
     skill_enable: ["requestId", "stage", "skillName", "skillId"],
