@@ -25,6 +25,7 @@ import * as fs from "fs";
 import * as path from "path";
 import {
     blockingValidationMessages,
+    implementsServiceContract,
     selectOpenApiDesign,
     toServiceTypeName,
 } from "../features/ai/agent/tools/openapi-service-model";
@@ -77,6 +78,21 @@ describe("toServiceTypeName", () => {
         for (const title of ["Ünïcödé — API!", "  spaces  ", "a.b/c", "9", "___"]) {
             expect(toServiceTypeName(title)).toMatch(/^[A-Za-z][A-Za-z0-9]*$/);
         }
+    });
+});
+
+describe("implementsServiceContract", () => {
+    it("finds the service that implements the contract", () => {
+        const source = "listener http:Listener l = http:getDefaultListener();\n\nservice OrdersService on l {\n}\n";
+        expect(implementsServiceContract(source, "OrdersService")).toBe(true);
+    });
+
+    it.each([
+        ["no service", "type OrdersService service object {};"],
+        ["a service for another contract", "service OrdersServiceV2 on l {}"],
+        ["a base-path service", "service /orders on l {}"],
+    ])("does not match %s", (_label, source) => {
+        expect(implementsServiceContract(source, "OrdersService")).toBe(false);
     });
 });
 

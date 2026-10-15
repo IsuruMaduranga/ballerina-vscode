@@ -159,9 +159,11 @@ export function notAnOpenApiSpec(text: string): string | undefined {
     return undefined;
 }
 
-function urlInUserText(url: string, userText: string | undefined): boolean {
-    const normalise = (value: string) => value.replace(/\/+$/, "");
-    return !!userText && userText.includes(normalise(url));
+/** Whether the user wrote exactly this URL; a URL that is only a prefix of one they wrote does not count. */
+export function urlInUserText(url: string, userText: string | undefined): boolean {
+    const normalise = (value: string) => value.trim().replace(/[.,;:!?]+$/, "").replace(/\/+$/, "");
+    const wanted = normalise(url);
+    return (userText?.match(/https?:\/\/[^\s<>"'`()[\]]+/g) ?? []).some(written => normalise(written) === wanted);
 }
 
 /**

@@ -40,7 +40,7 @@ import { recordAiTouchedFile } from "../../../../rpc-managers/diagram-validity";
 import { addToIntegration } from "../../../../rpc-managers/ai-panel/utils";
 import { writeBallerinaFileDidOpen } from "../../../../utils/modification";
 import { isSupportedSpecVersion, resolveProvidedSpec, SpecContext, specVersion } from "./connector-spec-source";
-import { blockingValidationMessages, selectOpenApiDesign, toServiceTypeName } from "./openapi-service-model";
+import { blockingValidationMessages, implementsServiceContract, selectOpenApiDesign, toServiceTypeName } from "./openapi-service-model";
 
 export const CONNECTOR_GENERATOR_TOOL = "ConnectorGeneratorTool";
 
@@ -388,8 +388,14 @@ async function generateService(
     // Generating again would duplicate the service and every type. Only the name is checked, not the spec.
     const contractFile = path.join(packageRoot, `service_contract_${serviceTypeName}.bal`);
     if (fs.existsSync(contractFile)) {
-        const generatedFiles = [contractFile, path.join(packageRoot, "main.bal")]
-            .filter(file => fs.existsSync(file))
+        const serviceFile = fs.readdirSync(packageRoot)
+            .filter(name => name.endsWith(".bal") && path.join(packageRoot, name) !== contractFile)
+            .map(name => path.join(packageRoot, name))
+            .find(file => implementsServiceContract(fs.readFileSync(file, "utf-8"), serviceTypeName));
+        if (!serviceFile) {
+            throw new Error(`${path.basename(contractFile)} exists, but no service in the package implements ${serviceTypeName}`);
+        }
+        const generatedFiles = [contractFile, serviceFile]
             .map(file => ({ path: path.relative(tempProjectPath, file), content: fs.readFileSync(file, "utf-8") }));
         return { serviceTypeName, generatedFiles, alreadyExisted: true };
     }
@@ -503,7 +509,7 @@ function handleServiceSuccess(
     if (service.alreadyExisted) {
         return {
             success: true,
-            message: `The project already has a service generated as ${service.serviceTypeName} (from a spec titled "${parsedSpec.title}"), so nothing was regenerated and no files were changed. This only means a service with that name exists: it does NOT mean the existing files match the supplied spec, which may have changed since. Do NOT call this tool again for it. Compare the existing contract below with the supplied spec, update the contract and the implementation in main.bal for any differences, and tell the user what you changed.`,
+            message: `The project already has a service generated as ${service.serviceTypeName} (from a spec titled "${parsedSpec.title}"), so nothing was regenerated and no files were changed. This only means a service with that name exists: it does NOT mean the existing files match the supplied spec, which may have changed since. Do NOT call this tool again for it. Compare the existing contract below with the supplied spec, update the contract and the service implementing it for any differences, and tell the user what you changed.`,
             service: { serviceTypeName: service.serviceTypeName, generatedFiles: service.generatedFiles },
         };
     }

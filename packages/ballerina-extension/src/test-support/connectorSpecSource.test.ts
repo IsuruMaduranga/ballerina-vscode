@@ -25,6 +25,7 @@ import {
     collectThreadAttachments,
     isSupportedSpecVersion,
     specAttachments,
+    urlInUserText,
     MAX_SPEC_BYTES,
     notAnOpenApiSpec,
     readLimited,
@@ -128,6 +129,27 @@ describe("collectThreadAttachments", () => {
         const current = { fileName: "new.yaml", content: SPEC };
         const thread = collectThreadAttachments([current, attachments[0]], [{ fileAttachments: attachments }]);
         expect(thread.map(a => a.fileName)).toEqual(["new.yaml", "notes.txt", "order-api.yaml"]);
+    });
+});
+
+describe("urlInUserText", () => {
+    it.each([
+        ["the exact URL", URL, `Use ${URL}`],
+        ["a trailing slash difference", `${URL}/`, `Use ${URL}`],
+        ["trailing sentence punctuation", URL, `The spec is at ${URL}.`],
+        ["a URL in angle brackets", URL, `Spec: <${URL}>`],
+        ["a URL in a markdown link", URL, `See [the spec](${URL})`],
+    ])("accepts %s", (_label, url, text) => {
+        expect(urlInUserText(url, text)).toBe(true);
+    });
+
+    it.each([
+        ["a prefix of a longer host", "https://api.example.com", "Use https://api.example.com.evil.net/spec"],
+        ["a prefix of a longer path", "https://example.com/spec", "Use https://example.com/spec.yaml"],
+        ["a URL the user did not write", URL, "Create an API from my spec"],
+        ["no user text", URL, undefined],
+    ])("rejects %s", (_label, url, text) => {
+        expect(urlInUserText(url, text)).toBe(false);
     });
 });
 
