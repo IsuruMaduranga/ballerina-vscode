@@ -202,6 +202,29 @@ export default function createTests() {
             await configEditor.verifyNumberofWarningIntegration(2);
         });
 
+        test('Edit Configuration Without Default Value', async () => {
+            const configEditor = new ConfigEditor(page.page, BI_INTEGRATOR_LABEL);
+            await configEditor.init();
+            const configurationWebView = configEditor.getWebView();
+
+            // Open the edit form of the required 'destination' variable created in the previous test
+            await configEditor.editConfigurableVariable('destination');
+            const editForm = new Form(page.page, BI_INTEGRATOR_LABEL, configurationWebView);
+            await editForm.switchToFormView(false, configurationWebView);
+
+            // The name is checked against the language server after a debounce; give that check time to
+            // land so a "name already used" error for the variable's own name is not missed.
+            await page.page.waitForTimeout(3000);
+            await expect(configurationWebView.getByText('This variable name is already used', { exact: false }))
+                .toHaveCount(0);
+
+            const saveButton = configurationWebView.getByRole('button', { name: 'Save' });
+            await expect(saveButton).toBeEnabled({ timeout: 10000 });
+            await domClick(saveButton);
+            await configEditor.verifyConfigurableVariable('destination', '', '');
+            await configEditor.verifyWarning('destination');
+        });
+
         test('Update Config TOML Value and Remove Warning', async () => {
             const configEditor = new ConfigEditor(page.page, BI_INTEGRATOR_LABEL);
             await configEditor.init();
