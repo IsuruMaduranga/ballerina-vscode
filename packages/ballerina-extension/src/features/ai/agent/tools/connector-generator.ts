@@ -39,7 +39,7 @@ import { SUBAGENT_TOOL_NAME } from "../subagents/types";
 import { recordAiTouchedFile } from "../../../../rpc-managers/diagram-validity";
 import { addToIntegration } from "../../../../rpc-managers/ai-panel/utils";
 import { writeBallerinaFileDidOpen } from "../../../../utils/modification";
-import { isSupportedSpecVersion, resolveProvidedSpec, SpecContext, specVersion } from "./connector-spec-source";
+import { isSupportedSpecVersion, resolveProvidedSpec, SpecContext, specVersion, withRelativeSpecPath } from "./connector-spec-source";
 import { blockingValidationMessages, implementsServiceContract, selectOpenApiDesign, toServiceTypeName } from "./openapi-service-model";
 
 export const CONNECTOR_GENERATOR_TOOL = "ConnectorGeneratorTool";
@@ -184,7 +184,7 @@ export async function ConnectorGeneratorTool(
 
         sendGeneratingNotification(requestId, input.serviceName, parsedSpec, eventHandler);
 
-        const { moduleName, importStatement, generatedFiles } = await generateConnector(
+        const connector = await generateConnector(
             specFilePath,
             packageRoot,
             tempProjectPath,
@@ -193,15 +193,7 @@ export async function ConnectorGeneratorTool(
             modifiedFiles
         );
 
-        return handleSuccess(
-            requestId,
-            input.serviceName,
-            parsedSpec,
-            moduleName,
-            importStatement,
-            generatedFiles,
-            eventHandler
-        );
+        return handleSuccess(requestId, input.serviceName, parsedSpec, connector, eventHandler);
     } catch (error: any) {
         return handleError(error, input.serviceName, requestId, eventHandler, input.mode, specAccepted);
     }
@@ -323,7 +315,7 @@ async function generateConnector(
     moduleName: string,
     projectName?: string,
     modifiedFiles?: string[]
-): Promise<{ moduleName: string; importStatement: string; generatedFiles: Array<{ path: string; content: string }> }> {
+): Promise<GeneratedConnector> {
     const importStatement = `import ${projectName || "project"}.${moduleName}`;
 
     const response = await langClient.openApiGenerateClient({
@@ -336,9 +328,35 @@ async function generateConnector(
         throw new Error("LS API returned empty textEditsMap");
     }
 
-    const generatedFiles = await writeGeneratedEdits(response.source.textEditsMap, tempProjectPath, modifiedFiles);
+    // Applying the edits again would add a second copy of every file, as the low-code form also guards against.
+    if (response.source.isModuleExists) {
+        const moduleDir = path.join(packageRoot, "generated", moduleName);
+        const generatedFiles = fs.existsSync(moduleDir)
+            ? fs.readdirSync(moduleDir, { withFileTypes: true })
+                .filter(entry => entry.isFile() && entry.name.endsWith(".bal"))
+                .map(entry => path.join(moduleDir, entry.name))
+                .map(file => ({ path: path.relative(tempProjectPath, file), content: fs.readFileSync(file, "utf-8") }))
+            : [];
+        return { moduleName, importStatement, generatedFiles, alreadyExisted: true };
+    }
 
-    return { moduleName, importStatement, generatedFiles };
+    const textEditsMap = Object.fromEntries(Object.entries(response.source.textEditsMap).map(([filePath, edits]) => [
+        filePath,
+        path.basename(filePath) === "Ballerina.toml"
+            ? edits.map(edit => ({ ...edit, newText: withRelativeSpecPath(edit.newText, packageRoot, specFilePath) }))
+            : edits,
+    ]));
+    const generatedFiles = await writeGeneratedEdits(textEditsMap, tempProjectPath, modifiedFiles);
+
+    return { moduleName, importStatement, generatedFiles, alreadyExisted: false };
+}
+
+interface GeneratedConnector {
+    moduleName: string;
+    importStatement: string;
+    generatedFiles: Array<{ path: string; content: string }>;
+    /** True when the module already existed and was left unchanged. */
+    alreadyExisted: boolean;
 }
 
 /** Applies the language server's edits and returns each edited .bal file in full. */
@@ -388,9 +406,10 @@ async function generateService(
     // Generating again would duplicate the service and every type. Only the name is checked, not the spec.
     const contractFile = path.join(packageRoot, `service_contract_${serviceTypeName}.bal`);
     if (fs.existsSync(contractFile)) {
-        const serviceFile = fs.readdirSync(packageRoot)
-            .filter(name => name.endsWith(".bal") && path.join(packageRoot, name) !== contractFile)
-            .map(name => path.join(packageRoot, name))
+        const serviceFile = fs.readdirSync(packageRoot, { withFileTypes: true })
+            .filter(entry => entry.isFile() && entry.name.endsWith(".bal"))
+            .map(entry => path.join(packageRoot, entry.name))
+            .filter(file => file !== contractFile)
             .find(file => implementsServiceContract(fs.readFileSync(file, "utf-8"), serviceTypeName));
         if (!serviceFile) {
             throw new Error(`${path.basename(contractFile)} exists, but no service in the package implements ${serviceTypeName}`);
@@ -439,11 +458,10 @@ function handleSuccess(
     requestId: string,
     serviceName: string,
     parsedSpec: ParsedSpec,
-    moduleName: string,
-    importStatement: string,
-    generatedFiles: Array<{ path: string; content: string }>,
+    connector: GeneratedConnector,
     eventHandler: CopilotEventHandler
 ): SpecFetcherResult {
+    const { moduleName, importStatement, generatedFiles } = connector;
     eventHandler({
         type: "connector_generation_notification",
         requestId,
@@ -463,6 +481,14 @@ function handleSuccess(
         },
         message: `Generated connector module "${moduleName}" for "${parsedSpec.title}"`,
     });
+
+    if (connector.alreadyExisted) {
+        return {
+            success: true,
+            message: `The project already has a connector module "${moduleName}", so nothing was regenerated and no files were changed. It may have been generated from a different version of the spec. Do NOT call this tool again for it. Use it with the import statement: ${importStatement}`,
+            connector: { moduleName, importStatement, generatedFiles },
+        };
+    }
 
     return {
         success: true,

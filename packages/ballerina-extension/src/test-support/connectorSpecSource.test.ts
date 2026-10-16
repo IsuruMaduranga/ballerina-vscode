@@ -26,6 +26,7 @@ import {
     isSupportedSpecVersion,
     specAttachments,
     urlInUserText,
+    withRelativeSpecPath,
     MAX_SPEC_BYTES,
     notAnOpenApiSpec,
     readLimited,
@@ -129,6 +130,28 @@ describe("collectThreadAttachments", () => {
         const current = { fileName: "new.yaml", content: SPEC };
         const thread = collectThreadAttachments([current, attachments[0]], [{ fileAttachments: attachments }]);
         expect(thread.map(a => a.fileName)).toEqual(["new.yaml", "notes.txt", "order-api.yaml"]);
+    });
+});
+
+describe("withRelativeSpecPath", () => {
+    const pkg = "/work/project/orders";
+    const spec = `${pkg}/resources/specs/orders.yaml`;
+    const entry = (filePath: string) =>
+        `\n[[tool.openapi]]\nid = "orders"\ntargetModule = "orders"\nfilePath = "${filePath}"\n`;
+
+    it("rewrites the spec's absolute path to one relative to the package", () => {
+        expect(withRelativeSpecPath(entry(spec), pkg, spec)).toBe(entry("./resources/specs/orders.yaml"));
+    });
+
+    it("leaves other entries alone", () => {
+        const other = entry("/elsewhere/other.yaml");
+        expect(withRelativeSpecPath(other + entry(spec), pkg, spec))
+            .toBe(other + entry("./resources/specs/orders.yaml"));
+    });
+
+    it("keeps an absolute path when the spec is outside the package", () => {
+        const outside = "/work/specs/orders.yaml";
+        expect(withRelativeSpecPath(entry(outside), pkg, outside)).toBe(entry(outside));
     });
 });
 

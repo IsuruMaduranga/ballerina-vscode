@@ -61,7 +61,8 @@ export function selectOpenApiDesign(model: ServiceInitModel, specPath: string, t
 
 /** Whether the source declares the service implementing the given contract type. */
 export function implementsServiceContract(source: string, typeName: string): boolean {
-    return new RegExp(`\\bservice\\s+${typeName}\\s+on\\b`).test(source);
+    const escaped = typeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\bservice\\s+${escaped}\\s+on\\b`).test(source);
 }
 
 /** Messages of the validation errors that block generation. */

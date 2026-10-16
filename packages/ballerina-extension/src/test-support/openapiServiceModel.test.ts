@@ -94,6 +94,10 @@ describe("implementsServiceContract", () => {
     ])("does not match %s", (_label, source) => {
         expect(implementsServiceContract(source, "OrdersService")).toBe(false);
     });
+
+    it("matches the type name literally", () => {
+        expect(implementsServiceContract("service OrdersXService on l {}", "Orders.Service")).toBe(false);
+    });
 });
 
 describe("blockingValidationMessages", () => {

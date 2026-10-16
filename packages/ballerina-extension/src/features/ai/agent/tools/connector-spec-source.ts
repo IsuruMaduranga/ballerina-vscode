@@ -21,6 +21,7 @@
  * which imports the language client and cannot be loaded in a unit test.
  */
 
+import * as path from "path";
 import * as yaml from "js-yaml";
 import type { FileAttatchment } from "@wso2/ballerina-core";
 import type { SpecFetcherInput } from "../../utils/libs/generator/openapi-types";
@@ -108,6 +109,20 @@ export function collectThreadAttachments(
 /** Only spec attachments are kept on a turn; the thread file is rewritten on every save. */
 export function specAttachments(attachments: FileAttatchment[] | undefined): FileAttatchment[] {
     return textAttachments(attachments).filter(attachment => notAnOpenApiSpec(attachment.content) === undefined);
+}
+
+/**
+ * Rewrites the spec's absolute path in a generated `[[tool.openapi]]` entry to one relative to the
+ * package, as the low-code form does, so the project still builds on another machine.
+ */
+export function withRelativeSpecPath(tomlText: string, packageRoot: string, specFilePath: string): string {
+    const relative = path.relative(packageRoot, specFilePath).split(path.sep).join("/");
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+        return tomlText;
+    }
+    // The language server writes the absolute path with backslashes escaped for TOML.
+    const absolute = path.resolve(specFilePath).replace(/\\/g, "\\\\");
+    return tomlText.split(`"${absolute}"`).join(`"./${relative}"`);
 }
 
 function baseName(fileName: string): string {
