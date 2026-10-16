@@ -97,6 +97,16 @@ describe('latest release on the required update line', () => {
         expect(findLatestRequiredLineRelease(distList(['  2201.13.7 - latest']))).toBeUndefined();
         expect(findLatestRequiredLineRelease('error: unable to connect to the update server')).toBeUndefined();
     });
+
+    it('is undefined once ten newer releases push the line out of the truncated list', () => {
+        const newer = ['  2201.16.1 - latest', '  2201.16.0', ...Array.from({ length: 8 }, (_, i) => `  2201.15.${7 - i}`)];
+        expect(findLatestRequiredLineRelease(distList(newer))).toBeUndefined();
+    });
+
+    it('reads CRLF output, as on Windows', () => {
+        expect(findLatestRequiredLineRelease(distList(['  2201.14.1 - latest', '  2201.14.0']).replace(/\n/g, '\r\n')))
+            .toBe('2201.14.1');
+    });
 });
 
 describe('distribution versions', () => {

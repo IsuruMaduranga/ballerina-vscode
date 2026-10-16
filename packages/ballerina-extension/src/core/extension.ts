@@ -777,7 +777,11 @@ export class BallerinaExtension {
                     error ? reject(error) : resolve(stdout);
                 });
             });
-            return findLatestRequiredLineRelease(output) ?? REQUIRED_BALLERINA_VERSION;
+            const latest = findLatestRequiredLineRelease(output);
+            if (!latest) {
+                console.warn(`[SETUP] No ${REQUIRED_BALLERINA_VERSION} line release in \`bal dist list\`, falling back`);
+            }
+            return latest ?? REQUIRED_BALLERINA_VERSION;
         } catch (error) {
             console.warn("[SETUP] Could not list Ballerina distributions", error);
             return REQUIRED_BALLERINA_VERSION;

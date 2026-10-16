@@ -72,7 +72,7 @@ export interface JdkIncompatibilityInfo {
     requiredJdkMajorVersion: number;
     requiredBallerinaVersion: string;
     /** Shown in place of the actions once the screen's update starts: streaming, waiting on a terminal or UAC prompt, or why it failed. */
-    update?: { kind: "updating"; version?: string } | { kind: "external"; version: string } | { kind: "failed"; message: string };
+    update?: { kind: "updating"; version?: string } | { kind: "external"; version?: string } | { kind: "failed"; message: string };
 }
 
 export interface DependencyUpdateRequiredInfo {
@@ -286,7 +286,7 @@ export class VisualizerWebview {
         if (!blocked) {
             return;
         }
-        // Output sent before the re-rendered page attaches its listener is dropped; "Starting the update…" covers it.
+        // Output sent before the re-rendered page attaches its listener is dropped; the status line covers it.
         VisualizerWebview.showJdkIncompatibility({ ...blocked, update: { kind: "updating" } });
         let lastError: string | undefined;
         const progress = extension.ballerinaExtInstance.onDownloadProgress(({ message, percentage, step }) => {
@@ -298,11 +298,18 @@ export class VisualizerWebview {
             VisualizerWebview.currentPanel?.getWebview()?.webview.postMessage({ command: "jdkIncompatibility.progress", message, percentage });
         });
         let outcome: BallerinaUpdateOutcome;
-        // Pinned to the newest 2201.14.x, since `bal dist update` may stay on the current update line.
-        const version = await extension.ballerinaExtInstance.resolveRequiredDistributionRelease();
-        // Before the download starts, so no streamed output is lost to the re-render.
-        VisualizerWebview.showJdkIncompatibility({ ...blocked, update: { kind: "updating", version } });
+        let version: string | undefined;
         try {
+            // Pinned to the newest 2201.14.x, since `bal dist update` may stay on the current update line.
+            version = await extension.ballerinaExtInstance.resolveRequiredDistributionRelease();
+            const updating: JdkIncompatibilityInfo = { ...blocked, update: { kind: "updating", version } };
+            // Before the download starts, so no streamed output is lost to the re-render.
+            if (VisualizerWebview.currentPanel) {
+                VisualizerWebview.showJdkIncompatibility(updating);
+            } else {
+                // Closed during the lookup; recorded so a reopened panel shows it, without reopening one.
+                VisualizerWebview.jdkIncompatibility = updating;
+            }
             outcome = await vscode.commands.executeCommand<BallerinaUpdateOutcome>('ballerina.update-ballerina-visually', {
                 version,
                 showSetup: false
@@ -391,7 +398,9 @@ export class VisualizerWebview {
                             ? `<p class="welcome-subtitle">This can take a few minutes. VS Code reloads when the update finishes.</p>
                             <div class="status-progress" role="status">
                                 <span class="status-spinner" aria-hidden="true"></span>
-                                <span id="update-status">Starting the update…</span>
+                                <span id="update-status">${incompatibility.update.version
+                                    ? "Starting the update…"
+                                    : `Finding the latest ${escapeHtml(incompatibility.requiredBallerinaVersion.split(".").slice(0, 2).join("."))} release…`}</span>
                             </div>
                             <div class="update-log" id="update-log" aria-live="polite"></div>`
                             : `<p class="welcome-subtitle">
