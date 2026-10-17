@@ -212,11 +212,22 @@ export default function createTests() {
             const editForm = new Form(page.page, BI_INTEGRATOR_LABEL, configurationWebView);
             await editForm.switchToFormView(false, configurationWebView);
 
-            // The name is checked against the language server after a debounce; give that check time to
-            // land so a "name already used" error for the variable's own name is not missed.
-            await page.page.waitForTimeout(3000);
-            await expect(configurationWebView.getByText('This variable name is already used', { exact: false }))
-                .toHaveCount(0);
+            // Positive control: a name that is really taken must be reported, so we know the check is live.
+            const nameUsedError = configurationWebView.getByText('This variable name is already used', { exact: false });
+            await editForm.fill({
+                values: {
+                    'Variable Name*Name of the variable': { type: 'input', value: 'place' },
+                }
+            });
+            await expect(nameUsedError).toBeVisible({ timeout: 10000 });
+
+            // Back to the variable's own name: the error must clear.
+            await editForm.fill({
+                values: {
+                    'Variable Name*Name of the variable': { type: 'input', value: 'destination' },
+                }
+            });
+            await expect(nameUsedError).toHaveCount(0, { timeout: 10000 });
 
             const saveButton = configurationWebView.getByRole('button', { name: 'Save' });
             await expect(saveButton).toBeEnabled({ timeout: 10000 });
