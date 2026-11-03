@@ -111,6 +111,8 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
         const { status, detail } = shellFinish(summary, opts.timeoutMs, opts.exitOk);
         task.logPath = summary.logPath;
         task.output = summary.output;
+        task.outputHead = summary.head;
+        task.outputLength = summary.length;
         task.exitCode = summary.exitCode;
         task.finishStatus = status;
         task.finishDetail = detail;

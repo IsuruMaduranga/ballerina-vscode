@@ -155,6 +155,21 @@ describe("task_output and kill_task on a shell task", () => {
         expect(drainBackgroundTaskNotifications(RUN)).toBe("");
     });
 
+    it("returns a long finished output start first, within the foreground cap, naming the output file", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "bi-bg-long-"));
+        try {
+            const logPath = join(dir, "output.log");
+            const task = start("process.stdout.write('FIRST ' + 'x'.repeat(40000) + ' LAST')", { logPath });
+            const out = String(await createTaskOutputTool(() => {}, RUN).execute!({ task_id: task.id, timeout: 5000 }, execOptions("c4")));
+            expect(out).toContain(`Full output saved to: ${logPath}`);
+            expect(out).toContain("FIRST");
+            expect(out).not.toContain("LAST");
+            expect(out.length).toBeLessThan(30_000);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it("kill_task stops the process tree and the late finish is not reported", async () => {
         const task = start("setTimeout(() => {}, 30000)");
         const child = () => task.abortController.signal.aborted;

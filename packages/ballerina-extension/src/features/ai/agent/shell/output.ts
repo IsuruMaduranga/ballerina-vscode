@@ -55,6 +55,11 @@ export function tailCap(text: string, cap: number): string {
     return text.length <= cap ? text : `… (earlier output truncated)\n${text.slice(-cap)}`;
 }
 
+/** The first `cap` characters of `text`, marked as a head when anything was cut. */
+export function headCap(text: string, cap: number): string {
+    return text.length <= cap ? text : `${text.slice(0, cap)}\n… (later output truncated)`;
+}
+
 function formatSize(chars: number): string {
     return chars < 1024 * 1024 ? `${(chars / 1024).toFixed(1)}KB` : `${(chars / (1024 * 1024)).toFixed(1)}MB`;
 }

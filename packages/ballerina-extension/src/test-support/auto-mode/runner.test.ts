@@ -23,7 +23,7 @@ import { execFileSync } from "child_process";
 import { closeSync, constants, existsSync, mkdtempSync, openSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { EMPTY_OUTPUT_MARKER, OutputBuffer, persistedOutputBlock, PREVIEW_CHARS, stripAnsiAndControl, tailCap } from "../../features/ai/agent/shell/output";
+import { EMPTY_OUTPUT_MARKER, OutputBuffer, persistedOutputBlock, PREVIEW_CHARS, stripAnsiAndControl, headCap, tailCap } from "../../features/ai/agent/shell/output";
 import { clampTimeoutMs, finishLine, MAX_TIMEOUT_MS, type ProcessLaunch, runProcess, shellFinish, SPOOL_CLOSE_TIMEOUT_MS, startProcess } from "../../features/ai/agent/shell/runner";
 import { bashSpawn, shellLaunch } from "../../features/ai/agent/shell/shell-spawn";
 
@@ -71,6 +71,8 @@ describe("output", () => {
     it("tail-caps text for notifications", () => {
         expect(tailCap("short", 10)).toBe("short");
         expect(tailCap("0123456789", 4)).toBe("… (earlier output truncated)\n6789");
+        expect(headCap("short", 10)).toBe("short");
+        expect(headCap("0123456789", 4)).toBe("0123\n… (later output truncated)");
     });
 });
 

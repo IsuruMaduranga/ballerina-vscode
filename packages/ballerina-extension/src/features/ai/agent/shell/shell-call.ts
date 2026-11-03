@@ -30,7 +30,7 @@
 import { join } from "path";
 import { generateTaskId } from "../background/types";
 import { startBackgroundShell } from "./background";
-import { persistedOutputBlock, PREVIEW_CHARS, tailCap } from "./output";
+import { headCap, persistedOutputBlock, PREVIEW_CHARS } from "./output";
 import { balRunDirectory } from "./bal-run";
 import { exitJudgeFor, type ShellDialect } from "./exit-semantics";
 import { ensureScratchpadDir } from "./scratchpad";
@@ -138,9 +138,17 @@ export function foregroundText(summary: RunSummary, line: string): string {
         line === "completed" ? ""
             : line === "stopped" ? "Command stopped: the run was aborted.\n\n"
                 : `Command ${line}.\n\n`;
-    if (summary.length <= FOREGROUND_OUTPUT_CAP) { return `${head}${summary.output}`; }
+    return `${head}${finishedOutputText(summary)}`;
+}
+
+/**
+ * A finished command's output for the model: whole up to `FOREGROUND_OUTPUT_CAP`, else the
+ * persisted-output block (`foregroundText`). Also what `task_output` returns for a finished background command.
+ */
+export function finishedOutputText(summary: Pick<RunSummary, "output" | "head" | "length" | "logPath">): string {
+    if (summary.length <= FOREGROUND_OUTPUT_CAP) { return summary.output; }
     const end = summary.logPath ? "" : summary.output.slice(-(FOREGROUND_OUTPUT_CAP - PREVIEW_CHARS));
-    return `${head}${persistedOutputBlock(summary.length, summary.head, summary.logPath, end)}`;
+    return persistedOutputBlock(summary.length, summary.head, summary.logPath, end);
 }
 
 /** The text returned when a background task starts. */
@@ -155,7 +163,7 @@ export function backgroundStartText(label: string, taskId: string, description: 
 
 /** The text returned when a background `bal run` was started as a service. */
 export function serviceStartText(description: string, packagePath: string, start: ServiceStartResult): string {
-    const output = tailCap(start.output, FOREGROUND_OUTPUT_CAP).trim();
+    const output = headCap(start.output, FOREGROUND_OUTPUT_CAP).trim();
     if (start.kind === "failed") {
         const why = start.timedOut
             ? "The service did not become ready within 60 seconds, so it was stopped."

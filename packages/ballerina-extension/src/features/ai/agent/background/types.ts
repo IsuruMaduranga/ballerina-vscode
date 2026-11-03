@@ -75,6 +75,9 @@ export interface BackgroundShell extends BackgroundTaskBase {
     finishDetail?: string;
     /** The output so far, for a `task_output` that finds it still running. */
     peek(): string;
+    /** On completion: the output's first characters and its whole length, for a head-first `task_output`. */
+    outputHead?: string;
+    outputLength?: number;
 }
 
 export type BackgroundTask = BackgroundSubagent | BackgroundShell;
