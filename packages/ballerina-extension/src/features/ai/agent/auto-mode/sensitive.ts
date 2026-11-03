@@ -61,8 +61,8 @@ const SENSITIVE_BASENAMES = new Set([
     // WSO2 LLM-proxy access token into it, and `file_read` refuses it
     // (`RESTRICTED_READ_FILES` in tools/text-editor.ts).
     "config.toml",
-    // Other agents' credential stores on the same machine: pi's `agent/auth.json`
-    // and Claude Code's `~/.claude/.credentials.json`.
+    // Other coding agents' credential stores on the same machine, such as an
+    // `agent/auth.json` and Claude Code's `~/.claude/.credentials.json`.
     "auth.json",
     ".credentials.json",
     "credentials.json",

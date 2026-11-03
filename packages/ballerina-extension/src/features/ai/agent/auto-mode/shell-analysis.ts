@@ -811,8 +811,8 @@ export interface AnalyzeInput {
     cwd: string;
     home: string;
     /**
-     * Directories protected at runtime beyond protected-paths.ts's static list
-     * (pi's own agent dir — permissions/matcher.ts `DecideInput.protectedDirs`).
+     * Directories protected at runtime beyond protected-paths.ts's static list,
+     * such as a state directory resolved when the gate runs.
      * A redirect landing inside one escalates like a write to `.git/hooks`.
      */
     protectedDirs?: string[];
