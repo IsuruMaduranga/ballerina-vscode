@@ -86,6 +86,10 @@ function cleanCompactionSummary(text: string): string {
     return extractCompactionSummary(withoutAnalysis) ?? withoutAnalysis.trim();
 }
 
+/** The wrapper around the summary in the message a turn restarts from; the classifier's transcript reads it back. */
+export const RESTART_SUMMARY_OPEN = '<summary>\n';
+export const RESTART_SUMMARY_CLOSE = '\n</summary>';
+
 /**
  * The user message a turn restarts from; it is the first message the model sees afterwards.
  * `turnContext` is the turn's user prompt rebuilt from the current workspace (the context blocks
@@ -102,7 +106,7 @@ export function buildCompactionContinuation(summary: string, turnContext: readon
                     '<system-reminder>\nThis conversation ran out of context, so it was summarized. The context above ' +
                     'is current, and the <User Query> above is the request you are working on. The summary below ' +
                     'covers the conversation so far, including the work already done on that request.\n</system-reminder>\n\n' +
-                    `<summary>\n${summary}\n</summary>\n\n` +
+                    `${RESTART_SUMMARY_OPEN}${summary}${RESTART_SUMMARY_CLOSE}\n\n` +
                     'Continue from where you left off, without asking the user any further questions and without ' +
                     'redoing finished work. The edits already made are saved in the workspace.',
             },

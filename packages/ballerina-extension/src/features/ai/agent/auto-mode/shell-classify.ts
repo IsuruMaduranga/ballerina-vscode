@@ -40,8 +40,8 @@ export interface ShellClassifyInput {
     /** The shell tool's name (`shell` or `powershell`). */
     tool: "shell" | "powershell";
     cwd: string;
-    /** The user's home, for `~` in the command's paths; the resolvedPaths line is built only when it is given. */
-    home?: string;
+    /** The user's home, for `~` in the command's paths. */
+    home: string;
     /** Working directories besides `cwd` that a path may resolve into without being reported (the thread's scratchpad). */
     extraRoots?: readonly string[];
     /** The PowerShell gate's parse of `command`, when it has one; the resolvedPaths line reads its string values. */
@@ -82,9 +82,7 @@ export async function classifyShellCommand(input: ShellClassifyInput, deps: Clas
     }
     // Built only here, when the classifier is about to run: a command the
     // pre-gate cleared never pays for the symlink walk.
-    const resolvedPaths = input.home === undefined
-        ? undefined
-        : shellResolvedPaths(input.tool, input.command, { cwd: input.cwd, home: input.home, roots: [input.cwd, ...(input.extraRoots ?? [])] }, input.powershellParse);
+    const resolvedPaths = shellResolvedPaths(input.tool, input.command, { cwd: input.cwd, home: input.home, roots: [input.cwd, ...(input.extraRoots ?? [])] }, input.powershellParse);
     if (resolvedPaths) { transcript.push({ kind: "resolved-paths", resolvedPaths }); }
     transcript.push({ kind: "tool", tool: input.tool, input: { command: input.command } });
     return classify(

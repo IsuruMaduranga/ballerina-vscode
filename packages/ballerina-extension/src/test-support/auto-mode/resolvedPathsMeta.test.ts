@@ -35,9 +35,9 @@ import {
     powershellPathCandidates,
     RESOLVED_PATHS_NOTE,
     resolvedPathFacts,
-    resolveThroughLinks,
     shellResolvedPaths,
 } from "../../features/ai/agent/auto-mode/resolved-paths-meta";
+import { resolveThroughLinks } from "../../features/ai/agent/auto-mode/paths";
 import { classifyShellCommand } from "../../features/ai/agent/auto-mode/shell-classify";
 
 const posix = process.platform !== "win32";
@@ -143,8 +143,8 @@ describePosix("the line in the classifier's request", () => {
     const config = parseAutoModeConfig(undefined, defaultEnvironment({ kind: "bash" }));
     const run = async (command: string) => {
         const users: string[] = [];
-        const call: ClassifierModelCall = async ({ user }) => {
-            users.push(user);
+        const call: ClassifierModelCall = async ({ userParts }) => {
+            users.push(userParts.parts.join(""));
             return { text: "<severity>10</severity>", finishReason: "stop" };
         };
         await classifyShellCommand(

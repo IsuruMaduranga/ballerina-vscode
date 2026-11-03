@@ -32,10 +32,9 @@ import { generateTaskId } from "../background/types";
 import { startBackgroundShell } from "./background";
 import { persistedOutputBlock, tailCap } from "./output";
 import { balRunDirectory } from "./bal-run";
-import { exitJudgeFor } from "./exit-semantics";
-import { POWERSHELL_TOOL_NAME } from "./powershell-description";
+import { exitJudgeFor, type ShellDialect } from "./exit-semantics";
 import { ensureScratchpadDir } from "./scratchpad";
-import { clampTimeoutMs, type ExitJudge, finishLine, type ProcessLaunch, type RunSummary, runProcess } from "./runner";
+import { clampTimeoutMs, finishLine, type ProcessLaunch, type RunSummary, runProcess } from "./runner";
 import { shellLaunch, type ShellSpawn } from "./shell-spawn";
 
 /** Claude Code's default for a foreground call without a `timeout`. */
@@ -47,6 +46,13 @@ export const DEFAULT_TIMEOUT_MS = 120_000;
  * the result names the file and previews the output's start.
  */
 export const FOREGROUND_OUTPUT_CAP = 30_000;
+
+/**
+ * The tail of a foreground run's output kept in memory. It stays above
+ * `FOREGROUND_OUTPUT_CAP`, the spill threshold, so the whole output is still
+ * in memory when the spill file opens; past the cap the file holds it all.
+ */
+export const FOREGROUND_MEMORY_CAP = 64 * 1024;
 
 /** The model-facing parameters, Claude Code's Bash tool shape. */
 export interface ShellCallParams {
@@ -60,6 +66,8 @@ export interface ShellCallParams {
 export interface ShellCallContext {
     /** The tool's registered name (`shell`, `powershell`). */
     toolName: string;
+    /** Which exit semantics the shell's commands follow (`exit-semantics.ts exitJudgeFor`). */
+    dialect: ShellDialect;
     /** How the model sees the shell in messages (`Bash`, `PowerShell`). */
     label: string;
     /** The resolved shell, or undefined when none resolves on this machine. */
@@ -97,12 +105,10 @@ export type ShellCallResult =
     | {
         kind: "foreground";
         text: string;
+        /** `logPath` is the file holding the whole output, when it was too long to return. */
         summary: RunSummary;
-        timeoutMs: number;
         /** How the command ended (`runner.ts finishLine`), with its exit semantics applied. */
         finish: string;
-        /** The file holding the whole output, when it was too long to return. */
-        outputFile?: string;
     }
     | { kind: "background"; text: string; taskId: string; logPath?: string }
     | { kind: "service"; text: string; start: ServiceStartResult; packagePath: string };
@@ -114,20 +120,19 @@ export function taskLogPath(scratchpadDir: string | undefined, taskId: string): 
     return dir ? join(dir, "output.log") : undefined;
 }
 
-/** Which exit semantics a shell tool's commands follow. */
-export function exitJudgeForTool(toolName: string, command: string): ExitJudge {
-    return exitJudgeFor(toolName === POWERSHELL_TOOL_NAME ? "powershell" : "bash", command);
+/** A foreground call's timeout: the model's value clamped, or `DEFAULT_TIMEOUT_MS`. */
+export function foregroundTimeoutMs(timeout: number | undefined): number {
+    return clampTimeoutMs(timeout) ?? DEFAULT_TIMEOUT_MS;
 }
 
 /**
  * The model-facing text of a finished foreground call: headed by how the
- * command ended unless it succeeded (a nonzero exit `exitOk` accepts, such as
- * grep's "no match", is a success), then the whole output, or past
- * `FOREGROUND_OUTPUT_CAP` the persisted-output block naming the file that
- * holds it (`summary.logPath`) and previewing its start.
+ * command ended (`line`, `runner.ts finishLine`) unless it succeeded, then
+ * the whole output, or past `FOREGROUND_OUTPUT_CAP` the persisted-output
+ * block naming the file that holds it (`summary.logPath`) and previewing its
+ * start.
  */
-export function foregroundText(summary: RunSummary, timeoutMs: number, exitOk?: ExitJudge): string {
-    const line = finishLine(summary, timeoutMs, exitOk);
+export function foregroundText(summary: RunSummary, line: string): string {
     const head =
         line === "completed" ? ""
             : line === "stopped" ? "Command stopped: the run was aborted.\n\n"
@@ -176,20 +181,15 @@ export async function runShellCall(params: ShellCallParams, ctx: ShellCallContex
     const launch = shellLaunch(ctx.spawn, command);
     const description = params.description || params.command.slice(0, 80);
 
-    const exitOk = exitJudgeForTool(ctx.toolName, params.command);
+    const exitOk = exitJudgeFor(ctx.dialect, params.command);
     if (!background) {
-        const timeoutMs = clampTimeoutMs(params.timeout) ?? DEFAULT_TIMEOUT_MS;
+        const timeoutMs = foregroundTimeoutMs(params.timeout);
         // A long output is spooled from its first character once it passes the cap, so the file holds all of it.
         const spill = { afterChars: FOREGROUND_OUTPUT_CAP, path: () => taskLogPath(ctx.scratchpadDir, generateTaskId("shell")) };
-        const summary = await runProcess(launch, { cwd: ctx.cwd, env: ctx.env, timeoutMs, signal: ctx.signal, spill });
-        return {
-            kind: "foreground",
-            text: foregroundText(summary, timeoutMs, exitOk),
-            summary,
-            timeoutMs,
-            finish: finishLine(summary, timeoutMs, exitOk),
-            outputFile: summary.logPath,
-        };
+        const summary = await runProcess(launch, { cwd: ctx.cwd, env: ctx.env, timeoutMs, signal: ctx.signal, spill, outputCap: FOREGROUND_MEMORY_CAP });
+        // A nonzero exit `exitOk` accepts (grep's "no match") is a success.
+        const finish = finishLine(summary, timeoutMs, exitOk);
+        return { kind: "foreground", text: foregroundText(summary, finish), summary, finish };
     }
 
     // A background `bal run` is a service: project-wide, kept across chats, listed in the running chip.

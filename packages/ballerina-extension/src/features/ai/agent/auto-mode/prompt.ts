@@ -22,9 +22,9 @@
  *   user   = <AGENTS.md framing> + <transcript> + <stage final instruction>
  * The two stages share system+framing+transcript byte-for-byte and differ only
  * in the final instruction block, so stage 2 is a cache hit off stage 1. The
- * user message is also returned as its stable blocks (`history`, `tail`), so
- * the model call can put its cache breakpoint before the command under review
- * (classifier-cache.ts).
+ * user message is built as its stable blocks (`history`, `tail`, then the
+ * stage's instruction), so the model call can put its cache breakpoint before
+ * the command under review (classifier-cache.ts).
  *
  * Kept free of any network import so the exact text sent, and the parsing of
  * what comes back, are unit-testable.
@@ -84,30 +84,28 @@ export interface ClassifyVerdict {
     raw?: string;
     /** The call was not judged: provider failure, invalid reply, cancellation or oversized input. */
     noVerdict?: true;
-    /** The provider could not fit the whole transcript in its context window; no verdict was reached. */
-    transcriptTooLong?: true;
 }
 
 /**
  * Build the shared payload plus the grounding index. The ruleset (~110 KB) is
  * built once here and used for both the system prompt and the category index, so
- * `classify()` does not rebuild and re-parse it a second time per call. The final
- * instruction is appended per stage by the caller (stage1User / stage2User).
+ * `classify()` does not rebuild and re-parse it a second time per call. The user
+ * message is `history`, then `tail`, then the stage's final instruction
+ * (stage1Instruction / stage2Instruction), which the caller adds as its own block.
  */
-export function buildPayload(request: ClassifyRequest): { system: string; userPrefix: string; history: string[]; tail: string; index: RuleIndex } {
+export function buildPayload(request: ClassifyRequest): { system: string; history: string[]; tail: string; index: RuleIndex } {
     const ruleset = buildRuleset(request.environment, request.ruleExtras);
     const system = ruleset + renderSessionContext(request.username, request.scratchpadDir);
     const framing = agentsMdFraming(request.agentsMd);
     const { history, tail } = transcriptBlocks(request.transcript);
     // The framing opens the first block: it is as stable as the history after it.
     if (framing) { history[0] = `${framing}\n\n${history[0]}`; }
-    const userPrefix = history.join("") + tail;
-    return { system, userPrefix, history, tail, index: buildCategoryIndex(ruleset) };
+    return { system, history, tail, index: buildCategoryIndex(ruleset) };
 }
 
-/** The stage-1 user message: shared prefix + the harm-only final instruction. */
-export function stage1User(userPrefix: string): string {
-    return `${userPrefix}\n\n${STAGE1_FINAL.trimStart()}`;
+/** The stage-1 user message's last block, after the transcript: the harm-only final instruction. */
+export function stage1Instruction(): string {
+    return `\n\n${STAGE1_FINAL.trimStart()}`;
 }
 
 /**
@@ -128,11 +126,12 @@ export const STAGE2_DENIAL_ADDENDUM =
     "user's rules and BLOCK it, however plainly the user asked for the underlying goal.";
 
 /**
- * The stage-2 user message: shared prefix + full-eval final + our intent
- * addendum, plus the denial addendum when the transcript holds a rule denial.
+ * The stage-2 user message's last block, after the transcript: full-eval final
+ * + our intent addendum, plus the denial addendum when the transcript holds a
+ * rule denial.
  */
-export function stage2User(userPrefix: string, afterRuleDenial = false): string {
-    return `${userPrefix}\n\n${STAGE2_FINAL.trimStart()}${STAGE2_INTENT_ADDENDUM}${afterRuleDenial ? STAGE2_DENIAL_ADDENDUM : ""}`;
+export function stage2Instruction(afterRuleDenial = false): string {
+    return `\n\n${STAGE2_FINAL.trimStart()}${STAGE2_INTENT_ADDENDUM}${afterRuleDenial ? STAGE2_DENIAL_ADDENDUM : ""}`;
 }
 
 /**

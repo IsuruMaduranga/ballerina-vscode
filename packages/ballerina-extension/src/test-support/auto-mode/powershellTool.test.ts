@@ -308,6 +308,7 @@ const pwsh = findPwsh();
     afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
     const run = (command: string) => runShellCall({ command }, {
         toolName: "powershell",
+        dialect: "powershell",
         label: "PowerShell",
         spawn: { shell: pwsh as string, args: [...POWERSHELL_ARGS] },
         guard: powershellGuardReason,

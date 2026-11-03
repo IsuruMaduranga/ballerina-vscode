@@ -64,7 +64,6 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
     if (capacity.kind === "full") { return capacity; }
 
     const abortController = new AbortController();
-    let spoolFailed = false;
     let task: BackgroundShell | undefined;
 
     const running = startProcess(opts.launch, {
@@ -73,9 +72,9 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
         timeoutMs: opts.timeoutMs,
         signal: abortController.signal,
         logPath: opts.logPath,
-        // Never name a missing or partial file as the full output.
+        // Never name a missing or partial file as the full output. A spool fails only
+        // asynchronously (a stream error or a flush timeout), so the task exists by then.
         onSpoolFailed: () => {
-            spoolFailed = true;
             if (task) { task.logPath = undefined; }
         },
     });
@@ -96,7 +95,7 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
         aborted: false,
         abortController,
         notified: false,
-        logPath: spoolFailed ? undefined : opts.logPath,
+        logPath: opts.logPath,
         exitCode: null,
         peek: () => running.output(),
     };

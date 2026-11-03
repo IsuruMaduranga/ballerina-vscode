@@ -69,6 +69,7 @@ function shellFlavour(kind: ShellToolKindName) {
         const spawn = powerShellSpawn();
         return {
             name: POWERSHELL_TOOL_NAME,
+            dialect: "powershell" as const,
             label: "PowerShell",
             description: powershellToolDescription(powerShellEdition(spawn)),
             spawn,
@@ -76,7 +77,7 @@ function shellFlavour(kind: ShellToolKindName) {
             wrapCommand: withPowerShellUtf8,
         };
     }
-    return { name: SHELL_TOOL_NAME, label: "Bash", description: bashToolDescription(), spawn: bashSpawn(), guard: bashGuardReason, wrapCommand: undefined };
+    return { name: SHELL_TOOL_NAME, dialect: "bash" as const, label: "Bash", description: bashToolDescription(), spawn: bashSpawn(), guard: bashGuardReason, wrapCommand: undefined };
 }
 
 /** The shell tool: bash `shell` on macOS and Linux, `powershell` on Windows. */
@@ -118,6 +119,7 @@ export function createShellTool(opts: ShellToolOptions) {
 
             const result = await runShellCall(input, {
                 toolName: flavour.name,
+                dialect: flavour.dialect,
                 label: flavour.label,
                 spawn: flavour.spawn,
                 guard: flavour.guard,
@@ -152,7 +154,7 @@ export function createShellTool(opts: ShellToolOptions) {
                     exitCode: result.summary.exitCode,
                     finish: line,
                     output: tailCap(result.summary.output, UI_OUTPUT_CAP),
-                    outputFile: result.outputFile,
+                    outputFile: result.summary.logPath,
                     gate,
                 });
             }

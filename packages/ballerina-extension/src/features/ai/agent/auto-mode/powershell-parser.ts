@@ -226,13 +226,16 @@ export class PowerShellParser {
 
     private receive(server: Server, chunk: string): void {
         if (server.stopped) { return; }
-        server.buffer += chunk;
-        for (let newline = server.buffer.indexOf("\n"); newline >= 0; newline = server.buffer.indexOf("\n")) {
-            const line = server.buffer.slice(0, newline).trim();
-            server.buffer = server.buffer.slice(newline + 1);
+        // Only the new chunk is searched: the buffer holds just the partial line the last chunk ended in.
+        let start = 0;
+        for (let newline = chunk.indexOf("\n"); newline >= 0; newline = chunk.indexOf("\n", start)) {
+            const line = (server.buffer + chunk.slice(start, newline)).trim();
+            server.buffer = "";
+            start = newline + 1;
             if (line) { this.record(server, line); }
             if (server.stopped) { return; }
         }
+        server.buffer += chunk.slice(start);
     }
 
     private record(server: Server, line: string): void {

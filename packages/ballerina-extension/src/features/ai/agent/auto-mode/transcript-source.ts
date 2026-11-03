@@ -32,7 +32,7 @@
  * Pure: it reads only what it is handed.
  */
 
-import { generationsSinceLastRestart } from "../compaction-restart";
+import { generationsSinceLastRestart, RESTART_SUMMARY_CLOSE, RESTART_SUMMARY_OPEN } from "../compaction-restart";
 import { isHistoricalRead, type TranscriptEntry } from "./transcript";
 
 /** The part of a stored generation the transcript reads. */
@@ -69,9 +69,6 @@ function toolCallsOf(message: unknown): TranscriptToolCall[] {
     return calls;
 }
 
-const SUMMARY_OPEN = "<summary>\n";
-const SUMMARY_CLOSE = "\n</summary>";
-
 /**
  * The summary a restarted generation continued from: the `<summary>` block of
  * the user message the restart sent (`compaction-restart.ts
@@ -87,10 +84,10 @@ export function restartSummary(generation: TranscriptGeneration): string | undef
         for (let i = content.length - 1; i >= 0; i--) {
             const text = (content[i] as { type?: unknown; text?: unknown } | undefined)?.text;
             if (typeof text !== "string") { continue; }
-            const open = text.indexOf(SUMMARY_OPEN);
-            const close = text.lastIndexOf(SUMMARY_CLOSE);
-            if (open >= 0 && close >= open + SUMMARY_OPEN.length - 1) {
-                const summary = text.slice(open + SUMMARY_OPEN.length, close).trim();
+            const open = text.indexOf(RESTART_SUMMARY_OPEN);
+            const close = text.lastIndexOf(RESTART_SUMMARY_CLOSE);
+            if (open >= 0 && close >= open + RESTART_SUMMARY_OPEN.length - 1) {
+                const summary = text.slice(open + RESTART_SUMMARY_OPEN.length, close).trim();
                 return summary || undefined;
             }
         }
@@ -154,7 +151,6 @@ export function unstoredToolCalls(
     });
     return earlier
         .slice(lastStored + 1)
-        .filter(call => !(call.toolCallId && storedIds.has(call.toolCallId)))
         .map((call): TranscriptEntry => ({ kind: "tool", tool: call.tool, input: call.input }))
         .filter(entry => !isHistoricalRead(entry));
 }

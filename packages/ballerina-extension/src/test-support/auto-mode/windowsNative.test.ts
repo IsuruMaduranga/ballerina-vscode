@@ -97,7 +97,7 @@ onWindows("Windows: PowerShell resolution and a live run", () => {
     afterAll(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
     if (win32) { writeFileSync(join(dir, "fakebal.bat"), "@echo off\r\necho fakebal %*\r\nexit /b 3\r\n"); }
     const run = (command: string) => runShellCall({ command }, {
-        toolName: "powershell", label: "PowerShell", spawn, guard: powershellGuardReason, wrapCommand: withPowerShellUtf8, cwd: dir, runKey: "t", toolCallId: "t",
+        toolName: "powershell", dialect: "powershell", label: "PowerShell", spawn, guard: powershellGuardReason, wrapCommand: withPowerShellUtf8, cwd: dir, runKey: "t", toolCallId: "t",
     });
 
     it("starts a .bat through PowerShell by bare name and surfaces its exit code", async () => {

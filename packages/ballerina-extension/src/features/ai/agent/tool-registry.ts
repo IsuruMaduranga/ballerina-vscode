@@ -117,6 +117,10 @@ function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, r
         projectRootPath: opts.projectRootPath,
         threadId,
         toolCallLog,
+        // A command the user declines ends the turn, as a rejection without a reason does in Claude
+        // Code: the model keeps the declined result, and the run sends no further request. A
+        // classifier block or an unanswered banner's timeout does not.
+        onUserDeclined: opts.onUserDeclinedShell,
     });
     return createShellTool({
         kind: shell.tool,
@@ -127,16 +131,7 @@ function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, r
         onFilesTouched: (touched) => registerShellTouchedFiles(shell.cwd, touched, opts.modifiedFiles, opts.allModifiedFiles),
         startService: (start) => startShellService(start, opts.runningServices),
         env: withBalOnPath(process.env, extension.ballerinaExtInstance?.getBallerinaCmd()),
-        // A command the user declines ends the turn, as a rejection without a reason does in Claude
-        // Code: the model keeps the declined result, and the run sends no further request. A
-        // classifier block or an unanswered banner's timeout does not.
-        authorize: async (request) => {
-            const result = await authorize(request);
-            if (!result.allowed && result.by === 'user') {
-                opts.onUserDeclinedShell?.();
-            }
-            return result;
-        },
+        authorize,
     });
 }
 

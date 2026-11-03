@@ -46,35 +46,34 @@ import { SHELL_TOOL_NAME } from '../shell/bash-description';
 import { POWERSHELL_TOOL_NAME } from '../shell/powershell-description';
 import { powerShellEdition, powerShellSpawn } from '../shell/shell-spawn';
 
-/** Per-thread pause trackers, user denials and classifier cache hints, in memory for as long as the extension host runs. */
-const pauseTrackers = new Map<string, PauseTracker>();
-const userDenials = new Map<string, TranscriptEntry[]>();
-const classifierCaches = new Map<string, ClassifierCacheState>();
+/** One thread's gate state besides its session rules. */
+interface ThreadGateState {
+    pause: PauseTracker;
+    /** The commands the user declined, newest last, at most 50. */
+    denials: TranscriptEntry[];
+    classifierCache: ClassifierCacheState;
+}
 
-function classifierCacheFor(threadKey: string): ClassifierCacheState {
-    let cache = classifierCaches.get(threadKey);
-    if (!cache) {
-        cache = {};
-        classifierCaches.set(threadKey, cache);
+/** Per-thread gate state, in memory for as long as the extension host runs. */
+const threadGateStates = new Map<string, ThreadGateState>();
+
+function threadGateState(threadKey: string): ThreadGateState {
+    let state = threadGateStates.get(threadKey);
+    if (!state) {
+        state = { pause: new PauseTracker(), denials: [], classifierCache: {} };
+        threadGateStates.set(threadKey, state);
     }
-    return cache;
+    return state;
 }
 
 export function pauseTrackerFor(threadKey: string): PauseTracker {
-    let tracker = pauseTrackers.get(threadKey);
-    if (!tracker) {
-        tracker = new PauseTracker();
-        pauseTrackers.set(threadKey, tracker);
-    }
-    return tracker;
+    return threadGateState(threadKey).pause;
 }
 
 /** Forget a thread's gate state (its rules, pause counters, denials and cache hint), for a cleared or deleted thread. */
 export function resetShellGateState(threadKey: string): void {
     sessionRuleStore.clear(threadKey);
-    pauseTrackers.delete(threadKey);
-    userDenials.delete(threadKey);
-    classifierCaches.delete(threadKey);
+    threadGateStates.delete(threadKey);
 }
 
 /**
@@ -117,11 +116,13 @@ export interface ShellAuthorizerOptions {
     threadId: string;
     /** The run's tool calls, so the classifier sees the earlier calls of the step under review. */
     toolCallLog?: RunToolCallLog;
+    /** Called when the user declines a command in the approval banner (not on a classifier block or a timeout). */
+    onUserDeclined?: () => void;
 }
 
 /** The `authorize` callback of the shell tool. */
 export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
-    const { shell, mode, eventHandler, runKey, projectRootPath, threadId, toolCallLog } = opts;
+    const { shell, mode, eventHandler, runKey, projectRootPath, threadId, toolCallLog, onUserDeclined } = opts;
     const tool = shell.tool;
     const toolName = tool === 'powershell' ? POWERSHELL_TOOL_NAME : SHELL_TOOL_NAME;
     const edition = tool === 'powershell' ? powerShellEdition(powerShellSpawn()) : undefined;
@@ -168,7 +169,7 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                             extraRoots: shell.writableRoots,
                             powershellParse,
                             generations: projectRootPath ? chatStateStorage.getGenerations(projectRootPath, threadId) : [],
-                            denials: userDenials.get(runKey) ?? [],
+                            denials: threadGateState(runKey).denials,
                             runToolCalls: toolCallLog?.list(),
                             toolCallId,
                             agentsMd: loadAgentsMdForClassifier(shell.cwd),
@@ -177,7 +178,7 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                             config,
                             gitStatus: gitStatusOutput,
                         },
-                        { call: classifierModelCall, signal: abortSignal, cache: classifierCacheFor(runKey) },
+                        { call: classifierModelCall, signal: abortSignal, cache: threadGateState(runKey).classifierCache },
                     ),
                 },
                 onDecision: (record) => {
@@ -185,9 +186,10 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                     appendDecision(logFile, decisionEntry({ ...record, tool: toolName, subject: command, sessionId: threadId, model: record.source === 'classifier' ? ANTHROPIC_SONNET : undefined }));
                 },
                 onUserDenied: (subject) => {
-                    const list = userDenials.get(runKey) ?? [];
-                    list.push({ kind: 'denied', tool, subject, rule: 'declined by the user at the approval prompt' });
-                    userDenials.set(runKey, list.slice(-50));
+                    const state = threadGateState(runKey);
+                    state.denials.push({ kind: 'denied', tool, subject, rule: 'declined by the user at the approval prompt' });
+                    state.denials = state.denials.slice(-50);
+                    onUserDeclined?.();
                 },
             },
         );

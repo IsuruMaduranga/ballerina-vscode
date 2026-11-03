@@ -29,7 +29,7 @@ import { classify, type ClassifierModelCall } from "../../features/ai/agent/auto
 import { classifierMessages, classifierUserContent, MAX_CACHE_MARKERS, type ClassifierCacheState, type ClassifierUserText } from "../../features/ai/agent/auto-mode/classifier-cache";
 import { defaultEnvironment } from "../../features/ai/agent/auto-mode/classifier-prompt";
 import { parseAutoModeConfig } from "../../features/ai/agent/auto-mode/config";
-import type { ClassifyRequest } from "../../features/ai/agent/auto-mode/prompt";
+import { buildPayload, type ClassifyRequest, stage1Instruction, stage2Instruction } from "../../features/ai/agent/auto-mode/prompt";
 import type { TranscriptEntry } from "../../features/ai/agent/auto-mode/transcript";
 
 /** `getProviderCacheControl('1h')`'s shape, spelled out: importing it would load the login machinery. */
@@ -88,11 +88,15 @@ describe("the parts the classifier hands its model call", () => {
             return { text: seen.length === 1 ? "<severity>70</severity>" : "<severity>10</severity>", finishReason: "stop" };
         };
         const cache: ClassifierCacheState = {};
-        await classify(request([...history, { kind: "meta", gitStatus: { clean: true } }, { kind: "tool", tool: "shell", input: { command: "rm build/tmp.txt" } }]), { call, cache });
+        const first = request([...history, { kind: "meta", gitStatus: { clean: true } }, { kind: "tool", tool: "shell", input: { command: "rm build/tmp.txt" } }]);
+        await classify(first, { call, cache });
         expect(seen).toHaveLength(2);
+        const payload = buildPayload(first);
+        const prefix = payload.history.join("") + payload.tail;
+        expect(seen[0].userParts.parts.join("")).toBe(prefix + stage1Instruction());
+        expect(seen[1].userParts.parts.join("")).toBe(prefix + stage2Instruction());
         for (const args of seen) {
             const { parts, historyEnd } = args.userParts;
-            expect(parts.join("")).toBe(args.user);
             expect(parts[0]).toContain("<user_agents_md>");
             expect(parts[historyEnd]).toContain("build/tmp.txt");
             expect(parts[historyEnd + 1].startsWith('\n{"meta":{"gitStatus"')).toBe(true);

@@ -26,11 +26,10 @@
  * being judged before rendering. Results are never appended here; only
  * user messages and tool inputs enter, which is the isolation boundary.
  *
- * Every entry is rendered whole. A rolling window lost the evidence that a
- * cleanup target was created earlier in the same chat, and clipping an earlier
- * command can hide its redirect or copy destination. What the transcript holds
- * is the active context (transcript-source.ts); when the provider cannot fit
- * it, the call is not judged rather than judged on a cut (classifier.ts).
+ * Every entry is rendered whole, so an earlier command's redirect or copy
+ * destination stays visible. The transcript holds the active context
+ * (transcript-source.ts); a transcript the provider cannot fit is not judged
+ * (classifier.ts).
  */
 
 import type { GitStatusMeta } from "./git-status-meta";
@@ -88,6 +87,16 @@ export function clip(value: string, max: number): string {
 }
 
 /**
+ * Tool lines already rendered, by their input object. A stored call's input
+ * is the same object on every gated command (`chatStateStorage` keeps the
+ * thread's generations in memory and updates them in place), so its line,
+ * file contents included, is serialized once rather than per command. Tool
+ * inputs are never mutated; a fresh object (a reloaded thread, a wrapped
+ * non-object input) renders again.
+ */
+const renderedToolLines = new WeakMap<object, { tool: string; line: string }>();
+
+/**
  * Render one entry as its compact JSON line. The shell tools render as
  * `{"Bash":"<command>"}` / `{"PowerShell":"<command>"}` (the command string,
  * as Claude Code does); every other tool renders as `{"<Tool>":{…input…}}`,
@@ -103,12 +112,15 @@ function renderEntry(entry: TranscriptEntry): string {
             denied_by_permission_rule: { tool: transcriptToolName(entry.tool), attempted: entry.subject, rule: entry.rule },
         });
     }
+    const cached = renderedToolLines.get(entry.input);
+    if (cached?.tool === entry.tool) { return cached.line; }
     const name = transcriptToolName(entry.tool);
     const command = entry.input.command;
-    if (entry.tool in SHELL_TOOL_LABELS && typeof command === "string") {
-        return JSON.stringify({ [name]: command });
-    }
-    return JSON.stringify({ [name]: entry.input });
+    const line = entry.tool in SHELL_TOOL_LABELS && typeof command === "string"
+        ? JSON.stringify({ [name]: command })
+        : JSON.stringify({ [name]: entry.input });
+    renderedToolLines.set(entry.input, { tool: entry.tool, line });
+    return line;
 }
 
 /** Refuse larger actions rather than asking the classifier to judge a clipped command. */

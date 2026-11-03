@@ -42,10 +42,9 @@
 
 import { isProtectedPath } from "./protected-paths";
 import { isExecutionPrimitivePath, isSensitivePath } from "./sensitive";
-import { isWithin, resolveForContainment, toAbsoluteBash } from "./paths";
+import { isGuardedWritePath, isWithin, removalLoses, resolveForContainment, toAbsoluteBash, touchesGuardedPath } from "./paths";
 import { checkoutGitRunsProgram } from "./git-checkout-programs";
 import { lstatSync, readdirSync, statSync } from "fs";
-import { join } from "path";
 import {
     GIT_GLOBAL_SAFE,
     GIT_SUBCOMMAND_SPECS,
@@ -566,33 +565,6 @@ function isInertValue(name: string, value: string): boolean {
  */
 export function isUnknownTilde(value: string): boolean {
     return value.startsWith("~") && value !== "~" && !value.startsWith("~/");
-}
-
-/**
- * Whether moving, copying or removing `source` touches a path `guarded`
- * flags beneath it: walks `source` without following symlinks, at most
- * `budget` entries, and tests each entry's counterpart under `target` (the
- * same path for a removal). A walk that runs out of budget counts as touching
- * one, so the command is judged, not cleared. A file source walks nothing.
- */
-function touchesGuardedPath(source: string, target: string, guarded: (path: string) => boolean, budget = 5_000): boolean {
-    const stack = [""];
-    let seen = 0;
-    while (stack.length > 0) {
-        const relative = stack.pop() as string;
-        let entries;
-        try {
-            entries = readdirSync(join(source, relative), { withFileTypes: true });
-        } catch {
-            continue;
-        }
-        for (const entry of entries) {
-            const child = join(relative, entry.name);
-            if (++seen > budget || guarded(join(target, child))) { return true; }
-            if (entry.isDirectory()) { stack.push(child); }
-        }
-    }
-    return false;
 }
 
 /** The last component of a bash path word, trailing slashes dropped (`a/b/` is `b`). */
@@ -1234,20 +1206,18 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             const reads = copies ? fileOperands.slice(0, -1) : [];
             // The paths the write checks guard, beneath a directory operand as well
             // as at it: they protect the files, not the directory holding them.
-            const guarded = (path: string) =>
-                isProtectedPath(path, effectiveCwd) || protectedDirs.some((dir) => isWithin(dir, path)) || isSensitivePath(path) || isExecutionPrimitivePath(path);
+            const guarded = (path: string) => isGuardedWritePath(path, effectiveCwd, protectedDirs);
             // Removing or moving away a working root, a `.git`, a directory holding
             // one at any depth, or a guarded path or a directory holding one loses
             // what git or the gate would keep (`rm -rf .`, `mv .git x`, `rm -rf
             // vendor` over `vendor/lib/.git`, `rm -rf .claude`, `mv .husky old`),
             // whatever else is contained.
-            const lost = (path: string) => path.split(/[\\/]/).includes(".git") || guarded(path);
+            const roots = [containmentRoot, ...writableRoots];
             for (const token of name === "mv" ? reads : name === "rm" || name === "rmdir" ? fileOperands : []) {
                 const absolute = toAbsoluteBash(effectiveCwd, token.value, home);
                 const resolved = resolveForContainment(absolute);
                 if (resolved === undefined) { continue; }
-                const root = resolved === containmentRoot || writableRoots.includes(resolved);
-                if (root || lost(absolute) || lost(resolved) || touchesGuardedPath(resolved, resolved, lost)) {
+                if (removalLoses(absolute, resolved, roots, effectiveCwd, protectedDirs)) {
                     escalate(`${name === "mv" ? "moves" : "removes"} ${token.value}, which is a working root, or is or holds a git repository or a protected, credential or execution-primitive path`);
                 }
             }

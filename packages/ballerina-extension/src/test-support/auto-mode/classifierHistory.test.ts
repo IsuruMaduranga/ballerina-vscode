@@ -106,11 +106,11 @@ describe("the active context", () => {
 
     it("sends the summary and the post-restart calls to the classifier, not the turns the summary replaced", async () => {
         const users: string[] = [];
-        const model: ClassifierModelCall = async ({ user }) => {
-            users.push(user);
+        const model: ClassifierModelCall = async ({ userParts }) => {
+            users.push(userParts.parts.join(""));
             return { text: "<severity>10</severity>", finishReason: "stop" };
         };
-        await classifyShellCommand({ command: "rm -rf build/tmp", tool: "shell", cwd: "/w", generations, denials: [], username: "tester", config }, { call: model });
+        await classifyShellCommand({ command: "rm -rf build/tmp", tool: "shell", cwd: "/w", home: "/home/tester", generations, denials: [], username: "tester", config }, { call: model });
         const transcript = users[0].slice(users[0].indexOf("<transcript>"), users[0].indexOf("</transcript>"));
         expect(transcript).toContain(JSON.stringify({ summary }));
         expect(transcript).toContain("build/tmp/b.txt");
@@ -174,7 +174,8 @@ describe("classifier robustness", () => {
     it("does not judge a transcript the provider cannot fit, and does not retry or clip it", async () => {
         const model = fakeModel([new Error("prompt is too long: 1050000 tokens > 1000000 maximum")]);
         const verdict = await classify(request(), { call: model.call });
-        expect(verdict).toMatchObject({ decision: "block", tier: "unmatched", noVerdict: true, transcriptTooLong: true });
+        expect(verdict).toMatchObject({ decision: "block", tier: "unmatched", noVerdict: true });
+        expect(verdict.reason).toContain("longer than the approval classifier's context window");
         expect(verdict.reason).toContain("not judged");
         expect(model.calls).toHaveLength(1);
     });

@@ -223,13 +223,14 @@ export function startProcess(launch: ProcessLaunch, opts: ProcessOptions): Runni
     const spill = opts.logPath ? undefined : opts.spill;
 
     const onData = (chunk: string) => {
-        // What was kept before this chunk: whole until the cap first drops something.
-        const before = buffer.truncated ? undefined : buffer.kept;
+        // What was kept before this chunk: the whole output so far until the spill opens, since
+        // `afterChars` is below the cap and nothing is dropped before the output passes it.
+        const before = buffer.kept;
         const clean = buffer.append(chunk);
         if (!clean) { return; }
         if (spill && !spool.opened) {
-            // Everything so far is still in memory (`afterChars` is below the cap): it starts the file.
-            if (buffer.length > spill.afterChars) { spool.open(before === undefined ? undefined : spill.path(), before + clean); }
+            // Everything so far starts the file: what was kept, then this chunk.
+            if (buffer.length > spill.afterChars) { spool.open(spill.path(), before + clean); }
         } else {
             spool?.write(clean);
         }

@@ -33,13 +33,11 @@
  * or a path computed at run time, is not seen.
  */
 
-import { lstatSync, readlinkSync } from "fs";
-import { basename, dirname, isAbsolute, join, resolve } from "path";
-import { isWithin, resolveForContainment, toAbsolute, toAbsoluteBash } from "./paths";
+import { isWithin, resolveForContainment, resolveThroughLinks, toAbsolute, toAbsoluteBash } from "./paths";
 import type { PowerShellParse } from "./powershell-parser";
 import { powershellSeparators, powershellUnescaped } from "./powershell-paths";
 import { powershellPathTokens } from "./safety-floor";
-import { comparablePath, tryRealpath } from "./shared-paths";
+import { comparablePath } from "./shared-paths";
 import { parseCommand } from "./shell-parse";
 
 /** One path the command names that resolves outside every working directory. */
@@ -62,40 +60,6 @@ const MAX_CANDIDATES = 256;
 export const MAX_RESOLVED_WORD = 1_024;
 /** The most paths the line reports: enough to show the command escapes, bounded so it cannot swell the prompt. */
 export const MAX_RESOLVED_PATHS = 16;
-/** A link cycle (`a -> a`) stops after the kernel's usual 40 hops. */
-const MAX_LINK_HOPS = 40;
-
-/**
- * Where `target` resolves through symlinks, in the filesystem's own spelling
- * (not case-folded), or undefined when no part of it resolves. A dangling
- * link leaf is followed to its target, and a path that does not exist yet is
- * resolved through its nearest existing ancestor. The same walk as
- * `paths.ts resolveForContainment`, which case-folds for comparison.
- */
-export function resolveThroughLinks(target: string, hops = 0): string | undefined {
-    const absolute = resolve(target);
-    const direct = tryRealpath(absolute);
-    if (direct) { return direct; }
-    try {
-        if (lstatSync(absolute).isSymbolicLink() && hops < MAX_LINK_HOPS) {
-            const linkTarget = readlinkSync(absolute);
-            const resolvedTarget = isAbsolute(linkTarget) ? linkTarget : resolve(dirname(absolute), linkTarget);
-            return resolveThroughLinks(resolvedTarget, hops + 1) ?? resolvedTarget;
-        }
-    } catch {
-        // Does not exist yet: resolve through the nearest existing ancestor below.
-    }
-    const tail: string[] = [];
-    let cursor = absolute;
-    for (;;) {
-        const parent = dirname(cursor);
-        if (parent === cursor) { return undefined; }
-        tail.unshift(basename(cursor));
-        const realParent = tryRealpath(parent);
-        if (realParent) { return join(realParent, ...tail); }
-        cursor = parent;
-    }
-}
 
 /** The constant words of a bash command line: every known token value, input and redirect target, and the value of `--opt=value`. */
 export function bashPathCandidates(command: string): string[] {

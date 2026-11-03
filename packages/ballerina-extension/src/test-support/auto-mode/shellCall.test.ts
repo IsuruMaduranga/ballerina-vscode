@@ -32,7 +32,7 @@ import type { BackgroundShell } from "../../features/ai/agent/background/types";
 import { bashToolDescription } from "../../features/ai/agent/shell/bash-description";
 import { bashGuardReason } from "../../features/ai/agent/shell/guards";
 import { EMPTY_OUTPUT_MARKER, MAX_PROCESS_OUTPUT_CHARS } from "../../features/ai/agent/shell/output";
-import { FOREGROUND_OUTPUT_CAP, runShellCall, type ShellCallContext } from "../../features/ai/agent/shell/shell-call";
+import { FOREGROUND_OUTPUT_CAP, foregroundTimeoutMs, runShellCall, type ShellCallContext } from "../../features/ai/agent/shell/shell-call";
 import { bashSpawn } from "../../features/ai/agent/shell/shell-spawn";
 import { expectLabeled } from "./labeled";
 
@@ -54,6 +54,7 @@ afterEach(() => {
 /** A context whose "shell" is Node: the command is a script for `node -e`. */
 const nodeCtx = (over: Partial<ShellCallContext> = {}): ShellCallContext => ({
     toolName: "shell",
+    dialect: "bash",
     label: "Bash",
     spawn: { shell: process.execPath, args: ["-e"] },
     guard: () => undefined,
@@ -118,11 +119,9 @@ describe("runShellCall: foreground", () => {
 
     it("applies the default timeout when none or a nonsense one is given", async () => {
         for (const timeout of [undefined, 0, -5, Number.NaN]) {
-            const result = await runShellCall({ command: "1", timeout }, nodeCtx());
-            expect(result.kind === "foreground" && result.timeoutMs).toBe(120_000);
+            expect(foregroundTimeoutMs(timeout)).toBe(120_000);
         }
-        const capped = await runShellCall({ command: "1", timeout: 10_000_000 }, nodeCtx());
-        expect(capped.kind === "foreground" && capped.timeoutMs).toBe(600_000);
+        expect(foregroundTimeoutMs(10_000_000)).toBe(600_000);
     });
 
     it("stops the command when the run aborts", async () => {
@@ -137,7 +136,7 @@ describe("runShellCall: foreground", () => {
         const result = await runShellCall({ command: `process.stdout.write("c".repeat(${FOREGROUND_OUTPUT_CAP}))` }, nodeCtx());
         if (result.kind !== "foreground") { throw new Error(result.kind); }
         expect(result.text).toBe("c".repeat(FOREGROUND_OUTPUT_CAP));
-        expect(result.outputFile).toBeUndefined();
+        expect(result.summary.logPath).toBeUndefined();
         expect(existsSync(join(scratchpad, "tasks"))).toBe(false);
     });
 
@@ -145,9 +144,9 @@ describe("runShellCall: foreground", () => {
         const length = FOREGROUND_OUTPUT_CAP + 5_000;
         const result = await runShellCall({ command: `process.stdout.write("BEGIN" + "a".repeat(${length - 8}) + "END")` }, nodeCtx());
         if (result.kind !== "foreground") { throw new Error(result.kind); }
-        expect(result.outputFile?.startsWith(join(scratchpad, "tasks"))).toBe(true);
-        expect(readFileSync(result.outputFile, "utf8")).toHaveLength(length);
-        expect(result.text.startsWith(`<persisted-output>\nOutput too large (34.2KB). Full output saved to: ${result.outputFile}\n`)).toBe(true);
+        expect(result.summary.logPath?.startsWith(join(scratchpad, "tasks"))).toBe(true);
+        expect(readFileSync(result.summary.logPath, "utf8")).toHaveLength(length);
+        expect(result.text.startsWith(`<persisted-output>\nOutput too large (34.2KB). Full output saved to: ${result.summary.logPath}\n`)).toBe(true);
         expect(result.text).toContain("Preview (first 2KB):\nBEGINaaa");
         expect(result.text).not.toContain("END");
         expect(result.text.length).toBeLessThan(3_000);
@@ -158,7 +157,7 @@ describe("runShellCall: foreground", () => {
         const script = `process.stdout.write("BEGIN"); for (let i = 0; i < ${length - 8}; i += 1000) process.stdout.write("d".repeat(Math.min(1000, ${length - 8} - i))); process.stdout.write("END")`;
         const result = await runShellCall({ command: script }, nodeCtx());
         if (result.kind !== "foreground") { throw new Error(result.kind); }
-        const saved = readFileSync(result.outputFile, "utf8");
+        const saved = readFileSync(result.summary.logPath, "utf8");
         expect(saved).toHaveLength(length);
         expect(saved.startsWith("BEGIN") && saved.endsWith("END")).toBe(true);
         expect(result.text).toContain("Preview (first 2KB):\nBEGINddd");
@@ -167,7 +166,7 @@ describe("runShellCall: foreground", () => {
     it("previews the start without a scratchpad, and says nothing else survives", async () => {
         const length = FOREGROUND_OUTPUT_CAP + 10;
         const result = await runShellCall({ command: `process.stdout.write("b".repeat(${length}))` }, nodeCtx({ scratchpadDir: undefined }));
-        expect(result.kind === "foreground" && result.outputFile).toBeUndefined();
+        expect(result.kind === "foreground" && result.summary.logPath).toBeUndefined();
         expect(result.text).toContain("could not be saved to a file. Only this preview survives");
         expect(result.text).toContain("Preview (first 2KB):\nbbb");
     });

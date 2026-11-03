@@ -67,7 +67,7 @@ export type CachedTextPart<M> = { type: "text"; text: string; providerOptions?: 
 export function classifierUserContent<M>(user: ClassifierUserText, marker: M, markersElsewhere: number): CachedTextPart<M>[] {
     const { parts, historyEnd, previousHistoryEnd } = user;
     const free = MAX_CACHE_MARKERS - markersElsewhere;
-    const valid = historyEnd >= 0 && historyEnd < parts.length && parts.every((part) => part.trim() !== "");
+    const valid = historyEnd >= 0 && historyEnd < parts.length && parts.every((part) => /\S/.test(part));
     if (free < 1 || !valid) { return [{ type: "text", text: parts.join("") }]; }
     const markPrevious = free >= 2 && previousHistoryEnd !== undefined && previousHistoryEnd >= 0 && previousHistoryEnd < historyEnd;
     return parts.map((text, i) =>

@@ -54,8 +54,8 @@ const request = (command: string, userMessages = ["build the integration"]): Cla
 /** A fake model: replies in order, recording each call's user text and output limit. */
 function fakeModel(replies: Array<string | { text: string; finishReason: string } | Error>) {
     const calls: { user: string; maxOutputTokens: number; system: string }[] = [];
-    const call: ClassifierModelCall = async ({ system, user, maxOutputTokens }) => {
-        calls.push({ system, user, maxOutputTokens });
+    const call: ClassifierModelCall = async ({ system, userParts, maxOutputTokens }) => {
+        calls.push({ system, user: userParts.parts.join(""), maxOutputTokens });
         const next = replies.shift();
         if (next === undefined) { throw new Error("no reply scripted"); }
         if (next instanceof Error) { throw next; }
@@ -180,6 +180,7 @@ describe("classifyShellCommand: the request built from a thread", () => {
             command: "rm -rf build",
             tool: "shell",
             cwd: "/w",
+            home: "/home/tester",
             generations,
             denials: [{ kind: "denied", tool: "shell", subject: "rm -rf src", rule: "declined by the user at the approval prompt" }],
             username: "tester",
@@ -231,6 +232,7 @@ describe("the earlier calls of the step under review", () => {
             command: "bash clean.sh",
             tool: "shell",
             cwd: "/w",
+            home: "/home/tester",
             generations: stored,
             denials: [],
             runToolCalls: runCalls,

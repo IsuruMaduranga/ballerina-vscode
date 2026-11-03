@@ -49,8 +49,8 @@ import {
     parseSeverity,
     parseStage2,
     SEVERITY_THRESHOLD,
-    stage1User,
-    stage2User,
+    stage1Instruction,
+    stage2Instruction,
 } from "./prompt";
 import { actionLength, MAX_ACTION_CHARS } from "./transcript";
 
@@ -59,8 +59,9 @@ export const CLASSIFIER_TIMEOUT_MS = 30_000;
 
 /**
  * How many times the model call retries a rate limit (429), a conflict or
- * request timeout (409, 408) or a server error (5xx), with backoff. One 429
- * otherwise left the command unjudged; the stage timeout still bounds it.
+ * request timeout (409, 408) or a server error (5xx), with backoff, so a
+ * brief rate limit is waited out rather than leaving the command unjudged;
+ * the stage timeout still bounds the retries.
  */
 export const CLASSIFIER_MAX_RETRIES = 10;
 
@@ -76,9 +77,7 @@ export interface ClassifierCallResult {
 /** One model call: the system prompt (cached for an hour) and one user message. */
 export type ClassifierModelCall = (args: {
     system: string;
-    /** The user message's whole text. */
-    user: string;
-    /** The same text as its stable blocks, with where the cache breakpoints go. */
+    /** The user message's text as its stable blocks, with where the cache breakpoints go. */
     userParts: ClassifierUserText;
     maxOutputTokens: number;
     abortSignal: AbortSignal;
@@ -180,21 +179,21 @@ export async function classify(request: ClassifyRequest, deps: ClassifierDeps): 
             noVerdict: true,
         };
     }
-    const { system, userPrefix, history, tail, index } = buildPayload(request);
+    const { system, history, tail, index } = buildPayload(request);
     const timeoutMs = deps.timeoutMs ?? CLASSIFIER_TIMEOUT_MS;
     const afterRuleDenial = request.transcript.some((entry) => entry.kind === "denied");
     const historyEnd = history.length - 1;
 
-    const once = async (user: string, maxOutputTokens: number): Promise<ClassifierCallResult> => {
+    const once = async (instruction: string, maxOutputTokens: number): Promise<ClassifierCallResult> => {
         const timeout = AbortSignal.timeout(timeoutMs);
         const abortSignal = deps.signal ? eitherSignal(deps.signal, timeout) : timeout;
         const userParts: ClassifierUserText = {
-            parts: [...history, tail, user.slice(userPrefix.length)],
+            parts: [...history, tail, instruction],
             historyEnd,
             previousHistoryEnd: deps.cache?.historyEnd,
         };
         try {
-            return await deps.call({ system, user, userParts, maxOutputTokens, abortSignal });
+            return await deps.call({ system, userParts, maxOutputTokens, abortSignal });
         } catch (error) {
             if (deps.signal?.aborted) { throw new StepError("cancelled", "cancelled"); }
             const message = error instanceof Error ? error.message : String(error);
@@ -208,32 +207,32 @@ export async function classify(request: ClassifyRequest, deps: ClassifierDeps): 
     };
 
     /** One stage: a timeout or network failure is retried once, a cut-off reply once with more room. */
-    const stage = async (user: string, base: number, big: number): Promise<string> => {
+    const stage = async (instruction: string, base: number, big: number): Promise<string> => {
         let result: ClassifierCallResult;
         try {
-            result = await once(user, base);
+            result = await once(instruction, base);
         } catch (error) {
             if (!(error instanceof StepError) || error.kind !== "timeout") { throw error; }
             if (isTransportFailure(error.message)) {
                 await pause(deps.transportRetryDelayMs ?? TRANSPORT_RETRY_DELAY_MS, deps.signal);
                 if (deps.signal?.aborted) { throw new StepError("cancelled", "cancelled"); }
             }
-            result = await once(user, base);
+            result = await once(instruction, base);
         }
         if (result.finishReason !== "length") { return result.text; }
-        const retried = await once(user, big);
+        const retried = await once(instruction, big);
         if (retried.finishReason === "length") { throw new StepError("truncated", "verdict truncated at its output limit"); }
         return retried.text;
     };
 
     try {
-        const s1 = await stage(stage1User(userPrefix), 64, 1024);
+        const s1 = await stage(stage1Instruction(), 64, 1024);
         const sev1 = parseSeverity(s1);
         if (sev1 !== null && sev1 < SEVERITY_THRESHOLD) {
             deps.onTrace?.(`[auto-mode] ${request.toolName} → allow [s1=${sev1}]`);
             return { decision: "allow", reason: "", tier: "allow" };
         }
-        const s2 = await stage(stage2User(userPrefix, afterRuleDenial), 4096, 8192);
+        const s2 = await stage(stage2Instruction(afterRuleDenial), 4096, 8192);
         let verdict = parseStage2(s2, index, request.userMessages);
         // Stage 1 flagged it and stage 2 cleared it citing nothing: an allow, tagged so the
         // decision log shows a clear that rests on nothing checkable.
@@ -263,7 +262,6 @@ export async function classify(request: ClassifyRequest, deps: ClassifierDeps): 
                     reason: "This chat's history is longer than the approval classifier's context window, so the command was not judged. A new chat starts a new history.",
                     tier: "unmatched",
                     noVerdict: true,
-                    transcriptTooLong: true,
                 };
             case "timeout": {
                 const network = isTransportFailure(message);

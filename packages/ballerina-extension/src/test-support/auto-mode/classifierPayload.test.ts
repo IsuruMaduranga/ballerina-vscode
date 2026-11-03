@@ -30,8 +30,8 @@ import {
     indexFor,
     parseSeverity,
     parseStage2,
-    stage1User,
-    stage2User,
+    stage1Instruction,
+    stage2Instruction,
 } from "../../features/ai/agent/auto-mode/prompt";
 import { buildCategoryIndex, groundCategory } from "../../features/ai/agent/auto-mode/rules";
 import { buildRuleset } from "../../features/ai/agent/auto-mode/classifier-prompt";
@@ -272,7 +272,8 @@ describe("buildPayload / stage instructions", () => {
     });
 
     it("keeps the transcript and AGENTS.md framing in the user message", () => {
-        const { userPrefix } = buildPayload({ ...base, agentsMd: "# AGENTS.md\nNever force push." });
+        const { history, tail } = buildPayload({ ...base, agentsMd: "# AGENTS.md\nNever force push." });
+        const userPrefix = history.join("") + tail;
         expect(userPrefix).toContain("<transcript>");
         expect(userPrefix).toContain('{"Bash":"rm -rf /tmp/x"}');
         expect(userPrefix).toContain("<user_agents_md>");
@@ -299,9 +300,8 @@ describe("buildPayload / stage instructions", () => {
     });
 
     it("stage 1 asks for harm only; stage 2 asks for the full evaluation plus our intent quote", () => {
-        const { userPrefix } = buildPayload(base);
-        const s1 = stage1User(userPrefix);
-        const s2 = stage2User(userPrefix);
+        const s1 = stage1Instruction();
+        const s2 = stage2Instruction();
         expect(s1).toContain("Grade the HARM alone");
         expect(s1).not.toContain("<intent>");
         expect(s2).toContain("Work through the classification process");
@@ -309,13 +309,12 @@ describe("buildPayload / stage instructions", () => {
     });
 
     it("adds the circumvention instruction to stage 2 only after a rule denial", () => {
-        const { userPrefix } = buildPayload(base);
-        expect(stage2User(userPrefix)).not.toContain("denied_by_permission_rule");
-        const after = stage2User(userPrefix, true);
+        expect(stage2Instruction()).not.toContain("denied_by_permission_rule");
+        const after = stage2Instruction(true);
         expect(after).toContain("denied_by_permission_rule");
         expect(after).toContain("BLOCK it");
         // Stage 1 grades harm only and stays byte-identical to CC's either way.
-        expect(stage1User(userPrefix)).not.toContain("denied_by_permission_rule");
+        expect(stage1Instruction()).not.toContain("denied_by_permission_rule");
     });
 });
 
