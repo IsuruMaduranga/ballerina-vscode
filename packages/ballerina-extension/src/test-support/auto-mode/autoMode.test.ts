@@ -32,6 +32,7 @@ import {
     classifierBlockedText,
     type ShellApprovalPrompt,
     type ShellGateInput,
+    TRANSCRIPT_TOO_LONG_REASON,
 } from "../../features/ai/agent/auto-mode/gate";
 import { CONSECUTIVE_BLOCK_LIMIT, PauseTracker } from "../../features/ai/agent/auto-mode/pause";
 import { buildPayload, type ClassifyRequest, type ClassifyVerdict } from "../../features/ai/agent/auto-mode/prompt";
@@ -326,6 +327,19 @@ describe("the gate's auto branch", () => {
         if (result.allowed === false) { expect(result.text).toContain("does not move"); }
     });
 
+    it("asks the user when the history no longer fits the classifier, without offering a rule or counting a block", async () => {
+        const tooLong: ClassifyVerdict = { decision: "block", reason: "too long", tier: "transcript_too_long", noVerdict: true };
+        const pause = new PauseTracker();
+        const { result, prompts } = await run("bal push", tooLong, pause);
+        expect(result).toEqual({ allowed: true, mayWrite: true, by: "user" });
+        expect(prompts).toHaveLength(1);
+        expect(prompts[0].reasons[0]).toBe(TRANSCRIPT_TOO_LONG_REASON);
+        expect(prompts[0].grant).toBeUndefined();
+        expect(pause.stats().lifetime).toBe(0);
+        const declined = await run("bal push", tooLong, pause, "deny");
+        expect(declined.result).toMatchObject({ allowed: false, by: "user" });
+    });
+
     it("returns a timeout as not judged, without counting it toward the pause", async () => {
         const pause = new PauseTracker();
         for (let i = 0; i < CONSECUTIVE_BLOCK_LIMIT + 1; i++) {
@@ -445,15 +459,30 @@ describe("the user's auto-mode configuration", () => {
     it("reads the workspace AGENTS.md whole, with the agent's line endings", () => {
         const dir = mkdtempSync(join(tmpdir(), "bi-agents-"));
         try {
-            expect(loadAgentsMdForClassifier(dir)).toBeUndefined();
+            expect(loadAgentsMdForClassifier(dir, 1_000_000)).toBeUndefined();
             writeFileSync(join(dir, "AGENTS.md"), "  \r\n\t\n");
-            expect(loadAgentsMdForClassifier(dir)).toBeUndefined();
+            expect(loadAgentsMdForClassifier(dir, 1_000_000)).toBeUndefined();
             const lines = Array.from({ length: 400 }, (_v, i) => `line ${i} ${"x".repeat(50)}`);
             lines.push("Never run git push --force.");
             writeFileSync(join(dir, "AGENTS.md"), lines.join("\r\n"));
-            const text = loadAgentsMdForClassifier(dir);
+            const text = loadAgentsMdForClassifier(dir, 1_000_000);
             expect(text).toBe(lines.join("\n"));
             expect(text).toContain("Never run git push --force.");
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it("shows a note instead of an AGENTS.md over half the window, never a cut file", () => {
+        const dir = mkdtempSync(join(tmpdir(), "bi-agents-"));
+        try {
+            // 2,000 characters is 500 tokens: exactly half of a 1,000-token window still loads whole.
+            writeFileSync(join(dir, "AGENTS.md"), "x".repeat(2_000));
+            expect(loadAgentsMdForClassifier(dir, 1_000)).toBe("x".repeat(2_000));
+            writeFileSync(join(dir, "AGENTS.md"), "x".repeat(2_001));
+            const note = loadAgentsMdForClassifier(dir, 1_000);
+            expect(note).toBe("(Not shown: this AGENTS.md is about 501 tokens, more than half of the session model's 1,000-token context window, so it is left out here. Leaving it out grants no permission.)");
+            expect(loadAgentsMdForClassifier(dir, 1_000_000)).toBe("x".repeat(2_001));
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

@@ -65,7 +65,7 @@ export function shellPromptSection(scratchpadDir: string | undefined, tool: "she
     const runs = tool === "powershell" ? `The ${POWERSHELL_TOOL_NAME} tool runs PowerShell commands` : `The ${SHELL_TOOL_NAME} tool runs bash commands`;
     const shell = `# Shell
 
-${runs} in the workspace root. Read-only commands inside the workspace, the scratchpad and the Ballerina library cache run straight away. Any other command is checked first: depending on the user's setting, a safety check screens it or the user approves it, so do not run one the task does not need. If a command is declined or blocked, the result says so and why: do not retry it or reach the same effect another way; explain what you needed it for and continue with other work.`;
+${runs} in the workspace root. Read-only commands inside the workspace, the scratchpad and the Ballerina library cache run straight away. Any other command is checked first: depending on the user's setting, a safety check screens it or the user approves it, so do not run one the task does not need. If the user declines a command, the turn ends there. If the safety check blocks one, the result says why. Either way, do not retry it or reach the same effect another way; after a block, explain what you needed it for and continue with other work.`;
     return scratchpadDir ? `${shell}\n\n${scratchpadPromptSection(scratchpadDir)}` : shell;
 }
 

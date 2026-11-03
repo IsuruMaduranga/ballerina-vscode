@@ -76,8 +76,11 @@ export interface ClassifyVerdict {
     decision: ClassifyDecision;
     /** Shown to the user and the model: the grounded rule name, never a paraphrase. */
     reason: string;
-    /** Derived from the grounded category's section, not a field the model chose. */
-    tier?: "hard_deny" | "soft_deny" | "allow" | "intent" | "unmatched" | "timeout";
+    /**
+     * Derived from the grounded category's section, not a field the model chose. `timeout` and
+     * `transcript_too_long` mark the two not-judged cases the gate handles apart from a block.
+     */
+    tier?: "hard_deny" | "soft_deny" | "allow" | "intent" | "unmatched" | "timeout" | "transcript_too_long";
     /** The grounded rule name (or a sentinel like `intent-unverified`). */
     ruleId?: string;
     /** The model's own wording, kept for diagnosis and shown attributed to it. */

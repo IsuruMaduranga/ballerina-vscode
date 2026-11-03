@@ -190,8 +190,20 @@ export function isGuardedWritePath(path: string, cwd: string, protectedDirs: rea
  * git or the gate would keep: a working root, a `.git`, a directory holding
  * one at any depth, or a guarded path or a directory holding one (`rm -rf .`,
  * `mv .git x`, `rm -rf vendor` over `vendor/lib/.git`, `rm -rf .vscode`).
+ * `resolved` is a {@link resolveForContainment} form, and so is each of
+ * `roots` ({@link containmentRoots}): resolved through links and case-folded
+ * where the filesystem folds case.
  */
 export function removalLoses(absolute: string, resolved: string, roots: readonly string[], cwd: string, protectedDirs: readonly string[] = []): boolean {
     const lost = (path: string) => path.split(/[\\/]/).includes(".git") || isGuardedWritePath(path, cwd, protectedDirs);
-    return roots.includes(resolved) || lost(absolute) || lost(resolved) || touchesGuardedPath(resolved, resolved, lost);
+    // Folded here too, so a root passed in its configured spelling still matches.
+    return roots.some((root) => normalize(root) === resolved) || lost(absolute) || lost(resolved) || touchesGuardedPath(resolved, resolved, lost);
+}
+
+/**
+ * Working roots in {@link resolveForContainment} form, the form `removalLoses`
+ * compares: the gates get the scratchpad as configured, not case-folded.
+ */
+export function containmentRoots(roots: readonly string[]): string[] {
+    return roots.map((root) => resolveForContainment(root) ?? normalize(root));
 }

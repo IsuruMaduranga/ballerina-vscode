@@ -66,6 +66,8 @@ export interface BackgroundShell extends BackgroundTaskBase {
     cwd: string;
     /** The full output, spooled; named in the completion notice. */
     logPath?: string;
+    /** The output file the start text named, once its spool failed: the notice says it is incomplete. */
+    lostLogPath?: string;
     exitCode: number | null;
     /** How it ended (`runner.ts shellFinish`), set on completion. */
     finishStatus?: FinishStatus;

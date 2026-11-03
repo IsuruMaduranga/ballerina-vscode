@@ -46,7 +46,7 @@ import { readdirSync } from "fs";
 import { analyzeShellCommand } from "./shell-analysis";
 import { delimiter, isAbsolute, join } from "path";
 import { isSensitivePath } from "./sensitive";
-import { isGuardedWritePath, isWithin, removalLoses, resolveForContainment, touchesGuardedPath } from "./paths";
+import { containmentRoots, isGuardedWritePath, isWithin, removalLoses, resolveForContainment, touchesGuardedPath } from "./paths";
 import type { PowerShellAstNode, PowerShellParse } from "./powershell-parser";
 import {
     applicationArgument,
@@ -60,7 +60,7 @@ import {
     WRITE_CMDLETS,
     WRITE_TAILS,
 } from "./powershell-cmdlets";
-import { hasPowerShellWildcard, powershellPathAbsolute, powershellPathProblem, powershellUnescaped } from "./powershell-paths";
+import { ENTRY_LIMIT, hasPowerShellWildcard, powershellPathAbsolute, powershellPathProblem, powershellUnescaped } from "./powershell-paths";
 import { comparablePath, system32Path } from "./shared-paths";
 
 export interface PowerShellTreeOptions {
@@ -298,10 +298,7 @@ function checkCommand(tree: Tree, i: number, specFor: SpecFor, applications: boo
         // earlier on PATH than Windows' own is some other program.
         const expected = system32Path(shown.toLowerCase().endsWith(".exe") ? shown : `${shown}.exe`);
         if (!node.resolvedName || comparablePath(node.resolvedName) !== comparablePath(expected)) { refuse(`\`${shown}\` resolves to ${node.resolvedName ?? "no program"}, not Windows' own`); }
-        // The parse server resolved the name in its own directory; a relative
-        // PATH entry (`.`, `bin`) resolves against the call's, where it can name
-        // another program.
-        if (pathHasRelativeEntry(process.env)) { refuse(`PATH has a relative entry, so \`${shown}\` may resolve to another program where it runs`); }
+        refuseOnRelativePathEntry(shown);
         const paths: string[] = [];
         for (const element of elements.slice(1)) {
             if (nodes[element].type.endsWith("RedirectionAst")) { continue; }
@@ -376,10 +373,15 @@ function collectedValues(tree: Tree, elements: number[] | undefined): string[] |
     return values;
 }
 
-/** Whether any PATH entry is relative, so a command name resolves differently in another directory. */
-function pathHasRelativeEntry(env: NodeJS.ProcessEnv): boolean {
-    const key = Object.keys(env).find((name) => name.toLowerCase() === "path") ?? "PATH";
-    return (env[key] ?? "").split(delimiter).some((entry) => entry.trim() !== "" && !isAbsolute(entry.trim()));
+/**
+ * Refuse a program found by name when PATH has a relative entry: the parse
+ * server resolved the name in its own directory, and a relative entry (`.`,
+ * `bin`) resolves against the call's, where it can name another program.
+ */
+function refuseOnRelativePathEntry(shown: string): void {
+    const key = Object.keys(process.env).find((name) => name.toLowerCase() === "path") ?? "PATH";
+    const relative = (process.env[key] ?? "").split(delimiter).some((entry) => entry.trim() !== "" && !isAbsolute(entry.trim()));
+    if (relative) { refuse(`PATH has a relative entry, so \`${shown}\` may resolve to another program where it runs`); }
 }
 
 /** A stream merge (`2>&1`) and a redirection to `$null` write no file; any other redirection is not cleared. */
@@ -435,9 +437,6 @@ function verdict(parse: PowerShellParse, kind: "read" | "edit", opts: PowerShell
     answers.set(key, answer);
     return answer;
 }
-
-/** The most entries a directory may hold for its entries to be checked one by one. */
-const ENTRY_LIMIT = 2_000;
 
 /** Whether every entry of `directory` (not recursing) resolves inside a root and to no credential path. */
 function entriesInside(directory: string, roots: string[]): boolean {
@@ -542,8 +541,7 @@ export function powershellTreeContainedEdits(parse: PowerShellParse, opts: Power
     return verdict(parse, "edit", opts, () => {
         if (parse.errors.length > 0) { refuse("PowerShell could not parse the line"); }
         const tree = buildTree(parse);
-        const root = resolveForContainment(opts.cwd) ?? opts.cwd;
-        const writable = [root, ...(opts.writableRoots ?? [])];
+        const writable = containmentRoots([opts.cwd, ...(opts.writableRoots ?? [])]);
         for (const pipeline of pipelines(tree)) {
             pipeline.forEach((command, position) => {
                 const current = checkCommand(tree, command, (name) => (position === 0 ? WRITE_CMDLETS[name] : WRITE_TAILS.has(name) ? READ_CMDLETS[name] : undefined), false);
@@ -606,9 +604,7 @@ function checkGitCommand(tree: Tree, i: number, opts: PowerShellTreeOptions): Ch
     if (nameElement === undefined || nodes[nameElement].type !== "StringConstantExpressionAst" || nodes[nameElement].kind !== "BareWord") { refuse("git by a computed or quoted name"); }
     tree.approved.add(i).add(nameElement);
     if (!node.resolvedName) { refuse("git is not a program this PowerShell finds"); }
-    // The parse server resolved the name in its own directory; a relative PATH
-    // entry resolves against the call's, where it can name another program.
-    if (pathHasRelativeEntry(process.env)) { refuse("PATH has a relative entry, so `git` may resolve to another program where it runs"); }
+    refuseOnRelativePathEntry("git");
     const words: string[] = [];
     for (const element of elements.slice(1)) {
         const type = nodes[element].type;

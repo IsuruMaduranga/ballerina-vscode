@@ -45,8 +45,8 @@ export interface DecisionEntry {
     /** Command or path, clipped — never tool output. */
     subject: string;
     outcome: "allow" | "block" | "prompt";
-    /** Which layer decided. */
-    source: "pre-gate" | "classifier" | "floor" | "user" | "review";
+    /** Which layer decided; `error` when the approval prompt failed or was withdrawn, so no one did. */
+    source: "pre-gate" | "classifier" | "floor" | "user" | "review" | "error";
     tier?: string;
     ruleId?: string;
     reason?: string;

@@ -74,8 +74,12 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
         logPath: opts.logPath,
         // Never name a missing or partial file as the full output. A spool fails only
         // asynchronously (a stream error or a flush timeout), so the task exists by then.
+        // The start text already named the file, so the notice says it is incomplete.
         onSpoolFailed: () => {
-            if (task) { task.logPath = undefined; }
+            if (task) {
+                task.lostLogPath = opts.logPath;
+                task.logPath = undefined;
+            }
         },
     });
 

@@ -22,6 +22,7 @@ import { CopilotEventHandler } from "../utils/events";
 import { ConfigVariable } from "../../../utils/toml-utils";
 import { StateMachine } from "../../../stateMachine";
 import { approvalViewManager } from './ApprovalViewManager';
+import type { ShellApprovalAnswer } from '../agent/auto-mode/gate';
 
 /**
  * Plan approval response
@@ -57,8 +58,8 @@ export interface ClarifyResponse {
     answers?: Array<{ question: string; answers: string[] }>;
 }
 
-/** The user's answer to a shell command banner. */
-export type ShellApprovalDecision = "allow" | "deny" | "allow-session" | "timeout";
+/** The user's answer to a shell command banner (auto-mode/gate.ts ShellApprovalAnswer). */
+export type ShellApprovalDecision = ShellApprovalAnswer;
 
 /** What the shell command banner shows (auto-mode/gate.ts ShellApprovalPrompt, flattened for the UI). */
 export interface ShellApprovalContent {
@@ -551,7 +552,7 @@ export class ApprovalManager {
     /**
      * Ask the user whether a shell command the gate could not clear may run.
      * Serialised through the approval queue like the web tool banner. A timeout,
-     * expiry resolves as "timeout"; an abort resolves as "deny".
+     * expiry resolves as "timeout"; a stopped run rejects with an AbortError, never the user's "deny".
      */
     requestShellApproval(
         requestId: string,
@@ -559,8 +560,8 @@ export class ApprovalManager {
         eventHandler: CopilotEventHandler,
         timeoutMs = this.DEFAULT_TIMEOUT_MS,
     ): Promise<ShellApprovalDecision> {
-        return new Promise((resolve) => {
-            this.shellApprovals.set(requestId, { resolve, reject: () => resolve("deny") });
+        return new Promise((resolve, reject) => {
+            this.shellApprovals.set(requestId, { resolve, reject });
 
             this.approvalQueue.push({
                 requestId,
@@ -746,11 +747,12 @@ export class ApprovalManager {
         }
         this.webToolApprovals.clear();
 
+        // A stopped run withdrew these banners; the user declined nothing.
         for (const [, resolver] of this.shellApprovals.entries()) {
             if (resolver.timeoutId) {
                 clearTimeout(resolver.timeoutId);
             }
-            resolver.resolve("deny");
+            resolver.reject(error);
         }
         this.shellApprovals.clear();
         this.approvalQueue = [];

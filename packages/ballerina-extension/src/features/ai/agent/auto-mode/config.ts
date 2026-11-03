@@ -118,6 +118,18 @@ export function loadAutoModeConfig(home: string, defaultEnvironment: string[]): 
     return parseAutoModeConfig(text, defaultEnvironment);
 }
 
+/** Characters per token for the size estimate, as `estimateFloorTokens` (copilot-utilities context-management) counts. */
+const CHARS_PER_TOKEN = 4;
+
+/**
+ * The note in AGENTS.md's place when it is too large to show the classifier. It says the file exists,
+ * so its absence cannot read as having no instructions, and that leaving it out grants no permission.
+ */
+function agentsMdNotShownNote(tokens: number, contextWindow: number): string {
+    return `(Not shown: this AGENTS.md is about ${tokens.toLocaleString("en-US")} tokens, more than half of the session model's ` +
+        `${contextWindow.toLocaleString("en-US")}-token context window, so it is left out here. Leaving it out grants no permission.)`;
+}
+
 /**
  * The workspace's AGENTS.md for the classifier's untrusted framing block: the
  * file the agent is shown (`agents-md/index.ts readAgentsMd`, line endings
@@ -125,14 +137,20 @@ export function loadAutoModeConfig(home: string, defaultEnvironment: string[]): 
  * The agent's turn block shows the first lines and points it at the rest,
  * which it reads on demand; the classifier gets every line, because a cut
  * would drop the restrictions past it, and the framing tells the classifier
- * these instructions can only tighten what is allowed. A history too large
- * for the classifier's window is not judged (classifier.ts).
+ * these instructions can only tighten what is allowed. A file over half of
+ * `contextWindow`, the session model's (estimated at four characters a token), is replaced by
+ * `agentsMdNotShownNote`, never cut, so it cannot push every call past the
+ * classifier's window. A history too large for that window is asked about
+ * instead (gate.ts).
  */
-export function loadAgentsMdForClassifier(workspaceRoot: string): string | undefined {
+export function loadAgentsMdForClassifier(workspaceRoot: string, contextWindow: number): string | undefined {
+    let text: string;
     try {
-        const text = readFileSync(join(workspaceRoot, "AGENTS.md"), "utf8").replace(/\r\n/g, "\n").trim();
-        return text.length > 0 ? text : undefined;
+        text = readFileSync(join(workspaceRoot, "AGENTS.md"), "utf8").replace(/\r\n/g, "\n").trim();
     } catch {
         return undefined;
     }
+    if (text.length === 0) { return undefined; }
+    const tokens = Math.ceil(text.length / CHARS_PER_TOKEN);
+    return tokens > contextWindow / 2 ? agentsMdNotShownNote(tokens, contextWindow) : text;
 }

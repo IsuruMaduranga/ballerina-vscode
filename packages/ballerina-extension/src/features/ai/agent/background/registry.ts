@@ -244,7 +244,8 @@ function completionNote(t: BackgroundTask): string {
     if (t.logPath) {
         return `${summary} (${t.id}). Output file: ${t.logPath}. Use task_output to retrieve the output.`;
     }
-    return `${summary} (${t.id}). Output tail:\n${escapeForTag(tailCap(t.output, NOTIFY_OUTPUT_CAP).trim())}`;
+    const lost = t.lostLogPath ? ` Its output file ${t.lostLogPath} could not be written in full, so do not rely on it.` : "";
+    return `${summary} (${t.id}).${lost} Output tail:\n${escapeForTag(tailCap(t.output, NOTIFY_OUTPUT_CAP).trim())}`;
 }
 
 /** The chat's finished-but-unreported tasks with their completion lines, oldest first; marks nothing. */

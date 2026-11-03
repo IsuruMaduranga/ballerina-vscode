@@ -123,7 +123,7 @@ export function powerShellParser(spec: ShellSpawn | undefined = powerShellSpawn(
         spec.shell,
         () =>
             new PowerShellParser({
-                spawnServer: (bootstrap) => spawnLaunch(shellLaunch(spec, bootstrap), { cwd: homedir(), stdin: "pipe" }),
+                spawnServer: (bootstrap) => spawnLaunch(shellLaunch(spec, bootstrap), { cwd: homedir(), stdin: "pipe", remember: false }),
             }),
     );
 }

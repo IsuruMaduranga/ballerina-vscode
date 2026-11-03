@@ -30,7 +30,7 @@
 import { join } from "path";
 import { generateTaskId } from "../background/types";
 import { startBackgroundShell } from "./background";
-import { persistedOutputBlock, tailCap } from "./output";
+import { persistedOutputBlock, PREVIEW_CHARS, tailCap } from "./output";
 import { balRunDirectory } from "./bal-run";
 import { exitJudgeFor, type ShellDialect } from "./exit-semantics";
 import { ensureScratchpadDir } from "./scratchpad";
@@ -130,15 +130,17 @@ export function foregroundTimeoutMs(timeout: number | undefined): number {
  * command ended (`line`, `runner.ts finishLine`) unless it succeeded, then
  * the whole output, or past `FOREGROUND_OUTPUT_CAP` the persisted-output
  * block naming the file that holds it (`summary.logPath`) and previewing its
- * start.
+ * start. Without that file (no scratchpad, a failed spool) the block also
+ * carries the end of the output kept in memory, within the same cap.
  */
 export function foregroundText(summary: RunSummary, line: string): string {
     const head =
         line === "completed" ? ""
             : line === "stopped" ? "Command stopped: the run was aborted.\n\n"
                 : `Command ${line}.\n\n`;
-    const output = summary.length > FOREGROUND_OUTPUT_CAP ? persistedOutputBlock(summary.length, summary.head, summary.logPath) : summary.output;
-    return `${head}${output}`;
+    if (summary.length <= FOREGROUND_OUTPUT_CAP) { return `${head}${summary.output}`; }
+    const end = summary.logPath ? "" : summary.output.slice(-(FOREGROUND_OUTPUT_CAP - PREVIEW_CHARS));
+    return `${head}${persistedOutputBlock(summary.length, summary.head, summary.logPath, end)}`;
 }
 
 /** The text returned when a background task starts. */

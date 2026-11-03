@@ -73,7 +73,7 @@ export type ShellAllowedBy = "pre-gate" | "file-operation" | "session-rule" | "c
  */
 export type ShellAuthorization =
     | { allowed: true; mayWrite: boolean; by: ShellAllowedBy }
-    | { allowed: false; text: string; by: "user" | "classifier" | "timeout"; rule?: string };
+    | { allowed: false; text: string; by: "user" | "classifier" | "timeout" | "error"; rule?: string };
 
 /** Whether a cleared command may still change workspace files: only a pre-gate read with no write target cannot. */
 function mayWrite(decision: ShellGateDecision): boolean {
@@ -182,13 +182,16 @@ export interface ShellApprovalPrompt {
     timeoutMs?: number;
 }
 
-/** The user's answer. `allow-session` is only valid when the prompt carried a grant. */
+/**
+ * The user's answer. `allow-session` is only valid when the prompt carried a grant. A prompt that could
+ * not be shown, or that a stopped run withdrew, rejects instead: the user did not answer.
+ */
 export type ShellApprovalAnswer = "allow" | "deny" | "allow-session" | "timeout";
 
 /** One gate decision for the decision log (`decision-log.ts decisionEntry` adds the time and clips). */
 export interface GateDecisionRecord {
     outcome: "allow" | "block" | "prompt";
-    source: "pre-gate" | "classifier" | "floor" | "user";
+    source: "pre-gate" | "classifier" | "floor" | "user" | "error";
     tier?: string;
     ruleId?: string;
     reason?: string;
@@ -232,14 +235,26 @@ export async function parsePowerShell(command: string): Promise<PowerShellParse 
     return outcome.ok ? outcome.parse : undefined;
 }
 
-/** The text the model receives when the user declines a command. */
+/**
+ * The text the model receives when the user declines a command. A decline
+ * ends the turn (`tool-registry.ts`), so the model reads this when the user
+ * next writes: it must not pick the command up again unasked.
+ */
 export function deniedText(command: string): string {
     return (
         `The user declined to run this command: ${command}\n\n` +
-        "It did not run. Do not retry it or work around it with a different command that has the same effect. " +
-        "If the task needs it, say so and ask the user how to proceed; otherwise continue with other work."
+        "It did not run, and the turn ended there. Do not retry it or work around it with a different command that has the same effect. " +
+        "Follow the user's next message; if it does not mention this command, do not take it up again."
     );
 }
+
+/** The banner reason when the classifier cannot fit the chat's history. */
+export const TRANSCRIPT_TOO_LONG_REASON = "This chat's history no longer fits the auto-mode safety check, so you decide this command.";
+
+/** The text the model receives when the approval banner could not be shown, or was withdrawn when the run stopped. */
+export const PROMPT_FAILED_TEXT =
+    "The approval prompt could not be shown or was withdrawn, so the command did not run. This is not the user's decision. " +
+    "Continue with work that does not need this command, and tell the user if it is essential.";
 
 /** The text the model receives when the classifier blocks a command in auto mode. */
 export function classifierBlockedText(verdict: ClassifyVerdict): string {
@@ -298,23 +313,31 @@ export async function authorizeShellCommand(input: ShellGateInput, mode: ShellMo
                 callbacks.onDecision?.({ ...record, outcome: "allow" });
                 return { allowed: true, mayWrite: true, by: "classifier" };
             }
-            callbacks.onDecision?.({ ...record, outcome: "block" });
-            if (verdict.tier === "timeout") {
-                return { allowed: false, text: classifierTimeoutText(verdict), by: "timeout" };
+            if (verdict.tier === "transcript_too_long") {
+                // The history no longer fits the classifier, and will not fit again
+                // until a compaction restart: the user decides this command, so auto
+                // mode does not refuse every command until then.
+                callbacks.onDecision?.({ ...record, outcome: "prompt" });
+                reasons = [TRANSCRIPT_TOO_LONG_REASON, ...reasons];
+            } else {
+                callbacks.onDecision?.({ ...record, outcome: "block" });
+                if (verdict.tier === "timeout") {
+                    return { allowed: false, text: classifierTimeoutText(verdict), by: "timeout" };
+                }
+                if (verdict.noVerdict) {
+                    return { allowed: false, text: classifierNotJudgedText(verdict), by: "classifier" };
+                }
+                auto.pause.recordBlock({ toolName: input.shell === "powershell" ? "powershell" : "shell", subject: input.command, reason: verdict.reason, tier: verdict.tier, ruleId: verdict.ruleId, raw: verdict.raw });
+                return { allowed: false, text: classifierBlockedText(verdict), by: "classifier", rule: verdict.ruleId ?? verdict.reason };
             }
-            if (verdict.noVerdict) {
-                return { allowed: false, text: classifierNotJudgedText(verdict), by: "classifier" };
+        } else {
+            // Paused: this is the resume prompt, not a per-action approval.
+            reasons = [pausedReason(auto.pause), ...reasons];
+            if (auto.pause.takeTimedPrompt()) {
+                timeoutMs = UNATTENDED_PROMPT_TIMEOUT_MS;
+                reasons.push("This request is automatically declined after two minutes without an answer, so an unattended run can continue.");
             }
-            auto.pause.recordBlock({ toolName: input.shell === "powershell" ? "powershell" : "shell", subject: input.command, reason: verdict.reason, tier: verdict.tier, ruleId: verdict.ruleId, raw: verdict.raw });
-            return { allowed: false, text: classifierBlockedText(verdict), by: "classifier", rule: verdict.ruleId ?? verdict.reason };
         }
-        // Paused: this is the resume prompt, not a per-action approval.
-        reasons = [pausedReason(auto.pause), ...reasons];
-        if (auto.pause.takeTimedPrompt()) {
-            timeoutMs = UNATTENDED_PROMPT_TIMEOUT_MS;
-            reasons.push("This request is automatically declined after two minutes without an answer, so an unattended run can continue.");
-        }
-        grant = undefined;
     }
     if (decision.floor || auto) { grant = undefined; }
 
@@ -322,7 +345,10 @@ export async function authorizeShellCommand(input: ShellGateInput, mode: ShellMo
     try {
         answer = await callbacks.ask({ command: input.command, reasons, grant, ...(timeoutMs ? { timeoutMs } : {}) });
     } catch {
-        answer = "deny";
+        // The banner failed or the run stopped, not the user: deny, but neither
+        // end the turn nor record a denial that would read as the user's own decision.
+        callbacks.onDecision?.({ outcome: "block", source: "error", reason: "approval prompt failed or withdrawn" });
+        return { allowed: false, text: PROMPT_FAILED_TEXT, by: "error" };
     }
     callbacks.onDecision?.({ outcome: answer === "deny" || answer === "timeout" ? "block" : "allow", source: "user", reason: answer === "timeout" ? "approval prompt expired" : decision.floor ? "floor" : undefined });
     if (answer === "timeout") {

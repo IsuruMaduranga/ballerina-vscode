@@ -69,6 +69,6 @@ it("clears the timeout on an answer or a cancelled run", async () => {
     expect(jest.getTimerCount()).toBe(0);
     const cancelled = approvalManager.requestShellApproval("cancelled", content, jest.fn(), UNATTENDED_PROMPT_TIMEOUT_MS);
     approvalManager.cancelAllPending("user stopped");
-    await expect(cancelled).resolves.toBe("deny");
+    await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
     expect(jest.getTimerCount()).toBe(0);
 });

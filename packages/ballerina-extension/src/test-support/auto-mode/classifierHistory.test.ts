@@ -174,7 +174,7 @@ describe("classifier robustness", () => {
     it("does not judge a transcript the provider cannot fit, and does not retry or clip it", async () => {
         const model = fakeModel([new Error("prompt is too long: 1050000 tokens > 1000000 maximum")]);
         const verdict = await classify(request(), { call: model.call });
-        expect(verdict).toMatchObject({ decision: "block", tier: "unmatched", noVerdict: true });
+        expect(verdict).toMatchObject({ decision: "block", tier: "transcript_too_long", noVerdict: true });
         expect(verdict.reason).toContain("longer than the approval classifier's context window");
         expect(verdict.reason).toContain("not judged");
         expect(model.calls).toHaveLength(1);
@@ -214,6 +214,8 @@ describe("failure classification", () => {
         ["input length and `max_tokens` exceed context limit: 190000 + 8192 > 200000", true],
         ["max_tokens: 100000 > 64000, which is the maximum allowed", false],
         ["Overloaded", false],
+        ["ThrottlingException: Too many tokens, please wait before trying again.", false],
+        ["Too many tokens per minute: rate limit reached", false],
     ])("transcript too long: %s → %s", (message, expected) => {
         expect(isTranscriptTooLong(message)).toBe(expected);
     });

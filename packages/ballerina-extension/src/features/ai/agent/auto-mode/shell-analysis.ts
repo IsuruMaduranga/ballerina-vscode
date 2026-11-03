@@ -42,7 +42,7 @@
 
 import { isProtectedPath } from "./protected-paths";
 import { isExecutionPrimitivePath, isSensitivePath } from "./sensitive";
-import { isGuardedWritePath, isWithin, removalLoses, resolveForContainment, toAbsoluteBash, touchesGuardedPath } from "./paths";
+import { containmentRoots, isGuardedWritePath, isWithin, removalLoses, resolveForContainment, toAbsoluteBash, touchesGuardedPath } from "./paths";
 import { checkoutGitRunsProgram } from "./git-checkout-programs";
 import { lstatSync, readdirSync, statSync } from "fs";
 import {
@@ -879,6 +879,8 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
      * in-project write as an escape.
      */
     const containmentRoot = resolveForContainment(cwd) ?? cwd;
+    /** The working roots `removalLoses` compares, resolved on the first removal. */
+    let removalRoots: string[] | undefined;
 
     /** `cd` changes what later relative paths mean; the original never tracked it. */
     let effectiveCwd = cwd;
@@ -1212,12 +1214,12 @@ export function analyzeShellCommand({ command, cwd, home, protectedDirs = [], re
             // what git or the gate would keep (`rm -rf .`, `mv .git x`, `rm -rf
             // vendor` over `vendor/lib/.git`, `rm -rf .claude`, `mv .husky old`),
             // whatever else is contained.
-            const roots = [containmentRoot, ...writableRoots];
+            removalRoots ??= containmentRoots([cwd, ...writableRoots]);
             for (const token of name === "mv" ? reads : name === "rm" || name === "rmdir" ? fileOperands : []) {
                 const absolute = toAbsoluteBash(effectiveCwd, token.value, home);
                 const resolved = resolveForContainment(absolute);
                 if (resolved === undefined) { continue; }
-                if (removalLoses(absolute, resolved, roots, effectiveCwd, protectedDirs)) {
+                if (removalLoses(absolute, resolved, removalRoots, effectiveCwd, protectedDirs)) {
                     escalate(`${name === "mv" ? "moves" : "removes"} ${token.value}, which is a working root, or is or holds a git repository or a protected, credential or execution-primitive path`);
                 }
             }

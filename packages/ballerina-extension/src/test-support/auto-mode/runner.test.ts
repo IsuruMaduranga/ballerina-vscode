@@ -59,11 +59,12 @@ describe("output", () => {
         expect(buffer.kept).toBe("x".repeat(10));
     });
 
-    it("names the full-output file and previews the start, or says the preview is all there is", () => {
-        const saved = persistedOutputBlock(45_000, "first line\n", "/s/tasks/t/output.log");
+    it("names the full-output file and previews the start, or keeps the start and end without one", () => {
+        const saved = persistedOutputBlock(45_000, "first line\n", "/s/tasks/t/output.log", "");
         expect(saved).toBe("<persisted-output>\nOutput too large (43.9KB). Full output saved to: /s/tasks/t/output.log\n\nPreview (first 2KB):\nfirst line\n\n...\n</persisted-output>");
-        const lost = persistedOutputBlock(45_000, "y".repeat(PREVIEW_CHARS + 50), undefined);
-        expect(lost).toContain("could not be saved to a file. Only this preview survives");
+        const lost = persistedOutputBlock(45_000, "y".repeat(PREVIEW_CHARS + 50), undefined, "last line");
+        expect(lost).toContain("could not be saved to a file. Only its start and end survive");
+        expect(lost).toContain("End (last 0.0KB):\nlast line\n</persisted-output>");
         expect(lost).toContain(`\n${"y".repeat(PREVIEW_CHARS)}\n...\n`);
     });
 

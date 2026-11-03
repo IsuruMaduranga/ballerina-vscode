@@ -28,6 +28,7 @@ import {
     authorizeShellCommand,
     decideShellCommand,
     deniedText,
+    PROMPT_FAILED_TEXT,
     SessionRuleStore,
     type SessionRule,
     type ShellApprovalAnswer,
@@ -288,9 +289,28 @@ describe("authorizeShellCommand in ask mode: the banner round trip", () => {
         expect(result).toEqual({ allowed: true, mayWrite: true, by: "pre-gate" });
     });
 
-    it("denies when the prompt fails", async () => {
-        const { result } = await run("bal build", new Error("panel gone"));
-        expect(result.allowed).toBe(false);
+    it("denies when the prompt fails or a stopped run withdraws it, without recording it as the user's decline", async () => {
+        const denied: string[] = [];
+        const logged: { source: string }[] = [];
+        const result = await authorizeShellCommand(input("bal build", []), "ask", {
+            ask: async () => { throw Object.assign(new Error("user stopped"), { name: "AbortError" }); },
+            grantRule: () => undefined,
+            onUserDenied: (command) => denied.push(command),
+            onDecision: (record) => logged.push(record),
+        });
+        expect(result).toEqual({ allowed: false, text: PROMPT_FAILED_TEXT, by: "error" });
+        expect(denied).toHaveLength(0);
+        expect(logged).toEqual([expect.objectContaining({ outcome: "block", source: "error" })]);
+    });
+
+    it("records a decline for the classifier and the turn's end", async () => {
+        const denied: string[] = [];
+        await authorizeShellCommand(input("bal build", []), "ask", {
+            ask: async () => "deny",
+            grantRule: () => undefined,
+            onUserDenied: (command) => denied.push(command),
+        });
+        expect(denied).toEqual(["bal build"]);
     });
 
     it("allows once without storing a rule", async () => {

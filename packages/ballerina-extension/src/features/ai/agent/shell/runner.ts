@@ -55,6 +55,13 @@ export interface SpawnLaunchOptions {
     env?: NodeJS.ProcessEnv;
     /** Default `ignore` (EOF on read). `bal run` keeps `pipe`, as it has always had. */
     stdin?: "ignore" | "pipe";
+    /**
+     * Default true: remember the tree until its group is empty (`rememberProcessGroup`), so a command
+     * tree cannot outlive VS Code. False only for the PowerShell parse server, an internal helper that
+     * starts no command tree and is shut down by `disposePowerShellParsers`; remembering it would keep
+     * the reaper polling while it idles and signal it twice on deactivate.
+     */
+    remember?: boolean;
 }
 
 export interface ProcessOptions extends SpawnLaunchOptions {
@@ -128,7 +135,7 @@ export function spawnLaunch(launch: ProcessLaunch, opts: SpawnLaunchOptions): Ch
         windowsVerbatimArguments: launch.windowsVerbatimArguments,
     });
     child.on("error", () => { /* reported through the waiter; see above */ });
-    rememberProcessGroup(child);
+    if (opts.remember !== false) { rememberProcessGroup(child); }
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
     return child;

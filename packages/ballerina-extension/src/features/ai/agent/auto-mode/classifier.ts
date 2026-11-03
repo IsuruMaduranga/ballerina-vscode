@@ -36,9 +36,9 @@
  * answer), is retried once (after a short pause for a network failure) and
  * then reported as its own tier, which the gate returns to the model as "not
  * judged" rather than counting it toward the pause. Every other failure
- * blocks as not judged too: no credentials, a provider error, a transcript
- * the provider cannot fit (never clipped to fit), a truncated or unparseable
- * reply.
+ * blocks as not judged too: no credentials, a provider error, a truncated or
+ * unparseable reply. A transcript the provider cannot fit is never clipped to
+ * fit; its tier is `transcript_too_long` and the gate asks the user.
  */
 
 import type { ClassifierCacheState, ClassifierUserText } from "./classifier-cache";
@@ -134,9 +134,12 @@ export function isTransportFailure(message: string): boolean {
 
 /**
  * Whether the provider refused the request because the input does not fit its
- * context window, not because of the command or the reply's length.
+ * context window, not because of the command or the reply's length. A
+ * throttling or rate-limit error never counts: Bedrock's throttling message is
+ * "Too many tokens, please wait before trying again."
  */
 export function isTranscriptTooLong(message: string): boolean {
+    if (/throttl|rate limit|too many requests|please wait/i.test(message)) { return false; }
     return /prompt is too long|input is too long|too many (input )?tokens|exceeds? (the )?(model'?s? )?(maximum )?context (window|length|limit)|exceed context limit|context[_ ]length[_ ]exceeded|maximum context length/i.test(
         message,
     );
@@ -257,10 +260,11 @@ export async function classify(request: ClassifyRequest, deps: ClassifierDeps): 
             case "transcript-too-long":
                 // The provider is authoritative about its window. The history is
                 // not clipped to fit: a verdict on part of the chat is not one.
+                // The gate asks the user instead (gate.ts).
                 return {
                     decision: "block",
-                    reason: "This chat's history is longer than the approval classifier's context window, so the command was not judged. A new chat starts a new history.",
-                    tier: "unmatched",
+                    reason: "This chat's history is longer than the approval classifier's context window, so the command was not judged.",
+                    tier: "transcript_too_long",
                     noVerdict: true,
                 };
             case "timeout": {
@@ -280,7 +284,7 @@ export async function classify(request: ClassifyRequest, deps: ClassifierDeps): 
 
 /**
  * The text the agent receives for a command the classifier never judged
- * (a provider error, a cut-off or unreadable reply, a transcript too long):
+ * (a provider error, a cut-off or unreadable reply):
  * not a denial, and nothing to route around.
  */
 export function classifierNotJudgedText(verdict: ClassifyVerdict): string {

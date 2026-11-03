@@ -32,6 +32,9 @@ import { basename, dirname, isAbsolute, join, sep } from "path";
 import { isWithin, resolveForContainment, toAbsolute } from "./paths";
 import { isSensitivePath } from "./sensitive";
 
+/** The most entries a directory may hold for its entries to be checked one by one (here and `powershell-tree.ts`). */
+export const ENTRY_LIMIT = 2_000;
+
 export interface PowerShellPathOptions {
     /** The working directory the command runs in. */
     cwd: string;
@@ -179,7 +182,7 @@ function wildcardTargets(absolute: string): string[] | undefined {
     } catch {
         return [dir];
     }
-    if (entries.length > 2_000) { return undefined; }
+    if (entries.length > ENTRY_LIMIT) { return undefined; }
     return [dir, ...entries.filter((entry) => matches(entry)).map((entry) => join(dir, entry))];
 }
 

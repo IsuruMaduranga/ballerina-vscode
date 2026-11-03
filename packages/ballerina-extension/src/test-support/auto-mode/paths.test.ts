@@ -19,6 +19,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { comparablePath } from "../../features/ai/agent/auto-mode/shared-paths";
 import {
+    containmentRoots,
     isGuardedWritePath,
     isWritingTool,
     pathArgument,
@@ -118,6 +119,15 @@ describe("the shared write guards", () => {
         expect(removalLoses(join(cwd, "vendor"), resolved(join(cwd, "vendor")), roots, cwd)).toBe(true);
         expect(removalLoses(join(cwd, ".vscode"), resolved(join(cwd, ".vscode")), roots, cwd)).toBe(true);
         expect(removalLoses(join(cwd, "src"), resolved(join(cwd, "src")), roots, cwd)).toBe(false);
+    });
+
+    it("recognises a working root given in its raw spelling once the roots are in comparison form", () => {
+        // The gates get writable roots (the scratchpad) as configured; `resolved` is case-folded on macOS and Windows.
+        const scratch = join(dir, "Scratch-Pad");
+        mkdirSync(scratch);
+        const roots = containmentRoots([cwd, scratch]);
+        expect(removalLoses(scratch, resolved(scratch), roots, cwd)).toBe(true);
+        expect(removalLoses(join(scratch, "out"), resolved(join(scratch, "out")), roots, cwd)).toBe(false);
     });
 
     it("hands the guard each directory entry and counts an exhausted walk as touching one", () => {

@@ -28,6 +28,8 @@ import { AnthropicEffort, resolveHaikuObjectModelOptions, resolveProviderModelOp
 
 export const ANTHROPIC_HAIKU = "claude-haiku-5-5";
 export const ANTHROPIC_SONNET = "claude-sonnet-5-5";
+/** ANTHROPIC_SONNET's context window in tokens; the agent and the auto-mode classifier both run on it. */
+export const ANTHROPIC_SONNET_CONTEXT_WINDOW = 1_000_000;
 
 export const USAGE_LIMIT_EXCEEDED_MESSAGE = "Usage limit exceeded.";
 

@@ -240,14 +240,16 @@ describe("background shell lifetime and spool", () => {
         }
     });
 
-    it("names no output file when the spool could not be written", async () => {
+    it("names no output file when the spool could not be written, and says the announced one is incomplete", async () => {
         const dir = mkdtempSync(join(tmpdir(), "bg-spool-"));
         try {
-            const task = start("process.stdout.write('kept output')", { logPath: join(dir, "missing", "output.log") });
+            const logPath = join(dir, "missing", "output.log");
+            const task = start("process.stdout.write('kept output')", { logPath });
             await until(() => task.completed);
             expect(task.output).toBe("kept output");
             expect(task.logPath).toBeUndefined();
             const notice = drainBackgroundTaskNotifications(RUN);
+            expect(notice).toContain(`Its output file ${logPath} could not be written in full`);
             expect(notice).toContain("Output tail:\nkept output");
             expect(notice).not.toContain("Output file");
         } finally {

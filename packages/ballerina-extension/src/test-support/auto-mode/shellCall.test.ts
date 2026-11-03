@@ -163,12 +163,14 @@ describe("runShellCall: foreground", () => {
         expect(result.text).toContain("Preview (first 2KB):\nBEGINddd");
     });
 
-    it("previews the start without a scratchpad, and says nothing else survives", async () => {
-        const length = FOREGROUND_OUTPUT_CAP + 10;
-        const result = await runShellCall({ command: `process.stdout.write("b".repeat(${length}))` }, nodeCtx({ scratchpadDir: undefined }));
+    it("returns the start and the end without a scratchpad, within the cap", async () => {
+        const length = FOREGROUND_OUTPUT_CAP + 10_000;
+        const result = await runShellCall({ command: `process.stdout.write("BEGIN" + "b".repeat(${length - 8}) + "END")` }, nodeCtx({ scratchpadDir: undefined }));
         expect(result.kind === "foreground" && result.summary.logPath).toBeUndefined();
-        expect(result.text).toContain("could not be saved to a file. Only this preview survives");
-        expect(result.text).toContain("Preview (first 2KB):\nbbb");
+        expect(result.text).toContain("could not be saved to a file. Only its start and end survive");
+        expect(result.text).toContain("Preview (first 2KB):\nBEGINbbb");
+        expect(result.text).toMatch(/End \(last 27\.3KB\):\nb+END\n<\/persisted-output>$/);
+        expect(result.text.length).toBeLessThan(FOREGROUND_OUTPUT_CAP + 500);
     });
 
     it("keeps a failure's status line above the persisted output", async () => {

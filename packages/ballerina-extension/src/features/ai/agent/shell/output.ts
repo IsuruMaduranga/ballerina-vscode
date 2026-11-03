@@ -62,12 +62,14 @@ function formatSize(chars: number): string {
 /**
  * The block a foreground result carries in place of an output too long to return whole, in Claude
  * Code's shape: where the whole output is, or why it could not be kept, then the start of the output.
- * `file` is a complete copy of the output; without one, the preview is all that survives.
+ * `file` is a complete copy of the output; without one, the start and `end` (the last of the output
+ * kept in memory) are all that survive.
  */
-export function persistedOutputBlock(length: number, preview: string, file: string | undefined): string {
+export function persistedOutputBlock(length: number, preview: string, file: string | undefined, end: string): string {
     const saved = file
         ? `Output too large (${formatSize(length)}). Full output saved to: ${file}`
-        : `Output too large (${formatSize(length)}) and could not be saved to a file. Only this preview survives; re-run with a narrower command if you need more.`;
+        : `Output too large (${formatSize(length)}) and could not be saved to a file. Only its start and end survive; re-run with a narrower command if you need more.`;
+    const tail = file ? [] : [`End (last ${formatSize(end.length)}):`, end];
     return [
         "<persisted-output>",
         saved,
@@ -75,6 +77,7 @@ export function persistedOutputBlock(length: number, preview: string, file: stri
         `Preview (first ${Math.round(PREVIEW_CHARS / 1024)}KB):`,
         preview.slice(0, PREVIEW_CHARS),
         "...",
+        ...tail,
         "</persisted-output>",
     ].join("\n");
 }

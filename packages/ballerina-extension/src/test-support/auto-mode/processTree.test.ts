@@ -38,6 +38,7 @@ import {
     terminateRememberedProcessGroups,
     waitForChildExit,
 } from "../../features/ai/agent/shell/process-tree";
+import { spawnLaunch } from "../../features/ai/agent/shell/runner";
 
 const win32 = process.platform === "win32";
 const describePosix = win32 ? describe.skip : describe;
@@ -176,6 +177,17 @@ describePosix("remembered process groups", () => {
         await waitForChildExit(child);
         expect(await until(() => rememberedProcessGroupCount() === 0)).toBe(true);
         expect(terminateRememberedProcessGroups()).toBe(0);
+    });
+
+    it("remembers what spawnLaunch starts, unless the caller owns its shutdown", async () => {
+        terminateRememberedProcessGroups();
+        const owned = spawnLaunch({ command: shell, args: ["-c", "true"] }, { cwd: process.cwd(), remember: false });
+        expect(rememberedProcessGroupCount()).toBe(0);
+        await waitForChildExit(owned);
+        const tracked = spawnLaunch({ command: shell, args: ["-c", "true"] }, { cwd: process.cwd() });
+        expect(rememberedProcessGroupCount()).toBe(1);
+        await waitForChildExit(tracked);
+        expect(await until(() => rememberedProcessGroupCount() === 0)).toBe(true);
     });
 });
 

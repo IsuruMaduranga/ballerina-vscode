@@ -28,7 +28,7 @@ import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { chatStateStorage } from '../../../../views/ai-panel/chatStateStorage';
 import { approvalManager } from '../../state/ApprovalManager';
-import { ANTHROPIC_SONNET, getAnthropicClient, getProviderCacheControl, getProviderModelOptions } from '../../utils/ai-client';
+import { ANTHROPIC_SONNET, ANTHROPIC_SONNET_CONTEXT_WINDOW, getAnthropicClient, getProviderCacheControl, getProviderModelOptions } from '../../utils/ai-client';
 import { CopilotEventHandler } from '../../utils/events';
 import { CLASSIFIER_MAX_RETRIES, type ClassifierModelCall } from '../auto-mode/classifier';
 import { classifierMessages, type ClassifierCacheState } from '../auto-mode/classifier-cache';
@@ -172,7 +172,7 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                             denials: threadGateState(runKey).denials,
                             runToolCalls: toolCallLog?.list(),
                             toolCallId,
-                            agentsMd: loadAgentsMdForClassifier(shell.cwd),
+                            agentsMd: loadAgentsMdForClassifier(shell.cwd, ANTHROPIC_SONNET_CONTEXT_WINDOW),
                             username: safeUsername(),
                             scratchpadDir: shell.scratchpadDir,
                             config,
