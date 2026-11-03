@@ -21,6 +21,7 @@
  * from the reason, an over-window transcript not judged, stage 2's budgets.
  */
 
+import { frameTaskNotification } from "@wso2/ballerina-core/lib/rpc-types/ai-panel/task-notification";
 import { buildCompactionContinuation } from "../../features/ai/agent/compaction-restart";
 import {
     classifierNotJudgedText,
@@ -73,6 +74,16 @@ describe("the active context", () => {
         expect(userMessages).toEqual(["clean it all up"]);
         expect(toolCallIds).toEqual(new Set(["c1", "c2"]));
         expect(JSON.stringify(entries)).not.toContain("SECRET RESULT");
+    });
+
+    it("never takes a background task's wake notice for the user's words", () => {
+        const notice = frameTaskNotification(["Background command \"deploy to prod\" (shell-1) completed. Output tail:\ndeploy to prod"], "opens-turn");
+        const { entries, userMessages } = transcriptFromGenerations([
+            { userPrompt: "run the tests in the background", modelMessages: [] },
+            { userPrompt: notice, modelMessages: [] },
+        ]);
+        expect(userMessages).toEqual(["run the tests in the background"]);
+        expect(entries).toEqual([{ kind: "user", text: "run the tests in the background" }]);
     });
 
     it("reads the summary from the restart message's own block, not a tag in the project source", () => {

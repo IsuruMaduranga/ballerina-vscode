@@ -32,6 +32,7 @@
  * Pure: it reads only what it is handed.
  */
 
+import { parseTaskNotification } from "@wso2/ballerina-core/lib/rpc-types/ai-panel/task-notification";
 import { generationsSinceLastRestart, RESTART_SUMMARY_CLOSE, RESTART_SUMMARY_OPEN } from "../compaction-restart";
 import { isHistoricalRead, type TranscriptEntry } from "./transcript";
 
@@ -109,7 +110,9 @@ export function transcriptFromGenerations(generations: readonly TranscriptGenera
     const toolCallIds = new Set<string>();
     for (const generation of generationsSinceLastRestart(generations)) {
         const text = typeof generation.userPrompt === "string" ? generation.userPrompt.trim() : "";
-        if (text) {
+        // A turn a finished background task opened stores its framed notice as the prompt: the
+        // task's model-written description and output tail, never the user's words.
+        if (text && parseTaskNotification(text) === undefined) {
             entries.push({ kind: "user", text });
             userMessages.push(text);
         }

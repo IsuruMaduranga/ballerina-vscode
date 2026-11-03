@@ -26,11 +26,11 @@
 
 import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { homedir, tmpdir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import { type PowerShellAstNode, type PowerShellParse, PowerShellParser } from "../../features/ai/agent/auto-mode/powershell-parser";
 import { system32Path } from "../../features/ai/agent/auto-mode/shared-paths";
 import { spawnLaunch } from "../../features/ai/agent/shell/runner";
-import { POWERSHELL_ARGS, powerShellParser, shellLaunch, type ShellSpawn, withPowerShellUtf8 } from "../../features/ai/agent/shell/shell-spawn";
+import { POWERSHELL_ARGS, powerShellEdition, powerShellParser, shellLaunch, type ShellSpawn, withPowerShellUtf8 } from "../../features/ai/agent/shell/shell-spawn";
 import { expectLabeled } from "./labeled";
 import { LOCAL_POWERSHELL, liveParse, POWERSHELL_TEST_TIMEOUT, readRecording, testParser } from "./powershellParse";
 
@@ -91,6 +91,13 @@ function ofType(parse: PowerShellParse, type: string): PowerShellAstNode[] {
                     expect(found.parse.lookupPath).toBe(dir);
                     const after = await parse("zz-bi-probe");
                     expect(after.nodes.find((n) => n.type === "CommandAst")?.resolvedName).toBeUndefined();
+                    // PowerShell 7 starts with $PSHOME first on PATH, so a command it runs finds pwsh there.
+                    if (powerShellEdition(spec) === "core") {
+                        const own = await parser.parse("pwsh", dir);
+                        if (!own.ok) { throw new Error((own as { reason: string }).reason); }
+                        const pwshNode = own.parse.nodes.find((n) => n.type === "CommandAst");
+                        expect(pwshNode?.resolvedName && dirname(pwshNode.resolvedName)).toBe(dirname(realpathSync(spec.shell)));
+                    }
                 } finally {
                     rmSync(dir, { recursive: true, force: true });
                 }

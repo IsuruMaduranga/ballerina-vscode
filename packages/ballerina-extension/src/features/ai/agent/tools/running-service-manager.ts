@@ -104,13 +104,17 @@ export function spawnLaunchedProcess(
 }
 
 /**
- * Portable "is this PID still alive?" check.
- * Uses signal 0 which is a no-op that throws if the process doesn't exist —
- * supported on both Unix and Windows by Node's `process.kill`.
+ * Whether the service's own process is still alive. Unix probes its pid with
+ * signal 0, a no-op that throws if the process doesn't exist. Windows judges
+ * it by the child's own exit state (`process-tree.ts rememberedGroupAlive`):
+ * once it exits, Windows may give its pid to an unrelated process, which a
+ * pid probe would report as the service still running.
  */
-function isProcessAlive(pid: number): boolean {
+function isProcessAlive(proc: child_process.ChildProcess): boolean {
+    if (proc.pid == null) { return false; }
+    if (isWindows) { return rememberedGroupAlive(proc); }
     try {
-        process.kill(pid, 0);
+        process.kill(proc.pid, 0);
         return true;
     } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
@@ -245,7 +249,7 @@ async function verifyPidGone(proc: child_process.ChildProcess): Promise<void> {
         return;
     }
     const pid = proc.pid;
-    if (!isProcessAlive(pid)) {
+    if (!isProcessAlive(proc)) {
         return;
     }
 
@@ -257,13 +261,13 @@ async function verifyPidGone(proc: child_process.ChildProcess): Promise<void> {
     // Poll briefly for the PID to disappear after the escalation.
     const deadline = Date.now() + VERIFY_MAX_WAIT_MS;
     while (Date.now() < deadline) {
-        if (!isProcessAlive(pid)) {
+        if (!isProcessAlive(proc)) {
             return;
         }
         await new Promise((r) => setTimeout(r, VERIFY_POLL_INTERVAL_MS));
     }
 
-    if (isProcessAlive(pid)) {
+    if (isProcessAlive(proc)) {
         console.error(
             `[RunningServicesManager] PID ${pid} is still alive after escalation — ` +
             `child process (or descendants) may be orphaned. This can happen on ` +

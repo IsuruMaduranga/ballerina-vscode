@@ -119,6 +119,14 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
 		$command = $utf8.GetString([Convert]::FromBase64String($fields[0]))
 		$lookupPath = $null
 		if ($fields.Count -gt 1) { $lookupPath = $utf8.GetString([Convert]::FromBase64String($fields[1])) }
+		# PowerShell 7 puts $PSHOME first on PATH when it starts, unless it is
+		# already first, so the command runs with that PATH, not the one sent.
+		if ($null -ne $lookupPath -and $PSVersionTable.PSEdition -eq 'Core') {
+			$separator = [IO.Path]::PathSeparator
+			if (-not ($lookupPath + $separator).StartsWith($PSHOME + $separator, [StringComparison]::OrdinalIgnoreCase)) {
+				$lookupPath = $PSHOME + $separator + $lookupPath
+			}
+		}
 		$tokens = $null
 		$parseErrors = $null
 		$ast = [System.Management.Automation.Language.Parser]::ParseInput($command, [ref]$tokens, [ref]$parseErrors)

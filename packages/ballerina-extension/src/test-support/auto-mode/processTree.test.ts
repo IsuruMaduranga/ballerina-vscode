@@ -27,6 +27,7 @@
  * because `close` can stay pending after a killed tree is gone).
  */
 import { spawn } from "child_process";
+import { EventEmitter } from "events";
 import {
     detachedSpawnOptions,
     EXIT_STDIO_MAX_MS,
@@ -219,6 +220,29 @@ describe("a remembered tree on Windows", () => {
         onWindows(() => killProcessTree(exited));
         await new Promise((r) => setTimeout(r, 200));
         expect(exited.kill).not.toHaveBeenCalled();
+    });
+
+    it("is not reported alive by the service manager's stop check once its leader has exited", async () => {
+        // The leader exits during the wait; a pid probe would find this (live) process under its pid.
+        const proc = Object.assign(new EventEmitter(), { pid: process.pid, exitCode: null as number | null, signalCode: null, kill: jest.fn() });
+        setTimeout(() => { proc.exitCode = 0; }, 10);
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+        // Windows for the whole wait: the stop check runs after the timeout.
+        const original = Object.getOwnPropertyDescriptor(process, "platform")!;
+        Object.defineProperty(process, "platform", { ...original, value: "win32" });
+        try {
+            let waitForExit!: (p: typeof proc, timeoutMs: number) => Promise<void>;
+            jest.isolateModules(() => {
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                waitForExit = require("../../features/ai/agent/tools/running-service-manager").waitForExit;
+            });
+            await waitForExit(proc, 50);
+            expect(warn).not.toHaveBeenCalled();
+            expect(proc.kill).not.toHaveBeenCalled();
+        } finally {
+            Object.defineProperty(process, "platform", original);
+            warn.mockRestore();
+        }
     });
 
     it("is not killed by pid in the service manager either once its leader has exited", async () => {
