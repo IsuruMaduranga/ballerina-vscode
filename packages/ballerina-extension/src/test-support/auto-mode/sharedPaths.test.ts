@@ -77,6 +77,16 @@ describe("containment forms", () => {
         expect(folded).toBe(process.platform !== "linux");
     });
 
+    (process.platform === "win32" ? it.skip : it)("reads a backslash as part of a POSIX file name, so a sibling `proj\\x` is not inside `proj`", () => {
+        const root = resolve("/home/u/proj");
+        expect(comparablePath(`${root}\\x`)).not.toBe(comparablePath(join(root, "x")));
+        expect(isPathAtOrUnder(`${root}\\x`, root)).toBe(false);
+    });
+
+    (process.platform === "win32" ? it : it.skip)("reads a backslash as a separator on Windows", () => {
+        expect(comparablePath("C:\\proj\\x")).toBe(comparablePath("C:/proj/x"));
+    });
+
     it("resolves a real path and reports an unresolvable one as undefined", () => {
         expect(tryRealpath(process.cwd())).toBeDefined();
         expect(tryRealpath(join(process.cwd(), "no-such-dir-for-this-test"))).toBeUndefined();

@@ -30,8 +30,10 @@
  *    and every caller treats that as "not provably contained".
  */
 
-import { lstatSync, readlinkSync } from "fs";
+import { type Dirent, lstatSync, readdirSync, readlinkSync } from "fs";
 import { basename, dirname, isAbsolute, join, resolve } from "path";
+import { isProtectedPath } from "./protected-paths";
+import { isExecutionPrimitivePath, isSensitivePath } from "./sensitive";
 import { comparablePath, expandTilde, gitBashPathToNative, isPathAtOrUnder, tryRealpath } from "./shared-paths";
 
 /**
@@ -67,21 +69,32 @@ const normalize = comparablePath;
  * resolved — callers must not treat that as contained.
  */
 export function resolveForContainment(target: string): string | undefined {
+    const resolved = resolveThroughLinks(target);
+    return resolved === undefined ? undefined : normalize(resolved);
+}
+
+/**
+ * {@link resolveForContainment} in the filesystem's own spelling (not
+ * case-folded), for showing where a path lands.
+ */
+export function resolveThroughLinks(target: string, hops = 0): string | undefined {
     const absolute = resolve(target);
 
     const direct = tryRealpath(absolute);
-    if (direct) { return normalize(direct); }
+    if (direct) { return direct; }
 
     // The leaf may be a dangling symlink: realpath fails on it, but writes still
     // follow it. Read the link and resolve its target instead of assuming the
     // literal path.
     try {
         const stats = lstatSync(absolute);
-        if (stats.isSymbolicLink()) {
+        // A link cycle (`a -> a`) stops at the kernel's usual 40 hops, then
+        // resolves like any other leaf, below, instead of overflowing the stack.
+        if (stats.isSymbolicLink() && hops < 40) {
             const linkTarget = readlinkSync(absolute);
             const resolvedTarget = isAbsolute(linkTarget) ? linkTarget : resolve(dirname(absolute), linkTarget);
             // One hop is enough: the target's own realpath covers the rest of a chain.
-            return resolveForContainment(resolvedTarget) ?? normalize(resolvedTarget);
+            return resolveThroughLinks(resolvedTarget, hops + 1) ?? resolvedTarget;
         }
     } catch {
         // Does not exist yet — fall through to ancestor resolution below.
@@ -96,7 +109,7 @@ export function resolveForContainment(target: string): string | undefined {
         if (parent === cursor) { return undefined; }
         tail.unshift(basename(cursor));
         const realParent = tryRealpath(parent);
-        if (realParent) { return normalize(join(realParent, ...tail)); }
+        if (realParent) { return join(realParent, ...tail); }
         cursor = parent;
     }
 }
@@ -132,4 +145,53 @@ export function toAbsolute(cwd: string, token: string, home: string): string {
  */
 export function toAbsoluteBash(cwd: string, token: string, home: string): string {
     return toAbsolute(cwd, gitBashPathToNative(token), home);
+}
+
+/**
+ * Whether moving, copying or removing `source` touches a path `guarded`
+ * flags beneath it: walks `source` without following symlinks, at most
+ * `budget` entries, and tests each entry's counterpart under `target` (the
+ * same path for a removal). A walk that runs out of budget counts as touching
+ * one, so the command is judged, not cleared. A file source walks nothing.
+ * `guarded` also gets the source's directory entry (a symbolic link is one).
+ */
+export function touchesGuardedPath(source: string, target: string, guarded: (path: string, entry: Dirent) => boolean, budget = 5_000): boolean {
+    const stack = [""];
+    let seen = 0;
+    while (stack.length > 0) {
+        const relative = stack.pop() as string;
+        let entries;
+        try {
+            entries = readdirSync(join(source, relative), { withFileTypes: true });
+        } catch {
+            continue;
+        }
+        for (const entry of entries) {
+            const child = join(relative, entry.name);
+            if (++seen > budget || guarded(join(target, child), entry)) { return true; }
+            if (entry.isDirectory()) { stack.push(child); }
+        }
+    }
+    return false;
+}
+
+/**
+ * The paths the shell gates' write checks guard: protected, beneath a
+ * runtime-protected directory, a credential, or an execution primitive.
+ * Shared by the bash and PowerShell gates so a write is guarded the same way
+ * whichever shell spells it.
+ */
+export function isGuardedWritePath(path: string, cwd: string, protectedDirs: readonly string[] = []): boolean {
+    return isProtectedPath(path, cwd) || protectedDirs.some((dir) => isWithin(dir, path)) || isSensitivePath(path) || isExecutionPrimitivePath(path);
+}
+
+/**
+ * Whether removing or moving away `resolved` (spelled `absolute`) loses what
+ * git or the gate would keep: a working root, a `.git`, a directory holding
+ * one at any depth, or a guarded path or a directory holding one (`rm -rf .`,
+ * `mv .git x`, `rm -rf vendor` over `vendor/lib/.git`, `rm -rf .vscode`).
+ */
+export function removalLoses(absolute: string, resolved: string, roots: readonly string[], cwd: string, protectedDirs: readonly string[] = []): boolean {
+    const lost = (path: string) => path.split(/[\\/]/).includes(".git") || isGuardedWritePath(path, cwd, protectedDirs);
+    return roots.includes(resolved) || lost(absolute) || lost(resolved) || touchesGuardedPath(resolved, resolved, lost);
 }

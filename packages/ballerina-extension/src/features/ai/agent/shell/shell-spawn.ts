@@ -22,16 +22,18 @@
  * - PowerShell: `pwsh.exe` from PATH, else Windows PowerShell 5.1 at its System32 path (never from PATH),
  *   on Windows; a `pwsh` on PATH elsewhere, for the development override (`shell-policy.ts`). It is a second
  *   resolver returning the same `ShellSpawn`, so the runner never changes. Every command gets
- *   `POWERSHELL_UTF8_PREFIX`, so Windows PowerShell 5.1 does not print UTF-16.
+ *   `POWERSHELL_TOOL_PREFIX`, so Windows PowerShell 5.1 does not print or write UTF-16.
  *
  * Nothing here reads a workspace setting: a checked-in `.vscode/settings.json` must never be able to name
  * the executable that runs every shell call.
  */
 
 import { existsSync } from "fs";
+import { homedir } from "os";
 import { basename } from "path";
+import { PowerShellParser, sharedPowerShellParser } from "../auto-mode/powershell-parser";
 import { system32Path } from "../auto-mode/shared-paths";
-import type { ProcessLaunch } from "./runner";
+import { type ProcessLaunch, spawnLaunch } from "./runner";
 import { whichOnPath } from "./which";
 
 /** How to start a shell for one command line: `shell` with `args`, then the command as one more argument. */
@@ -53,11 +55,25 @@ export function shellLaunch(spec: ShellSpawn, command: string): ProcessLaunch {
     return { command: spec.shell, args: [...spec.args, command] };
 }
 
-/** pi's PowerShell argument list, which Claude Code also runs: no profile, no prompts, no script policy. */
+/** The PowerShell argument list Claude Code also runs: no profile, no prompts, no script policy. */
 export const POWERSHELL_ARGS = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command"] as const;
 
-/** Prefixed to every PowerShell command: Windows PowerShell 5.1 otherwise writes UTF-16 to a pipe. */
+/** The console-encoding line: Windows PowerShell 5.1 otherwise writes UTF-16 to a pipe. */
 export const POWERSHELL_UTF8_PREFIX = "try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}\n";
+
+/**
+ * What the PowerShell tool prepends to every command, foreground and
+ * background: the console-encoding line, then UTF-8 for `Out-File` (and so for
+ * `>`, which Windows PowerShell 5.1 otherwise writes as UTF-16LE, unreadable to
+ * `bal` and the file tools) and for `$OutputEncoding`, and plain-text
+ * rendering in Full Language mode, so pwsh 7's formatter does not colour table
+ * headers with ANSI escapes.
+ */
+export const POWERSHELL_TOOL_PREFIX =
+    // One line, so an error's "At line:N" stays one off the command's own line, as with the encoding line alone.
+    `${POWERSHELL_UTF8_PREFIX.trimEnd()}; try { $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8' } catch {}; ` +
+    "if ($ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage') { try { $OutputEncoding = [System.Text.UTF8Encoding]::new() } catch {}; " +
+    "if ($null -ne $PSStyle) { try { $PSStyle.OutputRendering = 'PlainText' } catch {} } };\n";
 
 /** Windows PowerShell 5.1, addressed by its System32 path so a PATH entry can never stand in for it. */
 export const WINDOWS_POWERSHELL = "WindowsPowerShell\\v1.0\\powershell.exe";
@@ -93,6 +109,25 @@ export function powerShellSpawn(): ShellSpawn | undefined {
     return cachedPowerShell.spawn;
 }
 
+/**
+ * PowerShell's own parser, served by the same executable and arguments the
+ * PowerShell tool runs (`auto-mode/powershell-parser.ts`), one server per
+ * executable for the life of the extension host. Undefined when no PowerShell
+ * resolves. It resolves command names on the extension host's PATH; the tool
+ * runs with the extension's own `bal` directory first on PATH
+ * (`bal-run.ts withBalOnPath`), which holds no program the gate clears by name.
+ */
+export function powerShellParser(spec: ShellSpawn | undefined = powerShellSpawn()): PowerShellParser | undefined {
+    if (!spec) { return undefined; }
+    return sharedPowerShellParser(
+        spec.shell,
+        () =>
+            new PowerShellParser({
+                spawnServer: (bootstrap) => spawnLaunch(shellLaunch(spec, bootstrap), { cwd: homedir(), stdin: "pipe" }),
+            }),
+    );
+}
+
 /** PowerShell 7+ (`pwsh`) or Windows PowerShell 5.1 (`powershell.exe`), by executable name, never by a probe. */
 export function powerShellEdition(spec: ShellSpawn | undefined): "core" | "desktop" | "unknown" {
     if (!spec) { return "unknown"; }
@@ -102,7 +137,7 @@ export function powerShellEdition(spec: ShellSpawn | undefined): "core" | "deskt
     return "unknown";
 }
 
-/** The command PowerShell runs: the UTF-8 prefix, then the model's command. */
+/** The command PowerShell runs: the tool's one-line prefix, then the model's command. */
 export function withPowerShellUtf8(command: string): string {
-    return `${POWERSHELL_UTF8_PREFIX}${command}`;
+    return `${POWERSHELL_TOOL_PREFIX}${command}`;
 }

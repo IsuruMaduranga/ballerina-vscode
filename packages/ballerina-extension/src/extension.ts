@@ -51,6 +51,7 @@ import { activateAIFeatures } from './features/ai/activator';
 import { runningServicesManager } from './features/ai/agent/tools/running-service-manager';
 import { stopAllBackgroundTasks } from './features/ai/agent/background/registry';
 import { terminateRememberedProcessGroups } from './features/ai/agent/shell/process-tree';
+import { disposePowerShellParsers } from './features/ai/agent/auto-mode/powershell-parser';
 import { activateTryItCommand } from './features/tryit/activator';
 import { activate as activateNPFeatures } from './features/natural-programming/activator';
 import { activateAgentChatPanel } from './views/agent-chat/activate';
@@ -374,6 +375,8 @@ export async function deactivate(): Promise<void> {
     // and so does whatever a finished command left running.
     stopAllBackgroundTasks();
     terminateRememberedProcessGroups();
+    // The PowerShell gate's parse server; it would also exit once its stdin closes.
+    disposePowerShellParsers();
     await runningServicesManager.dispose();
 
     if (!langClient) {

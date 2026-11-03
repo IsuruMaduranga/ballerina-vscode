@@ -23,9 +23,9 @@
  * cached locally for Mac development).
  */
 
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { homedir, tmpdir } from "os";
-import { join } from "path";
+import { delimiter, isAbsolute, join } from "path";
 import { authorizeShellCommand, decideShellCommand, type ShellApprovalPrompt, type ShellGateInput } from "../../features/ai/agent/auto-mode/gate";
 import type { ClassifyVerdict } from "../../features/ai/agent/auto-mode/prompt";
 import { PauseTracker } from "../../features/ai/agent/auto-mode/pause";
@@ -39,6 +39,7 @@ import { shellRunSetup } from "../../features/ai/agent/shell/shell-session";
 import { POWERSHELL_ARGS, powerShellEdition, resolvePowerShellSpawn, withPowerShellUtf8 } from "../../features/ai/agent/shell/shell-spawn";
 import { whichOnPath } from "../../features/ai/agent/shell/which";
 import { expectLabeled } from "./labeled";
+import { itParses, psParse } from "./powershellParse";
 
 describe("shellToolPolicy: exactly one shell tool per platform", () => {
     it("gives Windows PowerShell, or no shell tool with a notice", () => {
@@ -77,8 +78,15 @@ describe("resolvePowerShellSpawn", () => {
         expect(resolvePowerShellSpawn({ platform: "darwin", env: {}, which: () => undefined, exists: () => true })).toBeUndefined();
     });
 
-    it("prefixes every command with the UTF-8 line", () => {
-        expect(withPowerShellUtf8("git status")).toBe("try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}\ngit status");
+    it("prefixes every command with one line: UTF-8 console, Out-File and $OutputEncoding, plain-text rendering", () => {
+        const wrapped = withPowerShellUtf8("git status");
+        expect(wrapped.startsWith("try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}; ")).toBe(true);
+        expect(wrapped).toContain("$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'");
+        expect(wrapped).toContain("$OutputEncoding = [System.Text.UTF8Encoding]::new()");
+        expect(wrapped).toContain("$PSStyle.OutputRendering = 'PlainText'");
+        // One line of prefix, so an error's line number is off by one only.
+        expect(wrapped.split("\n")).toHaveLength(2);
+        expect(wrapped.endsWith("\ngit status")).toBe(true);
     });
 });
 
@@ -175,14 +183,24 @@ describe("the gate's PowerShell branch", () => {
         command, cwd, home: join(root, "home"), readableRoots: [], writableRoots: [], sessionRules, shell: "powershell",
     });
 
-    it("clears read-only lines, git reads included, and nothing else", () => {
-        for (const command of ["Get-ChildItem src", "Get-Content main.bal | Select-Object -First 5", "git status", "git log --oneline -3"]) {
-            const decision = decideShellCommand(input(command));
-            expectLabeled(decision.outcome, command).toBe("allow");
+    const readOnlyLines = ["Get-ChildItem src", "Get-Content main.bal | Select-Object -First 5", "git status", "git log --oneline -3"];
+    const otherLines = ["bal build", "Remove-Item main.bal", "Get-Content (Remove-Item main.bal)", "git push"];
+    itParses([...readOnlyLines, ...otherLines])("clears read-only lines from PowerShell's parse, git reads included, and nothing else", async () => {
+        // A package-manager runner can put `./node_modules/.bin` on PATH; the git check refuses git then.
+        const pathBefore = process.env.PATH;
+        process.env.PATH = (pathBefore ?? "").split(delimiter).filter((entry) => isAbsolute(entry)).join(delimiter);
+        try {
+            for (const command of readOnlyLines) {
+                const decision = decideShellCommand({ ...input(command), powershellParse: await psParse(command) });
+                expectLabeled(decision.outcome, command).toBe("allow");
+            }
+            for (const command of otherLines) {
+                expectLabeled(decideShellCommand({ ...input(command), powershellParse: await psParse(command) }).outcome, command).toBe("ask");
+            }
+        } finally {
+            process.env.PATH = pathBefore;
         }
-        for (const command of ["bal build", "Remove-Item main.bal", "Get-Content (Remove-Item main.bal)", "git push"]) {
-            expectLabeled(decideShellCommand(input(command)).outcome, command).toBe("ask");
-        }
+        expect(decideShellCommand(input("Get-ChildItem src")).outcome).toBe("ask");
     });
 
     it("offers a guarded canonical prefix, and none for a destructive line", () => {
@@ -318,5 +336,16 @@ const pwsh = findPwsh();
     it("round-trips a command holding double quotes", async () => {
         const result = await run('Write-Output "say ""hi"" to $("the" + " world")"');
         if (result.kind === "foreground") { expect(result.text.trim()).toBe('say "hi" to the world'); }
+    }, 60_000);
+
+    it("formats tables without ANSI colour, and writes a redirect as UTF-8", async () => {
+        const result = await run("[pscustomobject]@{ Name = 'a' } | Format-Table; 'naïve' > out.txt");
+        expect(result.kind).toBe("foreground");
+        if (result.kind === "foreground") {
+            expect(result.text).toContain("Name");
+            expect(result.text).not.toContain("\x1b[");
+        }
+        // UTF-8, with or without a byte-order mark, never UTF-16.
+        expect(readFileSync(join(cwd, "out.txt")).toString("utf8").replace(/^\uFEFF/, "").trim()).toBe("naïve");
     }, 60_000);
 });

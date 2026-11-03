@@ -33,13 +33,19 @@
  * `decideShellCommand` is the synchronous deterministic part.
  * `authorizeShellCommand` adds the banner and the classifier, both supplied
  * by the caller, so this module stays free of `vscode`, the approval manager
- * and the model client.
+ * and the model client. For a PowerShell line it first awaits PowerShell's own
+ * parse (`powershell-parser.ts`), which the decision then reads; with no parse
+ * no PowerShell line is cleared.
  */
 
+import { classifierNotJudgedText } from "./classifier";
 import type { ClassifyVerdict } from "./prompt";
 import { UNATTENDED_PROMPT_TIMEOUT_MS, type PauseTracker } from "./pause";
 import { bashParserReady } from "./bash-parser";
+import type { PowerShellParse } from "./powershell-parser";
 import { powershellReadOnly } from "./powershell-rules";
+import { powershellTreeContainedEdits } from "./powershell-tree";
+import { powerShellParser } from "../shell/shell-spawn";
 import { bashFloorReason, powershellFloorReason } from "./safety-floor";
 import {
     addSessionRule,
@@ -93,6 +99,8 @@ export interface ShellGateInput {
     shell?: "bash" | "powershell";
     /** The caller uses a capable model; permit guarded file operations in auto mode only. */
     allowContainedFileOperations?: boolean;
+    /** PowerShell's own parse of a PowerShell line; without one the PowerShell pre-gate clears nothing. */
+    powershellParse?: PowerShellParse;
 }
 
 /** `evidence` is the bash pre-gate's analysis; a PowerShell decision has none. */
@@ -101,20 +109,25 @@ export type ShellGateDecision =
     | { outcome: "ask"; reasons: string[]; grant?: SessionRuleGrant; floor?: true; evidence?: ShellEvidence };
 
 /**
- * Decide one PowerShell command: the textual floor, then the
- * read-only allowlist as the only pre-gate. There is no containment fast path
- * and no recoverability judge, so an in-workspace `Remove-Item` is judged,
- * never cleared deterministically.
+ * Decide one PowerShell command: the textual floor, then the verdicts read
+ * from PowerShell's own parse: a read-only line is cleared in both modes, and
+ * Claude Code's acceptEdits cmdlets (`Set-Content`, `Add-Content`,
+ * `Remove-Item`, `Clear-Content`) on the working space only where guarded file
+ * operations are allowed (auto mode, a capable model). Without a parse
+ * nothing is cleared. Session rules match the text, statement by statement.
  */
 function decidePowerShellCommand(input: ShellGateInput): ShellGateDecision {
-    const { command, cwd, home, readableRoots, writableRoots, sessionRules, tmpDir } = input;
+    const { command, cwd, home, readableRoots, writableRoots, sessionRules, tmpDir, powershellParse } = input;
     const floor = powershellFloorReason(command, { cwd, home, tmpDir });
     if (floor) {
         return { outcome: "ask", reasons: [`The command is always shown to you because ${floor}.`], floor: true };
     }
-    const verdict = powershellReadOnly(command, { cwd, home, readableRoots });
+    const verdict = powershellReadOnly({ parse: powershellParse, cwd, home, readableRoots });
     if (verdict.readOnly) {
         return { outcome: "allow", layer: "pre-gate" };
+    }
+    if (input.allowContainedFileOperations && powershellParse && powershellTreeContainedEdits(powershellParse, { cwd, home, writableRoots }).ok) {
+        return { outcome: "allow", layer: "file-operation", reason: "guarded in-workspace file operation" };
     }
     const context = { cwd, home, writableRoots };
     const rule = matchPowerShellSessionRule(sessionRules, command, context);
@@ -200,6 +213,23 @@ export interface ShellGateCallbacks {
     onDecision?: (record: GateDecisionRecord) => void;
     /** The user declined a command: it enters the classifier's transcript as a denial. */
     onUserDenied?: (command: string) => void;
+    /** PowerShell's own parse of a line, or undefined when it cannot be had; the shared parse server when absent. */
+    parsePowerShell?: (command: string) => Promise<PowerShellParse | undefined>;
+}
+
+/**
+ * PowerShell's own parse of a `powershell` call's line, from the shared parse
+ * server on the tool's own executable (`shell/shell-spawn.ts
+ * powerShellParser`). Undefined when the parser cannot answer (no PowerShell,
+ * a timeout of 5 s on first start and 2 s after, a crash, Constrained
+ * Language Mode): the gate then clears nothing and the line is classified or
+ * asked about.
+ */
+export async function parsePowerShell(command: string): Promise<PowerShellParse | undefined> {
+    const parser = powerShellParser();
+    if (!parser) { return undefined; }
+    const outcome = await parser.parse(command);
+    return outcome.ok ? outcome.parse : undefined;
 }
 
 /** The text the model receives when the user declines a command. */
@@ -240,7 +270,11 @@ export function pausedReason(pause: PauseTracker): string {
 
 /** Decide, classify or ask. Never rejects: a failed prompt denies. */
 export async function authorizeShellCommand(input: ShellGateInput, mode: ShellMode, callbacks: ShellGateCallbacks): Promise<ShellAuthorization> {
-    if (input.shell !== "powershell") { await bashParserReady(); }
+    // The PowerShell pre-gate judges a `git` statement with the bash git check, so both shells need the bash parser.
+    await bashParserReady();
+    if (input.shell === "powershell" && input.powershellParse === undefined) {
+        input = { ...input, powershellParse: await (callbacks.parsePowerShell ?? parsePowerShell)(input.command) };
+    }
     const auto = mode === "auto" ? callbacks.auto : undefined;
     // Session rules are an ask-mode convenience; auto mode never inherits them.
     const decision = decideShellCommand(mode === "auto"
@@ -269,7 +303,7 @@ export async function authorizeShellCommand(input: ShellGateInput, mode: ShellMo
                 return { allowed: false, text: classifierTimeoutText(verdict), by: "timeout" };
             }
             if (verdict.noVerdict) {
-                return { allowed: false, text: `${verdict.reason}\n\nThe command did not run. The classifier did not reach a safety verdict.`, by: "classifier" };
+                return { allowed: false, text: classifierNotJudgedText(verdict), by: "classifier" };
             }
             auto.pause.recordBlock({ toolName: input.shell === "powershell" ? "powershell" : "shell", subject: input.command, reason: verdict.reason, tier: verdict.tier, ruleId: verdict.ruleId, raw: verdict.raw });
             return { allowed: false, text: classifierBlockedText(verdict), by: "classifier", rule: verdict.ruleId ?? verdict.reason };

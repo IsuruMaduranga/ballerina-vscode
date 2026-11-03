@@ -14,7 +14,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import { isWritingTool, pathArgument } from "../../features/ai/agent/auto-mode/paths";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { comparablePath } from "../../features/ai/agent/auto-mode/shared-paths";
+import {
+    isGuardedWritePath,
+    isWritingTool,
+    pathArgument,
+    removalLoses,
+    resolveForContainment,
+    resolveThroughLinks,
+    touchesGuardedPath,
+} from "../../features/ai/agent/auto-mode/paths";
 
 /**
  * pathArgument is the single place that knows which input field carries a file
@@ -24,7 +36,7 @@ import { isWritingTool, pathArgument } from "../../features/ai/agent/auto-mode/p
  * CC-shaped notebook_edit slips past every path-based gate (code-review).
  */
 describe("pathArgument recognises every path field name", () => {
-    it("reads pi's `path`", () => {
+    it("reads a `path` field", () => {
         expect(pathArgument({ path: "src/a.ts" })).toBe("src/a.ts");
     });
 
@@ -55,5 +67,63 @@ describe("isWritingTool names BI's file tools", () => {
         for (const name of ["file_read", "shell", "powershell", "edit", "write"]) {
             expect(isWritingTool(name)).toBe(false);
         }
+    });
+});
+
+describe("resolveForContainment and resolveThroughLinks", () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "bi-paths-")));
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+    (process.platform === "win32" ? it.skip : it)("stops a symlink cycle after a bounded number of hops instead of overflowing the stack", () => {
+        const path = join(dir, "cycle.md");
+        symlinkSync(path, path);
+        const started = Date.now();
+        expect(resolveThroughLinks(path)).toBe(join(dir, "cycle.md"));
+        expect(resolveForContainment(path)).toBe(comparablePath(join(dir, "cycle.md")));
+        expect(Date.now() - started).toBeLessThan(1_000);
+        const a = join(dir, "a");
+        const b = join(dir, "b");
+        symlinkSync(b, a);
+        symlinkSync(a, b);
+        expect(resolveForContainment(a)).toBeDefined();
+    });
+
+    (process.platform === "win32" ? it.skip : it)("keeps the filesystem's own spelling in resolveThroughLinks and the comparison form in resolveForContainment", () => {
+        mkdirSync(join(dir, "Mixed"));
+        expect(resolveThroughLinks(join(dir, "Mixed", "New.txt"))).toBe(join(dir, "Mixed", "New.txt"));
+        expect(resolveForContainment(join(dir, "Mixed", "New.txt"))).toBe(comparablePath(join(dir, "Mixed", "New.txt")));
+    });
+});
+
+describe("the shared write guards", () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "bi-guards-")));
+    const cwd = join(dir, "project");
+    for (const sub of [join(cwd, "src"), join(cwd, "vendor", "lib", ".git"), join(cwd, ".vscode")]) { mkdirSync(sub, { recursive: true }); }
+    writeFileSync(join(cwd, ".vscode", "settings.json"), "{}");
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+    const resolved = (path: string) => resolveForContainment(path) as string;
+
+    it("guards protected, credential and execution-primitive paths, and runtime-protected directories", () => {
+        expect(isGuardedWritePath(join(cwd, ".vscode", "settings.json"), cwd)).toBe(true);
+        expect(isGuardedWritePath(join(cwd, ".env"), cwd)).toBe(true);
+        expect(isGuardedWritePath(join(cwd, "Config.toml"), cwd)).toBe(true);
+        expect(isGuardedWritePath(join(cwd, ".git", "hooks", "pre-commit"), cwd)).toBe(true);
+        expect(isGuardedWritePath(join(cwd, "src", "main.bal"), cwd)).toBe(false);
+        expect(isGuardedWritePath(join(cwd, "src", "main.bal"), cwd, [join(cwd, "src")])).toBe(true);
+    });
+
+    it("counts removing a working root, a directory holding a .git, or one holding a guarded path as a loss", () => {
+        const roots = [resolved(cwd)];
+        expect(removalLoses(cwd, resolved(cwd), roots, cwd)).toBe(true);
+        expect(removalLoses(join(cwd, "vendor"), resolved(join(cwd, "vendor")), roots, cwd)).toBe(true);
+        expect(removalLoses(join(cwd, ".vscode"), resolved(join(cwd, ".vscode")), roots, cwd)).toBe(true);
+        expect(removalLoses(join(cwd, "src"), resolved(join(cwd, "src")), roots, cwd)).toBe(false);
+    });
+
+    it("hands the guard each directory entry and counts an exhausted walk as touching one", () => {
+        const seen: string[] = [];
+        expect(touchesGuardedPath(cwd, cwd, (_path, entry) => { seen.push(entry.name); return false; })).toBe(false);
+        expect(seen).toEqual(expect.arrayContaining(["src", "vendor", ".vscode", "settings.json"]));
+        expect(touchesGuardedPath(cwd, cwd, () => false, 2)).toBe(true);
     });
 });

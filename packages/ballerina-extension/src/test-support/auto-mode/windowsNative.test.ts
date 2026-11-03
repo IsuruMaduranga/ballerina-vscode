@@ -29,7 +29,6 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { homedir, tmpdir } from "os";
 import { join } from "path";
-import { powershellReadOnly } from "../../features/ai/agent/auto-mode/powershell-rules";
 import { powershellFloorReason } from "../../features/ai/agent/auto-mode/safety-floor";
 import { commandLaunch } from "../../features/ai/agent/shell/command-launch";
 import { powershellGuardReason } from "../../features/ai/agent/shell/powershell-guards";
@@ -38,6 +37,7 @@ import { threadScratchpadDir } from "../../features/ai/agent/shell/scratchpad";
 import { runShellCall } from "../../features/ai/agent/shell/shell-call";
 import { powerShellEdition, resolvePowerShellSpawn, withPowerShellUtf8 } from "../../features/ai/agent/shell/shell-spawn";
 import { expectLabeled } from "./labeled";
+import { POWERSHELL_TEST_TIMEOUT, psReadOnly } from "./powershellParse";
 
 const win32 = process.platform === "win32";
 const onWindows = win32 ? describe : describe.skip;
@@ -52,21 +52,23 @@ onWindows("Windows: the PowerShell read-only check on native paths", () => {
         writeFileSync(join(cwd, "src", "main.bal"), "");
     }
     afterAll(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
-    const ro = (command: string) => powershellReadOnly(command, { cwd, home: homedir(), readableRoots: roots }).readOnly;
+    // The read-only check reads PowerShell's own parse, so these run against a real PowerShell.
+    jest.setTimeout(POWERSHELL_TEST_TIMEOUT);
+    const ro = async (command: string) => (await psReadOnly(command, { cwd, home: homedir(), readableRoots: roots })).readOnly;
 
-    it("clears reads inside the workspace and the readable roots, in either separator", () => {
+    it("clears reads inside the workspace and the readable roots, in either separator", async () => {
         for (const command of [
             `Get-Content ${join(cwd, "src", "main.bal")}`,
             `Get-Content ${join(cwd, "src", "main.bal").replace(/\\/g, "/")}`,
             `Get-ChildItem ${roots[0]}`,
             "Get-ChildItem src\\",
-        ]) { expectLabeled(ro(command), command).toBe(true); }
+        ]) { expectLabeled(await ro(command), command).toBe(true); }
     });
 
-    it("refuses UNC, drive-relative, other-drive, ~ and .. paths", () => {
+    it("refuses UNC, drive-relative, other-drive, ~ and .. paths", async () => {
         const otherDrive = cwd.toUpperCase().startsWith("Z:") ? "Y:\\x.txt" : "Z:\\x.txt";
         for (const command of ["Get-Content \\\\server\\share\\a.txt", "Get-Content C:foo.txt", `Get-Content ${otherDrive}`, "Get-Content ~\\secrets.txt", "Get-Content ..\\x.txt", "Get-Content C:\\Windows\\win.ini"]) {
-            expectLabeled(ro(command), command).toBe(false);
+            expectLabeled(await ro(command), command).toBe(false);
         }
     });
 

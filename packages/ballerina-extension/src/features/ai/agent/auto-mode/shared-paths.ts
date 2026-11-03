@@ -116,11 +116,13 @@ export function foldsCase(): boolean {
 }
 
 /**
- * The one comparison form of a path: resolved, `/` separators, no trailing slash, case-folded
+ * The one comparison form of a path: resolved, `/` separators on Windows, no trailing slash, case-folded
  * where the filesystem folds (darwin, win32).
  */
 export function comparablePath(path: string): string {
-    const normalized = forwardSlashes(resolve(path)).replace(/\/+$/, "");
+    const absolute = resolve(path);
+    // Backslashes separate Windows paths, but name literal sibling files on POSIX.
+    const normalized = (process.platform === "win32" ? forwardSlashes(absolute) : absolute).replace(/\/+$/, "");
     return foldsCase() ? normalized.toLowerCase() : normalized;
 }
 
