@@ -18,7 +18,7 @@ import * as child_process from 'child_process';
 import { system32Path } from '../auto-mode/shared-paths';
 import { commandLaunch } from '../shell/command-launch';
 import { stripAnsiAndControl } from '../shell/output';
-import { waitForChildExit } from '../shell/process-tree';
+import { rememberedGroupAlive, waitForChildExit } from '../shell/process-tree';
 import { type ProcessLaunch, spawnLaunch } from '../shell/runner';
 
 const isWindows = process.platform === 'win32';
@@ -138,6 +138,11 @@ export function killProcessGroup(proc: child_process.ChildProcess, signal: NodeJ
     const pid = proc.pid;
 
     if (isWindows) {
+        // Once the leader has exited, Windows may give its pid to an unrelated process, and
+        // `taskkill /T` by that pid would end a stranger's tree (as `process-tree.ts killProcessTree`).
+        if (!rememberedGroupAlive(proc)) {
+            return Promise.resolve();
+        }
         return new Promise((resolve) => {
             // /T kills the process tree, /F forces termination. taskkill.exe is
             // addressed in System32 so a PATH entry cannot stand in for it; async

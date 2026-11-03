@@ -220,4 +220,19 @@ describe("a remembered tree on Windows", () => {
         await new Promise((r) => setTimeout(r, 200));
         expect(exited.kill).not.toHaveBeenCalled();
     });
+
+    it("is not killed by pid in the service manager either once its leader has exited", async () => {
+        const exited = child(0, null);
+        // The service manager reads the platform when it loads, so it is loaded fresh as Windows.
+        await onWindows(() => {
+            let killProcessGroup!: (proc: ReturnType<typeof spawn>) => Promise<void>;
+            jest.isolateModules(() => {
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                killProcessGroup = require("../../features/ai/agent/tools/running-service-manager").killProcessGroup;
+            });
+            return killProcessGroup(exited);
+        });
+        await new Promise((r) => setTimeout(r, 200));
+        expect(exited.kill).not.toHaveBeenCalled();
+    });
 });
