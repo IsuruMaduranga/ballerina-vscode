@@ -196,8 +196,8 @@ export interface GateDecisionRecord {
 }
 
 export interface AutoModeGate {
-    /** Judges the command with the classifier (the caller builds the transcript). Never rejects. */
-    classify: (command: string) => Promise<ClassifyVerdict>;
+    /** Judges the command with the classifier (the caller builds the transcript), with the PowerShell parse when there is one. Never rejects. */
+    classify: (command: string, powershellParse?: PowerShellParse) => Promise<ClassifyVerdict>;
     /** The thread's pause tracker. */
     pause: PauseTracker;
 }
@@ -291,7 +291,7 @@ export async function authorizeShellCommand(input: ShellGateInput, mode: ShellMo
     let timeoutMs: number | undefined;
     if (auto && !decision.floor) {
         if (!auto.pause.isPaused()) {
-            const verdict = await auto.classify(input.command);
+            const verdict = await auto.classify(input.command, input.powershellParse);
             const record = { source: "classifier" as const, tier: verdict.tier, ruleId: verdict.ruleId, reason: verdict.reason || undefined, raw: verdict.raw };
             if (verdict.decision === "allow") {
                 auto.pause.recordAllow();

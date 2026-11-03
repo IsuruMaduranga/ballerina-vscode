@@ -36,6 +36,8 @@
 import { lstatSync, readlinkSync } from "fs";
 import { basename, dirname, isAbsolute, join, resolve } from "path";
 import { isWithin, resolveForContainment, toAbsolute, toAbsoluteBash } from "./paths";
+import type { PowerShellParse } from "./powershell-parser";
+import { powershellSeparators, powershellUnescaped } from "./powershell-paths";
 import { powershellPathTokens } from "./safety-floor";
 import { comparablePath, tryRealpath } from "./shared-paths";
 import { parseCommand } from "./shell-parse";
@@ -111,10 +113,24 @@ export function bashPathCandidates(command: string): string[] {
 }
 
 /**
- * The words of a PowerShell command line that may name a path. Interim, until
- * the PowerShell gate parses commands with PowerShell's own parser: then this
- * function returns the parse's constant string values instead (and the
- * spelling `-Path` unescapes), and its callers do not change. Today it is a
+ * The words of a parsed PowerShell command that may name a path: every
+ * constant string value as PowerShell resolved it, also in the spelling
+ * `-Path` unescapes, in this platform's separators.
+ */
+export function powershellParsePathCandidates(parse: PowerShellParse): string[] {
+    const words: string[] = [];
+    for (const node of parse.nodes) {
+        if (node.type !== "StringConstantExpressionAst" || typeof node.value !== "string" || !node.value) { continue; }
+        words.push(powershellSeparators(node.value));
+        const unescaped = powershellUnescaped(node.value);
+        if (unescaped !== node.value) { words.push(powershellSeparators(unescaped)); }
+    }
+    return words;
+}
+
+/**
+ * The words of a PowerShell command line that may name a path, when there is
+ * no parse (no PowerShell, a timeout, Constrained Language Mode). It is a
  * text split: the safety floor's path tokens (home expanded, `-Param:value`
  * unwrapped, `\` forward-slashed), plus every other word with its quotes
  * stripped, so a bare in-project name such as `notes.txt` is resolved too. A
@@ -165,9 +181,14 @@ export function resolvedPathFacts(words: readonly string[], opts: ResolvedPathsO
 }
 
 /** The facts for one shell command under review, or undefined when every path it names stays inside. */
-export function shellResolvedPaths(tool: "shell" | "powershell", command: string, opts: Omit<ResolvedPathsOptions, "spelling">): ResolvedPathFact[] | undefined {
+export function shellResolvedPaths(
+    tool: "shell" | "powershell",
+    command: string,
+    opts: Omit<ResolvedPathsOptions, "spelling">,
+    powershellParse?: PowerShellParse,
+): ResolvedPathFact[] | undefined {
     if (!command) { return undefined; }
     return tool === "powershell"
-        ? resolvedPathFacts(powershellPathCandidates(command, opts.home), opts)
+        ? resolvedPathFacts(powershellParse ? powershellParsePathCandidates(powershellParse) : powershellPathCandidates(command, opts.home), opts)
         : resolvedPathFacts(bashPathCandidates(command), { ...opts, spelling: "bash" });
 }

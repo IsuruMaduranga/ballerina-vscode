@@ -30,6 +30,7 @@ import type { ShellKind } from "./classifier-prompt";
 import type { AutoModeConfig } from "./config";
 import { gitStatusMeta, gitStatusMetaArgs, reachesIgnoredFiles, wantsGitStatusMeta } from "./git-status-meta";
 import type { ClassifyVerdict } from "./prompt";
+import type { PowerShellParse } from "./powershell-parser";
 import { shellResolvedPaths } from "./resolved-paths-meta";
 import type { TranscriptEntry } from "./transcript";
 import { transcriptFromGenerations, unstoredToolCalls, type TranscriptGeneration, type TranscriptToolCall } from "./transcript-source";
@@ -43,6 +44,8 @@ export interface ShellClassifyInput {
     home?: string;
     /** Working directories besides `cwd` that a path may resolve into without being reported (the thread's scratchpad). */
     extraRoots?: readonly string[];
+    /** The PowerShell gate's parse of `command`, when it has one; the resolvedPaths line reads its string values. */
+    powershellParse?: PowerShellParse;
     generations: readonly TranscriptGeneration[];
     /** Commands the user declined earlier in the thread, as `denied` entries. */
     denials: readonly TranscriptEntry[];
@@ -81,7 +84,7 @@ export async function classifyShellCommand(input: ShellClassifyInput, deps: Clas
     // pre-gate cleared never pays for the symlink walk.
     const resolvedPaths = input.home === undefined
         ? undefined
-        : shellResolvedPaths(input.tool, input.command, { cwd: input.cwd, home: input.home, roots: [input.cwd, ...(input.extraRoots ?? [])] });
+        : shellResolvedPaths(input.tool, input.command, { cwd: input.cwd, home: input.home, roots: [input.cwd, ...(input.extraRoots ?? [])] }, input.powershellParse);
     if (resolvedPaths) { transcript.push({ kind: "resolved-paths", resolvedPaths }); }
     transcript.push({ kind: "tool", tool: input.tool, input: { command: input.command } });
     return classify(

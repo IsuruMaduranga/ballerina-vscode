@@ -159,13 +159,14 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                 grantRule: (rule) => sessionRuleStore.add(runKey, rule),
                 auto: {
                     pause,
-                    classify: (subject) => classifyShellCommand(
+                    classify: (subject, powershellParse) => classifyShellCommand(
                         {
                             command: subject,
                             tool,
                             cwd: shell.cwd,
                             home: shell.home,
                             extraRoots: shell.writableRoots,
+                            powershellParse,
                             generations: projectRootPath ? chatStateStorage.getGenerations(projectRootPath, threadId) : [],
                             denials: userDenials.get(runKey) ?? [],
                             runToolCalls: toolCallLog?.list(),

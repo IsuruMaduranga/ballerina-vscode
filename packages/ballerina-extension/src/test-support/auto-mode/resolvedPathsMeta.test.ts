@@ -31,6 +31,7 @@ import {
     bashPathCandidates,
     MAX_RESOLVED_PATHS,
     MAX_RESOLVED_WORD,
+    powershellParsePathCandidates,
     powershellPathCandidates,
     RESOLVED_PATHS_NOTE,
     resolvedPathFacts,
@@ -127,6 +128,14 @@ describePosix("shellResolvedPaths", () => {
     it("PowerShell: reports a bare in-project name that links out", () => {
         expect(shellResolvedPaths("powershell", "Add-Content notes.txt 'key'", opts)).toEqual([{ path: "notes.txt", resolvesTo: secret }]);
         expect(shellResolvedPaths("powershell", "Get-Content src/a.txt", opts)).toBeUndefined();
+    });
+
+    it("PowerShell with a parse: reads its string values, so a quoted name with a space is seen whole", () => {
+        const node = (value: string) => ({ type: "StringConstantExpressionAst", parent: 0, start: 0, end: 0, value });
+        const parse = { nodes: [node("Add-Content"), node("notes.txt"), node("key")], errors: [] };
+        expect(shellResolvedPaths("powershell", "Add-Content 'notes.txt' 'key'", opts, parse)).toEqual([{ path: "notes.txt", resolvesTo: secret }]);
+        expect(powershellParsePathCandidates({ nodes: [node("docs\\read me.txt"), node("a`[1`].txt")], errors: [] }))
+            .toEqual(["docs/read me.txt", "a`[1`].txt", "a[1].txt"]);
     });
 });
 
