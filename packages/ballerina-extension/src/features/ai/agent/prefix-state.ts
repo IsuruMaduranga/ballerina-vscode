@@ -22,8 +22,8 @@
  * Claude Sonnet 5.5 binds every signed thinking block to the bytes before it: the top-level system
  * prompt, the tool set and every earlier message. So within one history the agent never rewrites
  * what it already sent. The top-level system prompt holds fixed text only; what changes between
- * turns (the skills listing, the deferred-tools listing, MCP tools coming and going, the Natural
- * Programming note) goes into a `role: "system"` message after the turn's user message, as the
+ * turns or threads (the skills listing, the deferred-tools listing, MCP tools coming and going, the
+ * shell section with its scratchpad path, the Natural Programming note) goes into a `role: "system"` message after the turn's user message, as the
  * difference from what earlier turns said. The state that difference is taken against is stored
  * on each generation, so a revert rolls it back and a compaction restart starts it over.
  *
@@ -60,6 +60,8 @@ export interface LivePrefix {
     mcpTools: readonly FrozenToolDefinition[];
     /** The Natural Programming note this turn's operation needs, if any. */
     npNote?: string;
+    /** The shell tool's section (`shell/shell-session.ts shellPromptSection`), when the run has one. */
+    shellNote?: string;
     /**
      * Whether the request can carry `role: "system"` messages and `tool_addition`/`tool_removal`
      * blocks. Without them the notice rides the user message, and a late MCP tool is announced in
@@ -177,6 +179,7 @@ export const NP_MODE_OFF_NOTE = 'Natural Programming mode is off for this reques
  */
 export function planTurnPrefix(previous: AgentPrefixState | undefined, hasHistory: boolean, live: LivePrefix): TurnPrefix {
     const npHash = live.npNote ? hashText(live.npNote) : undefined;
+    const shellHash = live.shellNote ? hashText(live.shellNote) : undefined;
     const liveNames = new Set(live.mcpTools.map(t => t.name));
     const frozen = previous?.mcpTools ?? [];
     const fresh = !previous || previous.baseHash !== live.baseHash;
@@ -201,6 +204,7 @@ export function planTurnPrefix(previous: AgentPrefixState | undefined, hasHistor
         sections.push(
             deferredToolsListing([...live.deferredBuiltIns, ...live.mcpTools.map(t => t.name)]),
             getSkillsListing(live.skills),
+            live.shellNote ?? '',
             live.npNote ?? '');
     } else {
         const frozenNames = new Set(frozen.map(t => t.name));
@@ -217,6 +221,11 @@ export function planTurnPrefix(previous: AgentPrefixState | undefined, hasHistor
         skills = [...previous.skills, ...newSkills.map(s => s.name)];
         removedTools = [...removed].sort();
         sections.push(getSkillsListing(newSkills));
+        // The shell tool is a built-in, so gaining or losing it changes the base; only its text
+        // (the scratchpad path) can change here.
+        if (shellHash !== previous.shellHash && live.shellNote) {
+            sections.push(live.shellNote);
+        }
         if (npHash !== previous.npHash) {
             sections.push(live.npNote ?? NP_MODE_OFF_NOTE);
         }
@@ -245,6 +254,7 @@ export function planTurnPrefix(previous: AgentPrefixState | undefined, hasHistor
             skills,
             removedTools,
             ...(npHash ? { npHash } : {}),
+            ...(shellHash ? { shellHash } : {}),
             ...(fresh && hasHistory ? { reasoningReset: true } : {}),
         },
         systemMessage: text

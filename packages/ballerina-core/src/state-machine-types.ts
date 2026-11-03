@@ -1047,6 +1047,8 @@ export interface AgentPrefixState {
     removedTools: string[];
     /** Hash of the Natural Programming note in effect; absent when none is. */
     npHash?: string;
+    /** Hash of the shell section the model was shown; absent when the run has no shell tool. */
+    shellHash?: string;
     /** The base changed at this generation: every reasoning part before it is dropped from later requests. */
     reasoningReset?: boolean;
 }

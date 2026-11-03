@@ -16,7 +16,7 @@
 
 /**
  * The host side of the shell gate (`auto-mode/gate.ts`): the approval banner
- * through `ApprovalManager`, the classifier's model call (Sonnet 5 through
+ * through `ApprovalManager`, the classifier's model call (Sonnet 5.5 through
  * `getAnthropicClient`, so all four login methods work and screening spends
  * the user's quota), the thread's pause tracker and denials, and the decision
  * log under the thread's state directory.
@@ -26,11 +26,9 @@ import { generateText } from 'ai';
 import { userInfo } from 'os';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { LoginMethod } from '@wso2/ballerina-core';
-import { getLoginMethod } from '../../../../utils/ai/auth';
 import { chatStateStorage } from '../../../../views/ai-panel/chatStateStorage';
 import { approvalManager } from '../../state/ApprovalManager';
-import { ANTHROPIC_SONNET, getAnthropicClient, getProviderModelOptions } from '../../utils/ai-client';
+import { ANTHROPIC_SONNET, getAnthropicClient, getProviderCacheControl, getProviderModelOptions } from '../../utils/ai-client';
 import { CopilotEventHandler } from '../../utils/events';
 import type { ClassifierModelCall } from '../auto-mode/classifier';
 import { defaultEnvironment } from '../auto-mode/classifier-prompt';
@@ -68,24 +66,28 @@ export function resetShellGateState(threadKey: string): void {
 }
 
 /**
- * The classifier's model call: thinking disabled, our own retries only, and
- * the system prompt (the ruleset) cached for an hour, since classifier calls
- * are sporadic and the prefix is stable for the whole session.
+ * Output headroom for a model that cannot turn thinking off, added to both
+ * stages' caps: Claude Sonnet 5.5 always thinks, and its reasoning otherwise
+ * spends the budget before the verdict is written.
+ */
+export const FORCED_THINKING_PADDING = 2048;
+
+/**
+ * The classifier's model call: thinking at `low` effort (Claude Sonnet 5.5
+ * cannot turn it off), our own retries only, and the system prompt (the
+ * ruleset) cached for an hour, since classifier calls are sporadic and the
+ * prefix is stable for the whole session.
  */
 export const classifierModelCall: ClassifierModelCall = async ({ system, user, maxOutputTokens, abortSignal }) => {
     const model = await getAnthropicClient(ANTHROPIC_SONNET);
-    const loginMethod = await getLoginMethod();
-    const systemCache = loginMethod === LoginMethod.AWS_BEDROCK
-        ? { bedrock: { cachePoint: { type: 'default' } } }
-        : { anthropic: { cacheControl: { type: 'ephemeral', ttl: '1h' } } };
     const result = await generateText({
         model,
-        maxOutputTokens,
+        maxOutputTokens: maxOutputTokens + FORCED_THINKING_PADDING,
         abortSignal,
         maxRetries: 0,
         providerOptions: getProviderModelOptions('low'),
         messages: [
-            { role: 'system', content: system, providerOptions: systemCache as any },
+            { role: 'system', content: system, providerOptions: getProviderCacheControl('1h') },
             { role: 'user', content: user },
         ],
     });

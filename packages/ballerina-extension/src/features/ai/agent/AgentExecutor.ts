@@ -485,7 +485,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             // Refresh before building the tool registry so it picks up mid-session mcp.json edits.
             await refreshMcpClientManager();
 
-            // The shell tool's scratchpad and gate roots, shared by the prompt and the tool registry.
+            // The shell tool's scratchpad and gate roots, shared by the turn notice and the tool registry.
             const shell = shellRunSetup(projectRootPath, threadId);
 
             // Create tools: the built-ins first, since the prefix base is hashed over them.
@@ -527,6 +527,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                 deferredBuiltIns,
                 mcpTools: liveMcpToolDefinitions(),
                 npNote: getNPSuffix(turnProjects, params.operationType) || undefined,
+                shellNote: shell?.promptSection,
                 systemMessages: systemInMessages,
             });
             const historyGenerations = this.config.chatStorage

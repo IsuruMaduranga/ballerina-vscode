@@ -184,6 +184,13 @@ describe('a later turn', () => {
         expect(off.systemMessage?.content).toBe(NP_MODE_OFF_NOTE);
         expect(off.state.npHash).toBeUndefined();
     });
+
+    it('lists the shell section on the first turn and repeats it only when its text changes', () => {
+        const first = planTurnPrefix(undefined, false, live({ shellNote: '# Shell\nscratchpad /a' }));
+        expect(first.systemMessage?.content).toContain('# Shell\nscratchpad /a');
+        expect(planTurnPrefix(asPrevious(first), true, live({ shellNote: '# Shell\nscratchpad /a' })).systemMessage).toBeUndefined();
+        expect(planTurnPrefix(asPrevious(first), true, live({ shellNote: '# Shell\nscratchpad /b' })).systemMessage?.content).toBe('# Shell\nscratchpad /b');
+    });
 });
 
 describe('a request that cannot carry system messages or tool changes', () => {
