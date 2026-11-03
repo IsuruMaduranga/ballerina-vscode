@@ -30,7 +30,7 @@
 import { join } from "path";
 import { generateTaskId } from "../background/types";
 import { startBackgroundShell } from "./background";
-import { headCap, persistedOutputBlock, PREVIEW_CHARS } from "./output";
+import { persistedOutputBlock, PREVIEW_CHARS, startAndEnd } from "./output";
 import { balRunDirectory } from "./bal-run";
 import { exitJudgeFor, type ShellDialect } from "./exit-semantics";
 import { ensureScratchpadDir } from "./scratchpad";
@@ -162,7 +162,8 @@ export function backgroundStartText(label: string, taskId: string, description: 
 
 /** The text returned when a background `bal run` was started as a service. */
 export function serviceStartText(description: string, packagePath: string, start: ServiceStartResult): string {
-    const output = headCap(start.output, FOREGROUND_OUTPUT_CAP).trim();
+    // Service output is never saved to a file, and a failed start ends in its error: keep both ends.
+    const output = startAndEnd(start.output, FOREGROUND_OUTPUT_CAP, PREVIEW_CHARS).trim();
     if (start.kind === "failed") {
         const why = start.timedOut
             ? "The service did not become ready within 60 seconds, so it was stopped."

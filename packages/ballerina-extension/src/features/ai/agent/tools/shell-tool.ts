@@ -20,7 +20,7 @@ import { CopilotEventHandler } from '../../utils/events';
 import type { ShellAuthorization } from '../auto-mode/gate';
 import { bashToolDescription, SHELL_TOOL_NAME } from '../shell/bash-description';
 import { bashGuardReason } from '../shell/guards';
-import { headCap } from '../shell/output';
+import { startAndEnd } from '../shell/output';
 import { runShellCall, type ShellCallContext, type ShellCallParams } from '../shell/shell-call';
 import { bashSpawn, powerShellEdition, powerShellSpawn, withPowerShellUtf8 } from '../shell/shell-spawn';
 import { POWERSHELL_TOOL_NAME, powershellToolDescription } from '../shell/powershell-description';
@@ -141,7 +141,7 @@ export function createShellTool(opts: ShellToolOptions) {
                 emitResult("background", { taskId: result.taskId, logPath: result.logPath, gate });
             } else if (result.kind === "service") {
                 const { start } = result;
-                const service = { kind: "service", packagePath: result.packagePath, output: headCap(start.output, UI_OUTPUT_CAP), gate };
+                const service = { kind: "service", packagePath: result.packagePath, output: startAndEnd(start.output, UI_OUTPUT_CAP, UI_OUTPUT_CAP / 2), gate };
                 if (start.kind === "started") {
                     emitResult("service", { ...service, taskId: start.taskId });
                 } else {
@@ -153,8 +153,8 @@ export function createShellTool(opts: ShellToolOptions) {
                 emitResult(line === "completed" ? "completed" : "error", {
                     exitCode: result.summary.exitCode,
                     finish: line,
-                    // Start first, as the model reads it; `head` holds the start even when the cap dropped it.
-                    output: headCap(result.summary.length > UI_OUTPUT_CAP ? result.summary.head : result.summary.output, UI_OUTPUT_CAP),
+                    // The start and the end, where a failure prints its errors; `head` holds the start even when the buffer dropped it.
+                    output: startAndEnd(result.summary.output, UI_OUTPUT_CAP, UI_OUTPUT_CAP / 2, result.summary.head, result.summary.length),
                     outputFile: result.summary.logPath,
                     gate,
                 });

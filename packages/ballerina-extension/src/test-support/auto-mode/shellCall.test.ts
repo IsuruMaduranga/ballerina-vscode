@@ -32,7 +32,7 @@ import type { BackgroundShell } from "../../features/ai/agent/background/types";
 import { bashToolDescription } from "../../features/ai/agent/shell/bash-description";
 import { bashGuardReason } from "../../features/ai/agent/shell/guards";
 import { EMPTY_OUTPUT_MARKER, MAX_PROCESS_OUTPUT_CHARS } from "../../features/ai/agent/shell/output";
-import { FOREGROUND_OUTPUT_CAP, foregroundTimeoutMs, runShellCall, type ShellCallContext } from "../../features/ai/agent/shell/shell-call";
+import { FOREGROUND_OUTPUT_CAP, foregroundTimeoutMs, runShellCall, serviceStartText, type ShellCallContext } from "../../features/ai/agent/shell/shell-call";
 import { bashSpawn } from "../../features/ai/agent/shell/shell-spawn";
 import { expectLabeled } from "./labeled";
 
@@ -249,6 +249,17 @@ describe("runShellCall: background", () => {
             nodeCtx({ startService: async () => ({ kind: "failed", exitCode: 1, output: "error: compilation failed", timedOut: false }) }),
         );
         expect(result.text).toBe("The service exited with code 1 before it was ready.\n\nerror: compilation failed");
+    });
+});
+
+describe("serviceStartText", () => {
+    it("keeps the start and the end of a long failed start, where the error is", () => {
+        const output = `BEGIN ${"x".repeat(40_000)} THE ERROR`;
+        const text = serviceStartText("svc", "/p", { kind: "failed", exitCode: 1, timedOut: false, output });
+        expect(text).toContain("BEGIN");
+        expect(text).toContain("THE ERROR");
+        expect(text).toContain("… (middle of the output omitted)");
+        expect(text.length).toBeLessThan(FOREGROUND_OUTPUT_CAP + 200);
     });
 });
 

@@ -55,9 +55,14 @@ export function tailCap(text: string, cap: number): string {
     return text.length <= cap ? text : `… (earlier output truncated)\n${text.slice(-cap)}`;
 }
 
-/** The first `cap` characters of `text`, marked as a head when anything was cut. */
-export function headCap(text: string, cap: number): string {
-    return text.length <= cap ? text : `${text.slice(0, cap)}\n… (later output truncated)`;
+/**
+ * An output of `length` characters cut to `cap`: whole when it fits, else its first `startChars` and
+ * its end, with a marker between. `text` holds the end; `start` holds the start when a buffer that
+ * keeps the end has dropped it (`RunSummary.head`).
+ */
+export function startAndEnd(text: string, cap: number, startChars: number, start = text, length = text.length): string {
+    if (length <= cap) { return text; }
+    return `${start.slice(0, startChars)}\n… (middle of the output omitted)\n${text.slice(-(cap - startChars))}`;
 }
 
 function formatSize(chars: number): string {
