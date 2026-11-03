@@ -16,7 +16,8 @@
 
 /** The classifier transcript, ported from an earlier harness's transcript test suites (bash and PowerShell). */
 
-import { renderTranscript, transcriptToolName, type TranscriptEntry } from "../../features/ai/agent/auto-mode/transcript";
+import { RESOLVED_PATHS_NOTE } from "../../features/ai/agent/auto-mode/resolved-paths-meta";
+import { isHistoricalRead, renderTranscript, transcriptBlocks, transcriptToolName, type TranscriptEntry } from "../../features/ai/agent/auto-mode/transcript";
 
 describe("transcriptToolName", () => {
     it("names the shell tools as Claude Code does and keeps every other tool's own name", () => {
@@ -56,33 +57,85 @@ describe("renderTranscript", () => {
         expect(out).not.toContain("result");
     });
 
-    it("clips earlier fields but sends the current action whole even beyond the transcript budget", () => {
-        const command = `${"x".repeat(50_000)} DANGEROUS-SUFFIX`;
-        const out = renderTranscript([
-            { kind: "tool", tool: "shell", input: { command: "old".repeat(5000) } },
-            { kind: "tool", tool: "shell", input: { command } },
-        ], { maxField: 100, maxChars: 1000 });
-        expect(out).toContain(JSON.stringify(command));
-        expect(out).toContain("omitted for length");
-        expect(out).not.toContain("truncated");
-        const withHistory = renderTranscript([
-            { kind: "tool", tool: "shell", input: { command: "old".repeat(5000) } },
-            { kind: "tool", tool: "shell", input: { command: "current" } },
-        ], { maxField: 100 });
-        expect(withHistory).toContain("truncated");
-    });
-
-    it("drops oldest entries past the char budget but always keeps the action under review", () => {
-        const many: TranscriptEntry[] = Array.from({ length: 50 }, (_v, i) => ({
+    it("renders every entry whole, earlier ones included, with no window", () => {
+        const old = `${"old".repeat(30_000)} REDIRECT > ~/.ssh/authorized_keys`;
+        const many: TranscriptEntry[] = Array.from({ length: 400 }, (_v, i) => ({
             kind: "tool",
             tool: "shell",
             input: { command: `echo step-${i} ${"x".repeat(200)}` },
         }));
-        many.push({ kind: "tool", tool: "shell", input: { command: "THE-ACTION-UNDER-REVIEW" } });
-        const out = renderTranscript(many, { maxChars: 2000 });
-        expect(out).toContain("THE-ACTION-UNDER-REVIEW"); // last entry always kept
-        expect(out).toContain("omitted for length");
-        expect(out).not.toContain("step-0 ");
+        const out = renderTranscript([{ kind: "tool", tool: "shell", input: { command: old } }, ...many, { kind: "tool", tool: "shell", input: { command: "current" } }]);
+        expect(out).toContain(JSON.stringify(old));
+        expect(out).toContain("step-0 ");
+        expect(out).not.toContain("truncated");
+        expect(out).not.toContain("omitted");
+    });
+});
+
+describe("transcriptBlocks", () => {
+    it("gives each earlier entry its own block and keeps the action in the tail", () => {
+        const entries: TranscriptEntry[] = [
+            { kind: "user", text: "clean up" },
+            { kind: "tool", tool: "file_write", input: { file_path: "a.txt", content: "a" } },
+            { kind: "tool", tool: "shell", input: { command: "rm a.txt" } },
+        ];
+        const { history, tail } = transcriptBlocks(entries);
+        expect(history).toEqual(["<transcript>", '\n{"user":"clean up"}', '\n{"file_write":{"file_path":"a.txt","content":"a"}}']);
+        expect(tail).toBe('\n{"Bash":"rm a.txt"}\n</transcript>');
+        expect(history.join("") + tail).toBe(renderTranscript(entries));
+    });
+
+    it("renders an earlier entry to the same block whatever follows it", () => {
+        const first = transcriptBlocks([{ kind: "user", text: "u" }, { kind: "tool", tool: "shell", input: { command: "a" } }]);
+        const later = transcriptBlocks([
+            { kind: "user", text: "u" },
+            { kind: "tool", tool: "shell", input: { command: "a" } },
+            { kind: "tool", tool: "shell", input: { command: "b" } },
+        ]);
+        expect(later.history.slice(0, first.history.length)).toEqual(first.history);
+    });
+
+    it("keeps the ground-truth lines with a large action, in order", () => {
+        const big = `echo ${"x".repeat(90_000)} >> notes.txt`;
+        const lines = renderTranscript([
+            { kind: "user", text: "older" },
+            { kind: "meta", gitStatus: { clean: true } },
+            { kind: "resolved-paths", resolvedPaths: [{ path: "notes.txt", resolvesTo: "/home/u/.ssh/authorized_keys" }] },
+            { kind: "tool", tool: "shell", input: { command: big } },
+        ]).split("\n");
+        expect(lines[1]).toBe('{"user":"older"}');
+        expect(lines[2]).toBe('{"meta":{"gitStatus":{"clean":true}}}');
+        expect(lines[3]).toContain('"resolvedPaths"');
+        expect(lines[4]).toBe(JSON.stringify({ Bash: big }));
+        const { tail } = transcriptBlocks([
+            { kind: "user", text: "older" },
+            { kind: "meta", gitStatus: { clean: true } },
+            { kind: "tool", tool: "shell", input: { command: big } },
+        ]);
+        expect(tail.startsWith('\n{"meta":{"gitStatus"')).toBe(true);
+    });
+
+    it("renders the resolvedPaths line with its own note, and the summary line as model context", () => {
+        const text = renderTranscript([
+            { kind: "summary", text: "Earlier the agent created build/tmp." },
+            { kind: "resolved-paths", resolvedPaths: [{ path: "notes.txt", resolvesTo: "/outside/secret" }] },
+            { kind: "tool", tool: "shell", input: { command: "echo x >> notes.txt" } },
+        ]);
+        expect(text.split("\n")).toEqual([
+            "<transcript>",
+            '{"summary":"Earlier the agent created build/tmp."}',
+            JSON.stringify({ meta: { resolvedPaths: [{ path: "notes.txt", resolvesTo: "/outside/secret" }], note: RESOLVED_PATHS_NOTE } }),
+            '{"Bash":"echo x >> notes.txt"}',
+            "</transcript>",
+        ]);
+    });
+
+    it("counts local reads and searches as historical reads, and nothing that runs or writes", () => {
+        expect(isHistoricalRead({ kind: "tool", tool: "file_read", input: { file_path: "a" } })).toBe(true);
+        expect(isHistoricalRead({ kind: "tool", tool: "getCompilationErrors", input: {} })).toBe(true);
+        expect(isHistoricalRead({ kind: "tool", tool: "file_write", input: { file_path: "a" } })).toBe(false);
+        expect(isHistoricalRead({ kind: "tool", tool: "shell", input: { command: "cat a" } })).toBe(false);
+        expect(isHistoricalRead({ kind: "user", text: "file_read" })).toBe(false);
     });
 });
 
@@ -99,12 +152,13 @@ describe("rule denials", () => {
         expect(out).toContain('"tool":"Bash"');
     });
 
-    it("clips a long denied subject like every other field", () => {
+    it("keeps a long denied subject whole like every other field", () => {
         const out = renderTranscript([
             { kind: "denied", tool: "shell", subject: "x".repeat(5000), rule: "Bash(rm:*)" },
             { kind: "tool", tool: "shell", input: { command: "current" } },
-        ], { maxField: 50 });
-        expect(out).toContain("truncated");
+        ]);
+        expect(out).toContain("x".repeat(5000));
+        expect(out).not.toContain("truncated");
     });
 });
 

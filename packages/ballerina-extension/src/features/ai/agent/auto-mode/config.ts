@@ -118,16 +118,19 @@ export function loadAutoModeConfig(home: string, defaultEnvironment: string[]): 
     return parseAutoModeConfig(text, defaultEnvironment);
 }
 
-/** Per-file cap, so a large AGENTS.md cannot crowd the rules out of the classifier's view. */
-const AGENTS_MD_LIMIT = 6_000;
-
 /**
- * The workspace's AGENTS.md for the classifier's untrusted framing block (the
- * same file the agent is shown), capped; undefined when absent or empty.
+ * The workspace's AGENTS.md for the classifier's untrusted framing block: the
+ * file the agent is shown (`agents-md/index.ts readAgentsMd`, line endings
+ * normalised the same way), whole; undefined when absent or only whitespace.
+ * The agent's turn block shows the first lines and points it at the rest,
+ * which it reads on demand; the classifier gets every line, because a cut
+ * would drop the restrictions past it, and the framing tells the classifier
+ * these instructions can only tighten what is allowed. A history too large
+ * for the classifier's window is not judged (classifier.ts).
  */
 export function loadAgentsMdForClassifier(workspaceRoot: string): string | undefined {
     try {
-        const text = readFileSync(join(workspaceRoot, "AGENTS.md"), "utf8").slice(0, AGENTS_MD_LIMIT).trim();
+        const text = readFileSync(join(workspaceRoot, "AGENTS.md"), "utf8").replace(/\r\n/g, "\n").trim();
         return text.length > 0 ? text : undefined;
     } catch {
         return undefined;

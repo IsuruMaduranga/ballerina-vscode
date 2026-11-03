@@ -16,11 +16,13 @@
 
 /**
  * Builds the classifier request for one shell command and runs it (design
- * §4): the thread's transcript (user messages and tool inputs, results
- * stripped), the user's denials, the earlier calls of the step still running,
- * a `{"meta":{"gitStatus":…}}` line above a
- * command that can destroy uncommitted work, then the command under review as
- * the last entry. The model call is injected, so this runs under Jest.
+ * §4): the thread's active transcript (the compaction summary, user messages
+ * and tool inputs, results stripped), the user's denials, the earlier calls
+ * of the step still running, a `{"meta":{"gitStatus":…}}` line above a
+ * command that can destroy uncommitted work, a `{"meta":{"resolvedPaths":…}}`
+ * line above a command that names an in-project path a symlink takes outside,
+ * then the command under review as the last entry. The model call is
+ * injected, so this runs under Jest.
  */
 
 import { classify, type ClassifierDeps } from "./classifier";
@@ -28,6 +30,7 @@ import type { ShellKind } from "./classifier-prompt";
 import type { AutoModeConfig } from "./config";
 import { gitStatusMeta, gitStatusMetaArgs, reachesIgnoredFiles, wantsGitStatusMeta } from "./git-status-meta";
 import type { ClassifyVerdict } from "./prompt";
+import { shellResolvedPaths } from "./resolved-paths-meta";
 import type { TranscriptEntry } from "./transcript";
 import { transcriptFromGenerations, unstoredToolCalls, type TranscriptGeneration, type TranscriptToolCall } from "./transcript-source";
 
@@ -36,6 +39,10 @@ export interface ShellClassifyInput {
     /** The shell tool's name (`shell` or `powershell`). */
     tool: "shell" | "powershell";
     cwd: string;
+    /** The user's home, for `~` in the command's paths; the resolvedPaths line is built only when it is given. */
+    home?: string;
+    /** Working directories besides `cwd` that a path may resolve into without being reported (the thread's scratchpad). */
+    extraRoots?: readonly string[];
     generations: readonly TranscriptGeneration[];
     /** Commands the user declined earlier in the thread, as `denied` entries. */
     denials: readonly TranscriptEntry[];
@@ -70,6 +77,12 @@ export async function classifyShellCommand(input: ShellClassifyInput, deps: Clas
         const meta = porcelain === undefined ? undefined : gitStatusMeta(porcelain);
         if (meta) { transcript.push({ kind: "meta", gitStatus: meta }); }
     }
+    // Built only here, when the classifier is about to run: a command the
+    // pre-gate cleared never pays for the symlink walk.
+    const resolvedPaths = input.home === undefined
+        ? undefined
+        : shellResolvedPaths(input.tool, input.command, { cwd: input.cwd, home: input.home, roots: [input.cwd, ...(input.extraRoots ?? [])] });
+    if (resolvedPaths) { transcript.push({ kind: "resolved-paths", resolvedPaths }); }
     transcript.push({ kind: "tool", tool: input.tool, input: { command: input.command } });
     return classify(
         {

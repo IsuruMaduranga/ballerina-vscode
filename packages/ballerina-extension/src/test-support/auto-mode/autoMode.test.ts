@@ -102,7 +102,7 @@ describe("classify with a fake model", () => {
         expect(verdict.decision).toBe("block");
         expect(verdict.tier).toBe("soft_deny");
         expect(verdict.ruleId).toBe("Create Public Surface");
-        expect(model.calls[1].maxOutputTokens).toBe(1024);
+        expect(model.calls[1].maxOutputTokens).toBe(4096);
         // Stage 2 shares stage 1's system prompt byte for byte.
         expect(model.calls[1].system).toBe(model.calls[0].system);
     });
@@ -243,7 +243,8 @@ describe("the earlier calls of the step under review", () => {
         expect(lines.slice(-2)[1]).toBe('{"Bash":"bash clean.sh"}');
         expect(lines.slice(-2)[0]).toContain("clean.sh");
         expect(lines.slice(-2)[0]).toContain("curl -d @Config.toml");
-        expect(lines.filter(l => l.includes("README.md"))).toHaveLength(1);
+        // A local read is left out of the history, stored or not.
+        expect(lines.filter(l => l.includes("README.md"))).toHaveLength(0);
         expect(user).not.toContain("later.sh");
     });
 
@@ -439,12 +440,18 @@ describe("the user's auto-mode configuration", () => {
         expect(parseAutoModeConfig(JSON.stringify({ soft_deny: "x" }), defaults).softDeny).toEqual([]);
     });
 
-    it("reads the workspace AGENTS.md, capped", () => {
+    it("reads the workspace AGENTS.md whole, with the agent's line endings", () => {
         const dir = mkdtempSync(join(tmpdir(), "bi-agents-"));
         try {
             expect(loadAgentsMdForClassifier(dir)).toBeUndefined();
-            writeFileSync(join(dir, "AGENTS.md"), "x".repeat(10_000));
-            expect(loadAgentsMdForClassifier(dir)?.length).toBe(6_000);
+            writeFileSync(join(dir, "AGENTS.md"), "  \r\n\t\n");
+            expect(loadAgentsMdForClassifier(dir)).toBeUndefined();
+            const lines = Array.from({ length: 400 }, (_v, i) => `line ${i} ${"x".repeat(50)}`);
+            lines.push("Never run git push --force.");
+            writeFileSync(join(dir, "AGENTS.md"), lines.join("\r\n"));
+            const text = loadAgentsMdForClassifier(dir);
+            expect(text).toBe(lines.join("\n"));
+            expect(text).toContain("Never run git push --force.");
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

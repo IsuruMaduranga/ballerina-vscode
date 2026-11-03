@@ -25,9 +25,16 @@
  * The last entry is always the action under review — the gate appends the call
  * being judged before rendering. Results are never appended here; only
  * user messages and tool inputs enter, which is the isolation boundary.
+ *
+ * Every entry is rendered whole. A rolling window lost the evidence that a
+ * cleanup target was created earlier in the same chat, and clipping an earlier
+ * command can hide its redirect or copy destination. What the transcript holds
+ * is the active context (transcript-source.ts); when the provider cannot fit
+ * it, the call is not judged rather than judged on a cut (classifier.ts).
  */
 
 import type { GitStatusMeta } from "./git-status-meta";
+import { RESOLVED_PATHS_NOTE, type ResolvedPathFact } from "./resolved-paths-meta";
 
 /**
  * How a tool is named in the transcript. The shell tools take Claude Code's
@@ -50,6 +57,12 @@ export function transcriptToolName(tool: string): string {
  */
 export type TranscriptEntry =
     | { kind: "user"; text: string }
+    /**
+     * The summary a compaction restart continued from: model-written context
+     * for the conversation before it, never the user's own words (intent
+     * quotes are verified against the user's messages only).
+     */
+    | { kind: "summary"; text: string }
     | { kind: "tool"; tool: string; input: Record<string, unknown> }
     | { kind: "denied"; tool: string; subject: string; rule: string }
     /**
@@ -58,84 +71,95 @@ export type TranscriptEntry =
      * destroy uncommitted work (auto-mode/git-status-meta.ts): the classifier
      * reads the tree's real state, not the model's account of it.
      */
-    | { kind: "meta"; gitStatus: GitStatusMeta };
+    | { kind: "meta"; gitStatus: GitStatusMeta }
+    /**
+     * Harness ground truth, directly above a command that names a path inside
+     * the working directory which a symlink takes outside it
+     * (auto-mode/resolved-paths-meta.ts). Not a Claude Code line.
+     */
+    | { kind: "resolved-paths"; resolvedPaths: ResolvedPathFact[] };
 
-/** Truncate one field so a single huge argument cannot dominate the transcript. */
+/** The entry kinds that describe the action under review; they stay with it in the uncached tail. */
+const ACTION_FACTS: ReadonlySet<TranscriptEntry["kind"]> = new Set(["meta", "resolved-paths"]);
+
+/** Clip a diagnostic field (the classifier's own reply in the decision log); transcript entries are never clipped. */
 export function clip(value: string, max: number): string {
     return value.length <= max ? value : `${value.slice(0, max)}… [truncated, ${value.length} chars]`;
-}
-
-/** Clip every string leaf of a tool input, leaving structure intact. */
-function clipInput(input: Record<string, unknown>, max: number): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(input)) {
-        out[key] = typeof value === "string" ? clip(value, max) : value;
-    }
-    return out;
 }
 
 /**
  * Render one entry as its compact JSON line. The shell tools render as
  * `{"Bash":"<command>"}` / `{"PowerShell":"<command>"}` (the command string,
- * as Claude Code does); every other tool renders as `{"<Tool>":{…input…}}`
- * with string fields clipped.
+ * as Claude Code does); every other tool renders as `{"<Tool>":{…input…}}`,
+ * file contents included.
  */
-function renderEntry(entry: TranscriptEntry, maxField: number): string {
-    if (entry.kind === "user") { return JSON.stringify({ user: clip(entry.text, maxField) }); }
+function renderEntry(entry: TranscriptEntry): string {
+    if (entry.kind === "user") { return JSON.stringify({ user: entry.text }); }
+    if (entry.kind === "summary") { return JSON.stringify({ summary: entry.text }); }
     if (entry.kind === "meta") { return JSON.stringify({ meta: { gitStatus: entry.gitStatus } }); }
+    if (entry.kind === "resolved-paths") { return JSON.stringify({ meta: { resolvedPaths: entry.resolvedPaths, note: RESOLVED_PATHS_NOTE } }); }
     if (entry.kind === "denied") {
         return JSON.stringify({
-            denied_by_permission_rule: { tool: transcriptToolName(entry.tool), attempted: clip(entry.subject, maxField), rule: entry.rule },
+            denied_by_permission_rule: { tool: transcriptToolName(entry.tool), attempted: entry.subject, rule: entry.rule },
         });
     }
     const name = transcriptToolName(entry.tool);
     const command = entry.input.command;
     if (entry.tool in SHELL_TOOL_LABELS && typeof command === "string") {
-        return JSON.stringify({ [name]: clip(command, maxField) });
+        return JSON.stringify({ [name]: command });
     }
-    return JSON.stringify({ [name]: clipInput(entry.input, maxField) });
+    return JSON.stringify({ [name]: entry.input });
 }
 
 /** Refuse larger actions rather than asking the classifier to judge a clipped command. */
 export const MAX_ACTION_CHARS = 100_000;
 
-/** The rendered length of the action under review, the last entry, unclipped. */
+/** The rendered length of the action under review, the last entry. */
 export function actionLength(entries: readonly TranscriptEntry[]): number {
     const action = entries[entries.length - 1];
-    return action ? renderEntry(action, Number.POSITIVE_INFINITY).length : 0;
-}
-
-export interface RenderOptions {
-    /** Max chars per string field of an earlier entry; the action under review is never clipped. */
-    maxField?: number;
-    /** Max chars for the whole rendered transcript; oldest entries drop first. */
-    maxChars?: number;
+    return action ? renderEntry(action).length : 0;
 }
 
 /**
- * Render the ordered entries into a `<transcript>…</transcript>` block. When the
- * rendered lines exceed `maxChars`, the oldest are dropped and a marker records
- * it — the action under review (the last entry) is always kept, whole. The full user
- * messages are carried separately for intent verification, so dropping old lines
- * here never weakens that check.
+ * Local reads and searches, left out of the earlier history as Claude Code
+ * leaves them out: they change nothing, and a later command that uses what
+ * they found names its own paths. The command under review is a shell call,
+ * never one of these.
  */
-export function renderTranscript(entries: TranscriptEntry[], options: RenderOptions = {}): string {
-    const maxField = options.maxField ?? 2000;
-    const maxChars = options.maxChars ?? 60_000;
-    const lines = entries.map((entry, i) => renderEntry(entry, i === entries.length - 1 ? Number.POSITIVE_INFINITY : maxField));
+const HISTORICAL_READ_TOOLS: ReadonlySet<string> = new Set([
+    "file_read",
+    "getCompilationErrors",
+    "tool_search",
+    "library_search",
+    "library_docs",
+    "docs_grep",
+    "docs_read",
+    "docs_list",
+]);
 
-    // Keep the newest lines that fit the budget, walking from the end in one pass
-    // (the last line — the action under review — is always kept). +1 per line for
-    // the joining "\n".
-    let firstKept = lines.length;
-    let running = 0;
-    for (let i = lines.length - 1; i >= 0; i--) {
-        running += lines[i].length + 1;
-        if (i < lines.length - 1 && running > maxChars) { break; }
-        firstKept = i;
-    }
-    const kept = lines.slice(firstKept);
-    const dropped = firstKept;
-    const body = dropped > 0 ? [`{"note":"${dropped} earlier transcript entr${dropped === 1 ? "y" : "ies"} omitted for length"}`, ...kept] : kept;
-    return `<transcript>\n${body.join("\n")}\n</transcript>`;
+export function isHistoricalRead(entry: TranscriptEntry): boolean {
+    return entry.kind === "tool" && HISTORICAL_READ_TOOLS.has(entry.tool);
+}
+
+/**
+ * The transcript as stable per-entry blocks: `history` is `<transcript>` and
+ * then one block per earlier entry, `tail` is the action under review with the
+ * harness lines directly above it (gitStatus, resolvedPaths) and the closing
+ * tag. An earlier entry renders to the same block on every call, so a request
+ * can cache the history and the next one read it (classifier-cache.ts); the
+ * action's facts stay in the tail, so the action is never separated from them.
+ */
+export function transcriptBlocks(entries: readonly TranscriptEntry[]): { history: string[]; tail: string } {
+    let historyEnd = Math.max(0, entries.length - 1);
+    while (historyEnd > 0 && ACTION_FACTS.has(entries[historyEnd - 1].kind)) { historyEnd--; }
+    return {
+        history: ["<transcript>", ...entries.slice(0, historyEnd).map((entry) => `\n${renderEntry(entry)}`)],
+        tail: `\n${entries.slice(historyEnd).map(renderEntry).join("\n")}\n</transcript>`,
+    };
+}
+
+/** Render the ordered entries whole into a `<transcript>…</transcript>` block. */
+export function renderTranscript(entries: readonly TranscriptEntry[]): string {
+    const { history, tail } = transcriptBlocks(entries);
+    return history.join("") + tail;
 }

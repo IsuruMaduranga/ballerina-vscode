@@ -30,7 +30,8 @@ import { chatStateStorage } from '../../../../views/ai-panel/chatStateStorage';
 import { approvalManager } from '../../state/ApprovalManager';
 import { ANTHROPIC_SONNET, getAnthropicClient, getProviderCacheControl, getProviderModelOptions } from '../../utils/ai-client';
 import { CopilotEventHandler } from '../../utils/events';
-import type { ClassifierModelCall } from '../auto-mode/classifier';
+import { CLASSIFIER_MAX_RETRIES, type ClassifierModelCall } from '../auto-mode/classifier';
+import { classifierMessages, type ClassifierCacheState } from '../auto-mode/classifier-cache';
 import { defaultEnvironment } from '../auto-mode/classifier-prompt';
 import { loadAgentsMdForClassifier, loadAutoModeConfig } from '../auto-mode/config';
 import { appendDecision, decisionEntry } from '../auto-mode/decision-log';
@@ -45,9 +46,19 @@ import { SHELL_TOOL_NAME } from '../shell/bash-description';
 import { POWERSHELL_TOOL_NAME } from '../shell/powershell-description';
 import { powerShellEdition, powerShellSpawn } from '../shell/shell-spawn';
 
-/** Per-thread pause trackers and user denials, in memory for as long as the extension host runs. */
+/** Per-thread pause trackers, user denials and classifier cache hints, in memory for as long as the extension host runs. */
 const pauseTrackers = new Map<string, PauseTracker>();
 const userDenials = new Map<string, TranscriptEntry[]>();
+const classifierCaches = new Map<string, ClassifierCacheState>();
+
+function classifierCacheFor(threadKey: string): ClassifierCacheState {
+    let cache = classifierCaches.get(threadKey);
+    if (!cache) {
+        cache = {};
+        classifierCaches.set(threadKey, cache);
+    }
+    return cache;
+}
 
 export function pauseTrackerFor(threadKey: string): PauseTracker {
     let tracker = pauseTrackers.get(threadKey);
@@ -58,11 +69,12 @@ export function pauseTrackerFor(threadKey: string): PauseTracker {
     return tracker;
 }
 
-/** Forget a thread's gate state (its rules, pause counters and denials), for a cleared or deleted thread. */
+/** Forget a thread's gate state (its rules, pause counters, denials and cache hint), for a cleared or deleted thread. */
 export function resetShellGateState(threadKey: string): void {
     sessionRuleStore.clear(threadKey);
     pauseTrackers.delete(threadKey);
     userDenials.delete(threadKey);
+    classifierCaches.delete(threadKey);
 }
 
 /**
@@ -74,22 +86,23 @@ export const FORCED_THINKING_PADDING = 2048;
 
 /**
  * The classifier's model call: thinking at `low` effort (Claude Sonnet 5.5
- * cannot turn it off), our own retries only, and the system prompt (the
- * ruleset) cached for an hour, since classifier calls are sporadic and the
- * prefix is stable for the whole session.
+ * cannot turn it off), rate limits and server errors retried with backoff
+ * inside the stage timeout, and every cache breakpoint at the one-hour TTL,
+ * since classifier calls are sporadic and minutes apart. The system prompt
+ * (the ruleset) is stable for the whole session; the user message goes as
+ * one block per transcript entry with a breakpoint after the history and one
+ * after the previous call's history (auto-mode/classifier-cache.ts), so
+ * stage 2 and the next command read the history instead of writing it again.
  */
-export const classifierModelCall: ClassifierModelCall = async ({ system, user, maxOutputTokens, abortSignal }) => {
+export const classifierModelCall: ClassifierModelCall = async ({ system, userParts, maxOutputTokens, abortSignal }) => {
     const model = await getAnthropicClient(ANTHROPIC_SONNET);
     const result = await generateText({
         model,
         maxOutputTokens: maxOutputTokens + FORCED_THINKING_PADDING,
         abortSignal,
-        maxRetries: 0,
+        maxRetries: CLASSIFIER_MAX_RETRIES,
         providerOptions: getProviderModelOptions('low'),
-        messages: [
-            { role: 'system', content: system, providerOptions: getProviderCacheControl('1h') },
-            { role: 'user', content: user },
-        ],
+        messages: classifierMessages(system, userParts, getProviderCacheControl('1h')),
     });
     return { text: result.text, finishReason: result.finishReason };
 };
@@ -151,6 +164,8 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                             command: subject,
                             tool,
                             cwd: shell.cwd,
+                            home: shell.home,
+                            extraRoots: shell.writableRoots,
                             generations: projectRootPath ? chatStateStorage.getGenerations(projectRootPath, threadId) : [],
                             denials: userDenials.get(runKey) ?? [],
                             runToolCalls: toolCallLog?.list(),
@@ -161,7 +176,7 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                             config,
                             gitStatus: gitStatusOutput,
                         },
-                        { call: classifierModelCall, signal: abortSignal },
+                        { call: classifierModelCall, signal: abortSignal, cache: classifierCacheFor(runKey) },
                     ),
                 },
                 onDecision: (record) => {

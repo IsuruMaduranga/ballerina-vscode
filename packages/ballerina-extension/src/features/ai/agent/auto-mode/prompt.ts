@@ -21,7 +21,10 @@
  *   system = <ruleset with Environment spliced> + <Session Context>
  *   user   = <AGENTS.md framing> + <transcript> + <stage final instruction>
  * The two stages share system+framing+transcript byte-for-byte and differ only
- * in the final instruction block, so stage 2 is a cache hit off stage 1.
+ * in the final instruction block, so stage 2 is a cache hit off stage 1. The
+ * user message is also returned as its stable blocks (`history`, `tail`), so
+ * the model call can put its cache breakpoint before the command under review
+ * (classifier-cache.ts).
  *
  * Kept free of any network import so the exact text sent, and the parsing of
  * what comes back, are unit-testable.
@@ -37,20 +40,20 @@ import {
     STAGE2_INTENT_ADDENDUM,
 } from "./classifier-prompt";
 import { buildCategoryIndex, groundCategory, normalizeName, type RuleIndex } from "./rules";
-import { clip, renderTranscript, type TranscriptEntry } from "./transcript";
+import { clip, transcriptBlocks, type TranscriptEntry } from "./transcript";
 
 export interface ClassifyRequest {
     /**
-     * The ordered transcript, user messages and tool inputs only (results
-     * stripped). Its **last entry is the action under review** — the caller
-     * appends the call being judged before handing it here.
+     * The active transcript: user messages, the compaction summary, and tool
+     * inputs (results stripped). Its **last entry is the action under
+     * review** — the caller appends the call being judged before handing it here.
      */
     transcript: TranscriptEntry[];
     /**
      * Every user message this session, for intent-quote verification. Full, never
      * a rolling window: in a long unattended run the authorizing setup message
      * must still clear a later action (decision 2). Distinct from the transcript,
-     * whose oldest lines may be dropped for length.
+     * which starts at the latest compaction restart.
      */
     userMessages: string[];
     /** The project's AGENTS.md, wrapped in the (untrusted) framing block. */
@@ -81,6 +84,8 @@ export interface ClassifyVerdict {
     raw?: string;
     /** The call was not judged: provider failure, invalid reply, cancellation or oversized input. */
     noVerdict?: true;
+    /** The provider could not fit the whole transcript in its context window; no verdict was reached. */
+    transcriptTooLong?: true;
 }
 
 /**
@@ -89,13 +94,15 @@ export interface ClassifyVerdict {
  * `classify()` does not rebuild and re-parse it a second time per call. The final
  * instruction is appended per stage by the caller (stage1User / stage2User).
  */
-export function buildPayload(request: ClassifyRequest): { system: string; userPrefix: string; index: RuleIndex } {
+export function buildPayload(request: ClassifyRequest): { system: string; userPrefix: string; history: string[]; tail: string; index: RuleIndex } {
     const ruleset = buildRuleset(request.environment, request.ruleExtras);
     const system = ruleset + renderSessionContext(request.username, request.scratchpadDir);
     const framing = agentsMdFraming(request.agentsMd);
-    const transcript = renderTranscript(request.transcript);
-    const userPrefix = [framing, transcript].filter(Boolean).join("\n\n");
-    return { system, userPrefix, index: buildCategoryIndex(ruleset) };
+    const { history, tail } = transcriptBlocks(request.transcript);
+    // The framing opens the first block: it is as stable as the history after it.
+    if (framing) { history[0] = `${framing}\n\n${history[0]}`; }
+    const userPrefix = history.join("") + tail;
+    return { system, userPrefix, history, tail, index: buildCategoryIndex(ruleset) };
 }
 
 /** The stage-1 user message: shared prefix + the harm-only final instruction. */
