@@ -487,6 +487,8 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
 
             // The shell tool's scratchpad and gate roots, shared by the turn notice and the tool registry.
             const shell = shellRunSetup(projectRootPath, threadId);
+            // Set when the user declines a shell command; the loop then stops after that step.
+            let userDeclinedShell = false;
 
             // Create tools: the built-ins first, since the prefix base is hashed over them.
             const toolRegistry = createToolRegistryParts({
@@ -507,6 +509,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                 specContext: this.buildSpecContext(threadId),
                 shell,
                 shellMode: params.shellMode,
+                onUserDeclinedShell: () => { userDeclinedShell = true; },
                 // TODO(auto-memory): temporarily disabled for this release.
                 // autoMemoryEnabled: isMemoryEnabled(),
             });
@@ -763,7 +766,8 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                             }
                         },
 
-                        stopWhen: [stepCountIs(50)],
+                        // A shell command the user declined ends the run after its step's tool calls.
+                        stopWhen: [stepCountIs(50), () => userDeclinedShell],
                     });
 
                     streamContext.response = response;

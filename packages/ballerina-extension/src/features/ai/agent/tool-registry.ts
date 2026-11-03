@@ -95,6 +95,8 @@ export interface ToolRegistryOptions {
     specContext?: SpecContext;
     /** `shell/shell-session.ts shellRunSetup` for this run; no shell tool without it. */
     shell?: ShellRunSetup;
+    /** Called when the user declines a shell command in the approval banner; the run ends after that step. */
+    onUserDeclinedShell?: () => void;
     /** Auto (the classifier judges) or ask (the user does); auto when absent. */
     shellMode?: 'auto' | 'ask';
     // TODO(auto-memory): temporarily disabled for this release.
@@ -107,6 +109,15 @@ export interface ToolRegistryOptions {
  * `tools/shell-authorizer.ts`), with shell edits registered for the review.
  */
 function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, runKey: string, threadId: string, toolCallLog: RunToolCallLog) {
+    const authorize = createShellAuthorizer({
+        shell,
+        mode: opts.shellMode ?? 'auto',
+        eventHandler: opts.eventHandler,
+        runKey,
+        projectRootPath: opts.projectRootPath,
+        threadId,
+        toolCallLog,
+    });
     return createShellTool({
         kind: shell.tool,
         eventHandler: opts.eventHandler,
@@ -116,15 +127,16 @@ function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, r
         onFilesTouched: (touched) => registerShellTouchedFiles(shell.cwd, touched, opts.modifiedFiles, opts.allModifiedFiles),
         startService: (start) => startShellService(start, opts.runningServices),
         env: withBalOnPath(process.env, extension.ballerinaExtInstance?.getBallerinaCmd()),
-        authorize: createShellAuthorizer({
-            shell,
-            mode: opts.shellMode ?? 'auto',
-            eventHandler: opts.eventHandler,
-            runKey,
-            projectRootPath: opts.projectRootPath,
-            threadId,
-            toolCallLog,
-        }),
+        // A command the user declines ends the turn, as a rejection without a reason does in Claude
+        // Code: the model keeps the declined result, and the run sends no further request. A
+        // classifier block or an unanswered banner's timeout does not.
+        authorize: async (request) => {
+            const result = await authorize(request);
+            if (!result.allowed && result.by === 'user') {
+                opts.onUserDeclinedShell?.();
+            }
+            return result;
+        },
     });
 }
 
