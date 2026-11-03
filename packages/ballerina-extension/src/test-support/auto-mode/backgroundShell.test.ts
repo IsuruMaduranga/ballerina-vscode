@@ -39,6 +39,7 @@ import {
     stopChatShellTasks,
 } from "../../features/ai/agent/background/registry";
 import { startBackgroundShell, type StartBackgroundShellOptions } from "../../features/ai/agent/shell/background";
+import { terminateRememberedProcessGroups } from "../../features/ai/agent/shell/process-tree";
 import type { BackgroundShell } from "../../features/ai/agent/background/types";
 import { createKillTaskTool, createTaskOutputTool } from "../../features/ai/agent/tools/task-tools";
 
@@ -206,5 +207,51 @@ describe("task_output and kill_task on a shell task", () => {
         const task = start("setTimeout(() => {}, 30000)", { runKey: "run-b" });
         const out = String(await createTaskOutputTool(() => {}, RUN).execute!({ task_id: task.id, block: false }, execOptions("c4")));
         expect(out).toContain("Task not found");
+    });
+});
+
+describe("background shell lifetime and spool", () => {
+    const posixOnly = process.platform === "win32" ? it.skip : it;
+    const alive = (pid: number) => {
+        try {
+            process.kill(pid, 0);
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    afterEach(() => { terminateRememberedProcessGroups(); });
+
+    posixOnly("keeps a finished command's leftover child through a chat change, and ends it when VS Code closes", async () => {
+        const task = start("unused", { launch: { command: "/bin/bash", args: ["-c", 'sleep 60 & echo "$!"'] } });
+        await until(() => task.completed);
+        const pid = Number(task.output.trim());
+        try {
+            expect(pid).toBeGreaterThan(0);
+            expect(stopChatShellTasks(RUN, "because the user changed chats")).toBe(0);
+            expect(stopAllBackgroundTasks()).toBe(0);
+            await new Promise((r) => setTimeout(r, 100));
+            expect(alive(pid)).toBe(true);
+            terminateRememberedProcessGroups();
+            await until(() => !alive(pid), 3000);
+        } finally {
+            if (pid > 0 && alive(pid)) { process.kill(pid, "SIGKILL"); }
+        }
+    });
+
+    it("names no output file when the spool could not be written", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "bg-spool-"));
+        try {
+            const task = start("process.stdout.write('kept output')", { logPath: join(dir, "missing", "output.log") });
+            await until(() => task.completed);
+            expect(task.output).toBe("kept output");
+            expect(task.logPath).toBeUndefined();
+            const notice = drainBackgroundTaskNotifications(RUN);
+            expect(notice).toContain("Output tail:\nkept output");
+            expect(notice).not.toContain("Output file");
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 });

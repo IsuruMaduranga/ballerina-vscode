@@ -21,7 +21,6 @@ import type { ShellAuthorization } from '../auto-mode/gate';
 import { bashToolDescription, SHELL_TOOL_NAME } from '../shell/bash-description';
 import { bashGuardReason } from '../shell/guards';
 import { tailCap } from '../shell/output';
-import { finishLine } from '../shell/runner';
 import { runShellCall, type ShellCallContext, type ShellCallParams } from '../shell/shell-call';
 import { bashSpawn, powerShellEdition, powerShellSpawn, withPowerShellUtf8 } from '../shell/shell-spawn';
 import { POWERSHELL_TOOL_NAME, powershellToolDescription } from '../shell/powershell-description';
@@ -147,7 +146,8 @@ export function createShellTool(opts: ShellToolOptions) {
                     emitResult("error", { ...service, exitCode: start.exitCode });
                 }
             } else {
-                const line = finishLine(result.summary, result.timeoutMs);
+                // A nonzero exit the command's semantics call success (grep's "no match") reads as completed.
+                const line = result.finish;
                 emitResult(line === "completed" ? "completed" : "error", {
                     exitCode: result.summary.exitCode,
                     finish: line,

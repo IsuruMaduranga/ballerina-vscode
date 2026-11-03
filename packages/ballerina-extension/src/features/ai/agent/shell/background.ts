@@ -23,11 +23,15 @@
  * (the chip, a chat change) and VS Code closing stop it (`background/registry.ts stopShellTask`).
  * Completion fills `output`, `exitCode` and `finishStatus` once and is then reported to the chat: the
  * `<system-reminder>` drain, `task_output`, or a turn of its own (`background/wake.ts`).
+ *
+ * `logPath` names the spool only while it can be trusted: a spool that fails, or does not flush when the
+ * command ends, is dropped (`runner.ts`), and the task then names no file. Whatever the command left
+ * running after it finished stays remembered until VS Code closes (`process-tree.ts rememberProcessGroup`).
  */
 
 import { backgroundTaskFinished, ensureBackgroundCapacity, registerBackgroundTask } from "../background/registry";
 import { type BackgroundShell, generateTaskId } from "../background/types";
-import { type ProcessLaunch, type RunSummary, shellFinish, startProcess } from "./runner";
+import { type ExitJudge, type ProcessLaunch, type RunSummary, shellFinish, startProcess } from "./runner";
 
 export interface StartBackgroundShellOptions {
     /** The task id; generated when absent. Pass one when the log path must name the task before it starts. */
@@ -43,8 +47,10 @@ export interface StartBackgroundShellOptions {
     cwd: string;
     env?: NodeJS.ProcessEnv;
     timeoutMs?: number;
-    /** Where to spool the full output; named in the completion notice. */
+    /** Where to spool the full output; named in the completion notice while the spool holds it all. */
     logPath?: string;
+    /** Which nonzero exits are a success for this command (`exit-semantics.ts`). */
+    exitOk?: ExitJudge;
     /** Called once when the command finishes on its own (not after it was stopped from outside). */
     onFinished?: (task: BackgroundShell, summary: RunSummary) => void;
 }
@@ -58,6 +64,8 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
     if (capacity.kind === "full") { return capacity; }
 
     const abortController = new AbortController();
+    let spoolFailed = false;
+    let task: BackgroundShell | undefined;
 
     const running = startProcess(opts.launch, {
         cwd: opts.cwd,
@@ -65,9 +73,14 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
         timeoutMs: opts.timeoutMs,
         signal: abortController.signal,
         logPath: opts.logPath,
+        // Never name a missing or partial file as the full output.
+        onSpoolFailed: () => {
+            spoolFailed = true;
+            if (task) { task.logPath = undefined; }
+        },
     });
 
-    const task: BackgroundShell = {
+    task = {
         kind: "shell",
         id: opts.id ?? generateTaskId("shell"),
         toolName: opts.toolName,
@@ -83,7 +96,7 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
         aborted: false,
         abortController,
         notified: false,
-        logPath: opts.logPath,
+        logPath: spoolFailed ? undefined : opts.logPath,
         exitCode: null,
         peek: () => running.output(),
     };
@@ -92,7 +105,8 @@ export function startBackgroundShell(opts: StartBackgroundShellOptions): StartBa
     running.finished.then((summary) => {
         // Ended from outside (kill_task, the user, a chat change): that path already completed the entry.
         if (task.completed) { return; }
-        const { status, detail } = shellFinish(summary, opts.timeoutMs);
+        const { status, detail } = shellFinish(summary, opts.timeoutMs, opts.exitOk);
+        task.logPath = summary.logPath;
         task.output = summary.output;
         task.exitCode = summary.exitCode;
         task.finishStatus = status;

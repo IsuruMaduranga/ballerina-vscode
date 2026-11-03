@@ -96,7 +96,7 @@ Use \`@"…"@\` only when you want variables expanded. For arguments PowerShell 
 
 Usage:
 - \`timeout\` is in milliseconds: 120000 (2 minutes) by default, at most 600000 (10 minutes).
-- Output past 30000 characters is cut to its last 30000; the result names a file that holds all of it.
+- Output up to 30000 characters is returned whole. Past that, the result names a file that holds all of it and previews its first 2KB; search or read that file for the part you need.
 - \`description\` is a short, plain summary of what the command does, shown to the user.
 - Independent commands can go in parallel calls in one message; dependent ones belong in one call, chained as the edition section says. Do not separate commands with newlines outside quoted strings, and do not start a command with \`cd\` or \`Set-Location\`.
 

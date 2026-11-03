@@ -208,7 +208,10 @@ export function stopChatShellTasks(runKey: string, why: StopReason): number {
     return running.length;
 }
 
-/** Stops every running task of every chat: VS Code is closing. */
+/**
+ * Stops every running task of every chat: VS Code is closing. What a finished command left running is not
+ * a task any more; `shell/process-tree.ts terminateRememberedProcessGroups` ends it.
+ */
 export function stopAllBackgroundTasks(): number {
     let stopped = 0;
     for (const t of [...backgroundTasks.values()]) {

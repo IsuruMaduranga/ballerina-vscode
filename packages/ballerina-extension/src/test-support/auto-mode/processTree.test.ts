@@ -27,7 +27,17 @@
  * because `close` can stay pending after a killed tree is gone).
  */
 import { spawn } from "child_process";
-import { detachedSpawnOptions, EXIT_STDIO_MAX_MS, killProcessTree, stopProcessTree, waitForChildExit } from "../../features/ai/agent/shell/process-tree";
+import {
+    detachedSpawnOptions,
+    EXIT_STDIO_MAX_MS,
+    killProcessTree,
+    rememberedGroupAlive,
+    rememberedProcessGroupCount,
+    rememberProcessGroup,
+    stopProcessTree,
+    terminateRememberedProcessGroups,
+    waitForChildExit,
+} from "../../features/ai/agent/shell/process-tree";
 
 const win32 = process.platform === "win32";
 const describePosix = win32 ? describe.skip : describe;
@@ -119,5 +129,83 @@ describePosix("stopProcessTree", () => {
         const settled = settledWithin(child, 4000);
         stopProcessTree(child, 300);
         expect(await settled).toBeLessThan(4000);
+    });
+});
+
+const alive = (pid: number) => {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+async function until(condition: () => boolean, limitMs = 3000): Promise<boolean> {
+    const started = Date.now();
+    while (!condition() && Date.now() - started < limitMs) { await new Promise((r) => setTimeout(r, 50)); }
+    return condition();
+}
+
+describePosix("remembered process groups", () => {
+    afterEach(() => { terminateRememberedProcessGroups(); });
+
+    it("keeps what a finished leader left running until the groups are terminated", async () => {
+        const child = spawnShell('sleep 60 & echo "$!"');
+        rememberProcessGroup(child);
+        let printed = "";
+        child.stdout?.on("data", (chunk) => { printed += String(chunk); });
+        await waitForChildExit(child);
+        const pid = Number(printed.trim());
+        try {
+            expect(pid).toBeGreaterThan(0);
+            expect(alive(pid)).toBe(true);
+            expect(rememberedGroupAlive(child)).toBe(true);
+            expect(terminateRememberedProcessGroups()).toBe(1);
+            expect(await until(() => !alive(pid))).toBe(true);
+            expect(rememberedProcessGroupCount()).toBe(0);
+        } finally {
+            if (pid > 0 && alive(pid)) { process.kill(pid, "SIGKILL"); }
+        }
+    });
+
+    it("forgets a group once it is empty", async () => {
+        const child = spawnShell("true");
+        rememberProcessGroup(child);
+        expect(rememberedProcessGroupCount()).toBeGreaterThan(0);
+        await waitForChildExit(child);
+        expect(await until(() => rememberedProcessGroupCount() === 0)).toBe(true);
+        expect(terminateRememberedProcessGroups()).toBe(0);
+    });
+});
+
+describe("a remembered tree on Windows", () => {
+    const onWindows = <T>(run: () => T): T => {
+        const original = Object.getOwnPropertyDescriptor(process, "platform")!;
+        Object.defineProperty(process, "platform", { ...original, value: "win32" });
+        try {
+            return run();
+        } finally {
+            Object.defineProperty(process, "platform", original);
+        }
+    };
+    // A pid that is certainly alive (this process) stands in for one Windows gave to a new process
+    // after the remembered leader exited.
+    const child = (exitCode: number | null, signalCode: NodeJS.Signals | null) =>
+        ({ pid: process.pid, exitCode, signalCode, kill: jest.fn() }) as unknown as ReturnType<typeof spawn> & { kill: jest.Mock };
+
+    it("is judged by the child's own exit, not by probing a pid that may be reused", () => {
+        onWindows(() => {
+            expect(rememberedGroupAlive(child(0, null))).toBe(false);
+            expect(rememberedGroupAlive(child(null, "SIGTERM"))).toBe(false);
+            expect(rememberedGroupAlive(child(null, null))).toBe(true);
+        });
+    });
+
+    it("is not killed by pid once its leader has exited", async () => {
+        const exited = child(0, null);
+        onWindows(() => killProcessTree(exited));
+        await new Promise((r) => setTimeout(r, 200));
+        expect(exited.kill).not.toHaveBeenCalled();
     });
 });

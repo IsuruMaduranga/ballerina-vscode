@@ -19,11 +19,12 @@
  * child_process mock). Most cases run `node -e` through the runner so they hold on every OS; the bash
  * cases skip on Windows, where the Copilot has no bash tool.
  */
-import { mkdtempSync, readFileSync, rmSync } from "fs";
+import { execFileSync } from "child_process";
+import { closeSync, constants, existsSync, mkdtempSync, openSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { EMPTY_OUTPUT_MARKER, OutputBuffer, stripAnsiAndControl, tailCap } from "../../features/ai/agent/shell/output";
-import { clampTimeoutMs, finishLine, MAX_TIMEOUT_MS, type ProcessLaunch, runProcess, shellFinish, startProcess } from "../../features/ai/agent/shell/runner";
+import { EMPTY_OUTPUT_MARKER, OutputBuffer, persistedOutputBlock, PREVIEW_CHARS, stripAnsiAndControl, tailCap } from "../../features/ai/agent/shell/output";
+import { clampTimeoutMs, finishLine, MAX_TIMEOUT_MS, type ProcessLaunch, runProcess, shellFinish, SPOOL_CLOSE_TIMEOUT_MS, startProcess } from "../../features/ai/agent/shell/runner";
 import { bashSpawn, shellLaunch } from "../../features/ai/agent/shell/shell-spawn";
 
 const win32 = process.platform === "win32";
@@ -46,6 +47,24 @@ describe("output", () => {
         buffer.append("abc");
         expect(buffer.truncated).toBe(true);
         expect(buffer.toString()).toMatch(/^\[Output truncated\. Showing the last 0KB\.\]\n3456789abc$/);
+    });
+
+    it("keeps the output's start and its full length after the cap dropped them", () => {
+        const buffer = new OutputBuffer(10);
+        buffer.append("HEAD-");
+        buffer.append("x".repeat(PREVIEW_CHARS * 2));
+        expect(buffer.length).toBe(5 + PREVIEW_CHARS * 2);
+        expect(buffer.head).toHaveLength(PREVIEW_CHARS);
+        expect(buffer.head.startsWith("HEAD-x")).toBe(true);
+        expect(buffer.kept).toBe("x".repeat(10));
+    });
+
+    it("names the full-output file and previews the start, or says the preview is all there is", () => {
+        const saved = persistedOutputBlock(45_000, "first line\n", "/s/tasks/t/output.log");
+        expect(saved).toBe("<persisted-output>\nOutput too large (43.9KB). Full output saved to: /s/tasks/t/output.log\n\nPreview (first 2KB):\nfirst line\n\n...\n</persisted-output>");
+        const lost = persistedOutputBlock(45_000, "y".repeat(PREVIEW_CHARS + 50), undefined);
+        expect(lost).toContain("could not be saved to a file. Only this preview survives");
+        expect(lost).toContain(`\n${"y".repeat(PREVIEW_CHARS)}\n...\n`);
     });
 
     it("tail-caps text for notifications", () => {
@@ -78,6 +97,16 @@ describe("runProcess", () => {
         const summary = await runProcess(node("process.exit(3)"), { cwd });
         expect(summary.exitCode).toBe(3);
         expect(finishLine(summary)).toBe("failed (exit code 3)");
+    });
+
+    it("reports a non-zero exit the exit judge accepts as completed, and nothing else", async () => {
+        const summary = await runProcess(node("console.log('1c1'); process.exit(1)"), { cwd });
+        const judge = (code: number, output: string) => code === 1 && output.includes("1c1");
+        expect(shellFinish(summary, undefined, judge)).toEqual({ status: "completed" });
+        expect(finishLine(summary, undefined, judge)).toBe("completed");
+        expect(finishLine(summary, undefined, () => false)).toBe("failed (exit code 1)");
+        const timedOut = await runProcess(node("setTimeout(() => {}, 30000)"), { cwd, timeoutMs: 200 });
+        expect(shellFinish(timedOut, 200, () => true).status).toBe("failed");
     });
 
     it("never returns an empty output for a finished run", async () => {
@@ -146,7 +175,60 @@ describe("runProcess", () => {
             const logPath = join(dir, "output.log");
             const summary = await runProcess(node("process.stdout.write('y'.repeat(4000))"), { cwd, logPath, outputCap: 100 });
             expect(summary.truncated).toBe(true);
+            expect(summary.logPath).toBe(logPath);
             expect(readFileSync(logPath, "utf8")).toBe("y".repeat(4000));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it("names no spool file when the spool could not be written", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "runner-log-"));
+        try {
+            let failed = 0;
+            const summary = await runProcess(node("process.stdout.write('kept output')"), { cwd, logPath: join(dir, "missing", "output.log"), onSpoolFailed: () => failed++ });
+            expect(summary.output).toBe("kept output");
+            expect(summary.logPath).toBeUndefined();
+            expect(failed).toBe(1);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    // A FIFO with no reader blocks the spool's open, so its writes never flush.
+    itPosix("finishes without the spool when its stream hangs, and names no file", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "runner-log-"));
+        const logPath = join(dir, "output.log");
+        execFileSync("mkfifo", [logPath]);
+        try {
+            const started = Date.now();
+            const summary = await runProcess(node("process.stdout.write('stuck')"), { cwd, logPath });
+            expect(Date.now() - started).toBeLessThan(SPOOL_CLOSE_TIMEOUT_MS + 3_000);
+            expect(summary.logPath).toBeUndefined();
+            expect(summary.output).toBe("stuck");
+        } finally {
+            // Open the read end so the blocked open returns and its thread is freed.
+            closeSync(openSync(logPath, constants.O_RDONLY | constants.O_NONBLOCK));
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it("spills only an output past the threshold, from its first character", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "runner-spill-"));
+        try {
+            const spillPath = join(dir, "spill.log");
+            const spill = { afterChars: 100, path: () => spillPath };
+            const short = await runProcess(node("process.stdout.write('z'.repeat(100))"), { cwd, spill });
+            expect(short.logPath).toBeUndefined();
+            expect(existsSync(spillPath)).toBe(false);
+
+            const script = "process.stdout.write('BEGIN'); setTimeout(() => process.stdout.write('w'.repeat(5000) + 'END'), 50)";
+            const long = await runProcess(node(script), { cwd, spill, outputCap: 1000 });
+            expect(long.truncated).toBe(true);
+            expect(long.length).toBe(5 + 5000 + 3);
+            expect(long.head.startsWith("BEGINw")).toBe(true);
+            expect(long.logPath).toBe(spillPath);
+            expect(readFileSync(spillPath, "utf8")).toBe(`BEGIN${"w".repeat(5000)}END`);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

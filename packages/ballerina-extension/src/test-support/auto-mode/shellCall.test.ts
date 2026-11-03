@@ -19,7 +19,7 @@
  * `node -e` stands in for the shell so the cases hold on every OS, and
  * `/bin/bash` runs where it exists.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -31,6 +31,7 @@ import {
 import type { BackgroundShell } from "../../features/ai/agent/background/types";
 import { bashToolDescription } from "../../features/ai/agent/shell/bash-description";
 import { bashGuardReason } from "../../features/ai/agent/shell/guards";
+import { EMPTY_OUTPUT_MARKER, MAX_PROCESS_OUTPUT_CHARS } from "../../features/ai/agent/shell/output";
 import { FOREGROUND_OUTPUT_CAP, runShellCall, type ShellCallContext } from "../../features/ai/agent/shell/shell-call";
 import { bashSpawn } from "../../features/ai/agent/shell/shell-spawn";
 import { expectLabeled } from "./labeled";
@@ -132,23 +133,49 @@ describe("runShellCall: foreground", () => {
         expect(result.text).toMatch(/^Command stopped: the run was aborted\./);
     });
 
-    it("spills a long output to the scratchpad and keeps the tail", async () => {
+    it("returns an output up to the cap whole, with no file", async () => {
+        const result = await runShellCall({ command: `process.stdout.write("c".repeat(${FOREGROUND_OUTPUT_CAP}))` }, nodeCtx());
+        if (result.kind !== "foreground") { throw new Error(result.kind); }
+        expect(result.text).toBe("c".repeat(FOREGROUND_OUTPUT_CAP));
+        expect(result.outputFile).toBeUndefined();
+        expect(existsSync(join(scratchpad, "tasks"))).toBe(false);
+    });
+
+    it("spills a long output to the scratchpad and previews its start", async () => {
         const length = FOREGROUND_OUTPUT_CAP + 5_000;
-        const result = await runShellCall({ command: `process.stdout.write("a".repeat(${length - 3}) + "END")` }, nodeCtx());
+        const result = await runShellCall({ command: `process.stdout.write("BEGIN" + "a".repeat(${length - 8}) + "END")` }, nodeCtx());
         if (result.kind !== "foreground") { throw new Error(result.kind); }
         expect(result.outputFile?.startsWith(join(scratchpad, "tasks"))).toBe(true);
         expect(readFileSync(result.outputFile, "utf8")).toHaveLength(length);
-        expect(result.text).toContain("END");
-        expect(result.text).toContain(`Output was ${length} characters`);
-        expect(result.text).toContain(result.outputFile);
-        expect(result.text.length).toBeLessThan(FOREGROUND_OUTPUT_CAP + 1_000);
+        expect(result.text.startsWith(`<persisted-output>\nOutput too large (34.2KB). Full output saved to: ${result.outputFile}\n`)).toBe(true);
+        expect(result.text).toContain("Preview (first 2KB):\nBEGINaaa");
+        expect(result.text).not.toContain("END");
+        expect(result.text.length).toBeLessThan(3_000);
     });
 
-    it("keeps the tail without a scratchpad", async () => {
+    it("keeps the whole output in the file even past what the run holds in memory", async () => {
+        const length = MAX_PROCESS_OUTPUT_CHARS + 50_000;
+        const script = `process.stdout.write("BEGIN"); for (let i = 0; i < ${length - 8}; i += 1000) process.stdout.write("d".repeat(Math.min(1000, ${length - 8} - i))); process.stdout.write("END")`;
+        const result = await runShellCall({ command: script }, nodeCtx());
+        if (result.kind !== "foreground") { throw new Error(result.kind); }
+        const saved = readFileSync(result.outputFile, "utf8");
+        expect(saved).toHaveLength(length);
+        expect(saved.startsWith("BEGIN") && saved.endsWith("END")).toBe(true);
+        expect(result.text).toContain("Preview (first 2KB):\nBEGINddd");
+    });
+
+    it("previews the start without a scratchpad, and says nothing else survives", async () => {
         const length = FOREGROUND_OUTPUT_CAP + 10;
         const result = await runShellCall({ command: `process.stdout.write("b".repeat(${length}))` }, nodeCtx({ scratchpadDir: undefined }));
         expect(result.kind === "foreground" && result.outputFile).toBeUndefined();
-        expect(result.text).toContain(`Output was ${length} characters; the last ${FOREGROUND_OUTPUT_CAP} are shown above.]`);
+        expect(result.text).toContain("could not be saved to a file. Only this preview survives");
+        expect(result.text).toContain("Preview (first 2KB):\nbbb");
+    });
+
+    it("keeps a failure's status line above the persisted output", async () => {
+        const result = await runShellCall({ command: `process.stdout.write("e".repeat(${FOREGROUND_OUTPUT_CAP + 1})); process.exit(3)` }, nodeCtx());
+        expect(result.text.startsWith("Command failed (exit code 3).\n\n<persisted-output>\n")).toBe(true);
+        expect(result.kind === "foreground" && result.finish).toBe("failed (exit code 3)");
     });
 
     it("runs the wrapped command", async () => {
@@ -225,6 +252,35 @@ describe("runShellCall: background", () => {
 });
 
 describe("runShellCall: bash", () => {
+    posixOnly("reads a search's or a diff's exit 1 as plain output, and a real exit 1 as a failure", async () => {
+        const ctx = nodeCtx({ spawn: bashSpawn(), guard: bashGuardReason });
+        writeFileSync(join(root, "a.txt"), "hello\n");
+        writeFileSync(join(root, "b.txt"), "hellO\n");
+        const noMatch = await runShellCall({ command: "grep absent a.txt" }, ctx);
+        if (noMatch.kind !== "foreground") { throw new Error(noMatch.kind); }
+        expect(noMatch.summary.exitCode).toBe(1);
+        expect(noMatch.finish).toBe("completed");
+        expect(noMatch.text).toBe(EMPTY_OUTPUT_MARKER);
+        const differ = await runShellCall({ command: "diff a.txt b.txt" }, ctx);
+        expect(differ.text).toBe("1c1\n< hello\n---\n> hellO\n");
+        const gated = await runShellCall({ command: "test -e a.txt && grep absent a.txt" }, ctx);
+        expect(gated.text).toBe("Command failed (exit code 1).\n\n" + EMPTY_OUTPUT_MARKER);
+        const missing = await runShellCall({ command: "diff a.txt missing.txt" }, ctx);
+        expect(missing.text).toMatch(/^Command failed \(exit code 2\)\./);
+    });
+
+    posixOnly("finishes a background search with no match as completed", async () => {
+        const ctx = nodeCtx({ spawn: bashSpawn(), guard: bashGuardReason });
+        writeFileSync(join(root, "a.txt"), "hello\n");
+        const result = await runShellCall({ command: "grep absent a.txt", run_in_background: true }, ctx);
+        if (result.kind !== "background") { throw new Error(result.kind); }
+        const task = getBackgroundTask(result.taskId) as BackgroundShell;
+        await until(() => task.completed);
+        expect(task.exitCode).toBe(1);
+        expect(task.finishStatus).toBe("completed");
+        expect(task.success).toBe(true);
+    });
+
     posixOnly("runs /bin/bash with the bash guards", async () => {
         const ctx = nodeCtx({ spawn: bashSpawn(), guard: bashGuardReason });
         const failed = await runShellCall({ command: "echo one && echo two && exit 2" }, ctx);

@@ -39,7 +39,7 @@ Writing the command:
 - Quote paths that contain spaces with double quotes.
 - Put temporary files in the scratchpad directory named in the system prompt, never in /tmp or the user's project.
 - \`timeout\` is in milliseconds: 120000 (2 minutes) by default, at most 600000 (10 minutes).
-- Output past 30000 characters is cut to its last 30000; the result names a file that holds all of it.
+- Output up to 30000 characters is returned whole. Past that, the result names a file that holds all of it and previews its first 2KB; search or read that file for the part you need.
 - \`description\` is a short, plain summary of what the command does, shown to the user.
 
 Long-running commands:

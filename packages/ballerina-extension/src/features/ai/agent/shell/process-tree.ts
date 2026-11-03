@@ -32,11 +32,18 @@
  * has not exited by then (a command that ignores SIGTERM still closes late,
  * which is exactly the late callback the shutdown paths guard against).
  *
+ * `rememberProcessGroup` keeps every spawned tree from spawn until its group
+ * is empty, including what a leader that already exited left behind (a
+ * `npm run dev &` inside a finished background command). Chat changes and
+ * turn ends leave those alone; `terminateRememberedProcessGroups` sends them
+ * SIGTERM when the extension deactivates, so nothing the Copilot started
+ * outlives VS Code.
+ *
  * `waitForChildExit` is the counterpart on the waiting side: it settles on
  * `exit` plus a short stdio grace, never on `close` alone — a descendant the
  * kill missed (Windows: a process the `taskkill /T` snapshot did not see) can
  * hold the inherited pipes open for as long as it lives, and the task must not
- * wait for it (pi's `waitForChildProcess` has the same shape and reason).
+ * wait for it.
  */
 
 import { type ChildProcess, execFile } from "child_process";
@@ -63,8 +70,7 @@ export function detachedSpawnOptions(opts: { outlivesParent?: boolean } = {}): {
 
 /**
  * Windows has no process groups and no SIGTERM: `taskkill /T /F` ends the
- * tree by pid (the same call pi's own `killProcessTree` makes), from System32
- * so a PATH entry cannot substitute the binary. Whatever taskkill reports, the
+ * tree by pid, from System32 so a PATH entry cannot substitute the binary. Whatever taskkill reports, the
  * leader itself is then terminated directly too — taskkill can fail to kill
  * (or to find) a member, and the leader's exit is what the waiting side keys
  * on. `WSO2_INTEGRATOR_COPILOT_DEBUG_KILL=1` logs taskkill's output to stderr.
@@ -95,6 +101,9 @@ function taskkillTree(child: ChildProcess): void {
 export function killProcessTree(child: ChildProcess, signal: NodeJS.Signals = "SIGTERM"): void {
     if (child.pid == null) { return; }
     if (process.platform === "win32") {
+        // Once the leader has exited, Windows may give its pid to an unrelated process, and
+        // `taskkill /T` by that pid would end a stranger's tree. Nothing of ours is reachable by it then.
+        if (!rememberedGroupAlive(child)) { return; }
         taskkillTree(child);
         return;
     }
@@ -107,6 +116,80 @@ export function killProcessTree(child: ChildProcess, signal: NodeJS.Signals = "S
             // Already gone.
         }
     }
+}
+
+/** Trees spawned and not yet known to be empty. */
+const rememberedGroups = new Set<ChildProcess>();
+let groupReaper: NodeJS.Timeout | undefined;
+
+/** How often the reaper forgets emptied groups. */
+const REAP_INTERVAL_MS = 1_000;
+
+/**
+ * Whether a remembered tree may still have members. POSIX probes the group
+ * (signal 0 to the negative pid): a group id stays reserved while any member
+ * lives, and the reaper forgets an emptied group within a second, far sooner
+ * than pid allocation wraps around to it. Windows has no process groups, so
+ * only a live leader is worth a `taskkill /T`, and it is judged by the child's
+ * own exit state: once the leader exits, a pid probe can find an unrelated
+ * process that was given the same pid.
+ */
+export function rememberedGroupAlive(child: ChildProcess): boolean {
+    if (child.pid == null) { return false; }
+    if (process.platform === "win32") { return child.exitCode === null && child.signalCode === null; }
+    try {
+        process.kill(-child.pid, 0);
+        return true;
+    } catch (error) {
+        return (error as NodeJS.ErrnoException).code !== "ESRCH";
+    }
+}
+
+function stopReaper(): void {
+    if (groupReaper) { clearInterval(groupReaper); }
+    groupReaper = undefined;
+}
+
+/**
+ * Remember a spawned tree until its group is empty. Call it right after the
+ * spawn, before waiting on the leader, so even a leader that exits at once is
+ * covered. The reaper is unref'd: it never keeps a process alive.
+ */
+export function rememberProcessGroup(child: ChildProcess): void {
+    if (child.pid == null || rememberedGroups.has(child)) { return; }
+    rememberedGroups.add(child);
+    if (groupReaper) { return; }
+    groupReaper = setInterval(() => {
+        for (const remembered of rememberedGroups) {
+            if (!rememberedGroupAlive(remembered)) { rememberedGroups.delete(remembered); }
+        }
+        if (rememberedGroups.size === 0) { stopReaper(); }
+    }, REAP_INTERVAL_MS);
+    groupReaper.unref?.();
+}
+
+/**
+ * SIGTERM every remembered tree that may still have members, and forget them
+ * all: the extension is deactivating. Synchronous, with no SIGKILL follow-up,
+ * since nothing is left to wait for a grace period. Returns how many trees
+ * were signalled.
+ */
+export function terminateRememberedProcessGroups(): number {
+    let signalled = 0;
+    for (const child of rememberedGroups) {
+        if (rememberedGroupAlive(child)) {
+            killProcessTree(child, "SIGTERM");
+            signalled++;
+        }
+    }
+    rememberedGroups.clear();
+    stopReaper();
+    return signalled;
+}
+
+/** Test hook: how many trees are remembered now. */
+export function rememberedProcessGroupCount(): number {
+    return rememberedGroups.size;
 }
 
 /**
