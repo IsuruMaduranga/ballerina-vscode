@@ -101,6 +101,8 @@ export interface PowerShellParse {
     nodes: PowerShellAstNode[];
     /** Each parse error's ErrorId. PowerShell runs nothing from a line that has one. */
     errors: string[];
+    /** The PATH command names were looked up on (`resolvedName`); the extension host's when absent. */
+    lookupPath?: string;
 }
 
 export type PowerShellParseOutcome = { ok: true; parse: PowerShellParse } | { ok: false; reason: string };
@@ -165,8 +167,11 @@ export class PowerShellParser {
         return this.disabled;
     }
 
-    /** Parse `command` with PowerShell's own parser. Never rejects. */
-    parse(command: string): Promise<PowerShellParseOutcome> {
+    /**
+     * Parse `command` with PowerShell's own parser, looking command names up on `lookupPath` (the PATH the
+     * command will run with) when given. Never rejects.
+     */
+    parse(command: string, lookupPath?: string): Promise<PowerShellParseOutcome> {
         if (this.disabled) { return Promise.resolve({ ok: false, reason: this.disabled }); }
         let server: Server;
         try {
@@ -187,8 +192,11 @@ export class PowerShellParser {
                 this.crashed(server, `the PowerShell parser timed out after ${timeoutMs} ms`);
             }, timeoutMs);
             unrefHandle(timer);
-            server.pending.set(id, { resolve, timer });
-            server.child.stdin?.write(`${id} ${encode(command)}\n`);
+            server.pending.set(id, {
+                resolve: (outcome) => resolve(outcome.ok && lookupPath !== undefined ? { ok: true, parse: { ...outcome.parse, lookupPath } } : outcome),
+                timer,
+            });
+            server.child.stdin?.write(`${id} ${encode(command)}${lookupPath !== undefined ? ` ${encode(lookupPath)}` : ""}\n`);
         });
     }
 

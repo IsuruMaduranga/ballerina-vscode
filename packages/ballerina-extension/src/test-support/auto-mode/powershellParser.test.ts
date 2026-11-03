@@ -45,6 +45,8 @@ interface FakeServer {
     bootstrap: string;
     firstLine?: string;
     requests: string[];
+    /** Each request's lookup PATH, undefined when it carried none. */
+    paths: (string | undefined)[];
     killed: boolean;
     exit: (code: number) => void;
 }
@@ -56,7 +58,8 @@ function fakeSpawner(behaviour: FakeServerBehaviour = {}) {
         const stdout = new PassThrough();
         const stderr = new PassThrough();
         const child = Object.assign(new EventEmitter(), { stdin, stdout, stderr, unref() {}, kill() { server.killed = true; return true; } }) as unknown as ChildProcess;
-        const server: FakeServer = { child, bootstrap, requests: [], killed: false, exit: (code) => child.emit("exit", code, null) };
+        const server: FakeServer = { child, bootstrap, requests: [],
+            paths: [], killed: false, exit: (code) => child.emit("exit", code, null) };
         servers.push(server);
         const send = (record: Record<string, unknown> | string) =>
             stdout.write(`${typeof record === "string" ? record : b64(JSON.stringify(record))}\n`);
@@ -71,10 +74,11 @@ function fakeSpawner(behaviour: FakeServerBehaviour = {}) {
                     if (!behaviour.silent) { send({ id: 0, ready: true, edition: "Core", version: "7.6.6", language: behaviour.language ?? "FullLanguage" }); }
                     continue;
                 }
-                const space = line.indexOf(" ");
-                const id = Number(line.slice(0, space));
-                const command = unb64(line.slice(space + 1));
+                const [idText, commandField, pathField] = line.split(" ");
+                const id = Number(idText);
+                const command = unb64(commandField);
                 server.requests.push(command);
+                server.paths.push(pathField === undefined ? undefined : unb64(pathField));
                 if (behaviour.silent) { continue; }
                 const answer = (behaviour.answer ?? ((c: string) => ({ nodes: [{ type: "ScriptBlockAst", parent: -1, start: 0, end: c.length }], errors: [] })))(command, id);
                 if (answer !== undefined) { send(typeof answer === "string" ? answer : { id, ...answer }); }
@@ -119,6 +123,17 @@ describe("PowerShellParser protocol", () => {
         const outcome = await parser.parse(command);
         expect(fake.servers[0].requests).toEqual([command]);
         expect(outcome).toEqual({ ok: true, parse: { nodes: [{ type: "ScriptBlockAst", parent: -1, start: 0, end: command.length }], errors: [] } });
+    });
+
+    it("sends the command's PATH for name lookup when given, and returns it with the parse", async () => {
+        const fake = fakeSpawner();
+        const parser = new PowerShellParser({ spawnServer: fake.spawnServer });
+        const lookupPath = "C:\\Ballerina\\bin;C:\\Windows\\System32";
+        const withPath = await parser.parse("findstr x a.txt", lookupPath);
+        const without = await parser.parse("findstr x a.txt");
+        expect(fake.servers[0].paths).toEqual([lookupPath, undefined]);
+        expect(withPath).toMatchObject({ ok: true, parse: { lookupPath } });
+        expect(without.ok && without.parse.lookupPath).toBeUndefined();
     });
 
     it("matches answers to requests by id when they arrive out of order", async () => {

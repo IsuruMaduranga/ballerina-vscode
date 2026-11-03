@@ -24,8 +24,8 @@
  * also against Windows PowerShell 5.1. Skips when neither exists.
  */
 
-import { existsSync } from "fs";
-import { homedir } from "os";
+import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
+import { homedir, tmpdir } from "os";
 import { join } from "path";
 import { type PowerShellAstNode, type PowerShellParse, PowerShellParser } from "../../features/ai/agent/auto-mode/powershell-parser";
 import { system32Path } from "../../features/ai/agent/auto-mode/shared-paths";
@@ -76,6 +76,24 @@ function ofType(parse: PowerShellParse, type: string): PowerShellAstNode[] {
                 expect(ofType(result, "CommandParameterAst").map((n) => n.name)).toEqual(["Recurse"]);
                 expect(ofType(result, "StringConstantExpressionAst").find((n) => n.kind === "SingleQuoted")?.value).toBe("src dir");
                 expect(ofType(result, "ScriptBlockExpressionAst")).toHaveLength(1);
+            }, 90_000);
+
+            it("looks command names up on the PATH the request carries, then restores its own", async () => {
+                const dir = realpathSync(mkdtempSync(join(tmpdir(), "bi-ps-path-")));
+                try {
+                    const file = join(dir, process.platform === "win32" ? "zz-bi-probe.cmd" : "zz-bi-probe");
+                    writeFileSync(file, process.platform === "win32" ? "@echo off\r\n" : "#!/bin/sh\n");
+                    chmodSync(file, 0o755);
+                    const found = await parser.parse("zz-bi-probe", dir);
+                    if (!found.ok) { throw new Error((found as { reason: string }).reason); }
+                    const node = found.parse.nodes.find((n) => n.type === "CommandAst");
+                    expect(node).toMatchObject({ commandType: "Application", resolvedName: file });
+                    expect(found.parse.lookupPath).toBe(dir);
+                    const after = await parse("zz-bi-probe");
+                    expect(after.nodes.find((n) => n.type === "CommandAst")?.resolvedName).toBeUndefined();
+                } finally {
+                    rmSync(dir, { recursive: true, force: true });
+                }
             }, 90_000);
 
             it("keeps the tree consistent: pre-order, parents before children, extents nested", async () => {

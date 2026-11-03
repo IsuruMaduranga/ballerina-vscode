@@ -109,6 +109,8 @@ export interface ToolRegistryOptions {
  * `tools/shell-authorizer.ts`), with shell edits registered for the review.
  */
 function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, runKey: string, threadId: string, toolCallLog: RunToolCallLog) {
+    // One environment for both: the PowerShell parse looks command names up on the PATH the command runs with.
+    const env = withBalOnPath(process.env, extension.ballerinaExtInstance?.getBallerinaCmd());
     const authorize = createShellAuthorizer({
         shell,
         mode: opts.shellMode ?? 'auto',
@@ -121,6 +123,7 @@ function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, r
         // Code: the model keeps the declined result, and the run sends no further request. A
         // classifier block or an unanswered banner's timeout does not.
         onUserDeclined: opts.onUserDeclinedShell,
+        env,
     });
     return createShellTool({
         kind: shell.tool,
@@ -130,7 +133,7 @@ function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, r
         scratchpadDir: shell.scratchpadDir,
         onFilesTouched: (touched) => registerShellTouchedFiles(shell.cwd, touched, opts.modifiedFiles, opts.allModifiedFiles),
         startService: (start) => startShellService(start, opts.runningServices),
-        env: withBalOnPath(process.env, extension.ballerinaExtInstance?.getBallerinaCmd()),
+        env,
         authorize,
     });
 }

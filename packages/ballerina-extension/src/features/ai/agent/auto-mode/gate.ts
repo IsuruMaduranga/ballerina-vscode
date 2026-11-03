@@ -101,6 +101,8 @@ export interface ShellGateInput {
     allowContainedFileOperations?: boolean;
     /** PowerShell's own parse of a PowerShell line; without one the PowerShell pre-gate clears nothing. */
     powershellParse?: PowerShellParse;
+    /** The PATH the command runs with, which the parse looks command names up on; the extension host's when absent. */
+    commandPath?: string;
 }
 
 /** `evidence` is the bash pre-gate's analysis; a PowerShell decision has none. */
@@ -217,7 +219,7 @@ export interface ShellGateCallbacks {
     /** The user declined a command: it enters the classifier's transcript as a denial. */
     onUserDenied?: (command: string) => void;
     /** PowerShell's own parse of a line, or undefined when it cannot be had; the shared parse server when absent. */
-    parsePowerShell?: (command: string) => Promise<PowerShellParse | undefined>;
+    parsePowerShell?: (command: string, lookupPath?: string) => Promise<PowerShellParse | undefined>;
 }
 
 /**
@@ -226,12 +228,12 @@ export interface ShellGateCallbacks {
  * powerShellParser`). Undefined when the parser cannot answer (no PowerShell,
  * a timeout of 5 s on first start and 2 s after, a crash, Constrained
  * Language Mode): the gate then clears nothing and the line is classified or
- * asked about.
+ * asked about. Command names are looked up on `lookupPath` when given.
  */
-export async function parsePowerShell(command: string): Promise<PowerShellParse | undefined> {
+export async function parsePowerShell(command: string, lookupPath?: string): Promise<PowerShellParse | undefined> {
     const parser = powerShellParser();
     if (!parser) { return undefined; }
-    const outcome = await parser.parse(command);
+    const outcome = await parser.parse(command, lookupPath);
     return outcome.ok ? outcome.parse : undefined;
 }
 
@@ -288,7 +290,7 @@ export async function authorizeShellCommand(input: ShellGateInput, mode: ShellMo
     // The PowerShell pre-gate judges a `git` statement with the bash git check, so both shells need the bash parser.
     await bashParserReady();
     if (input.shell === "powershell" && input.powershellParse === undefined) {
-        input = { ...input, powershellParse: await (callbacks.parsePowerShell ?? parsePowerShell)(input.command) };
+        input = { ...input, powershellParse: await (callbacks.parsePowerShell ?? parsePowerShell)(input.command, input.commandPath) };
     }
     const auto = mode === "auto" ? callbacks.auto : undefined;
     // Session rules are an ask-mode convenience; auto mode never inherits them.

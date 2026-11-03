@@ -38,6 +38,7 @@ import { appendDecision, decisionEntry } from '../auto-mode/decision-log';
 import { authorizeShellCommand, sessionRuleStore, type ShellAuthorization, type ShellMode } from '../auto-mode/gate';
 import { gitStatusOutput } from '../auto-mode/git';
 import { PauseTracker } from '../auto-mode/pause';
+import { pathVariable } from '../auto-mode/shared-paths';
 import type { RunToolCallLog } from '../auto-mode/run-tool-calls';
 import { classifyShellCommand, shellKindOf } from '../auto-mode/shell-classify';
 import type { TranscriptEntry } from '../auto-mode/transcript';
@@ -118,11 +119,14 @@ export interface ShellAuthorizerOptions {
     toolCallLog?: RunToolCallLog;
     /** Called when the user declines a command in the approval banner (not on a classifier block or a timeout). */
     onUserDeclined?: () => void;
+    /** The commands' environment (`shell/bal-run.ts withBalOnPath`), whose PATH the PowerShell parse looks names up on. */
+    env?: NodeJS.ProcessEnv;
 }
 
 /** The `authorize` callback of the shell tool. */
 export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
-    const { shell, mode, eventHandler, runKey, projectRootPath, threadId, toolCallLog, onUserDeclined } = opts;
+    const { shell, mode, eventHandler, runKey, projectRootPath, threadId, toolCallLog, onUserDeclined, env } = opts;
+    const commandPath = env ? env[pathVariable(env)] : undefined;
     const tool = shell.tool;
     const toolName = tool === 'powershell' ? POWERSHELL_TOOL_NAME : SHELL_TOOL_NAME;
     const edition = tool === 'powershell' ? powerShellEdition(powerShellSpawn()) : undefined;
@@ -145,6 +149,7 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                 writableRoots: shell.writableRoots,
                 sessionRules: sessionRuleStore.get(runKey),
                 shell: tool === 'powershell' ? 'powershell' : 'bash',
+                commandPath,
                 // The main agent is pinned to Sonnet; weaker future callers must opt out.
                 allowContainedFileOperations: true,
             },

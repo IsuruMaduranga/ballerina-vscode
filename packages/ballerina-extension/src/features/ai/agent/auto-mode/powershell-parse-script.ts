@@ -31,8 +31,10 @@
  *
  * - The first stdin line is the walker script (base64 UTF-8). The walker
  *   answers with a ready record, id 0: `{ id, ready, edition, version, language }`.
- * - Each later stdin line is `<id> <base64 UTF-8 command>`. The walker answers
- *   `{ id, nodes, errors }`, or `{ id, failure }` when the walk itself threw.
+ * - Each later stdin line is `<id> <base64 UTF-8 command>`, optionally followed
+ *   by ` <base64 UTF-8 PATH>`: the PATH the command will run with, which command
+ *   names are then looked up on. The walker answers `{ id, nodes, errors }`, or
+ *   `{ id, failure }` when the walk itself threw.
  * - Each stdout line is base64 UTF-8 JSON. EOF on stdin ends the walker.
  *
  * `nodes` is the tree in pre-order, root first. Each node carries its .NET
@@ -113,7 +115,10 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
 	if ($space -lt 1) { continue }
 	$id = [int]$line.Substring(0, $space)
 	try {
-		$command = $utf8.GetString([Convert]::FromBase64String($line.Substring($space + 1)))
+		$fields = $line.Substring($space + 1).Split(' ')
+		$command = $utf8.GetString([Convert]::FromBase64String($fields[0]))
+		$lookupPath = $null
+		if ($fields.Count -gt 1) { $lookupPath = $utf8.GetString([Convert]::FromBase64String($fields[1])) }
 		$tokens = $null
 		$parseErrors = $null
 		$ast = [System.Management.Automation.Language.Parser]::ParseInput($command, [ref]$tokens, [ref]$parseErrors)
@@ -136,7 +141,11 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
 		}
 		# Second pass, once every node has its index: what each static command
 		# name resolves to in this PowerShell, and for a cmdlet how PowerShell's
-		# own binder assigns its arguments to parameters.
+		# own binder assigns its arguments to parameters. Names are looked up on
+		# the PATH the command will run with, when the request carries one.
+		$hostPath = $env:PATH
+		if ($null -ne $lookupPath) { $env:PATH = $lookupPath }
+		try {
 		for ($i = 0; $i -lt $nodes.Count; $i++) {
 			if ($nodes[$i].type -ne 'CommandAst' -or $null -eq $nodes[$i].name) { continue }
 			$command = $asts[$i]
@@ -214,6 +223,9 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
 			} catch {
 				$nodes[$i].bindingUnavailable = $true
 			}
+		}
+		} finally {
+			$env:PATH = $hostPath
 		}
 		Send-Record @{ id = $id; nodes = @($nodes); errors = @($parseErrors | ForEach-Object { $_.ErrorId }) }
 	} catch {

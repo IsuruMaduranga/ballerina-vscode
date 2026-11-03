@@ -367,6 +367,13 @@ describe("git judged by the bash git check", () => {
         }
     });
 
+    itParses(["git status"])("checks the PATH the command runs with, not the extension host's", async () => {
+        const parse = await psParse("git status");
+        const absolute = process.env.PATH ?? "";
+        expect(powershellTreeReadOnly({ ...parse, lookupPath: absolute }, opts)).toMatchObject({ ok: true });
+        expect(powershellTreeReadOnly({ ...parse, lookupPath: `bin${delimiter}${absolute}` }, opts)).toMatchObject({ ok: false, reason: expect.stringMatching(/relative entry/) });
+    });
+
     itParses(refusedGit)("refuses what the git check refuses, a computed argument, a redirection, git after a pipe, and words PowerShell 5.1 passes mangled", async () => {
         for (const command of refusedGit) {
             expectLabeled((await reads(command)).ok, command).toBe(false);

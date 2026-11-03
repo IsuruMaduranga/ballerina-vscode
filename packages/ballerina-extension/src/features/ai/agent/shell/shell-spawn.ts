@@ -113,9 +113,10 @@ export function powerShellSpawn(): ShellSpawn | undefined {
  * PowerShell's own parser, served by the same executable and arguments the
  * PowerShell tool runs (`auto-mode/powershell-parser.ts`), one server per
  * executable for the life of the extension host. Undefined when no PowerShell
- * resolves. It resolves command names on the extension host's PATH; the tool
- * runs with the extension's own `bal` directory first on PATH
- * (`bal-run.ts withBalOnPath`), which holds no program the gate clears by name.
+ * resolves. Each request carries the PATH the command runs with (the
+ * extension's own `bal` directory first, `bal-run.ts withBalOnPath`), and
+ * command names are looked up on it, so the program the gate clears by name is
+ * the one that runs.
  */
 export function powerShellParser(spec: ShellSpawn | undefined = powerShellSpawn()): PowerShellParser | undefined {
     if (!spec) { return undefined; }

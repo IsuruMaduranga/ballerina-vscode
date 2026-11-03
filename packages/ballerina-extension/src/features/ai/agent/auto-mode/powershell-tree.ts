@@ -61,7 +61,7 @@ import {
     WRITE_TAILS,
 } from "./powershell-cmdlets";
 import { ENTRY_LIMIT, hasPowerShellWildcard, powershellPathAbsolute, powershellPathProblem, powershellUnescaped } from "./powershell-paths";
-import { comparablePath, system32Path } from "./shared-paths";
+import { comparablePath, pathVariable, system32Path } from "./shared-paths";
 
 export interface PowerShellTreeOptions {
     /** The working directory the command runs in. */
@@ -86,6 +86,8 @@ interface Tree {
     nodes: PowerShellAstNode[];
     children: number[][];
     approved: Set<number>;
+    /** The PATH the names were looked up on (`PowerShellParse.lookupPath`). */
+    lookupPath: string;
 }
 
 class Refusal extends Error {}
@@ -99,7 +101,7 @@ function buildTree(parse: PowerShellParse): Tree {
     parse.nodes.forEach((node, i) => {
         if (node.parent >= 0 && node.parent < i) { children[node.parent].push(i); }
     });
-    return { nodes: parse.nodes, children, approved: new Set() };
+    return { nodes: parse.nodes, children, approved: new Set(), lookupPath: parse.lookupPath ?? process.env[pathVariable(process.env)] ?? "" };
 }
 
 /** The top-level pipelines of the line, each as its CommandAst node indices in order. Refuses anything that is not a plain pipeline or chain of them. */
@@ -298,7 +300,7 @@ function checkCommand(tree: Tree, i: number, specFor: SpecFor, applications: boo
         // earlier on PATH than Windows' own is some other program.
         const expected = system32Path(shown.toLowerCase().endsWith(".exe") ? shown : `${shown}.exe`);
         if (!node.resolvedName || comparablePath(node.resolvedName) !== comparablePath(expected)) { refuse(`\`${shown}\` resolves to ${node.resolvedName ?? "no program"}, not Windows' own`); }
-        refuseOnRelativePathEntry(shown);
+        refuseOnRelativePathEntry(tree, shown);
         const paths: string[] = [];
         for (const element of elements.slice(1)) {
             if (nodes[element].type.endsWith("RedirectionAst")) { continue; }
@@ -374,13 +376,12 @@ function collectedValues(tree: Tree, elements: number[] | undefined): string[] |
 }
 
 /**
- * Refuse a program found by name when PATH has a relative entry: the parse
- * server resolved the name in its own directory, and a relative entry (`.`,
- * `bin`) resolves against the call's, where it can name another program.
+ * Refuse a program found by name when the lookup PATH has a relative entry:
+ * the parse server resolved the name in its own directory, and a relative
+ * entry (`.`, `bin`) resolves against the call's, where it can name another program.
  */
-function refuseOnRelativePathEntry(shown: string): void {
-    const key = Object.keys(process.env).find((name) => name.toLowerCase() === "path") ?? "PATH";
-    const relative = (process.env[key] ?? "").split(delimiter).some((entry) => entry.trim() !== "" && !isAbsolute(entry.trim()));
+function refuseOnRelativePathEntry(tree: Tree, shown: string): void {
+    const relative = tree.lookupPath.split(delimiter).some((entry) => entry.trim() !== "" && !isAbsolute(entry.trim()));
     if (relative) { refuse(`PATH has a relative entry, so \`${shown}\` may resolve to another program where it runs`); }
 }
 
@@ -604,7 +605,7 @@ function checkGitCommand(tree: Tree, i: number, opts: PowerShellTreeOptions): Ch
     if (nameElement === undefined || nodes[nameElement].type !== "StringConstantExpressionAst" || nodes[nameElement].kind !== "BareWord") { refuse("git by a computed or quoted name"); }
     tree.approved.add(i).add(nameElement);
     if (!node.resolvedName) { refuse("git is not a program this PowerShell finds"); }
-    refuseOnRelativePathEntry("git");
+    refuseOnRelativePathEntry(tree, "git");
     const words: string[] = [];
     for (const element of elements.slice(1)) {
         const type = nodes[element].type;
