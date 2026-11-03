@@ -61,7 +61,7 @@ import {
     WRITE_TAILS,
 } from "./powershell-cmdlets";
 import { ENTRY_LIMIT, hasPowerShellWildcard, powershellPathAbsolute, powershellPathProblem, powershellUnescaped } from "./powershell-paths";
-import { comparablePath, pathVariable, system32Path } from "./shared-paths";
+import { comparablePath, system32Path } from "./shared-paths";
 
 export interface PowerShellTreeOptions {
     /** The working directory the command runs in. */
@@ -101,7 +101,7 @@ function buildTree(parse: PowerShellParse): Tree {
     parse.nodes.forEach((node, i) => {
         if (node.parent >= 0 && node.parent < i) { children[node.parent].push(i); }
     });
-    return { nodes: parse.nodes, children, approved: new Set(), lookupPath: parse.lookupPath ?? process.env[pathVariable(process.env)] ?? "" };
+    return { nodes: parse.nodes, children, approved: new Set(), lookupPath: parse.lookupPath ?? process.env.PATH ?? "" };
 }
 
 /** The top-level pipelines of the line, each as its CommandAst node indices in order. Refuses anything that is not a plain pipeline or chain of them. */

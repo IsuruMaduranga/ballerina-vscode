@@ -22,7 +22,7 @@
  */
 
 import { randomUUID } from "crypto";
-import type { FinishStatus } from "../shell/runner";
+import type { FinishStatus, RunSummary } from "../shell/runner";
 import type { SubagentType } from "../subagents/types";
 
 interface BackgroundTaskBase {
@@ -75,9 +75,8 @@ export interface BackgroundShell extends BackgroundTaskBase {
     finishDetail?: string;
     /** The output so far, for a `task_output` that finds it still running. */
     peek(): string;
-    /** On completion: the output's first characters and its whole length, for a head-first `task_output`. */
-    outputHead?: string;
-    outputLength?: number;
+    /** How a command that ended on its own finished, for a head-first `task_output`; absent when stopped from outside. */
+    summary?: Pick<RunSummary, "output" | "head" | "length" | "logPath">;
 }
 
 export type BackgroundTask = BackgroundSubagent | BackgroundShell;

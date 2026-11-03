@@ -38,7 +38,6 @@ import { appendDecision, decisionEntry } from '../auto-mode/decision-log';
 import { authorizeShellCommand, sessionRuleStore, type ShellAuthorization, type ShellMode } from '../auto-mode/gate';
 import { gitStatusOutput } from '../auto-mode/git';
 import { PauseTracker } from '../auto-mode/pause';
-import { pathVariable } from '../auto-mode/shared-paths';
 import type { RunToolCallLog } from '../auto-mode/run-tool-calls';
 import { classifyShellCommand, shellKindOf } from '../auto-mode/shell-classify';
 import type { TranscriptEntry } from '../auto-mode/transcript';
@@ -46,6 +45,7 @@ import type { ShellRunSetup } from '../shell/shell-session';
 import { SHELL_TOOL_NAME } from '../shell/bash-description';
 import { POWERSHELL_TOOL_NAME } from '../shell/powershell-description';
 import { powerShellEdition, powerShellSpawn } from '../shell/shell-spawn';
+import { envVar } from '../shell/which';
 
 /** One thread's gate state besides its session rules. */
 interface ThreadGateState {
@@ -126,7 +126,7 @@ export interface ShellAuthorizerOptions {
 /** The `authorize` callback of the shell tool. */
 export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
     const { shell, mode, eventHandler, runKey, projectRootPath, threadId, toolCallLog, onUserDeclined, env } = opts;
-    const commandPath = env ? env[pathVariable(env)] : undefined;
+    const commandPath = env ? envVar(env, 'PATH') : undefined;
     const tool = shell.tool;
     const toolName = tool === 'powershell' ? POWERSHELL_TOOL_NAME : SHELL_TOOL_NAME;
     const edition = tool === 'powershell' ? powerShellEdition(powerShellSpawn()) : undefined;

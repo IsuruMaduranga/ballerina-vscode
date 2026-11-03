@@ -50,10 +50,9 @@ export interface ClassifyRequest {
      */
     transcript: TranscriptEntry[];
     /**
-     * Every user message this session, for intent-quote verification. Full, never
-     * a rolling window: in a long unattended run the authorizing setup message
-     * must still clear a later action (decision 2). Distinct from the transcript,
-     * which starts at the latest compaction restart.
+     * The user's messages since the latest compaction restart, for intent-quote
+     * verification: a request from before the restart survives only in the
+     * model-written summary, so it is no longer the user's word.
      */
     userMessages: string[];
     /** The project's AGENTS.md, wrapped in the (untrusted) framing block. */
@@ -259,8 +258,8 @@ export function parseStage2(text: string, index: RuleIndex, userMessages: string
         if (intent) {
             // An allow resting on user intent is the one claim worth checking: it is
             // what a prompt injection most wants to manufacture and what the model is
-            // most prone to stretch. Verified against the full user messages, so an
-            // early authorization still clears late (decision 2).
+            // most prone to stretch. Verified against the user's own messages in the
+            // active context, never the summary or a tool input.
             if (!intentQuoted(intent, userMessages)) {
                 return {
                     decision: "block",

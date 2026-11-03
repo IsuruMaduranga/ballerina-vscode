@@ -31,7 +31,7 @@ import { KILL_TASK_TOOL_NAME, TASK_OUTPUT_TOOL_NAME } from "../subagents/types";
 import { getBackgroundTask, listBackgroundTasks, NOTIFY_OUTPUT_CAP, removeBackgroundTask, terminatedOutput } from "../background/registry";
 import type { BackgroundTask } from "../background/types";
 import { tailCap } from "../shell/output";
-import { finishedOutputText } from "../shell/shell-call";
+import { finishedOutputText, FOREGROUND_OUTPUT_CAP } from "../shell/shell-call";
 import { RunningServicesManager, runningServicesManager } from "./running-service-manager";
 import { isServiceTaskId, readServiceOutput, runningServiceLines, serviceDescription, serviceNotFoundText, serviceReadText, stopServiceTask } from "./service-task";
 
@@ -107,14 +107,12 @@ Without task_id, this lists this chat's background tasks and every running servi
                 const header = status === "completed"
                     ? `Task ${task_id} ("${task.description}") completed.`
                     : `Task ${task_id} ("${task.description}") ${status === "aborted" ? "was aborted" : `failed${failureDetail(task)}`}.`;
-                // A finished command's output is cut as a foreground result's is, start first; the block names the file.
-                if (task.kind === "shell" && task.outputLength !== undefined) {
-                    const output = finishedOutputText({ output: task.output, head: task.outputHead ?? "", length: task.outputLength, logPath: task.logPath });
-                    const logLine = task.logPath && output === task.output ? `\nFull output: ${task.logPath}` : "";
-                    return `${header}${logLine}\n\n${output}`;
-                }
-                const logLine = task.kind === "shell" && task.logPath ? `\nFull output: ${task.logPath}` : "";
-                return `${header}${logLine}\n\n${task.output}`;
+                // A finished command's output is cut as a foreground result's is, start first; past the cap
+                // the block names the file, so the line naming it is only for an output shown whole.
+                const summary = task.kind === "shell" ? task.summary : undefined;
+                const output = summary ? finishedOutputText(summary) : task.output;
+                const logLine = task.kind === "shell" && task.logPath && (!summary || summary.length <= FOREGROUND_OUTPUT_CAP) ? `\nFull output: ${task.logPath}` : "";
+                return `${header}${logLine}\n\n${output}`;
             };
 
             const effectiveTimeout = Math.min(Math.max(timeout, 1000), TASK_OUTPUT_MAX_BLOCK_MS);

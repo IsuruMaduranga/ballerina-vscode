@@ -128,10 +128,7 @@ export function foregroundTimeoutMs(timeout: number | undefined): number {
 /**
  * The model-facing text of a finished foreground call: headed by how the
  * command ended (`line`, `runner.ts finishLine`) unless it succeeded, then
- * the whole output, or past `FOREGROUND_OUTPUT_CAP` the persisted-output
- * block naming the file that holds it (`summary.logPath`) and previewing its
- * start. Without that file (no scratchpad, a failed spool) the block also
- * carries the end of the output kept in memory, within the same cap.
+ * `finishedOutputText`.
  */
 export function foregroundText(summary: RunSummary, line: string): string {
     const head =
@@ -142,8 +139,10 @@ export function foregroundText(summary: RunSummary, line: string): string {
 }
 
 /**
- * A finished command's output for the model: whole up to `FOREGROUND_OUTPUT_CAP`, else the
- * persisted-output block (`foregroundText`). Also what `task_output` returns for a finished background command.
+ * A finished command's output for the model (a foreground result, or `task_output` on a finished
+ * background command): whole up to `FOREGROUND_OUTPUT_CAP`, else the persisted-output block naming the
+ * file that holds it (`summary.logPath`) and previewing its start. Without that file (no scratchpad, a
+ * failed spool) the block also carries the end of the output kept in memory, within the same cap.
  */
 export function finishedOutputText(summary: Pick<RunSummary, "output" | "head" | "length" | "logPath">): string {
     if (summary.length <= FOREGROUND_OUTPUT_CAP) { return summary.output; }

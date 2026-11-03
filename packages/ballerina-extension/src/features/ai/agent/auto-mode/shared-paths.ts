@@ -148,8 +148,3 @@ export function tildify(path: string, home: string): string {
     if (rest === "") { return "~"; }
     return isRelativeInside(rest) ? `~/${forwardSlashes(rest)}` : path;
 }
-
-/** The name `env` spells PATH with (Windows uses `Path`); `PATH` when it has none. */
-export function pathVariable(env: NodeJS.ProcessEnv): string {
-    return Object.keys(env).find((name) => name.toUpperCase() === "PATH") ?? "PATH";
-}

@@ -22,7 +22,6 @@
 
 import { delimiter, dirname, isAbsolute, resolve } from "path";
 import { leadTokens, parseCommand, resolvePayload, type Token } from "../auto-mode/shell-analysis";
-import { pathVariable } from "../auto-mode/shared-paths";
 
 const BAL_NAMES = new Set(["bal", "bal.bat", "bal.cmd"]);
 /** `cd` and PowerShell's spellings of it (resolvePayload lowercases the name). */
@@ -98,7 +97,7 @@ export function withBalOnPath(env: NodeJS.ProcessEnv, balCmd: string | undefined
     const cmd = (balCmd ?? "").trim().replace(/^"(.*)"$/, "$1");
     if (!cmd || !isAbsolute(cmd)) { return env; }
     // Windows spells the key `Path`; keep whichever spelling the environment has.
-    const key = pathVariable(env);
+    const key = Object.keys(env).find(k => k.toUpperCase() === "PATH") ?? "PATH";
     const current = env[key];
     return { ...env, [key]: current ? `${dirname(cmd)}${delimiter}${current}` : dirname(cmd) };
 }
