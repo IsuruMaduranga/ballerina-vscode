@@ -98,21 +98,21 @@ export function restartSummary(generation: TranscriptGeneration): string | undef
 
 /**
  * The classifier's history of a thread: the transcript entries of its active
- * context (from the latest compaction restart on, oldest first), every user
- * message of the whole thread (for intent-quote verification, decision 2),
- * and the ids of the tool calls the active context holds.
+ * context (from the latest compaction restart on, oldest first), the user
+ * messages of that same context (for intent-quote verification: a request
+ * from before the restart is no longer the user's word), and the ids of the
+ * tool calls the active context holds.
  */
 export function transcriptFromGenerations(generations: readonly TranscriptGeneration[]): { entries: TranscriptEntry[]; userMessages: string[]; toolCallIds: Set<string> } {
     const entries: TranscriptEntry[] = [];
     const userMessages: string[] = [];
     const toolCallIds = new Set<string>();
-    for (const generation of generations) {
-        const text = typeof generation.userPrompt === "string" ? generation.userPrompt.trim() : "";
-        if (text) { userMessages.push(text); }
-    }
     for (const generation of generationsSinceLastRestart(generations)) {
         const text = typeof generation.userPrompt === "string" ? generation.userPrompt.trim() : "";
-        if (text) { entries.push({ kind: "user", text }); }
+        if (text) {
+            entries.push({ kind: "user", text });
+            userMessages.push(text);
+        }
         // The restart message holds the request first and the summary after it, as the agent reads it.
         const summary = generation.restartedFromSummary ? restartSummary(generation) : undefined;
         if (summary) { entries.push({ kind: "summary", text: summary }); }

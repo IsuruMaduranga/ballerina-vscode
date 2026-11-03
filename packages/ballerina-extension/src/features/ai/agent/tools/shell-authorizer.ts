@@ -177,6 +177,7 @@ export function createShellAuthorizer(opts: ShellAuthorizerOptions) {
                             denials: threadGateState(runKey).denials,
                             runToolCalls: toolCallLog?.list(),
                             toolCallId,
+                            // shell.cwd is the agent's own AGENTS.md root (AgentExecutor: workspacePath || projectPath).
                             agentsMd: loadAgentsMdForClassifier(shell.cwd, ANTHROPIC_SONNET_CONTEXT_WINDOW),
                             username: safeUsername(),
                             scratchpadDir: shell.scratchpadDir,

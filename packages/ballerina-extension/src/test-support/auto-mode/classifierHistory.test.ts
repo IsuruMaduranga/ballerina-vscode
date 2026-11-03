@@ -69,8 +69,8 @@ describe("the active context", () => {
             { kind: "summary", text: summary },
             { kind: "tool", tool: "file_write", input: { file_path: "build/tmp/b.txt", content: "y" } },
         ]);
-        // Intent is verified against every message the user typed in the thread.
-        expect(userMessages).toEqual(["make a scratch build", "write a file there", "clean it all up"]);
+        // Intent is verified against the user's messages since the restart; earlier ones are only in the summary.
+        expect(userMessages).toEqual(["clean it all up"]);
         expect(toolCallIds).toEqual(new Set(["c1", "c2"]));
         expect(JSON.stringify(entries)).not.toContain("SECRET RESULT");
     });
