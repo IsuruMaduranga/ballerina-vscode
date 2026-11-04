@@ -141,13 +141,16 @@ ${sourceFile.content}
 }
 
 /**
- * The turn's note on a Ballerina workspace: its packages by path, the active one marked, and how
- * file paths and imports work across them. Empty for a single package. The project's source is not
- * inlined (the agent finds code through the shell), so this is where it learns the layout.
+ * The turn's note on the project's layout. The project's source is not inlined (the agent finds code
+ * through the shell), so this is where it learns the package name its own modules are imported under
+ * and, for a Ballerina workspace, its packages by path with the active one marked.
  */
-export function formatWorkspaceLayout(projects: ProjectSource[]): string {
+export function formatProjectLayout(projects: ProjectSource[]): string {
     if (StateMachine.context().projectInfo?.projectKind !== PROJECT_KIND.WORKSPACE_PROJECT) {
-        return "";
+        const name = projects[0]?.projectName;
+        return name
+            ? `<project_layout>\nThis is the Ballerina package "${name}". Import one of its modules, such as a generated connector under generated/moduleName, as: import ${name}.moduleName;\n</project_layout>`
+            : "";
     }
     const packages = projects.map((project) =>
         `- ${project.packagePath || "."} (package ${project.projectName})${project.isActive ? " — active" : ""}`);
@@ -340,4 +343,19 @@ export function solveRelativeTempPath(servicePath: string): { tempProjectPath: s
     }
 
     return { tempProjectPath, packagePath };
+}
+
+/**
+ * The generated connector files of the projects, paths only (`<generated_files>`), for the codebase
+ * map an agent without a shell gets: the map's walk skips `generated/`. Empty when there are none.
+ */
+export function formatGeneratedFiles(projects: ProjectSource[]): string {
+    const isWorkspace = StateMachine.context().projectInfo?.projectKind === PROJECT_KIND.WORKSPACE_PROJECT;
+    const paths = projects.flatMap((project) => {
+        const prefix = isWorkspace && project.packagePath ? `${project.packagePath}/` : "";
+        return (project.projectModules ?? [])
+            .filter((module) => module.isGenerated)
+            .flatMap((module) => module.sourceFiles.map((file) => `${prefix}generated/${module.moduleName}/${file.filePath}`));
+    });
+    return paths.length > 0 ? ["<generated_files>", ...paths.map((p) => `<file path="${p}"/>`), "</generated_files>"].join("\n") : "";
 }

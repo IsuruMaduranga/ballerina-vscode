@@ -115,6 +115,20 @@ describe("the file tools refuse to edit what the agent has not read", () => {
         expect(await edit({ file_path: "main.bal", old_string: "main", new_string: "start" })).toMatchObject({ success: true });
     });
 
+    it("does not count a ranged read that failed as a read", async () => {
+        const { edit, read } = tools();
+        expect(await read({ file_path: "main.bal", offset: 50, limit: 10 })).toMatchObject({ success: false });
+        expect(await edit({ file_path: "main.bal", old_string: "main", new_string: "start" })).toMatchObject({ success: false, error: "Error: File has not been read" });
+    });
+
+    it("sends an edit of Config.toml, which cannot be read, to the configuration tool", async () => {
+        fs.writeFileSync(path.join(root, "Config.toml"), "token = \"secret\"\n");
+        const { edit } = tools();
+        const refused = await edit({ file_path: "Config.toml", old_string: "secret", new_string: "other" });
+        expect(refused).toMatchObject({ success: false, error: "Error: File read not permitted" });
+        expect(refused.message).toContain("ConfigCollector");
+    });
+
     it("refuses a batch edit or an overwrite of an unread file, and lets a new file be edited after writing it", async () => {
         const { batch, write, edit } = tools();
         expect(await batch({ file_path: "main.bal", edits: [{ old_string: "main", new_string: "start" }] })).toMatchObject({ success: false, error: "Error: File has not been read" });

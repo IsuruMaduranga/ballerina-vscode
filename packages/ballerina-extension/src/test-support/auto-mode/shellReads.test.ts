@@ -68,7 +68,7 @@ describe("shellReadPaths: the directory a cd sets", () => {
     });
 
     it("leaves a reader after a cd that runs only once an earlier step succeeded unresolved (no && list tracking)", () => {
-        // The reference resolves it in src; a miss here costs one re-read, never a wrong certification.
+        // A miss costs one re-read, never a wrong certification.
         expect(paths("git pull && cd src && cat app.bal").filter((path) => path.endsWith("app.bal"))).toEqual([]);
         expect(paths("cd src/lib && cd .. && cat app.bal").filter((path) => path.endsWith("app.bal"))).toEqual([]);
     });

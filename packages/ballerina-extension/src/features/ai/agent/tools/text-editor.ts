@@ -255,6 +255,12 @@ const VALID_FILE_EXTENSIONS = [
 
 const RESTRICTED_READ_FILES = ['Config.toml'];
 
+/** Whether `file_path` names a file the agent may not read (`RESTRICTED_READ_FILES`), in any directory. */
+function isRestrictedRead(file_path: string): boolean {
+  const fileName = (file_path.replace(/\\/g, '/').split('/').pop() ?? '').toLowerCase();
+  return RESTRICTED_READ_FILES.some(f => f.toLowerCase() === fileName);
+}
+
 const MAX_LINE_LENGTH = 2000;
 const PREVIEW_LENGTH = 200;
 
@@ -290,7 +296,11 @@ const ErrorMessages = {
 function readBeforeEditRefusal(reads: ReadTracker | undefined, fullPath: string, current: string, file_path: string, toolName: string, eventHandler: CopilotEventHandler): TextEditorResult | undefined {
   const status = reads?.status(fullPath, current);
   if (status !== 'unread' && status !== 'stale') { return undefined; }
-  const result = status === 'unread'
+  // The agent may not read a restricted file (Config.toml holds secrets), so it cannot edit one blind either.
+  const restricted = isRestrictedRead(file_path);
+  const result = restricted
+    ? { success: false, message: `'${file_path}' cannot be read, so it cannot be edited or overwritten here. Manage configuration values with the ConfigCollector tool.`, error: `Error: ${ErrorMessages.FILE_READ_NOT_PERMITTED}` }
+    : status === 'unread'
     ? { success: false, message: UNREAD_REASON(file_path, toolName, FILE_READ_TOOL_NAME), error: `Error: ${ErrorMessages.FILE_NOT_READ}` }
     : { success: false, message: STALE_REASON(file_path, FILE_READ_TOOL_NAME), error: `Error: ${ErrorMessages.FILE_CHANGED_SINCE_READ}` };
   emitFileToolResult(eventHandler, toolName, result, file_path);
@@ -920,8 +930,7 @@ export function createReadExecute(
     }
 
     // Block reads of restricted files (e.g. Config.toml) in any path
-    const fileName = (file_path.replace(/\\/g, '/').split('/').pop() ?? '').toLowerCase();
-    if (RESTRICTED_READ_FILES.some(f => f.toLowerCase() === fileName)) {
+    if (isRestrictedRead(file_path)) {
       console.error(`[FileReadTool] Blocked read of restricted file: ${file_path}`);
       return {
         success: false,
@@ -951,13 +960,15 @@ export function createReadExecute(
 
     // Read file content and normalize line endings (CRLF → LF)
     const raw = fs.readFileSync(fullPath, 'utf-8');
-    // A ranged read counts as a read, as in Claude Code: the agent chose what it needed to see.
-    reads?.observe(fullPath, raw);
+    // A read that returns content counts, a ranged one included, as in Claude Code: the agent chose
+    // what it needed to see. A failed range shows nothing, so it is not recorded.
+    const observeRead = () => reads?.observe(fullPath, raw);
     const content = normalizeToLf(raw);
 
     // Handle empty file
     if (content.trim().length === 0) {
       console.log(`[FileReadTool] File is empty: ${file_path}`);
+      observeRead();
       const result = { success: true, message: `File '${file_path}' is empty.${unsavedNote}` };
       emitFileToolResult(eventHandler, FILE_READ_TOOL_NAME, result, file_path);
       return result;
@@ -987,6 +998,7 @@ export function createReadExecute(
       const rangedContent = truncateLongLines(rangedLines.join('\n'));
 
       console.log(`[FileReadTool] Read lines ${offset} to ${endIndex} from file: ${file_path}`);
+      observeRead();
       const result = {
         success: true,
         message: `Read lines ${offset} to ${endIndex} from '${file_path}' (${endIndex - startIndex} lines).${unsavedNote} \nContent:${rangedContent}`,
@@ -999,6 +1011,7 @@ export function createReadExecute(
     const truncatedContent = truncateLongLines(content);
 
     console.log(`[FileReadTool] Read entire file: ${file_path}, total lines: ${totalLines}`);
+    observeRead();
     const result = {
       success: true,
       message: `Read entire file '${file_path}' (${totalLines} lines).${unsavedNote}\nContent:${truncatedContent}`,

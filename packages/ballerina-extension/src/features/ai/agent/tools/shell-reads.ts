@@ -115,9 +115,8 @@ export function shellReadPaths(command: string, cwd: string, home: string, readd
  * `cd` that may not run (an `if` branch, after `&&` or `||`), a `cd` last in a pipeline, a
  * backgrounded line, `eval` and `source`, and a line that defines a function. A loop body runs
  * more than once, so after a move in any loop every command in a loop is unknown too. A miss costs
- * one re-read; a wrong directory would certify a read that never happened. (The reference also
- * follows a `cd` that may not run into the later members of its own `&&` list; this parse does not
- * record `&&` lists, so a read after such a `cd` is a miss here.)
+ * one re-read; a wrong directory would certify a read that never happened. The parse does not record
+ * `&&` lists, so a read after a `cd` that runs only once an earlier step succeeded is a miss too.
  */
 function segmentDirectories(parsed: ParseResult, cwd: string, home: string): (string | undefined)[] {
     const { segments } = parsed;

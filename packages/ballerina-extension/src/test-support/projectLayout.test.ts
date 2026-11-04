@@ -36,24 +36,43 @@ jest.mock("../stateMachine", () => ({
 
 jest.mock("../rpc-managers/ai-panel/utils", () => ({ addToIntegration: jest.fn() }));
 
-import { formatWorkspaceLayout } from "../features/ai/agent/utils";
+import { formatGeneratedFiles, formatProjectLayout } from "../features/ai/agent/utils";
 
 const projects = [
     { projectName: "orders", packagePath: "orders", isActive: true, sourceFiles: [] },
     { projectName: "shared", packagePath: "shared", isActive: false, sourceFiles: [] },
 ] as any;
 
-describe("formatWorkspaceLayout", () => {
-    it("says nothing for a single package", () => {
+describe("formatProjectLayout", () => {
+    it("names a single package, which its own modules are imported under", () => {
         mockProjectKind = "BUILD_PROJECT";
-        expect(formatWorkspaceLayout(projects)).toBe("");
+        expect(formatProjectLayout([projects[0]])).toContain('This is the Ballerina package "orders". Import one of its modules, such as a generated connector under generated/moduleName, as: import orders.moduleName;');
+        expect(formatProjectLayout([])).toBe("");
     });
 
     it("lists a workspace's packages by path, marks the active one, and states the path rule", () => {
         mockProjectKind = "WORKSPACE_PROJECT";
-        const text = formatWorkspaceLayout(projects);
+        const text = formatProjectLayout(projects);
         expect(text).toContain("- orders (package orders) — active");
         expect(text).toContain("- shared (package shared)\n");
         expect(text).toContain("start with the package path");
+    });
+});
+
+describe("formatGeneratedFiles", () => {
+    const withConnector = [{
+        projectName: "orders", packagePath: "orders", sourceFiles: [],
+        projectModules: [
+            { moduleName: "openai", isGenerated: true, sourceFiles: [{ filePath: "client.bal", content: "x" }] },
+            { moduleName: "helpers", isGenerated: false, sourceFiles: [{ filePath: "h.bal", content: "x" }] },
+        ],
+    }] as any;
+
+    it("lists generated connector files by path, prefixed with the package path in a workspace", () => {
+        mockProjectKind = "BUILD_PROJECT";
+        expect(formatGeneratedFiles(withConnector)).toBe('<generated_files>\n<file path="generated/openai/client.bal"/>\n</generated_files>');
+        mockProjectKind = "WORKSPACE_PROJECT";
+        expect(formatGeneratedFiles(withConnector)).toContain('<file path="orders/generated/openai/client.bal"/>');
+        expect(formatGeneratedFiles(projects)).toBe("");
     });
 });

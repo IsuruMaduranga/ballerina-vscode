@@ -23,7 +23,10 @@ import { CONFIG_COLLECTOR_TOOL } from "./tools/config-collector";
 import { CLARIFY_TOOL } from "./tools/clarify";
 import { getLanglibInstructions } from "../utils/libs/langlibs";
 import { MODULE_INIT_CODING_RULES } from "./module-init-rules";
-import { formatCodeContext, formatWorkspaceLayout } from "./utils";
+import { formatCodeContext, formatProjectLayout } from "./utils";
+
+// The turn builder (AgentExecutor) reaches the prompt helpers through this module.
+export { formatGeneratedFiles } from "./utils";
 import { GenerateAgentCodeRequest, OperationType, ProjectSource } from "@wso2/ballerina-core";
 import { formatActiveFileReminder } from "./activeFileReminder";
 import { DATA_BINDING_CODING_RULES } from "./data-binding-rules";
@@ -257,7 +260,7 @@ ${CONCURRENCY_CODING_RULES}
         ].join(
             ", "
         )} tools.
-- The project's source is not included in the conversation. Find code with the shell tool (\`ls\`, \`find\`, \`grep\`, \`cat\`; in PowerShell \`Get-ChildItem\`, \`Select-String\`), or from the codebase map when the user's message carries one, and read a file before you edit it, with ${FILE_READ_TOOL_NAME} or a shell \`cat\` that prints it whole. Editing or overwriting an existing file you have not read, or one that changed since you read it, fails until you read it again.
+- The project's source is not included in the conversation. Find code with the shell tool when you have one (\`ls\`, \`find\`, \`grep\`, \`cat\`; in PowerShell \`Get-ChildItem\`, \`Select-String\`), or from the codebase map when the user's message carries one, and read a file before you edit it, with ${FILE_READ_TOOL_NAME} or, in bash, a \`cat\` that prints it whole. Editing or overwriting an existing file you have not read, or one that changed since you read it, fails until you read it again.
 - When making replacements inside an existing file, provide the **exact old string** and the **exact new string** with all newlines, spaces, and indentation, being mindful to replace nearby occurrences together to minimize the number of tool calls.
 - Do NOT create a new markdown file to document each change or summarize your work unless specifically requested by the user.
 - Do not manually add/modify Dependencies.toml. For Config.toml configuration management, use ${CONFIG_COLLECTOR_TOOL}.
@@ -344,9 +347,9 @@ export function getUserPrompt(
     }
 
     // The project's source is not inlined: the agent finds code through the shell, or the map.
-    const workspaceLayout = formatWorkspaceLayout(projects);
-    if (workspaceLayout) {
-        content.push({ type: 'text' as const, text: workspaceLayout });
+    const projectLayout = formatProjectLayout(projects);
+    if (projectLayout) {
+        content.push({ type: 'text' as const, text: projectLayout });
     }
     if (codebaseMapText) {
         content.push({ type: 'text' as const, text: codebaseMapText });

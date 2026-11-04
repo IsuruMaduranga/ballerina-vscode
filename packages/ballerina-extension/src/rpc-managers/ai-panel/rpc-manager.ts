@@ -912,6 +912,8 @@ User reverted the last made changes. The files have been restored to the state b
             if (!restored) {
                 throw new Error('Failed to restore thread to checkpoint');
             }
+            // The dropped turns' reads are gone from the history the agent will be sent.
+            forgetReads(buildRunKey(projectRootPath, threadId));
 
             publishedIds.forEach(id => removeConsoleSummary(id));
         } finally {
