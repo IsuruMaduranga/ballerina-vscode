@@ -20,8 +20,7 @@
  * The instructions server-side compaction runs with when it pauses: the same prompt as the MI Copilot's
  * (`mi-extension/src/ai-features/agent-mode/agents/compact/prompt.ts`), kept identical on purpose.
  * It tells the summarizer to skip the `<system-reminder>` context blocks, because a turn that
- * compaction pauses restarts with that context rebuilt (see compaction-restart.ts). A migration
- * stage's codebase map is rebuilt too, but it is not a `<system-reminder>`, so CODEBASE_MAP_NOTE names it.
+ * compaction pauses restarts with that context rebuilt (see compaction-restart.ts).
  */
 
 const PROMPT = `
@@ -93,13 +92,9 @@ Here's an example of how your output should be structured:
 </example>
 Please provide your summary based on the conversation so far, following this structure and ensuring precision and thoroughness in your response.`;
 
-const CODEBASE_MAP_NOTE = `
-A \`<codebase_map>\` block, when the conversation has one, is re-injected the same way, with the files as they are after compaction. Do NOT copy it into the summary. Under Files and Code Sections, name the files that were read or changed and why, and quote only the lines that matter.`;
-
 export const COMPACT_SYSTEM_REMINDER_AUTO_TRIGGERED = `
 <system-reminder>
 The conversation context window is running out. You must summarize the conversation immediately so that work can continue in a fresh context.
 ${PROMPT}
-${CODEBASE_MAP_NOTE}
 </system-reminder>
 `;

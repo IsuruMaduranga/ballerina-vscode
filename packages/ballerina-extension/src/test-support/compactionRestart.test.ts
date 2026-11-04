@@ -139,8 +139,8 @@ describe('trimming history before a kept compaction block', () => {
 });
 
 describe('the compaction instructions', () => {
-    it('tell the summarizer to leave out a re-injected codebase map', () => {
-        expect(COMPACT_SYSTEM_REMINDER_AUTO_TRIGGERED).toContain('A `<codebase_map>` block, when the conversation has one, is re-injected');
+    it('name no codebase block, since the agent reads files through tools', () => {
+        expect(COMPACT_SYSTEM_REMINDER_AUTO_TRIGGERED).not.toMatch(/codebase_(map|structure)/);
     });
 });
 
