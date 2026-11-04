@@ -26,9 +26,6 @@ import { bashSpawn, powerShellEdition, powerShellSpawn, withPowerShellUtf8 } fro
 import { POWERSHELL_TOOL_NAME, powershellToolDescription } from '../shell/powershell-description';
 import { powershellGuardReason } from '../shell/powershell-guards';
 import { diffSnapshots, hasTouchedFiles, snapshotWorkspace, type TouchedFiles } from '../shell/touched-files';
-import type { ReadTracker } from './read-tracker';
-import { recordShellReads, shellReadSnapshot } from './shell-reads';
-import { homedir } from 'os';
 
 export { SHELL_TOOL_NAME, POWERSHELL_TOOL_NAME };
 
@@ -64,10 +61,11 @@ export interface ShellToolOptions {
     startService?: ShellCallContext["startService"];
     /** The commands' environment (`shell/bal-run.ts withBalOnPath`); the extension host's when absent. */
     env?: NodeJS.ProcessEnv;
-    /** What the agent has read in this thread: a bash command that printed a whole file counts (`tools/shell-reads.ts`). */
-    reads?: ReadTracker;
-    /** The home directory `~` resolves to in a bash command; the user's when absent. */
-    home?: string;
+    /**
+     * Called before a foreground command runs; the function it returns, if any, gets the output the
+     * agent receives (the read-before-edit tracking of `tools/shell-reads.ts`).
+     */
+    observeReads?: (command: string) => ((output: string) => void) | undefined;
 }
 
 /** What differs between the two shell tools; the body is shared (`shell/shell-call.ts`). */
@@ -124,10 +122,7 @@ export function createShellTool(opts: ShellToolOptions) {
                 }
             };
 
-            // The files a bash command may print whole, before it runs, so an unchanged one it showed counts as read.
-            const readSnapshot = opts.reads && flavour.dialect === "bash" && !background
-                ? shellReadSnapshot(input.command, opts.cwd, opts.home ?? homedir())
-                : undefined;
+            const recordReads = background ? undefined : opts.observeReads?.(input.command);
             const result = await runShellCall(input, {
                 toolName: flavour.name,
                 dialect: flavour.dialect,
@@ -146,7 +141,7 @@ export function createShellTool(opts: ShellToolOptions) {
             });
             if (result.kind === "foreground") {
                 await registerTouched();
-                if (opts.reads && readSnapshot) { recordShellReads(opts.reads, readSnapshot, result.text); }
+                recordReads?.(result.text);
             }
             const gate = { by: authorization.by };
             if (result.kind === "refused") {

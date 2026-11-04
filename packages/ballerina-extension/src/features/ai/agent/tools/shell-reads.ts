@@ -32,6 +32,7 @@ import { isAbsolute, resolve } from "path";
 import { toAbsoluteBash } from "../auto-mode/paths";
 import { globComponentRegex, isUnknownTilde, movesDirectory, resolvePayload } from "../auto-mode/shell-analysis";
 import { LOOPS, parseCommand, type ParseResult, scopedTracker, type Segment, type Token } from "../auto-mode/shell-parse";
+import { FOREGROUND_OUTPUT_CAP } from "../shell/shell-call";
 import type { ReadTracker } from "./read-tracker";
 
 /** Commands whose file arguments may print a whole file. */
@@ -209,8 +210,11 @@ export function shownInFull(output: string, content: string): boolean {
 const MIN_SHOWN_CHARS = 40;
 /** A multi-line file shorter than this is never counted as shown. */
 const MIN_SHOWN_LINES_CHARS = 16;
-/** Above this a shell read's output is spilled to a file, not shown, so the file cannot have been seen whole. */
-const MAX_SHELL_READ_BYTES = 256 * 1024;
+/**
+ * The agent receives at most `FOREGROUND_OUTPUT_CAP` characters of a command's output, at most 4 bytes
+ * each in UTF-8, so a larger file cannot have been shown whole and is not read.
+ */
+const MAX_SHELL_READ_BYTES = 4 * FOREGROUND_OUTPUT_CAP;
 
 /**
  * Before a bash command runs: the content of each regular file it may print, by absolute path.

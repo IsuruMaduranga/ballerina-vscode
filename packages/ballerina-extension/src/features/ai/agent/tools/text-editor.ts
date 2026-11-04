@@ -112,7 +112,7 @@ function verifyPersisted(
     console.warn(`${logPrefix} ${file_path} differs from the computed content after saving (likely an on-save formatter).`);
   }
 
-  return { valid: true };
+  return { valid: true, actual };
 }
 
 function liveEditRoot(ctx: ExecutionContext): string {
@@ -234,6 +234,8 @@ function emitFileToolResult(
 interface ValidationResult {
   valid: boolean;
   error?: string;
+  /** What the file held when it was read back to verify a write. */
+  actual?: string;
 }
 
 interface TextEditorResult {
@@ -282,28 +284,29 @@ const ErrorMessages = {
 
 /**
  * The read-before-edit refusal (`read-tracker.ts`) for an edit or overwrite of `fullPath`, whose
- * content is `current`; undefined when the agent has seen this content, or when nothing tracks reads.
+ * content is `current`, emitted as the tool's result; undefined when the agent has seen this content,
+ * or when nothing tracks reads.
  */
-function readBeforeEditRefusal(reads: ReadTracker | undefined, fullPath: string, current: string, file_path: string, toolName: string): TextEditorResult | undefined {
-  if (!reads) { return undefined; }
-  const status = reads.status(path.resolve(fullPath), current);
-  if (status === 'unread') {
-    return { success: false, message: UNREAD_REASON(file_path, toolName, FILE_READ_TOOL_NAME), error: `Error: ${ErrorMessages.FILE_NOT_READ}` };
-  }
-  if (status === 'stale') {
-    return { success: false, message: STALE_REASON(file_path, FILE_READ_TOOL_NAME), error: `Error: ${ErrorMessages.FILE_CHANGED_SINCE_READ}` };
-  }
-  return undefined;
+function readBeforeEditRefusal(reads: ReadTracker | undefined, fullPath: string, current: string, file_path: string, toolName: string, eventHandler: CopilotEventHandler): TextEditorResult | undefined {
+  const status = reads?.status(fullPath, current);
+  if (status !== 'unread' && status !== 'stale') { return undefined; }
+  const result = status === 'unread'
+    ? { success: false, message: UNREAD_REASON(file_path, toolName, FILE_READ_TOOL_NAME), error: `Error: ${ErrorMessages.FILE_NOT_READ}` }
+    : { success: false, message: STALE_REASON(file_path, FILE_READ_TOOL_NAME), error: `Error: ${ErrorMessages.FILE_CHANGED_SINCE_READ}` };
+  emitFileToolResult(eventHandler, toolName, result, file_path);
+  return result;
 }
 
-/** Record what `fullPath` holds on disk now, after the agent read or wrote it. */
-function observeOnDisk(reads: ReadTracker | undefined, fullPath: string): void {
+/**
+ * Record what `fullPath` holds after the agent wrote it: `seen`, the content the write's verification
+ * read back, or the file read now when verification did not read it (the migration flow).
+ */
+function observeWrite(reads: ReadTracker | undefined, fullPath: string, seen: string | undefined): void {
   if (!reads) { return; }
-  const key = path.resolve(fullPath);
   try {
-    reads.observe(key, fs.readFileSync(fullPath, 'utf-8'));
+    reads.observe(fullPath, seen ?? fs.readFileSync(fullPath, 'utf-8'));
   } catch {
-    reads.forget(key);
+    reads.forget(fullPath);
   }
 }
 
@@ -475,8 +478,8 @@ export function createWriteExecute(
     // Check if file exists with non-empty content. `overwrite` is the escape hatch for a
     // file no old_string can uniquely address; without it there is no way to rewrite one.
     const preEditRaw = fileExists ? fs.readFileSync(fullPath, 'utf-8') : '';
-    if (fileExists && !overwrite) {
-      if (preEditRaw.trim().length > 0) {
+    if (preEditRaw.trim().length > 0) {
+      if (!overwrite) {
         console.error(`[FileWriteTool] File already exists with content: ${file_path}`);
         const result = {
           success: false,
@@ -486,14 +489,9 @@ export function createWriteExecute(
         emitFileToolResult(eventHandler, FILE_WRITE_TOOL_NAME, result, file_path);
         return result;
       }
-    }
-
-    const overwriteRefusal = fileExists && preEditRaw.trim().length > 0
-      ? readBeforeEditRefusal(reads, fullPath, preEditRaw, file_path, FILE_WRITE_TOOL_NAME)
-      : undefined;
-    if (overwriteRefusal) {
-      emitFileToolResult(eventHandler, FILE_WRITE_TOOL_NAME, overwriteRefusal, file_path);
-      return overwriteRefusal;
+      // An overwrite discards the content, so the agent must have seen it.
+      const overwriteRefusal = readBeforeEditRefusal(reads, fullPath, preEditRaw, file_path, FILE_WRITE_TOOL_NAME, eventHandler);
+      if (overwriteRefusal) { return overwriteRefusal; }
     }
 
     const lineCount = content.split('\n').length;
@@ -530,7 +528,7 @@ export function createWriteExecute(
       return result;
     }
 
-    observeOnDisk(reads, fullPath);
+    observeWrite(reads, fullPath, verification.actual);
     console.log(`[FileWriteTool] Successfully ${action} file: ${file_path} with ${lineCount} lines.`);
     const result = {
       success: true,
@@ -619,11 +617,8 @@ export function createEditExecute(
 
     // Read file content and normalize line endings (CRLF → LF)
     const rawContent = fs.readFileSync(fullPath, 'utf-8');
-    const editRefusal = readBeforeEditRefusal(reads, fullPath, rawContent, file_path, FILE_SINGLE_EDIT_TOOL_NAME);
-    if (editRefusal) {
-      emitFileToolResult(eventHandler, FILE_SINGLE_EDIT_TOOL_NAME, editRefusal, file_path);
-      return editRefusal;
-    }
+    const editRefusal = readBeforeEditRefusal(reads, fullPath, rawContent, file_path, FILE_SINGLE_EDIT_TOOL_NAME, eventHandler);
+    if (editRefusal) { return editRefusal; }
     const [content, originalEol] = readAndNormalize(rawContent);
 
     // Try exact match first (99% case - no normalization needed)
@@ -699,7 +694,7 @@ export function createEditExecute(
       return result;
     }
 
-    observeOnDisk(reads, fullPath);
+    observeWrite(reads, fullPath, verification.actual);
     const replacedCount = replace_all ? occurrenceCount : 1;
     console.log(`[FileEditTool] Successfully replaced ${replacedCount} occurrence(s) in file: ${file_path}`);
     const result = {
@@ -786,11 +781,8 @@ export function createMultiEditExecute(
 
     // Read file content and normalize line endings (CRLF → LF)
     const rawContent = fs.readFileSync(fullPath, 'utf-8');
-    const batchRefusal = readBeforeEditRefusal(reads, fullPath, rawContent, file_path, FILE_BATCH_EDIT_TOOL_NAME);
-    if (batchRefusal) {
-      emitFileToolResult(eventHandler, FILE_BATCH_EDIT_TOOL_NAME, batchRefusal, file_path);
-      return batchRefusal;
-    }
+    const batchRefusal = readBeforeEditRefusal(reads, fullPath, rawContent, file_path, FILE_BATCH_EDIT_TOOL_NAME, eventHandler);
+    if (batchRefusal) { return batchRefusal; }
     const [originalContent, originalEol] = readAndNormalize(rawContent);
 
     // First pass: check if all edits work with exact matching (99% case)
@@ -886,7 +878,7 @@ export function createMultiEditExecute(
       return result;
     }
 
-    observeOnDisk(reads, fullPath);
+    observeWrite(reads, fullPath, verification.actual);
     console.log(`[FileMultiEditTool] Successfully applied ${edits.length} edits to file: ${file_path}`);
     const result = {
       success: true,
@@ -960,7 +952,7 @@ export function createReadExecute(
     // Read file content and normalize line endings (CRLF → LF)
     const raw = fs.readFileSync(fullPath, 'utf-8');
     // A ranged read counts as a read, as in Claude Code: the agent chose what it needed to see.
-    reads?.observe(path.resolve(fullPath), raw);
+    reads?.observe(fullPath, raw);
     const content = normalizeToLf(raw);
 
     // Handle empty file

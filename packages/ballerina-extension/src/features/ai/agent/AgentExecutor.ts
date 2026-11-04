@@ -50,8 +50,6 @@ import { listAllSkills } from './skills/context';
 import { AgentPrefixState, dropReasoning, hashPrefixBase, historyForRequest, planTurnPrefix, previousPrefixState, TurnPrefix, turnLeadMessages } from './prefix-state';
 import { shellRunSetup } from './shell/shell-session';
 import { buildMigrationCodebaseMap } from '../migration/project-map';
-import { readTrackerFor } from './tools/read-tracker';
-import { buildRunKey } from './subagents/types';
 
 import { liveMcpToolDefinitions, refreshMcpClientManager } from './mcp';
 import { getProjectSource } from '../utils/project/temp-project';
@@ -128,8 +126,9 @@ function supportsCompaction(loginMethod: LoginMethod): boolean {
 }
 
 /**
- * Server-side compaction trigger, in input tokens. Higher than MI's 200K because BI re-sends
- * the whole project source each turn; 500K sits well within Claude Sonnet's 1M window.
+ * Server-side compaction trigger, in input tokens. Set above MI's 200K when every turn re-sent the
+ * whole project source; kept at 500K after the dump went (owner, 2026-11-04). Well within Claude
+ * Sonnet's 1M window.
  */
 export const COMPACT_TRIGGER_TOKENS = 500_000;
 
@@ -139,7 +138,7 @@ export const COMPACT_TRIGGER_TOKENS = 500_000;
  */
 function buildCompactionProviderOptions(loginMethod: LoginMethod, floorTokens: number) {
     if (!supportsCompaction(loginMethod)) { return undefined; }
-    // Disable when the fixed per-turn floor (system prompt + whole-codebase dump) already
+    // Disable when the fixed per-turn floor (system prompt, tools and the turn's context blocks) already
     // exceeds the trigger — compaction would otherwise fire every turn against empty history.
     if (floorTokens >= COMPACT_TRIGGER_TOKENS) { return undefined; }
     // Compaction pauses after its block so the turn restarts from its own summary with the turn's
@@ -456,13 +455,12 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             // The shell tool's scratchpad and gate roots, shared by the turn notice and the tool registry.
             const shell = shellRunSetup(projectRootPath, threadId);
             // The whole project is not inlined: with a shell tool the model finds code itself, as the
-            // reference and Claude Code do; without one it gets the compact map to read from. A caller
-            // (migration) may still pass its own map.
-            const omitCodebaseDump = this.config.toolOptions?.omitCodebaseDump ?? true;
-            const codebaseMapText = this.config.toolOptions?.codebaseMapText
-                ?? (shell || !projectRootPath ? undefined : await buildMigrationCodebaseMap(projectRootPath));
+            // reference and Claude Code do; without one it gets the compact map, read from the workspace
+            // as it is now. A caller (migration) may pass its own map.
+            const codebaseMap = async (): Promise<string | undefined> => this.config.toolOptions?.codebaseMapText
+                ?? (shell || !projectRootPath ? undefined : buildMigrationCodebaseMap(projectRootPath));
             // The turn's user message, built here and again on every compaction restart.
-            const buildTurnPrompt = (turnProjects: ProjectSource[], agentsMd: AgentsMdTurnPrep) => {
+            const buildTurnPrompt = (agentsMd: AgentsMdTurnPrep, codebaseMapText: string | undefined) => {
                 if (agentsMd.hashToPersist !== undefined) {
                     const generation = chatStateStorage.getGeneration(this.chatStoreKey, threadId, this.config.generationId);
                     if (generation) {
@@ -474,12 +472,11 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         });
                     }
                 }
-                return getUserPrompt(params, tempProjectPath, turnProjects, webSearchEnabled, agentsMd.text, {
-                    omitCodebaseDump,
-                    codebaseMapText,
-                }, [this.config.toolOptions?.taskNotice, runningServicesReminder(runningServicesManager.getAll())]);
+                return getUserPrompt(params, tempProjectPath, projects, webSearchEnabled, agentsMd.text, codebaseMapText,
+                    [this.config.toolOptions?.taskNotice, runningServicesReminder(runningServicesManager.getAll())]);
             };
-            const userMessageContent = buildTurnPrompt(projects, await prepareAgentsMdForTurn(workspaceId || '', threadId));
+            const [turnAgentsMd, turnMap] = await Promise.all([prepareAgentsMdForTurn(workspaceId || '', threadId), codebaseMap()]);
+            const userMessageContent = buildTurnPrompt(turnAgentsMd, turnMap);
 
             // Ensure the pre-edit snapshot exists before any tool can run.
             await chatStateStorage.waitForCheckpointCapture(this.config.generationId);
@@ -533,12 +530,12 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const systemInMessages = supportsMidConversationSystem(loginMethod);
             // What this turn adds to the prefix the history was sent with (prefix-state.ts). A
             // compaction restart plans it again with no previous state, as a new history.
-            const planPrefix = (previous: AgentPrefixState | undefined, hasHistory: boolean, turnProjects: ProjectSource[]) => planTurnPrefix(previous, hasHistory, {
+            const planPrefix = (previous: AgentPrefixState | undefined, hasHistory: boolean) => planTurnPrefix(previous, hasHistory, {
                 baseHash,
                 skills: listAllSkills(projectRootPath || null),
                 deferredBuiltIns,
                 mcpTools: liveMcpToolDefinitions(),
-                npNote: getNPSuffix(turnProjects, params.operationType) || undefined,
+                npNote: getNPSuffix(projects, params.operationType) || undefined,
                 shellNote: shell?.promptSection,
                 systemMessages: systemInMessages,
             });
@@ -548,7 +545,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             // A run that sends no history (a migration stage replays none) starts a new prefix, whatever
             // earlier generations stored.
             const hasHistory = historyMessages.length > 0;
-            const turnPrefix = planPrefix(hasHistory ? previousPrefixState(historyGenerations, this.config.generationId) : undefined, hasHistory, projects);
+            const turnPrefix = planPrefix(hasHistory ? previousPrefixState(historyGenerations, this.config.generationId) : undefined, hasHistory);
             if (turnPrefix.state.reasoningReset) {
                 console.warn('[AgentExecutor] The prompt base differs from the one this history was sent with; dropping its earlier reasoning');
             }
@@ -878,22 +875,16 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         compactionRestarts++;
                         console.log(`[AgentExecutor] Compaction paused the turn; restarting from its summary (${compactionRestarts}/${MAX_COMPACTION_RESTARTS})`);
                         // The summary does not carry the files the agent read, so it reads them again before editing.
-                        readTrackerFor(buildRunKey(projectRootPath, threadId)).clear();
+                        toolRegistry.reads.clear();
                         carriedUsage = addUsage(carriedUsage, await totalUsage);
                         // The summary leaves out the turn's context blocks (the compaction prompt says
                         // they come back), so rebuild the turn's prompt from the workspace as it is now.
-                        const [restartAgentsMd, currentProjects] = await Promise.all([
-                            prepareAgentsMdForRestart(workspaceId || ''),
-                            // The prompt reads no project source when the dump is off.
-                            omitCodebaseDump
-                                ? projects
-                                : getProjectSource(params.operationType, this.config.executionContext),
-                        ]);
-                        const continuation = buildCompactionContinuation(summary, buildTurnPrompt(currentProjects, restartAgentsMd));
+                        const [restartAgentsMd, restartMap] = await Promise.all([prepareAgentsMdForRestart(workspaceId || ''), codebaseMap()]);
+                        const continuation = buildCompactionContinuation(summary, buildTurnPrompt(restartAgentsMd, restartMap));
                         // A new history starts here, so its prefix is frozen afresh from the live state:
                         // every skill and tool is listed again, including those announced only in
                         // notices the summary replaced.
-                        const restartPrefix = planPrefix(undefined, false, currentProjects);
+                        const restartPrefix = planPrefix(undefined, false);
                         tools = toolRegistry.withMcpTools(restartPrefix.mcpTools, restartPrefix.disconnected);
                         const restartLead = turnLeadMessages(continuation.content as unknown[], restartPrefix, systemInMessages);
                         carriedMessages.length = 0;

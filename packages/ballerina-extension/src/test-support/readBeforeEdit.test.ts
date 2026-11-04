@@ -34,23 +34,25 @@ import { forgetReads, ReadTracker, readTrackerFor } from "../features/ai/agent/t
 import { createEditExecute, createMultiEditExecute, createReadExecute, createWriteExecute } from "../features/ai/agent/tools/text-editor";
 
 describe("ReadTracker", () => {
-    it("reports a file absent, unread, fresh or stale by its content", () => {
+    it("reports an existing file unread, fresh or stale by its content, under any spelling of its path", () => {
         const tracker = new ReadTracker();
-        expect(tracker.status("/p/a.bal", undefined)).toBe("absent");
         expect(tracker.status("/p/a.bal", "x")).toBe("unread");
         tracker.observe("/p/a.bal", "x");
-        expect(tracker.status("/p/a.bal", "x")).toBe("fresh");
+        expect(tracker.status("/p/./a.bal", "x")).toBe("fresh");
         expect(tracker.status("/p/a.bal", "y")).toBe("stale");
-        tracker.forget("/p/a.bal");
+        tracker.forget("/p/sub/../a.bal");
         expect(tracker.status("/p/a.bal", "x")).toBe("unread");
     });
 
-    it("treats a file too large to keep as fresh, and keeps at most 300 files", () => {
+    it("keeps at most 300 files, dropping the least recently seen", () => {
         const tracker = new ReadTracker();
-        tracker.observe("/p/big.bal", "x".repeat(600 * 1024), 0);
-        expect(tracker.status("/p/big.bal", "anything")).toBe("fresh");
-        for (let i = 0; i < 301; i++) { tracker.observe(`/p/${i}.bal`, "x", i + 1); }
-        expect(tracker.status("/p/big.bal", "anything")).toBe("unread");
+        tracker.observe("/p/first.bal", "x");
+        tracker.observe("/p/kept.bal", "x");
+        for (let i = 0; i < 298; i++) { tracker.observe(`/p/${i}.bal`, "x"); }
+        tracker.observe("/p/kept.bal", "x");
+        tracker.observe("/p/last.bal", "x");
+        expect(tracker.status("/p/first.bal", "x")).toBe("unread");
+        expect(tracker.status("/p/kept.bal", "x")).toBe("fresh");
     });
 
     it("keeps one tracker per thread, forgotten on request", () => {

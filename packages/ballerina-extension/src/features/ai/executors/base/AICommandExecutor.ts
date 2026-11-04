@@ -112,9 +112,7 @@ export interface AICommandConfig<TParams = any> {
     toolOptions?: {
         /** Absolute path to the original migration source project (Mule, Tibco, etc.). */
         migrationSourcePath?: string;
-        /** Skip inlining the full codebase into the user prompt. */
-        omitCodebaseDump?: boolean;
-        /** Compact codebase map to inline instead of the full dump, when omitCodebaseDump is set. */
+        /** Compact codebase map to inline in the user prompt; the agent never gets the whole project. */
         codebaseMapText?: string;
         /** Throw instead of silently disabling compaction when the prompt floor is at/over the trigger. */
         failWhenCompactionUnavailable?: boolean;

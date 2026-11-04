@@ -758,7 +758,6 @@ async function runStagesForPackage(opts: StageRunnerOpts): Promise<void> {
                 : { cleanupStrategy: "immediate" as const },
             toolOptions: {
                 migrationSourcePath: sourcePath,
-                omitCodebaseDump: true,
                 codebaseMapText,
                 failWhenCompactionUnavailable: true,
             },

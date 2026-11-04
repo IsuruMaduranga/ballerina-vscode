@@ -23,7 +23,7 @@ import { CONFIG_COLLECTOR_TOOL } from "./tools/config-collector";
 import { CLARIFY_TOOL } from "./tools/clarify";
 import { getLanglibInstructions } from "../utils/libs/langlibs";
 import { MODULE_INIT_CODING_RULES } from "./module-init-rules";
-import { formatCodebaseStructure, formatCodeContext } from "./utils";
+import { formatCodeContext, formatWorkspaceLayout } from "./utils";
 import { GenerateAgentCodeRequest, OperationType, ProjectSource } from "@wso2/ballerina-core";
 import { formatActiveFileReminder } from "./activeFileReminder";
 import { DATA_BINDING_CODING_RULES } from "./data-binding-rules";
@@ -330,7 +330,8 @@ export function getUserPrompt(
     projects: ProjectSource[],
     webSearchEnabled: boolean,
     agentsMdBlockText?: string,
-    codebase?: { omitCodebaseDump?: boolean; codebaseMapText?: string },
+    /** The compact codebase map, sent when the agent has no shell to find code with (or a caller's own). */
+    codebaseMapText?: string,
     turnReminders: string[] = [],
 ) {
     const content = [];
@@ -342,18 +343,13 @@ export function getUserPrompt(
         });
     }
 
-    if (codebase?.omitCodebaseDump) {
-        if (codebase.codebaseMapText) {
-            content.push({
-                type: 'text' as const,
-                text: codebase.codebaseMapText,
-            });
-        }
-    } else {
-        content.push({
-            type: 'text' as const,
-            text: formatCodebaseStructure(projects, tempProjectPath)
-        });
+    // The project's source is not inlined: the agent finds code through the shell, or the map.
+    const workspaceLayout = formatWorkspaceLayout(projects);
+    if (workspaceLayout) {
+        content.push({ type: 'text' as const, text: workspaceLayout });
+    }
+    if (codebaseMapText) {
+        content.push({ type: 'text' as const, text: codebaseMapText });
     }
 
     const activeFileReminder = formatActiveFileReminder(params.activeFilePath);

@@ -44,7 +44,8 @@ import { createKillTaskTool, createTaskOutputTool } from './tools/task-tools';
 import { buildRunKey, KILL_TASK_TOOL_NAME, SUBAGENT_TOOL_NAME, SubagentRunContext, TASK_OUTPUT_TOOL_NAME } from './subagents/types';
 import { withBackgroundNotifications } from './background/registry';
 import { createShellTool, POWERSHELL_TOOL_NAME, SHELL_TOOL_NAME } from './tools/shell-tool';
-import { readTrackerFor } from './tools/read-tracker';
+import { type ReadTracker, readTrackerFor } from './tools/read-tracker';
+import { recordShellReads, shellReadSnapshot } from './tools/shell-reads';
 import { createShellAuthorizer } from './tools/shell-authorizer';
 import { RunToolCallLog, withToolCallLog } from './auto-mode/run-tool-calls';
 import type { ShellRunSetup } from './shell/shell-session';
@@ -109,7 +110,7 @@ export interface ToolRegistryOptions {
  * The bash tool behind the gate (`auto-mode/gate.ts`, wired in
  * `tools/shell-authorizer.ts`), with shell edits registered for the review.
  */
-function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, runKey: string, threadId: string, toolCallLog: RunToolCallLog) {
+function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, runKey: string, threadId: string, toolCallLog: RunToolCallLog, reads: ReadTracker) {
     // One environment for both: the PowerShell parse looks command names up on the PATH the command runs with.
     const env = withBalOnPath(process.env, extension.ballerinaExtInstance?.getBallerinaCmd());
     const authorize = createShellAuthorizer({
@@ -135,8 +136,11 @@ function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, r
         onFilesTouched: (touched) => registerShellTouchedFiles(shell.cwd, touched, opts.modifiedFiles, opts.allModifiedFiles),
         startService: (start) => startShellService(start, opts.runningServices),
         env,
-        reads: readTrackerFor(runKey),
-        home: shell.home,
+        // A bash command that printed a whole, unchanged file counts as a read of it (tools/shell-reads.ts).
+        observeReads: shell.tool === 'shell' ? (command) => {
+            const snapshot = shellReadSnapshot(command, shell.cwd, shell.home);
+            return (output) => { recordShellReads(reads, snapshot, output); };
+        } : undefined,
         authorize,
     });
 }
@@ -182,6 +186,8 @@ export async function describeTools(tools: Record<string, Tool>): Promise<ToolDe
 export interface ToolRegistryParts {
     /** The built-in tools, `tool_search` included, without any MCP tool. */
     builtIns: Record<string, Tool>;
+    /** What the agent has read in this thread (`tools/read-tracker.ts`); a compaction restart clears it. */
+    reads: ReadTracker;
     /** The whole tool set: the built-ins plus these MCP definitions, every one deferred. */
     withMcpTools(definitions: readonly FrozenToolDefinition[], disconnected?: ReadonlySet<string>): Record<string, Tool>;
 }
@@ -264,7 +270,7 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
         [CLARIFY_TOOL]: createClarifyTool(eventHandler),
         [SKILL_TOOL_NAME]: createSkillTool(REGISTERED_SKILLS, projectRootPath, eventHandler),
         [TOOL_SEARCH_TOOL_NAME]: createToolSearchTool(() => deferredCatalog(), eventHandler),
-        ...(opts.shell ? { [opts.shell.tool === 'powershell' ? POWERSHELL_TOOL_NAME : SHELL_TOOL_NAME]: createGatedShellTool(opts, opts.shell, subagentCtx.runKey, resolvedThreadId, toolCallLog) } : {}),
+        ...(opts.shell ? { [opts.shell.tool === 'powershell' ? POWERSHELL_TOOL_NAME : SHELL_TOOL_NAME]: createGatedShellTool(opts, opts.shell, subagentCtx.runKey, resolvedThreadId, toolCallLog, reads) } : {}),
         // TODO(auto-memory): memory tools temporarily disabled for this release — restore once the memory feature is refined.
         // // Memory tools — registered only when auto-memory is enabled and a workspace root is known
         // ...(autoMemoryEnabled && projectRootPath ? {
@@ -298,6 +304,7 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
 
     return {
         builtIns,
+        reads,
         withMcpTools(definitions, disconnected = new Set()) {
             unavailable = disconnected;
             const mcpTools = Object.fromEntries(Object.entries(bridgeMcpToolDefinitions(definitions, eventHandler)).map(([name, t]) => [name, deferTool(t)]));

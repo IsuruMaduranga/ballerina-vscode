@@ -22,38 +22,39 @@
  *
  * Tracking is by content: `file_read` and the agent's own writes record what the file held, and an
  * edit compares that with the file on disk. A change through the shell, the review's revert or the
- * user's editor therefore reads as stale. State is per chat thread and in memory; a compaction
- * restart or a cleared chat forgets it, since the agent no longer holds the content.
+ * user's editor therefore reads as stale. State is per chat thread, in memory and a digest per file;
+ * a compaction restart or a deleted thread forgets it, since the agent no longer holds the content.
  */
 
-export type FreshnessStatus = "fresh" | "unread" | "stale" | "absent";
+import { createHash } from "crypto";
+import { resolve } from "path";
 
-interface TrackedFile {
-    /** The content as of the last read or write ("" when `oversized`). */
-    content: string;
-    /** Too large to keep: seen, but with no content to compare. */
-    oversized: boolean;
-    at: number;
+export type FreshnessStatus = "fresh" | "unread" | "stale";
+
+/** Bounds memory on long chats: the least recently read or written file goes first. */
+const MAX_TRACKED_FILES = 300;
+
+/** Equality is all the guard asks of content, so a digest stands in for it. */
+function digest(content: string): string {
+    return createHash("sha1").update(content).digest("hex");
 }
 
-/** Bounds memory on long chats with large files. */
-const MAX_TRACKED_FILES = 300;
-const MAX_TRACKED_CHARS = 512 * 1024;
-
 export class ReadTracker {
-    private files = new Map<string, TrackedFile>();
+    /** Each file's digest as the agent last saw it, by resolved path, oldest first. */
+    private files = new Map<string, string>();
 
     /** Record what the file holds after the agent read or wrote it. */
-    observe(path: string, content: string, at = Date.now()): void {
-        this.files.set(path, content.length > MAX_TRACKED_CHARS ? { content: "", oversized: true, at } : { content, oversized: false, at });
+    observe(path: string, content: string): void {
+        const key = resolve(path);
+        this.files.delete(key);
+        this.files.set(key, digest(content));
         if (this.files.size > MAX_TRACKED_FILES) {
-            const oldest = [...this.files.entries()].sort((a, b) => a[1].at - b[1].at)[0];
-            if (oldest) { this.files.delete(oldest[0]); }
+            this.files.delete(this.files.keys().next().value as string);
         }
     }
 
     forget(path: string): void {
-        this.files.delete(path);
+        this.files.delete(resolve(path));
     }
 
     clear(): void {
@@ -61,16 +62,13 @@ export class ReadTracker {
     }
 
     /**
-     * `absent`: the file does not exist (a write creates it). `unread`: it exists and the agent has
-     * not read it. `stale`: it changed since the agent last saw it. `fresh`: what the agent saw is on disk.
+     * For an existing file holding `currentContent`: `unread` when the agent has not read it,
+     * `stale` when it changed since the agent last saw it, `fresh` when what it saw is on disk.
      */
-    status(path: string, currentContent: string | undefined): FreshnessStatus {
-        if (currentContent === undefined) { return "absent"; }
-        const known = this.files.get(path);
-        if (!known) { return "unread"; }
-        // Too large to compare: treat as fresh rather than block an edit nothing can reason about.
-        if (known.oversized) { return "fresh"; }
-        return known.content === currentContent ? "fresh" : "stale";
+    status(path: string, currentContent: string): FreshnessStatus {
+        const known = this.files.get(resolve(path));
+        if (known === undefined) { return "unread"; }
+        return known === digest(currentContent) ? "fresh" : "stale";
     }
 }
 
@@ -92,7 +90,7 @@ export function readTrackerFor(threadKey: string): ReadTracker {
     return tracker;
 }
 
-/** Forget what the agent read in a thread: a compaction restart, a cleared or deleted chat. */
+/** Forget what the agent read in a deleted thread. */
 export function forgetReads(threadKey: string): void {
     trackers.delete(threadKey);
 }
