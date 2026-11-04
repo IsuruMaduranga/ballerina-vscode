@@ -104,7 +104,7 @@ export function buildCompactionContinuation(summary: string, turnContext: readon
                 type: 'text',
                 text:
                     '<system-reminder>\nThis conversation ran out of context, so it was summarized. The context above ' +
-                    'is current, and the <User Query> above is the request you are working on. The summary below ' +
+                    'is current, and the user\'s message above is the request you are working on. The summary below ' +
                     'covers the conversation so far, including the work already done on that request.\n</system-reminder>\n\n' +
                     `${RESTART_SUMMARY_OPEN}${summary}${RESTART_SUMMARY_CLOSE}\n\n` +
                     'Continue from where you left off, without asking the user any further questions and without ' +

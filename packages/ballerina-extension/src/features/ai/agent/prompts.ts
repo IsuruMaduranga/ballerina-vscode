@@ -24,6 +24,7 @@ import { CLARIFY_TOOL } from "./tools/clarify";
 import { getLanglibInstructions } from "../utils/libs/langlibs";
 import { MODULE_INIT_CODING_RULES } from "./module-init-rules";
 import { formatCodeContext, formatProjectLayout } from "./utils";
+import { userMessageBlocks } from "./user-message";
 
 import { GenerateAgentCodeRequest, OperationType, ProjectSource } from "@wso2/ballerina-core";
 import { formatActiveFileReminder } from "./activeFileReminder";
@@ -412,17 +413,6 @@ ${attachment.content}
         }
     }
 
-    const queryParts = [params.usecase];
-    if (params.hiddenContext) {
-        queryParts.push(params.hiddenContext);
-    }
-    content.push({
-        type: 'text' as const,
-        text: `<User Query>
-${queryParts.join('\n\n')}
-</User Query>`
-    });
-
     // Turn-level reminders: background commands that finished while the chat was idle, and the services
     // still running (their ids for task_output / kill_task).
     for (const text of turnReminders) {
@@ -447,6 +437,9 @@ ${queryParts.join('\n\n')}
         type: 'text' as const,
         text: getSystemContextBlock()
     });
+
+    // The user's message comes last, after every context block of the turn.
+    content.push(...userMessageBlocks(params.usecase, params.hiddenContext));
 
     return content;
 }

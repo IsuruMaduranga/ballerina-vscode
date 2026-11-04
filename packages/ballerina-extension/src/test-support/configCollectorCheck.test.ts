@@ -14,6 +14,7 @@
  * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
+ */
 
 /**
  * ConfigCollector check mode: a package with no Config.toml yet is a normal state, and in a
