@@ -210,8 +210,8 @@ When generating Ballerina code strictly follow these syntax and structure guidel
 ${getLanglibInstructions()}
 
 ### Local Connectors
-- If the codebase structure shows connector modules in generated/moduleName, import using: import packageName.moduleName
-- Generated connector files appear under a \`<generated_files>\` block in the codebase structure as path-only entries (e.g. \`<file path="generated/moduleName/client.bal"/>\`) — no source content is included. Use the \`${FILE_READ_TOOL_NAME}\` tool with the listed path to fetch the content when needed.
+- Generated connector modules live under generated/moduleName; import one as: import packageName.moduleName
+- Read a generated connector's files (for example \`generated/moduleName/client.bal\`) with \`${FILE_READ_TOOL_NAME}\` when you need its API.
 
 ## Code Structure
 - In WSO2 Integrator, Automation is simply an app with a main method unless user specifically mentions a service. Cron Job kind of requirements are handled in the deployment level for Kubernetes or Integration platform level.
@@ -256,7 +256,8 @@ ${CONCURRENCY_CODING_RULES}
             FILE_WRITE_TOOL_NAME,
         ].join(
             ", "
-        )} tools. The complete existing source code will be provided in the <existing_code> section of the user prompt.
+        )} tools.
+- The project's source is not included in the conversation. Find code with the shell tool (\`ls\`, \`find\`, \`grep\`, \`cat\`; in PowerShell \`Get-ChildItem\`, \`Select-String\`), or from the codebase map when the user's message carries one, and read a file with ${FILE_READ_TOOL_NAME} before you edit it. Editing or overwriting an existing file you have not read, or one that changed since you read it, fails until you read it again.
 - When making replacements inside an existing file, provide the **exact old string** and the **exact new string** with all newlines, spaces, and indentation, being mindful to replace nearby occurrences together to minimize the number of tool calls.
 - Do NOT create a new markdown file to document each change or summarize your work unless specifically requested by the user.
 - Do not manually add/modify Dependencies.toml. For Config.toml configuration management, use ${CONFIG_COLLECTOR_TOOL}.
@@ -286,7 +287,7 @@ In WSO2 Integrator, a Ballerina workspace is called a **project** and a Ballerin
 # Running, invoking and tests
 - You should only Run or write tests if the user explicitly asks to do so.
 - Providing values to configurables is a runtime task and should only do it before running or executing the tests.
-- For Config.toml configuration value management, use ${CONFIG_COLLECTOR_TOOL}. The codebase listing shows <config_files main="present|absent" tests="present|absent"/> per project indicating whether Config.toml files exist.
+- For Config.toml configuration value management, use ${CONFIG_COLLECTOR_TOOL}; its CHECK mode reports whether Config.toml exists and which values it holds.
 - **Before EVERY ${CONFIG_COLLECTOR_TOOL} COLLECT call, check for connector-auth configurables.** For any connector client whose auth is fed by configurables, group those configurables under \`managedConnections\` keyed by the connector's library ("org/package") instead of leaving them in the plain \`variables\` array — even when a credential looks like an ordinary secret (a bearer/bot/access token used by a connector is a connector auth credential, not a plain variable). Tag each group with authType: \`oauth2RefreshToken\` (map clientId, clientSecret, refreshToken, refreshUrl) or \`staticToken\` (map the single token).
 - The auth structure does NOT change this. Some libraries expose the OAuth config via a directly-named type (e.g. \`oauth2:OAuth2RefreshTokenGrantConfig\`); others wrap it inside the connector's own config record (e.g. a \`ConnectionConfig\` whose \`auth\` field carries the credentials). Both are grouped the same way — look at the credential fields, not where they sit.
 - You do NOT decide which (library, shape) combinations are actually managed — the tool verifies each against the managed registry and silently downgrades unsupported ones to manual entry. So emit a group for ANY connector credential that fits one of the two shapes; grouping a candidate that turns out to be unsupported is harmless. That tolerance covers the library and shape only — every mapped name must be a configurable that already exists in source, spelled exactly as declared. Only leave TRULY non-connector secrets (e.g. a database password, or a standalone API key not tied to any connector) in \`variables\`.
@@ -310,7 +311,7 @@ Some tools are deferred: a system message lists them by name only, and a later o
 }
 
 /**
- * Generates user prompt content array with codebase structure for new threads
+ * Generates the turn's user prompt content: AGENTS.md, the codebase dump or map when asked for, reminders and the query
  * @param params Generation request parameters containing usecase, plan mode, code context, and file attachments
  * @param tempProjectPath Path to temp project
  * @param projects Project source information

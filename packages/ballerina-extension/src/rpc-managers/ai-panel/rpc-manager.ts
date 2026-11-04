@@ -172,6 +172,7 @@ import { runEventStore } from '../../features/ai/utils/run-event-store';
 import { runningChatShellTasks, stopChatShellTasks } from '../../features/ai/agent/background/registry';
 import { buildRunKey } from '../../features/ai/agent/subagents/types';
 import { resetShellGateState } from '../../features/ai/agent/tools/shell-authorizer';
+import { forgetReads } from '../../features/ai/agent/tools/read-tracker';
 import { backgroundWake } from '../../features/ai/agent/background/wake-host';
 import { runningProcessList, stopRunningProcess } from '../../features/ai/agent/background/running-list';
 import { readDiffOriginal, restoreWorkspaceSnapshot } from '../../views/ai-panel/checkpoint/checkpointUtils';
@@ -951,6 +952,7 @@ User reverted the last made changes. The files have been restored to the state b
         // The thread's in-memory shell state: session rules, pause counters, denials, wake state.
         const runKey = buildRunKey(projectRootPath, params.threadId);
         resetShellGateState(runKey);
+        forgetReads(runKey);
         backgroundWake.forget(runKey);
     }
 

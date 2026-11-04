@@ -44,6 +44,7 @@ import { createKillTaskTool, createTaskOutputTool } from './tools/task-tools';
 import { buildRunKey, KILL_TASK_TOOL_NAME, SUBAGENT_TOOL_NAME, SubagentRunContext, TASK_OUTPUT_TOOL_NAME } from './subagents/types';
 import { withBackgroundNotifications } from './background/registry';
 import { createShellTool, POWERSHELL_TOOL_NAME, SHELL_TOOL_NAME } from './tools/shell-tool';
+import { readTrackerFor } from './tools/read-tracker';
 import { createShellAuthorizer } from './tools/shell-authorizer';
 import { RunToolCallLog, withToolCallLog } from './auto-mode/run-tool-calls';
 import type { ShellRunSetup } from './shell/shell-session';
@@ -207,6 +208,8 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
     // In a workspace project, generated code goes into the package the user is working in.
     const activeProject = projects.find(project => project.isActive) ?? projects[0];
     const toolCallLog = new RunToolCallLog();
+    // What the agent has read in this thread: the file tools refuse to edit what it has not seen (read-tracker.ts).
+    const reads = readTrackerFor(subagentCtx.runKey);
     const tools = {
         [TASK_WRITE_TOOL_NAME]: createTaskWriteTool(
             eventHandler,
@@ -236,16 +239,16 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
             modifiedFiles
         ),
         [FILE_WRITE_TOOL_NAME]: createWriteTool(
-            withEditDiagnostics(editDiagnostics, createWriteExecute(eventHandler, tempProjectPath, modifiedFiles, allModifiedFiles, ctx))
+            withEditDiagnostics(editDiagnostics, createWriteExecute(eventHandler, tempProjectPath, modifiedFiles, allModifiedFiles, ctx, reads))
         ),
         [FILE_SINGLE_EDIT_TOOL_NAME]: createEditTool(
-            withEditDiagnostics(editDiagnostics, createEditExecute(eventHandler, tempProjectPath, modifiedFiles, allModifiedFiles, ctx))
+            withEditDiagnostics(editDiagnostics, createEditExecute(eventHandler, tempProjectPath, modifiedFiles, allModifiedFiles, ctx, reads))
         ),
         [FILE_BATCH_EDIT_TOOL_NAME]: createBatchEditTool(
-            withEditDiagnostics(editDiagnostics, createMultiEditExecute(eventHandler, tempProjectPath, modifiedFiles, allModifiedFiles, ctx))
+            withEditDiagnostics(editDiagnostics, createMultiEditExecute(eventHandler, tempProjectPath, modifiedFiles, allModifiedFiles, ctx, reads))
         ),
         [FILE_READ_TOOL_NAME]: createReadTool(
-            createReadExecute(eventHandler, tempProjectPath)
+            createReadExecute(eventHandler, tempProjectPath, reads)
         ),
         [DIAGNOSTICS_TOOL_NAME]: createDiagnosticsTool(tempProjectPath, eventHandler, editDiagnostics),
         // Migration source tools — registered only when a source project path is available

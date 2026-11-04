@@ -46,7 +46,8 @@ export interface ShellToolPolicy {
 
 export const NO_POWERSHELL_NOTICE =
     "The WSO2 Integrator Copilot has no shell tool on this machine: neither pwsh.exe on PATH nor Windows PowerShell " +
-    "(System32\\WindowsPowerShell\\v1.0\\powershell.exe) was found. It can still build, run and test through its own tools.";
+    "(System32\\WindowsPowerShell\\v1.0\\powershell.exe) was found. It can still edit and check code (file and diagnostics " +
+    "tools), but it cannot build, run or test, and it finds code through a map of the project.";
 
 export function shellToolPolicy({ platform, env, powershell }: ShellAvailability): ShellToolPolicy {
     if (platform === "win32") {

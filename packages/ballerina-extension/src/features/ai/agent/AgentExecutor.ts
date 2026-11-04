@@ -49,6 +49,9 @@ import { createToolRegistryParts, describeTools, isDeferredTool } from './tool-r
 import { listAllSkills } from './skills/context';
 import { AgentPrefixState, dropReasoning, hashPrefixBase, historyForRequest, planTurnPrefix, previousPrefixState, TurnPrefix, turnLeadMessages } from './prefix-state';
 import { shellRunSetup } from './shell/shell-session';
+import { buildMigrationCodebaseMap } from '../migration/project-map';
+import { readTrackerFor } from './tools/read-tracker';
+import { buildRunKey } from './subagents/types';
 
 import { liveMcpToolDefinitions, refreshMcpClientManager } from './mcp';
 import { getProjectSource } from '../utils/project/temp-project';
@@ -450,6 +453,14 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const projectRootPath = this.config.executionContext.workspacePath || this.config.executionContext.projectPath || '';
 
             const webSearchEnabled = isWebSearchEnabled();
+            // The shell tool's scratchpad and gate roots, shared by the turn notice and the tool registry.
+            const shell = shellRunSetup(projectRootPath, threadId);
+            // The whole project is not inlined: with a shell tool the model finds code itself, as the
+            // reference and Claude Code do; without one it gets the compact map to read from. A caller
+            // (migration) may still pass its own map.
+            const omitCodebaseDump = this.config.toolOptions?.omitCodebaseDump ?? true;
+            const codebaseMapText = this.config.toolOptions?.codebaseMapText
+                ?? (shell || !projectRootPath ? undefined : await buildMigrationCodebaseMap(projectRootPath));
             // The turn's user message, built here and again on every compaction restart.
             const buildTurnPrompt = (turnProjects: ProjectSource[], agentsMd: AgentsMdTurnPrep) => {
                 if (agentsMd.hashToPersist !== undefined) {
@@ -464,8 +475,8 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                     }
                 }
                 return getUserPrompt(params, tempProjectPath, turnProjects, webSearchEnabled, agentsMd.text, {
-                    omitCodebaseDump: this.config.toolOptions?.omitCodebaseDump,
-                    codebaseMapText: this.config.toolOptions?.codebaseMapText,
+                    omitCodebaseDump,
+                    codebaseMapText,
                 }, [this.config.toolOptions?.taskNotice, runningServicesReminder(runningServicesManager.getAll())]);
             };
             const userMessageContent = buildTurnPrompt(projects, await prepareAgentsMdForTurn(workspaceId || '', threadId));
@@ -485,8 +496,6 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             // Refresh before building the tool registry so it picks up mid-session mcp.json edits.
             await refreshMcpClientManager();
 
-            // The shell tool's scratchpad and gate roots, shared by the turn notice and the tool registry.
-            const shell = shellRunSetup(projectRootPath, threadId);
             // Set when the user declines a shell command; the loop then stops after that step.
             let userDeclinedShell = false;
 
@@ -868,13 +877,15 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         }
                         compactionRestarts++;
                         console.log(`[AgentExecutor] Compaction paused the turn; restarting from its summary (${compactionRestarts}/${MAX_COMPACTION_RESTARTS})`);
+                        // The summary does not carry the files the agent read, so it reads them again before editing.
+                        readTrackerFor(buildRunKey(projectRootPath, threadId)).clear();
                         carriedUsage = addUsage(carriedUsage, await totalUsage);
                         // The summary leaves out the turn's context blocks (the compaction prompt says
                         // they come back), so rebuild the turn's prompt from the workspace as it is now.
                         const [restartAgentsMd, currentProjects] = await Promise.all([
                             prepareAgentsMdForRestart(workspaceId || ''),
                             // The prompt reads no project source when the dump is off.
-                            this.config.toolOptions?.omitCodebaseDump
+                            omitCodebaseDump
                                 ? projects
                                 : getProjectSource(params.operationType, this.config.executionContext),
                         ]);

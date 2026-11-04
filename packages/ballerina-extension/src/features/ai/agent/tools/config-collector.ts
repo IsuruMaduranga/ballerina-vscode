@@ -229,8 +229,7 @@ export function createConfigCollectorTool(
         description: `
 Manages configuration values in Config.toml for Ballerina integrations securely.
 
-The codebase listing includes a <config_files main="present|absent" tests="present|absent"/> tag per project showing the initial state.
-Before collecting, always call CHECK first (without variableNames) to discover any existing variable names and reuse them — Config.toml may have been added mid-session even if the listing shows absent.
+Before collecting, always call CHECK first (without variableNames) to learn whether Config.toml exists and discover any existing variable names to reuse.
 
 IMPORTANT: Only call COLLECT mode immediately before executing the project (running or testing). Do NOT call it during code writing or implementation — even if the code has sensitive configurables. Write the code first, then collect config only when you are about to run or test.
 

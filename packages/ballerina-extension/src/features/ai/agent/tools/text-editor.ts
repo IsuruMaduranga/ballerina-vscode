@@ -27,6 +27,7 @@ import { addToIntegration } from "../../../../rpc-managers/ai-panel/utils";
 import { recordAiTouchedFile } from "../../../../rpc-managers/diagram-validity";
 import { seedNewPackageBaseline } from "../../utils/project/ls-schema-notifications";
 import { hasUnsavedChanges, saveIfUnsaved, unsavedChangesError } from "../../utils/project/unsaved-documents";
+import { type ReadTracker, STALE_REASON, UNREAD_REASON } from "./read-tracker";
 
 /**
  * Serializes the read-modify-write cycle per file. Each tool reads from disk and writes back
@@ -275,7 +276,36 @@ const ErrorMessages = {
   WRITE_FAILED: 'Write operation failed',
   WRITE_NOT_PERSISTED: 'Change was not persisted to disk',
   UNSAVED_CHANGES: 'File has unsaved changes in the editor',
+  FILE_NOT_READ: 'File has not been read',
+  FILE_CHANGED_SINCE_READ: 'File changed since it was read',
 };
+
+/**
+ * The read-before-edit refusal (`read-tracker.ts`) for an edit or overwrite of `fullPath`, whose
+ * content is `current`; undefined when the agent has seen this content, or when nothing tracks reads.
+ */
+function readBeforeEditRefusal(reads: ReadTracker | undefined, fullPath: string, current: string, file_path: string, toolName: string): TextEditorResult | undefined {
+  if (!reads) { return undefined; }
+  const status = reads.status(path.resolve(fullPath), current);
+  if (status === 'unread') {
+    return { success: false, message: UNREAD_REASON(file_path, toolName, FILE_READ_TOOL_NAME), error: `Error: ${ErrorMessages.FILE_NOT_READ}` };
+  }
+  if (status === 'stale') {
+    return { success: false, message: STALE_REASON(file_path, FILE_READ_TOOL_NAME), error: `Error: ${ErrorMessages.FILE_CHANGED_SINCE_READ}` };
+  }
+  return undefined;
+}
+
+/** Record what `fullPath` holds on disk now, after the agent read or wrote it. */
+function observeOnDisk(reads: ReadTracker | undefined, fullPath: string): void {
+  if (!reads) { return; }
+  const key = path.resolve(fullPath);
+  try {
+    reads.observe(key, fs.readFileSync(fullPath, 'utf-8'));
+  } catch {
+    reads.forget(key);
+  }
+}
 
 /** Writes replace the whole document, so a file with unsaved editor text that won't save must not be touched. */
 async function refuseIfUnsaved(
@@ -393,7 +423,8 @@ export function createWriteExecute(
   tempProjectPath: string,
   modifiedFiles?: string[],
   allModifiedFiles?: Set<string>,
-  ctx?: ExecutionContext
+  ctx?: ExecutionContext,
+  reads?: ReadTracker
 ) {
   return async (args: {
     file_path: string;
@@ -457,6 +488,14 @@ export function createWriteExecute(
       }
     }
 
+    const overwriteRefusal = fileExists && preEditRaw.trim().length > 0
+      ? readBeforeEditRefusal(reads, fullPath, preEditRaw, file_path, FILE_WRITE_TOOL_NAME)
+      : undefined;
+    if (overwriteRefusal) {
+      emitFileToolResult(eventHandler, FILE_WRITE_TOOL_NAME, overwriteRefusal, file_path);
+      return overwriteRefusal;
+    }
+
     const lineCount = content.split('\n').length;
     const action: 'created' | 'updated' = fileExists ? 'updated' : 'created';
 
@@ -491,6 +530,7 @@ export function createWriteExecute(
       return result;
     }
 
+    observeOnDisk(reads, fullPath);
     console.log(`[FileWriteTool] Successfully ${action} file: ${file_path} with ${lineCount} lines.`);
     const result = {
       success: true,
@@ -514,7 +554,8 @@ export function createEditExecute(
   tempProjectPath: string,
   modifiedFiles?: string[],
   allModifiedFiles?: Set<string>,
-  ctx?: ExecutionContext
+  ctx?: ExecutionContext,
+  reads?: ReadTracker
 ) {
   return async (args: {
     file_path: string;
@@ -578,6 +619,11 @@ export function createEditExecute(
 
     // Read file content and normalize line endings (CRLF → LF)
     const rawContent = fs.readFileSync(fullPath, 'utf-8');
+    const editRefusal = readBeforeEditRefusal(reads, fullPath, rawContent, file_path, FILE_SINGLE_EDIT_TOOL_NAME);
+    if (editRefusal) {
+      emitFileToolResult(eventHandler, FILE_SINGLE_EDIT_TOOL_NAME, editRefusal, file_path);
+      return editRefusal;
+    }
     const [content, originalEol] = readAndNormalize(rawContent);
 
     // Try exact match first (99% case - no normalization needed)
@@ -653,6 +699,7 @@ export function createEditExecute(
       return result;
     }
 
+    observeOnDisk(reads, fullPath);
     const replacedCount = replace_all ? occurrenceCount : 1;
     console.log(`[FileEditTool] Successfully replaced ${replacedCount} occurrence(s) in file: ${file_path}`);
     const result = {
@@ -676,7 +723,8 @@ export function createMultiEditExecute(
   tempProjectPath: string,
   modifiedFiles?: string[],
   allModifiedFiles?: Set<string>,
-  ctx?: ExecutionContext
+  ctx?: ExecutionContext,
+  reads?: ReadTracker
 ) {
   return async (args: {
     file_path: string;
@@ -738,6 +786,11 @@ export function createMultiEditExecute(
 
     // Read file content and normalize line endings (CRLF → LF)
     const rawContent = fs.readFileSync(fullPath, 'utf-8');
+    const batchRefusal = readBeforeEditRefusal(reads, fullPath, rawContent, file_path, FILE_BATCH_EDIT_TOOL_NAME);
+    if (batchRefusal) {
+      emitFileToolResult(eventHandler, FILE_BATCH_EDIT_TOOL_NAME, batchRefusal, file_path);
+      return batchRefusal;
+    }
     const [originalContent, originalEol] = readAndNormalize(rawContent);
 
     // First pass: check if all edits work with exact matching (99% case)
@@ -833,6 +886,7 @@ export function createMultiEditExecute(
       return result;
     }
 
+    observeOnDisk(reads, fullPath);
     console.log(`[FileMultiEditTool] Successfully applied ${edits.length} edits to file: ${file_path}`);
     const result = {
       success: true,
@@ -852,7 +906,8 @@ export function createMultiEditExecute(
 
 export function createReadExecute(
   eventHandler: CopilotEventHandler,
-  tempProjectPath: string
+  tempProjectPath: string,
+  reads?: ReadTracker
 ) {
   return async (args: {
     file_path: string;
@@ -903,7 +958,10 @@ export function createReadExecute(
     emitFileToolCall(eventHandler, FILE_READ_TOOL_NAME, file_path);
 
     // Read file content and normalize line endings (CRLF → LF)
-    const content = normalizeToLf(fs.readFileSync(fullPath, 'utf-8'));
+    const raw = fs.readFileSync(fullPath, 'utf-8');
+    // A ranged read counts as a read, as in Claude Code: the agent chose what it needed to see.
+    reads?.observe(path.resolve(fullPath), raw);
+    const content = normalizeToLf(raw);
 
     // Handle empty file
     if (content.trim().length === 0) {
@@ -1004,7 +1062,7 @@ export function createWriteTool(execute: WriteExecute) {
     - This tool will return an error if there is a file with non-empty content at the provided path, unless **overwrite** is set to true.
     - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
     - If this is an existing file, Use ${FILE_BATCH_EDIT_TOOL_NAME} or ${FILE_SINGLE_EDIT_TOOL_NAME} to modify it instead.
-    - Use **overwrite** only as a last resort, to rewrite a file whose existing content is corrupted or otherwise cannot be repaired with ${FILE_SINGLE_EDIT_TOOL_NAME} (for example when the text you need to replace is duplicated throughout the file, so no old_string can be made unique). Read the file first and supply the complete intended content, since everything currently in the file is discarded.
+    - Use **overwrite** only as a last resort, to rewrite a file whose existing content is corrupted or otherwise cannot be repaired with ${FILE_SINGLE_EDIT_TOOL_NAME} (for example when the text you need to replace is duplicated throughout the file, so no old_string can be made unique). Read the file first and supply the complete intended content, since everything currently in the file is discarded; overwriting a file you have not read, or one that changed since you read it, fails.
     - NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
     - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.`,
     inputSchema: z.object({
@@ -1024,8 +1082,8 @@ export function createEditTool(execute: EditExecute) {
   return tool({
     description: `Performs exact string replacements in files. 
     Usage:
-    - You must read the chat history at least once before editing, as the user’s message contains the content of the each source file. This tool will error if you attempt an edit without reading the chat history. 
-    - When editing text content of a file that you obtained from the chat history you read earlier, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix.
+    - You must read the file with ${FILE_READ_TOOL_NAME} before editing it. This tool fails on a file you have not read, or one that changed since you read it; read it again then.
+    - When editing text you obtained from ${FILE_READ_TOOL_NAME}, preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix.
     - If there are multiple edits to be made to the same file, prefer using the ${FILE_BATCH_EDIT_TOOL_NAME} tool instead of this one.
     - Do not create new files using this tool. Only edit existing files. If the file does not exist, Use ${FILE_WRITE_TOOL_NAME} to create new files.
     - NEVER proactively edit documentation files (*.md) or README files. Only edit documentation files if explicitly requested by the User.
@@ -1047,7 +1105,7 @@ export function createBatchEditTool(execute: MultiEditExecute) {
   return tool({
     description: `This is a tool for making multiple edits to a single file in one operation. It is built on top of the ${FILE_SINGLE_EDIT_TOOL_NAME} tool and allows you to perform multiple find-and-replace operations efficiently. Prefer this tool over the ${FILE_SINGLE_EDIT_TOOL_NAME} tool when you need to make multiple edits to the same file.
     Before using this tool:
-    1. You must read the chat history at least once before editing, as the user’s message contains the content of the each source file and the context.
+    1. You must read the file with ${FILE_READ_TOOL_NAME} first. This tool fails on a file you have not read, or one that changed since you read it.
     2. Verify the file path is correct
     3. Do not create new files using this tool. Only edit existing files. If the file does not exist, Use ${FILE_WRITE_TOOL_NAME} to create new files.
     To make multiple file edits, provide the following:
@@ -1094,7 +1152,7 @@ export function createBatchEditTool(execute: MultiEditExecute) {
 export function createReadTool(execute: ReadExecute) {
   return tool({
     description: `Reads a file from the local filesystem.
-    ALWAYS prefer reading files mentioned in the user’s message in the chat history first. Only use this tool if you need to read a file that is not present in the chat history.
+    Read a file with this tool before you edit or overwrite it: the edit tools fail on a file you have not read, or one that changed since you read it.
     NOTE: The following files are restricted and cannot be read: ${RESTRICTED_READ_FILES.join(", ")}.
     Usage:
     - For workspace projects, include the package directory prefix in the file path (e.g., "myPackage/main.bal").
