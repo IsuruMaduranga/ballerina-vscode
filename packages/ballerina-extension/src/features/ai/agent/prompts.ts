@@ -25,8 +25,6 @@ import { getLanglibInstructions } from "../utils/libs/langlibs";
 import { MODULE_INIT_CODING_RULES } from "./module-init-rules";
 import { formatCodeContext, formatProjectLayout } from "./utils";
 
-// The turn builder (AgentExecutor) reaches the prompt helpers through this module.
-export { formatGeneratedFiles } from "./utils";
 import { GenerateAgentCodeRequest, OperationType, ProjectSource } from "@wso2/ballerina-core";
 import { formatActiveFileReminder } from "./activeFileReminder";
 import { DATA_BINDING_CODING_RULES } from "./data-binding-rules";
@@ -85,7 +83,7 @@ If a <system-reminder> below provides project instructions or AGENTS.md content,
 
 # Scope of Your Actions
 
-You act only through your tools; there is no shell behind them. Within the project you can write code and configuration, and run, test or call the integration.
+You act only through your tools, the shell tool among them. Within the project you can write code and configuration, and build, run, test or call the integration.
 
 Anything outside the project — a running server or database, installed software, an account, somewhere to deploy to — is the user's to provide. Code you write cannot provide it either: code that starts or installs something still needs whatever it runs on to already be on the user's machine. You can write the code and configuration for such things, but you can use one only when the user already has it, with its settings collected through ${CONFIG_COLLECTOR_TOOL} rather than asked for in chat.
 
@@ -148,7 +146,7 @@ This plan will be visible to the user and the execution will be guided on the ta
    - When implementing external API integrations:
      - First check if any available skill's trigger condition matches — invoke that skill and follow its library selection and tool-use guidance.
      - If no skill applies, call ${SUBAGENT_TOOL_NAME} (subagent_type: Librarian) with a purpose-written brief of what the integration must do; its report is your only source of library signatures (see "Library Usage").
-     - If you think user is refering to an ambiguous API, or internal API, call ${CONNECTOR_GENERATOR_TOOL} to generate a connector for it. If the user has already supplied the spec (an attached file, a URL, or pasted text), pass it to the tool; it asks the user for the spec only when none was supplied. Whenever the user supplies an OpenAPI spec, call ${CONNECTOR_GENERATOR_TOOL} with it first, then build on the generated code and fix any remaining issues. Use mode "service" when the user wants to create, build or implement the API in the spec, and mode "client" (the default) when they want to call it For a passthrough or proxy of that API, call it in both modes.
+     - If you think user is refering to an ambiguous API, or internal API, call ${CONNECTOR_GENERATOR_TOOL} (deferred: load it with ${TOOL_SEARCH_TOOL_NAME} first) to generate a connector for it. If the user has already supplied the spec (an attached file, a URL, or pasted text), pass it to the tool; it asks the user for the spec only when none was supplied. Whenever the user supplies an OpenAPI spec, call ${CONNECTOR_GENERATOR_TOOL} with it first, then build on the generated code and fix any remaining issues. Use mode "service" when the user wants to create, build or implement the API in the spec, and mode "client" (the default) when they want to call it For a passthrough or proxy of that API, call it in both modes.
    - Before marking the task as completed, check the paths the user asked to expose against the path rule in Code Structure and fix any that break it, then fix the compiler errors your edits reported (see "File modifications").
    - Mark task as completed using ${TASK_WRITE_TOOL_NAME} (send ALL tasks, no approval flags) — the agent continues automatically. **IMPORTANT: When marking a task as completed in a message with other tool calls, ${TASK_WRITE_TOOL_NAME} MUST always be the LAST tool call in the message.**
    - After completing a logical unit of work (a set of related tasks), set **requestReview: true** on the ${TASK_WRITE_TOOL_NAME} call to let the user review before continuing. Do NOT set this after every single task.
@@ -259,8 +257,8 @@ ${CONCURRENCY_CODING_RULES}
             FILE_WRITE_TOOL_NAME,
         ].join(
             ", "
-        )} tools.
-- The project's source is not included in the conversation. Find code with the shell tool when you have one (\`ls\`, \`find\`, \`grep\`, \`cat\`; in PowerShell \`Get-ChildItem\`, \`Select-String\`), or from the codebase map when the user's message carries one, and read a file before you edit it, with ${FILE_READ_TOOL_NAME} or, in bash, a \`cat\` that prints it whole. Editing or overwriting an existing file you have not read, or one that changed since you read it, fails until you read it again.
+        )} tools. Each edit returns the compiler errors the language server found after the change; a file written or changed through the shell (\`sed -i\`, \`echo >\`, a heredoc, \`Set-Content\`) does not, so never change a project file that way. Commands that generate or reformat code, such as \`bal format\` or \`bal openapi\`, are the exception.
+- The project's source is not included in the conversation. Find code with the shell tool (\`ls\`, \`find\`, \`grep\`, \`cat\`; in PowerShell \`Get-ChildItem\`, \`Select-String\`), or from the codebase map when the user's message carries one, and read a file before you edit it, with ${FILE_READ_TOOL_NAME} or, in bash, a \`cat\` that prints it whole. Editing or overwriting an existing file you have not read, or one that changed since you read it, fails until you read it again.
 - When making replacements inside an existing file, provide the **exact old string** and the **exact new string** with all newlines, spaces, and indentation, being mindful to replace nearby occurrences together to minimize the number of tool calls.
 - Do NOT create a new markdown file to document each change or summarize your work unless specifically requested by the user.
 - Do not manually add/modify Dependencies.toml. For Config.toml configuration management, use ${CONFIG_COLLECTOR_TOOL}.
@@ -333,7 +331,7 @@ export function getUserPrompt(
     projects: ProjectSource[],
     webSearchEnabled: boolean,
     agentsMdBlockText?: string,
-    /** The compact codebase map, sent when the agent has no shell to find code with (or a caller's own). */
+    /** A caller's compact codebase map (migration); the agent otherwise finds code through the shell. */
     codebaseMapText?: string,
     turnReminders: string[] = [],
 ) {
@@ -346,7 +344,7 @@ export function getUserPrompt(
         });
     }
 
-    // The project's source is not inlined: the agent finds code through the shell, or the map.
+    // The project's source is not inlined: the agent finds code through the shell, or a caller's map.
     const projectLayout = formatProjectLayout(projects);
     if (projectLayout) {
         content.push({ type: 'text' as const, text: projectLayout });

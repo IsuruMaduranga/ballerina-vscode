@@ -25,7 +25,7 @@ import { AnthropicEffort, resolveProviderModelOptions } from '../utils/provider-
 import { populateHistoryForAgent, getErrorMessage, getErrorCode, buildChatError } from '../utils/ai-utils';
 import { seedAiBaselines } from '../utils/project/ls-schema-notifications';
 import { mapWithConcurrency } from '../utils/concurrency';
-import { formatGeneratedFiles, getNPSuffix, getSystemPrompt, getUserPrompt } from './prompts';
+import { getNPSuffix, getSystemPrompt, getUserPrompt } from './prompts';
 import { isWebSearchEnabled } from './tools/web-search-setting';
 import { shouldFailForMissingCompaction } from './compaction-gate';
 import {
@@ -48,8 +48,8 @@ import { GenerationType } from '../utils/libs/libraries';
 import { createToolRegistryParts, describeTools, isDeferredTool } from './tool-registry';
 import { listAllSkills } from './skills/context';
 import { AgentPrefixState, dropReasoning, hashPrefixBase, historyForRequest, planTurnPrefix, previousPrefixState, TurnPrefix, turnLeadMessages } from './prefix-state';
+import { NO_POWERSHELL_NOTICE } from './shell/shell-policy';
 import { shellRunSetup } from './shell/shell-session';
-import { buildMigrationCodebaseMap } from '../migration/project-map';
 
 import { liveMcpToolDefinitions, refreshMcpClientManager } from './mcp';
 import { getProjectSource } from '../utils/project/temp-project';
@@ -407,6 +407,17 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
         const projectId = await getHashedProjectId(this.config.executionContext.workspacePath || this.config.executionContext.projectPath);
 
         try {
+            // Use chatStorage.threadId so onStepFinish writes to the same thread that addGeneration created.
+            const threadId = this.config.chatStorage?.threadId ?? 'default';
+            const projectRootPath = this.config.executionContext.workspacePath || this.config.executionContext.projectPath || '';
+            // The shell tool's scratchpad and gate roots, shared by the turn notice and the tool registry.
+            // Building, running and testing go through the shell, so a Windows machine with no
+            // PowerShell gets no run at all, only how to install or enable it.
+            const shell = shellRunSetup(projectRootPath, threadId);
+            if (!shell && projectRootPath) {
+                throw new Error(NO_POWERSHELL_NOTICE);
+            }
+
             // 1. Get project sources from temp directory
             const projects: ProjectSource[] = await getProjectSource(
                 params.operationType,
@@ -437,8 +448,6 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             }
 
             const workspaceId = this.config.executionContext.workspacePath || this.config.executionContext.projectPath;
-            // Use chatStorage.threadId so onStepFinish writes to the same thread that addGeneration created.
-            const threadId = this.config.chatStorage?.threadId ?? 'default';
             const projectState = {
                 modifiedFiles: modifiedFiles,
                 tempProjectPath,
@@ -449,22 +458,12 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
             const loginMethod = await getLoginMethod();
             const model = await getAnthropicClient(ANTHROPIC_SONNET);
 
-            const projectRootPath = this.config.executionContext.workspacePath || this.config.executionContext.projectPath || '';
-
             const webSearchEnabled = isWebSearchEnabled();
-            // The shell tool's scratchpad and gate roots, shared by the turn notice and the tool registry.
-            const shell = shellRunSetup(projectRootPath, threadId);
-            // The whole project is not inlined: with a shell tool the model finds code itself, as Claude
-            // Code does; without one it gets the compact map, read from the workspace
-            // as it is now. A caller (migration) may pass its own map.
-            const codebaseMap = async (turnProjects: ProjectSource[]): Promise<string | undefined> => {
-                if (this.config.toolOptions?.codebaseMapText !== undefined) { return this.config.toolOptions.codebaseMapText; }
-                if (shell || !projectRootPath) { return undefined; }
-                // The map's walk skips generated/, so its connectors are listed by path beside it.
-                return [await buildMigrationCodebaseMap(projectRootPath), formatGeneratedFiles(turnProjects)].filter(Boolean).join("\n");
-            };
+            // The whole project is not inlined: the model finds code through the shell. A caller
+            // (migration) may pass its own map.
+            const codebaseMapText = this.config.toolOptions?.codebaseMapText;
             // The turn's user message, built here and again on every compaction restart.
-            const buildTurnPrompt = (turnProjects: ProjectSource[], agentsMd: AgentsMdTurnPrep, codebaseMapText: string | undefined) => {
+            const buildTurnPrompt = (turnProjects: ProjectSource[], agentsMd: AgentsMdTurnPrep) => {
                 if (agentsMd.hashToPersist !== undefined) {
                     const generation = chatStateStorage.getGeneration(this.chatStoreKey, threadId, this.config.generationId);
                     if (generation) {
@@ -479,8 +478,8 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                 return getUserPrompt(params, tempProjectPath, turnProjects, webSearchEnabled, agentsMd.text, codebaseMapText,
                     [this.config.toolOptions?.taskNotice, runningServicesReminder(runningServicesManager.getAll())]);
             };
-            const [turnAgentsMd, turnMap] = await Promise.all([prepareAgentsMdForTurn(workspaceId || '', threadId), codebaseMap(projects)]);
-            const userMessageContent = buildTurnPrompt(projects, turnAgentsMd, turnMap);
+            const turnAgentsMd = await prepareAgentsMdForTurn(workspaceId || '', threadId);
+            const userMessageContent = buildTurnPrompt(projects, turnAgentsMd);
 
             // Ensure the pre-edit snapshot exists before any tool can run.
             await chatStateStorage.waitForCheckpointCapture(this.config.generationId);
@@ -888,8 +887,8 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                         // they come back), so rebuild the turn's prompt from the workspace as it is now.
                         // The project as it is now: the turn may have added a package or a connector.
                         const currentProjects = await getProjectSource(params.operationType, this.config.executionContext);
-                        const [restartAgentsMd, restartMap] = await Promise.all([prepareAgentsMdForRestart(workspaceId || ''), codebaseMap(currentProjects)]);
-                        const continuation = buildCompactionContinuation(summary, buildTurnPrompt(currentProjects, restartAgentsMd, restartMap));
+                        const restartAgentsMd = await prepareAgentsMdForRestart(workspaceId || '');
+                        const continuation = buildCompactionContinuation(summary, buildTurnPrompt(currentProjects, restartAgentsMd));
                         // A new history starts here, so its prefix is frozen afresh from the live state:
                         // every skill and tool is listed again, including those announced only in
                         // notices the summary replaced.

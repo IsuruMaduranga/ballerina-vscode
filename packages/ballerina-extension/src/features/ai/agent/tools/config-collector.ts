@@ -38,7 +38,7 @@ import {
     arrayElementType,
 } from "../../../../utils/toml-utils";
 import { ManagedConnectionGroup } from "@wso2/ballerina-core/lib/state-machine-types";
-import { RecoverableAgentError, resolveContained, resolvePackageBasePath } from "./path-utils";
+import { isWorkspaceTempProject, RecoverableAgentError, resolveContained, resolvePackageBasePath } from "./path-utils";
 import { getOrgPackageName } from "../../../../utils/config";
 import { langClient } from "../../activator";
 import { extension } from "../../../../BalExtensionContext";
@@ -102,7 +102,7 @@ const ConfigCollectorSchema = z.object({
     managedConnections: z.array(ManagedConnectionSchema).optional().describe("Managed connections, one per connector instance. Each is tagged with authType: 'oauth2RefreshToken' (clientId/clientSecret/refreshToken/refreshUrl) or 'staticToken' (a single token field). Repeat the same library for two clients of it. The tool verifies the (library, shape) is a managed provider; unsupported combinations fall back to manual entry."),
     packagePath: z.string().optional().describe(
         "Relative path to the target package within the workspace project (e.g., \"pkg1\"). " +
-        "Required for workspace projects so Config.toml is written inside the correct package, not the workspace root. " +
+        "Defaults to the active package in a workspace project; pass it to target another package. " +
         "Omit for single-package (non-workspace) projects."
     ),
 });
@@ -169,6 +169,8 @@ function classifySubmission(
 export interface ConfigCollectorPaths {
     tempPath: string;
     workspacePath: string;
+    /** The active package's path in a workspace project: the default when the agent passes no packagePath. */
+    activePackagePath?: string;
 }
 
 // Helper functions
@@ -248,7 +250,7 @@ Operation Modes:
    - User may skip individual fields ('userSkipped' lists them). Do not re-prompt immediately. Only ask once more later if a value is truly needed for the run; if the user skips again, stop calling collect and tell them in chat what is missing
    - Pre-populates from existing Config.toml if it exists
    - When running tests, use isTestConfig: true — this is the only collect call needed; writes to tests/Config.toml after user confirms
-   - For workspace projects, you MUST pass packagePath so the file is written inside the target package (not the workspace root)
+   - For workspace projects, packagePath defaults to the active package; pass it to target another package
    - Example: { mode: "collect", variables: [{ name: "stripeApiKey", description: "Stripe API key", secret: true }] }
    - Example (test): { mode: "collect", variables: [...], isTestConfig: true }
    - Example (workspace): { mode: "collect", variables: [...], packagePath: "pkg1" }
@@ -348,6 +350,8 @@ export async function ConfigCollectorTool(
     }
 
     const requestId = crypto.randomUUID();
+    // In a workspace, an omitted packagePath means the package the user is working in.
+    const packagePath = input.packagePath || (isWorkspaceTempProject(paths.tempPath) ? paths.activePackagePath || undefined : undefined);
 
     try {
         switch (input.mode) {
@@ -376,7 +380,7 @@ export async function ConfigCollectorTool(
                     requestId,
                     input.isTestConfig,
                     modifiedFiles,
-                    input.packagePath,
+                    packagePath,
                     metas.length > 0 ? metas : undefined
                 );
             }
@@ -387,7 +391,7 @@ export async function ConfigCollectorTool(
                     input.filePath,
                     paths,
                     input.isTestConfig,
-                    input.packagePath
+                    packagePath
                 );
 
             case "remove":
@@ -396,7 +400,7 @@ export async function ConfigCollectorTool(
                     paths,
                     input.isTestConfig,
                     modifiedFiles,
-                    input.packagePath
+                    packagePath
                 );
 
             case "rename":
@@ -405,7 +409,7 @@ export async function ConfigCollectorTool(
                     paths,
                     input.isTestConfig,
                     modifiedFiles,
-                    input.packagePath
+                    packagePath
                 );
 
             default:
@@ -903,16 +907,9 @@ async function handleCheckMode(
     }
     await saveConfigOrThrow(configPath, packageBasePath);
 
-    if (!fs.existsSync(configPath)) {
-        return {
-            success: false,
-            message: `${configFileName} not found. Use collect mode to create it.`,
-            error: "FILE_NOT_FOUND",
-            errorCode: "FILE_NOT_FOUND",
-        };
-    }
-
-    const status = getAllConfigStatus(configPath, orgName, packageName);
+    // No file yet is a normal state, not a failure: nothing has been configured, so every name asked about is missing.
+    const exists = fs.existsSync(configPath);
+    const status = exists ? getAllConfigStatus(configPath, orgName, packageName) : {};
 
     // When specific names are provided, pad any that are absent from the file as "missing"
     if (variableNames && variableNames.length > 0) {
@@ -931,7 +928,7 @@ async function handleCheckMode(
     return {
         success: true,
         message:
-            `${configFileName}: ` +
+            `${configFileName}${exists ? "" : " does not exist yet; collect mode creates it"}: ` +
             `filled: [${filledNames.join(", ") || "none"}], ` +
             `missing: [${missingNames.join(", ") || "none"}]`,
         status,

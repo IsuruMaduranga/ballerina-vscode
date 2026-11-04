@@ -36,7 +36,7 @@ jest.mock("../stateMachine", () => ({
 
 jest.mock("../rpc-managers/ai-panel/utils", () => ({ addToIntegration: jest.fn() }));
 
-import { formatGeneratedFiles, formatProjectLayout } from "../features/ai/agent/utils";
+import { formatProjectLayout } from "../features/ai/agent/utils";
 
 const projects = [
     { projectName: "orders", packagePath: "orders", isActive: true, sourceFiles: [] },
@@ -56,23 +56,5 @@ describe("formatProjectLayout", () => {
         expect(text).toContain("- orders (package orders) — active");
         expect(text).toContain("- shared (package shared)\n");
         expect(text).toContain("start with the package path");
-    });
-});
-
-describe("formatGeneratedFiles", () => {
-    const withConnector = [{
-        projectName: "orders", packagePath: "orders", sourceFiles: [],
-        projectModules: [
-            { moduleName: "openai", isGenerated: true, sourceFiles: [{ filePath: "client.bal", content: "x" }] },
-            { moduleName: "helpers", isGenerated: false, sourceFiles: [{ filePath: "h.bal", content: "x" }] },
-        ],
-    }] as any;
-
-    it("lists generated connector files by path, prefixed with the package path in a workspace", () => {
-        mockProjectKind = "BUILD_PROJECT";
-        expect(formatGeneratedFiles(withConnector)).toBe('<generated_files>\n<file path="generated/openai/client.bal"/>\n</generated_files>');
-        mockProjectKind = "WORKSPACE_PROJECT";
-        expect(formatGeneratedFiles(withConnector)).toContain('<file path="orders/generated/openai/client.bal"/>');
-        expect(formatGeneratedFiles(projects)).toBe("");
     });
 });

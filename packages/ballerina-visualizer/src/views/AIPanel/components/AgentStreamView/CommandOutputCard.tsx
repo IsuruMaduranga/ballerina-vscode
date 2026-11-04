@@ -48,7 +48,7 @@ const StatusText = styled.span<{ status: "running" | "success" | "error" }>`
     flex-shrink: 0;
 `;
 
-const ChevronIcon = styled.span<{ expanded: boolean }>`
+export const ChevronIcon = styled.span<{ expanded: boolean }>`
     font-size: 11px;
     flex-shrink: 0;
     color: var(--vscode-descriptionForeground);
@@ -182,6 +182,19 @@ function getStatusLabel(isResult: boolean, toolName: string | undefined, toolOut
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+/** A command and what it printed: the expanded body of a command card or a compact shell row. */
+export const CommandOutput: React.FC<{ command?: string; output: string; className?: string }> = ({ command, output, className }) => (
+    <OutputBlock className={className}>
+        {command && (
+            <CommandLine>
+                <span style={{ color: "var(--vscode-charts-green, #388a34)", userSelect: "none" }}>$</span>
+                <span>{command}</span>
+            </CommandLine>
+        )}
+        <OutputPre>{output}</OutputPre>
+    </OutputBlock>
+);
+
 interface CommandOutputCardProps {
     toolName?: string;
     toolInput?: any;
@@ -232,17 +245,7 @@ const CommandOutputCard: React.FC<CommandOutputCardProps> = ({ toolName, toolInp
                 )}
             </CardToggleHeader>
 
-            {expanded && output && (
-                <OutputBlock>
-                    {command && (
-                        <CommandLine>
-                            <span style={{ color: "var(--vscode-charts-green, #388a34)", userSelect: "none" }}>$</span>
-                            <span>{command}</span>
-                        </CommandLine>
-                    )}
-                    <OutputPre>{output}</OutputPre>
-                </OutputBlock>
-            )}
+            {expanded && output && <CommandOutput command={command} output={output} />}
         </InlineCard>
     );
 };

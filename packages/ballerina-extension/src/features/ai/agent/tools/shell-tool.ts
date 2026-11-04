@@ -14,12 +14,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import { readdirSync } from 'fs';
+import { resolve } from 'path';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { CopilotEventHandler } from '../../utils/events';
 import type { ShellAuthorization } from '../auto-mode/gate';
 import { bashToolDescription, SHELL_TOOL_NAME } from '../shell/bash-description';
 import { bashGuardReason } from '../shell/guards';
+import { bashExploreSummary, powershellExploreSummary, type ShellExploreSummary } from '../shell/explore-summary';
 import { startAndEnd } from '../shell/output';
 import { runShellCall, type ShellCallContext, type ShellCallParams } from '../shell/shell-call';
 import { bashSpawn, powerShellEdition, powerShellSpawn, withPowerShellUtf8 } from '../shell/shell-spawn';
@@ -159,7 +162,11 @@ export function createShellTool(opts: ShellToolOptions) {
             } else {
                 // A nonzero exit the command's semantics call success (grep's "no match") reads as completed.
                 const line = result.finish;
+                // A command the pre-gate proved writes nothing shows as a compact row when it only
+                // listed, searched or read (shell/explore-summary.ts).
+                const explore = authorization.mayWrite ? undefined : exploreSummary(flavour.dialect, input.command, opts.cwd);
                 emitResult(line === "completed" ? "completed" : "error", {
+                    ...(explore ? { explore } : {}),
                     exitCode: result.summary.exitCode,
                     finish: line,
                     // The start and the end, where a failure prints its errors; `head` holds the start even when the buffer dropped it.
@@ -171,4 +178,15 @@ export function createShellTool(opts: ShellToolOptions) {
             return result.text;
         }
     });
+}
+
+/** The explore summary of a foreground command, or undefined; never throws, since it is display only. */
+function exploreSummary(dialect: "bash" | "powershell", command: string, cwd: string): ShellExploreSummary | undefined {
+    try {
+        return dialect === "powershell"
+            ? powershellExploreSummary(command)
+            : bashExploreSummary(command, (dir) => readdirSync(resolve(cwd, dir)));
+    } catch {
+        return undefined;
+    }
 }

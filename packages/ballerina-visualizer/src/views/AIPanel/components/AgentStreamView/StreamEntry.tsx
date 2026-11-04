@@ -24,6 +24,7 @@ import SkillEnableCard from "./SkillEnableCard";
 import ConfigCard from "./ConfigCard";
 import ConnectorCard from "./ConnectorCard";
 import CommandOutputCard from "./CommandOutputCard";
+import ShellExploreRow from "./ShellExploreRow";
 import TryItCard from "./TryItCard";
 import ThinkingSegment from "./ThinkingSegment";
 import {
@@ -50,6 +51,7 @@ import { StreamEntry, StreamItem } from "./types";
 
 import {
     commandCardTool,
+    shellExplore,
     getToolCallDisplay,
     getToolIcon,
     getToolResultDisplay,
@@ -144,6 +146,10 @@ function renderItem(item: StreamItem, idx: number, streamActive: boolean, rpcCli
             if (item.toolName === "Clarify" && !item.toolOutput?.skipped) return null;
             if (item.toolName === "hurlRunnerTool") {
                 return <TryItCard key={idx} output={item.toolOutput} rpcClient={rpcClient} />;
+            }
+            const resultExplore = shellExplore(item.toolName, item.toolOutput);
+            if (resultExplore) {
+                return <ShellExploreRow key={idx} toolName={item.toolName!} explore={resultExplore} toolOutput={item.toolOutput} failed={item.failed} />;
             }
             const resultCard = commandCardTool(item.toolName, item.toolOutput);
             if (resultCard) {

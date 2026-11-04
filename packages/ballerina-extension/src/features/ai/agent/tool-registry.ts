@@ -148,12 +148,15 @@ function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, r
 /**
  * Built-in tools sent with `deferLoading`: rarely used, so the model sees only their names until it
  * loads one with `tool_search`. Tools the system prompt tells the model to use routinely stay eager.
+ * ConnectorGeneratorTool is the exception (owner, 2026-11-04): it is needed only when the user names
+ * an unknown API or supplies a spec, and the prompt says to load it first.
  */
 const DEFERRED_BUILT_IN_TOOLS: ReadonlySet<string> = new Set([
     WEB_SEARCH_TOOL_NAME,
     WEB_FETCH_TOOL_NAME,
     HURL_TOOL_NAME,
     KILL_TASK_TOOL_NAME,
+    CONNECTOR_GENERATOR_TOOL,
 ]);
 
 export function isDeferredTool(t: Tool): boolean {
@@ -242,7 +245,8 @@ export function createToolRegistryParts(opts: ToolRegistryOptions): ToolRegistry
             eventHandler,
             {
                 tempPath: tempProjectPath,
-                workspacePath: projectRootPath
+                workspacePath: projectRootPath,
+                activePackagePath: activeProject?.packagePath,
             },
             modifiedFiles
         ),

@@ -150,6 +150,60 @@ export interface ToolCallDisplay {
     detail?: string;
 }
 
+/**
+ * What a shell command that only looked at the project did, as the extension host attached it to the
+ * result: listed directories, searched patterns and read files, as written. Mirrors the host's
+ * `features/ai/agent/shell/explore-summary.ts ShellExploreSummary`.
+ */
+export interface ShellExploreSummary {
+    listed: string[];
+    searched: string[];
+    read: string[];
+}
+
+/** The explore summary on a shell result's toolOutput, or undefined. */
+export function shellExplore(toolName: string | undefined, payload: any): ShellExploreSummary | undefined {
+    if (toolName !== "shell" && toolName !== "powershell") return undefined;
+    const explore = payload?.explore;
+    if (!explore || !Array.isArray(explore.listed) || !Array.isArray(explore.searched) || !Array.isArray(explore.read)) return undefined;
+    return explore.listed.length + explore.searched.length + explore.read.length > 0 ? explore : undefined;
+}
+
+/** The compact row's wording, in the file tools' terms: "Read 9 files", "Searched for TicketRecord", "Listed files, read main.bal". */
+export function shellExploreLabel(explore: ShellExploreSummary): string {
+    const parts: string[] = [];
+    const { listed, searched, read } = explore;
+    if (listed.length > 0) {
+        const what = listed.length === 1 ? (listed[0] === "." ? "files" : listed[0]) : `${listed.length} folders`;
+        parts.push(`Listed ${what}`);
+    }
+    if (searched.length > 0) {
+        const what = searched.length === 1 ? searched[0] : `${searched.length} patterns`;
+        parts.push(`Searched for ${what}`);
+    }
+    if (read.length > 0) {
+        const what = read.length === 1 ? getFileName(read[0]) : `${read.length} files`;
+        parts.push(`Read ${what}`);
+    }
+    return parts.map((part, i) => (i === 0 ? part : part.charAt(0).toLowerCase() + part.slice(1))).join(", ");
+}
+
+/** Every name behind a compact row's counts, for its tooltip. */
+export function shellExploreTitle(explore: ShellExploreSummary): string {
+    const lines: string[] = [];
+    if (explore.listed.length > 0) lines.push(`Listed: ${explore.listed.join(", ")}`);
+    if (explore.searched.length > 0) lines.push(`Searched for: ${explore.searched.join(", ")}`);
+    if (explore.read.length > 0) lines.push(`Read: ${explore.read.join(", ")}`);
+    return lines.join("\n");
+}
+
+/** The icon of a compact row: its read, else its search, else its listing. */
+export function shellExploreIcon(explore: ShellExploreSummary): string {
+    if (explore.read.length > 0) return "codicon-go-to-file";
+    if (explore.searched.length > 0) return "codicon-search";
+    return "codicon-list-tree";
+}
+
 /** A shell row names the model's description, else the command itself. */
 function shellWhat(payload: any): string {
     const description = typeof payload?.description === "string" ? payload.description.trim() : "";
@@ -210,16 +264,30 @@ export function getToolCallDisplay(toolName: string | undefined, toolInput: any)
     }
 }
 
+/**
+ * A file tool that did not do its job: the tool refused (`success: false`), or its call failed before
+ * it ran, such as input that was not valid JSON. A failed call has no `fileName`, so the name is taken
+ * from the call's text in the error when it is there.
+ */
+function failedFileTool(verb: string, toolOutput: any): ToolCallDisplay {
+    const named = typeof toolOutput?.fileName === "string" && toolOutput.fileName
+        ? toolOutput.fileName
+        : /"(?:fileName|file_path)"\s*:\s*"([^"]+)"/.exec(typeof toolOutput?.error === "string" ? toolOutput.error : "")?.[1];
+    return { label: `Couldn't ${verb}`, detail: named ? getFileName(named) : "a file" };
+}
+
 export function getToolResultDisplay(toolName: string | undefined, toolOutput: any, hint?: string): ToolCallDisplay {
     if (toolName) {
         const mcp = parseMcpName(toolName);
         if (mcp) return { label: `${mcp.server} · ${mcp.tool}` };
     }
     switch (toolName) {
-        case "file_read":    return { label: "Read",    detail: getFileName(toolOutput?.fileName) };
-        case "file_write":   return { label: toolOutput?.action === "updated" ? "Updated" : "Created", detail: getFileName(toolOutput?.fileName) };
+        case "file_read":    return toolOutput?.success === false ? failedFileTool("read", toolOutput) : { label: "Read", detail: getFileName(toolOutput?.fileName) };
+        case "file_write":
+            if (toolOutput?.success === false) return failedFileTool("write", toolOutput);
+            return { label: toolOutput?.action === "updated" ? "Updated" : "Created", detail: getFileName(toolOutput?.fileName) };
         case "file_edit":
-        case "file_batch_edit": return { label: "Updated", detail: getFileName(toolOutput?.fileName) };
+        case "file_batch_edit": return toolOutput?.success === false ? failedFileTool("update", toolOutput) : { label: "Updated", detail: getFileName(toolOutput?.fileName) };
         case "TaskWrite":    return { label: "Plan ready" };
         case "Subagent": {
             const what = subagentLabel(toolOutput);
@@ -273,6 +341,8 @@ export function getToolResultDisplay(toolName: string | undefined, toolOutput: a
         case "shell":
         case "powershell": {
             const what = shellWhat(toolOutput);
+            const explore = shellExplore(toolName, toolOutput);
+            if (explore) return { label: toolOutput?.status === "error" ? `Command failed: ${shellExploreLabel(explore)}` : shellExploreLabel(explore) };
             switch (toolOutput?.status) {
                 case "blocked": return { label: "Command not run:", detail: what };
                 case "background": return { label: "Running in background:", detail: what };

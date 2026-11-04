@@ -17,8 +17,9 @@
 /**
  * Which one shell tool this platform gets (owner, 2026-09-23): never two.
  *
- * - Windows: `powershell` when a PowerShell resolves, else no shell tool and a
- *   notice saying why. No bash, whether or not Git for Windows is installed.
+ * - Windows: `powershell` when a PowerShell resolves, else no shell tool, and the
+ *   agent refuses to run with a notice on how to install or enable PowerShell.
+ *   No bash, whether or not Git for Windows is installed.
  * - macOS and Linux: `shell` (bash), or `powershell` when the development
  *   override `WSO2_INTEGRATOR_COPILOT_SHELL=powershell` is set in the
  *   environment and a `pwsh` is on PATH. The override is read from the
@@ -45,9 +46,10 @@ export interface ShellToolPolicy {
 }
 
 export const NO_POWERSHELL_NOTICE =
-    "The WSO2 Integrator Copilot has no shell tool on this machine: neither pwsh.exe on PATH nor Windows PowerShell " +
-    "(System32\\WindowsPowerShell\\v1.0\\powershell.exe) was found. It can still edit and check code (file and diagnostics " +
-    "tools), but it cannot build, run or test, and it finds code through a map of the project.";
+    "The WSO2 Integrator Copilot needs PowerShell to build, run and test your integration, and this machine has none it can use: " +
+    "neither pwsh.exe on PATH nor Windows PowerShell (System32\\WindowsPowerShell\\v1.0\\powershell.exe) was found. " +
+    "Install PowerShell 7 (winget install --id Microsoft.PowerShell), or ask your administrator to enable Windows PowerShell, " +
+    "then reload VS Code.";
 
 export function shellToolPolicy({ platform, env, powershell }: ShellAvailability): ShellToolPolicy {
     if (platform === "win32") {

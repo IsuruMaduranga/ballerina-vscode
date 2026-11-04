@@ -58,7 +58,7 @@ Avoid using unnecessary newlines in the hurl script, as they can lead to parsing
 
 export const HURLInputSchema = z.object({
     hurlScript: z.string().describe(TOOL_DESCRIPTION),
-    tryItScenario: z.string().max(30).describe("A short description of the try-it scenario being executed. This is used for logging and reporting purposes to provide context about the Hurl script execution.")
+    tryItScenario: z.string().describe("A short description (a few words) of the try-it scenario being executed. This is used for logging and reporting purposes to provide context about the Hurl script execution.")
 });
 
 export type HURLInput = z.infer<typeof HURLInputSchema>;

@@ -53,7 +53,8 @@ export function powershellToolDescription(edition: PowerShellEditionName): strin
 ${EDITION_SECTIONS[edition]}
 
 Prefer the purpose-built tools where one exists:
-- Reading, creating or changing files: file_read, file_write, file_edit and file_batch_edit. They keep the review view accurate. Do not use Get-Content, Set-Content, Out-File or Add-Content for this.
+- Creating or changing project files: always file_write, file_edit and file_batch_edit. Each of them returns the compiler errors the language server found after the change; a file changed through the shell does not. Never write or change a project file with Set-Content, Out-File, Add-Content, New-Item or a redirection (\`>\`, \`>>\`).
+- Reading files: file_read. Do not use Get-Content for this.
 - Compile errors: getCompilationErrors. Starting a service: \`bal run\` with run_in_background: true, which waits until the service is ready and returns a task-service-… id; the service keeps running after your turn and in the user's other chats; read its logs with task_output and stop it with kill_task. HTTP checks against a running service: hurlRunnerTool.
 - Use this tool for the rest of what a terminal does: \`bal build\`, \`bal test\`, \`bal format\`, \`bal pack\`, \`bal pull\`, git, package managers and build scripts.
 

@@ -28,6 +28,8 @@
 import {
     COMMAND_OUTPUT_TOOLS,
     commandCardTool,
+    shellExplore,
+    shellExploreLabel,
     isTestRun,
     getFileName,
     getToolCallDisplay,
@@ -254,5 +256,49 @@ describe("isTestRun", () => {
         expect(isTestRun("shell", { command: "grep -rn 'bal test' README.md" })).toBe(false);
         expect(isTestRun("shell", undefined)).toBe(false);
         expect(isTestRun("file_read", { command: "bal test" })).toBe(false);
+    });
+});
+
+describe("shell explore rows", () => {
+    const summary = (listed: string[], searched: string[], read: string[]) => ({ listed, searched, read });
+
+    it("words a listing, a search and a read like the file tools", () => {
+        expect(shellExploreLabel(summary(["."], [], []))).toBe("Listed files");
+        expect(shellExploreLabel(summary(["modules"], [], []))).toBe("Listed modules");
+        expect(shellExploreLabel(summary([], ["TicketRecord"], []))).toBe("Searched for TicketRecord");
+        expect(shellExploreLabel(summary([], ["a", "b"], []))).toBe("Searched for 2 patterns");
+        expect(shellExploreLabel(summary([], [], ["modules/x/main.bal"]))).toBe("Read main.bal");
+        expect(shellExploreLabel(summary(["."], [], ["a.bal", "b.bal"]))).toBe("Listed files, read 2 files");
+    });
+
+    it("words a summarized shell result, and a failed one", () => {
+        const payload = { command: "cat main.bal", explore: summary([], [], ["main.bal"]) };
+        expect(shellExplore("shell", payload)).toEqual(payload.explore);
+        expect(getToolResultDisplay("shell", { ...payload, status: "completed" }).label).toBe("Read main.bal");
+        expect(getToolResultDisplay("powershell", { ...payload, status: "error" }).label).toBe("Command failed: Read main.bal");
+    });
+
+    it("finds no summary on a result without one, an empty one or another tool", () => {
+        expect(shellExplore("shell", { command: "bal build" })).toBeUndefined();
+        expect(shellExplore("shell", { command: "x", explore: summary([], [], []) })).toBeUndefined();
+        expect(shellExplore("file_read", { explore: summary([], [], ["a.bal"]) })).toBeUndefined();
+    });
+});
+
+describe("failed file tools", () => {
+    it("says the edit did not happen, with the file when known", () => {
+        expect(getToolResultDisplay("file_edit", { success: false, fileName: "modules/a/main.bal" })).toEqual({ label: "Couldn't update", detail: "main.bal" });
+        expect(getToolResultDisplay("file_write", { success: false, fileName: "types.bal" })).toEqual({ label: "Couldn't write", detail: "types.bal" });
+        expect(getToolResultDisplay("file_read", { success: false, fileName: "x.bal" })).toEqual({ label: "Couldn't read", detail: "x.bal" });
+    });
+
+    it("finds the file in a malformed call's error, or says a file", () => {
+        const error = 'Invalid input for tool file_batch_edit: JSON parsing failed: Text: {"file_path": "main.bal", "edits": [{"old_string">service';
+        expect(getToolResultDisplay("file_batch_edit", { success: false, error })).toEqual({ label: "Couldn't update", detail: "main.bal" });
+        expect(getToolResultDisplay("file_edit", { success: false, error: "Tool execution failed" })).toEqual({ label: "Couldn't update", detail: "a file" });
+    });
+
+    it("keeps the success wording", () => {
+        expect(getToolResultDisplay("file_edit", { success: true, fileName: "main.bal" })).toEqual({ label: "Updated", detail: "main.bal" });
     });
 });

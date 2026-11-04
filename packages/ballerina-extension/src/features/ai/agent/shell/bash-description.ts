@@ -30,7 +30,8 @@ export function bashToolDescription(): string {
 Each call starts a new, non-interactive bash process. There is no terminal, the working directory is always the workspace root, and \`cd\` or exported variables do not carry over to the next call. Chain dependent steps in one call with \`&&\`; use \`;\` only when a later step should run whatever the earlier one did.
 
 Prefer the purpose-built tools where one exists:
-- Reading, creating or changing files: file_read, file_write, file_edit and file_batch_edit. They keep the review view accurate. Do not use cat, head, tail, sed, awk or \`echo >\` for this.
+- Creating or changing project files: always file_write, file_edit and file_batch_edit. Each of them returns the compiler errors the language server found after the change; a file changed through the shell does not. Never write or change a project file with sed -i, awk, tee, \`echo >\`, \`cat >\` or a heredoc.
+- Reading files: file_read, or a \`cat\` that prints the whole file, which also counts as reading it before an edit.
 - Compile errors: getCompilationErrors. Starting a service: \`bal run\` with run_in_background: true, which waits until the service is ready and returns a task-service-… id; the service keeps running after your turn and in the user's other chats; read its logs with task_output and stop it with kill_task. HTTP checks against a running service: hurlRunnerTool.
 - Use this tool for the rest of what a terminal does: \`bal build\`, \`bal test\`, \`bal format\`, \`bal pack\`, \`bal pull\`, git, package managers, build scripts, and searching with grep, rg or find.
 

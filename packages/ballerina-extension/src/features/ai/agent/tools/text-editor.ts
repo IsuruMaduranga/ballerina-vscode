@@ -253,6 +253,9 @@ const VALID_FILE_EXTENSIONS = [
     '.bal', '.toml', '.md', '.sql', ".yaml", ".yml", ".json", ".graphql", ".txt"
 ];
 
+/** Project dotfiles the file tools may touch although they have no extension; `.env` stays out (secrets). */
+const VALID_DOTFILES = ['.gitignore', '.gitattributes', '.dockerignore', '.editorconfig'];
+
 const RESTRICTED_READ_FILES = ['Config.toml'];
 
 /** Whether `file_path` names a file the agent may not read (`RESTRICTED_READ_FILES`), in any directory. */
@@ -273,7 +276,6 @@ const ErrorMessages = {
   FILE_ALREADY_EXISTS: 'File already exists with content',
   INVALID_FILE_PATH: 'Invalid file path',
   INVALID_EXTENSION: 'Invalid file extension',
-  EMPTY_CONTENT: 'Content cannot be empty',
   NO_MATCH_FOUND: 'No match found for old_string',
   MULTIPLE_MATCHES: 'Multiple matches found - old_string must be unique',
   IDENTICAL_STRINGS: 'old_string and new_string are identical',
@@ -362,11 +364,12 @@ function validateFilePath(filePath: string): ValidationResult {
   const hasValidExtension = VALID_FILE_EXTENSIONS.some(ext => 
     filePath.endsWith(ext)
   );
+  const baseName = filePath.replace(/\\/g, '/').split('/').pop() ?? '';
 
-  if (!hasValidExtension) {
+  if (!hasValidExtension && !VALID_DOTFILES.includes(baseName)) {
     return {
       valid: false,
-      error: `File must have a valid extension: ${VALID_FILE_EXTENSIONS.join(', ')}`
+      error: `File must have a valid extension (${VALID_FILE_EXTENSIONS.join(', ')}) or be one of ${VALID_DOTFILES.join(', ')}`
     };
   }
 
@@ -464,18 +467,6 @@ export function createWriteExecute(
       return result;
     }
 
-    // Validate content is not empty
-    if (!content || content.trim().length === 0) {
-      console.error(`[FileWriteTool] Empty content provided for file: ${file_path}`);
-      const result = {
-        success: false,
-        message: 'Content cannot be empty when writing a file. if you wish to create an empty file, add a comment with the file name.',
-        error: `Error: ${ErrorMessages.EMPTY_CONTENT}`
-      };
-      emitFileToolResult(eventHandler, FILE_WRITE_TOOL_NAME, result, file_path);
-      return result;
-    }
-
     const fullPath = path.join(tempProjectPath, file_path);
     const unsavedRefusal = await refuseIfUnsaved(ctx, file_path, FILE_WRITE_TOOL_NAME, eventHandler);
     if (unsavedRefusal) {
@@ -504,7 +495,8 @@ export function createWriteExecute(
       if (overwriteRefusal) { return overwriteRefusal; }
     }
 
-    const lineCount = content.split('\n').length;
+    // Empty content is allowed: it is how the agent clears a file when the user wants to start fresh.
+    const lineCount = content.length === 0 ? 0 : content.split('\n').length;
     const action: 'created' | 'updated' = fileExists ? 'updated' : 'created';
 
     // Preserve the file's existing EOL style so a rewrite doesn't churn every line on Windows.
@@ -1067,12 +1059,12 @@ export function createWriteTool(execute: WriteExecute) {
     - This tool will return an error if there is a file with non-empty content at the provided path, unless **overwrite** is set to true.
     - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
     - If this is an existing file, Use ${FILE_BATCH_EDIT_TOOL_NAME} or ${FILE_SINGLE_EDIT_TOOL_NAME} to modify it instead.
-    - Use **overwrite** only as a last resort, to rewrite a file whose existing content is corrupted or otherwise cannot be repaired with ${FILE_SINGLE_EDIT_TOOL_NAME} (for example when the text you need to replace is duplicated throughout the file, so no old_string can be made unique). Read the file first and supply the complete intended content, since everything currently in the file is discarded; overwriting a file you have not read, or one that changed since you read it, fails.
+    - Use **overwrite** only as a last resort, to rewrite a file whose existing content is corrupted or otherwise cannot be repaired with ${FILE_SINGLE_EDIT_TOOL_NAME} (for example when the text you need to replace is duplicated throughout the file, so no old_string can be made unique), or to clear a file with empty content when the user asks to remove its code or start fresh. Read the file first and supply the complete intended content, since everything currently in the file is discarded; overwriting a file you have not read, or one that changed since you read it, fails.
     - NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
     - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.`,
     inputSchema: z.object({
       file_path: z.string().describe(getFilePathDescription("write")),
-      content: z.string().describe("The content to write to the file, This cannot be empty"),
+      content: z.string().describe("The content to write to the file. Empty content (with overwrite for an existing file) clears it."),
       overwrite: z.boolean().default(false).describe("Replace the file's existing content (default false). Only set this to true to recover a file that cannot be repaired with an edit tool; the current content is discarded entirely.")
     }),
     execute
