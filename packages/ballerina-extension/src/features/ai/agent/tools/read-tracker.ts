@@ -75,7 +75,7 @@ export class ReadTracker {
 }
 
 export const UNREAD_REASON = (path: string, tool: string, readTool: string) =>
-    `Read ${path} with ${readTool} before using ${tool} on it. The file exists and has not been read in this conversation, so an edit could silently discard content you have not seen. A shell read does not count.`;
+    `Read ${path} with ${readTool} before using ${tool} on it. The file exists and has not been read in this conversation, so an edit could silently discard content you have not seen. A shell read counts only when it printed the whole file as it is on disk (a plain \`cat\`); after a partial one (head, sed -n, a pipe, or output cut off at the size limit) or another version of it (such as \`git show HEAD:<file>\`), use ${readTool}.`;
 
 export const STALE_REASON = (path: string, readTool: string) =>
     `${path} has changed on disk since you last read it: the user, the review, or a command may have modified it. Read it again with ${readTool} before editing, or your change would overwrite theirs.`;

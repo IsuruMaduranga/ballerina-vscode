@@ -257,7 +257,7 @@ ${CONCURRENCY_CODING_RULES}
         ].join(
             ", "
         )} tools.
-- The project's source is not included in the conversation. Find code with the shell tool (\`ls\`, \`find\`, \`grep\`, \`cat\`; in PowerShell \`Get-ChildItem\`, \`Select-String\`), or from the codebase map when the user's message carries one, and read a file with ${FILE_READ_TOOL_NAME} before you edit it. Editing or overwriting an existing file you have not read, or one that changed since you read it, fails until you read it again.
+- The project's source is not included in the conversation. Find code with the shell tool (\`ls\`, \`find\`, \`grep\`, \`cat\`; in PowerShell \`Get-ChildItem\`, \`Select-String\`), or from the codebase map when the user's message carries one, and read a file before you edit it, with ${FILE_READ_TOOL_NAME} or a shell \`cat\` that prints it whole. Editing or overwriting an existing file you have not read, or one that changed since you read it, fails until you read it again.
 - When making replacements inside an existing file, provide the **exact old string** and the **exact new string** with all newlines, spaces, and indentation, being mindful to replace nearby occurrences together to minimize the number of tool calls.
 - Do NOT create a new markdown file to document each change or summarize your work unless specifically requested by the user.
 - Do not manually add/modify Dependencies.toml. For Config.toml configuration management, use ${CONFIG_COLLECTOR_TOOL}.

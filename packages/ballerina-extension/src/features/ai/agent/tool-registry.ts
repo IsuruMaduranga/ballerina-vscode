@@ -135,6 +135,8 @@ function createGatedShellTool(opts: ToolRegistryOptions, shell: ShellRunSetup, r
         onFilesTouched: (touched) => registerShellTouchedFiles(shell.cwd, touched, opts.modifiedFiles, opts.allModifiedFiles),
         startService: (start) => startShellService(start, opts.runningServices),
         env,
+        reads: readTrackerFor(runKey),
+        home: shell.home,
         authorize,
     });
 }
