@@ -177,9 +177,9 @@ function msgCharLen(msg: ModelMessage): number {
  * actual API-reported inputTokens total. The grand total is always exact; per-category
  * values are ~75-85% accurate.
  *
- * codebaseCharsPerTurn: char length of the codebase structure block injected as the first
- * content block of each user message. Multiplied by user message count to estimate total
- * file content across the full conversation history.
+ * codebaseCharsPerTurn: char length of the codebase map a caller (migration) sends in each user
+ * message; 0 otherwise, since the agent reads files through tools. Multiplied by user message
+ * count to estimate total file content across the full conversation history.
  */
 function computeTokenBreakdown(
     baseMessages: ModelMessage[],
@@ -198,7 +198,7 @@ function computeTokenBreakdown(
     const toolDefsChars = JSON.stringify(tools ?? {}).length;
     const totalChars = systemChars + convChars + toolChars + toolDefsChars || 1;
 
-    // Estimate total file content chars: codebase block appears in every user message turn
+    // Estimate total file content chars: a caller's codebase map appears in every user message turn
     const userMsgCount = baseMessages.filter(m => m.role === 'user').length;
     const totalCodebaseChars = Math.min(codebaseCharsPerTurn * userMsgCount, convChars);
     const pureConvChars = convChars - totalCodebaseChars;
@@ -773,7 +773,7 @@ export class AgentExecutor extends AICommandExecutor<GenerateAgentCodeRequest> {
                                         cacheReadInputTokens: cacheReadTokens,
                                         outputTokens,
                                     },
-                                    breakdown: computeTokenBreakdown([systemMessage, ...dropBeforeLatestCompaction(allMessages)], tools, accToolCallChars, accToolResultChars, inputTokens, ((streamContext.turnLead[0].content as any[])[0] as any)?.text?.length ?? 0),
+                                    breakdown: computeTokenBreakdown([systemMessage, ...dropBeforeLatestCompaction(allMessages)], tools, accToolCallChars, accToolResultChars, inputTokens, codebaseMapText?.length ?? 0),
                                 });
                             }
                         },
